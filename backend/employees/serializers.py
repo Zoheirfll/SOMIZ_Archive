@@ -7,7 +7,7 @@ import magic  # python-magic pour validation MIME réelle
 from django.conf import settings
 from rest_framework import serializers
 
-from employees.models import Employee, EmployeeDocument
+from employees.models import Employee, EmployeeDocument, TypeDocument
 
 
 # ─── DOCUMENT ────────────────────────────────────────────────────────────────
@@ -16,16 +16,17 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
     uploaded_by_name = serializers.CharField(
         source='uploaded_by.full_name', read_only=True
     )
-    type_document_label = serializers.CharField(
-        source='get_type_document_display', read_only=True
-    )
+    type_document = serializers.CharField(source='type_doc.code', read_only=True)
+    type_document_label = serializers.CharField(source='type_doc.nom', read_only=True)
+    type_doc_id = serializers.UUIDField(source='type_doc.id', read_only=True)
+    obligatoire = serializers.BooleanField(source='type_doc.obligatoire', read_only=True)
     file_size_kb = serializers.FloatField(read_only=True)
 
     class Meta:
         model = EmployeeDocument
         fields = [
-            'id', 'type_document', 'type_document_label',
-            'file_name', 'file_size', 'file_size_kb', 'mime_type',
+            'id', 'type_doc', 'type_doc_id', 'type_document', 'type_document_label',
+            'obligatoire', 'file_name', 'file_size', 'file_size_kb', 'mime_type',
             'version', 'is_active',
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
             'notes',
@@ -37,44 +38,37 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
 
 
 class DocumentUploadSerializer(serializers.ModelSerializer):
-    """Serializer pour l'upload — valide le fichier en profondeur."""
-
     file = serializers.FileField(write_only=True)
+    type_doc = serializers.PrimaryKeyRelatedField(
+        queryset=TypeDocument.objects.filter(is_active=True)
+    )
 
     class Meta:
         model = EmployeeDocument
-        fields = ['type_document', 'file', 'notes']
+        fields = ['type_doc', 'file', 'notes']
 
     def validate_file(self, file):
-        # 1. Taille max
         max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
         if file.size > max_size:
             raise serializers.ValidationError(
                 f"Fichier trop lourd. Maximum {settings.MAX_UPLOAD_SIZE_MB} Mo."
             )
-
-        # 2. Validation MIME réelle (pas juste l'extension)
         file.seek(0)
         mime = magic.from_buffer(file.read(2048), mime=True)
         file.seek(0)
-
         if mime not in settings.ALLOWED_MIME_TYPES:
             raise serializers.ValidationError(
-                f"Type de fichier non autorisé ({mime}). "
-                f"Acceptés : PDF, JPEG, PNG, TIFF."
+                f"Type non autorisé ({mime}). Acceptés : PDF, JPEG, PNG, TIFF."
             )
-
         return file
 
     def create(self, validated_data):
         file = validated_data['file']
         validated_data['file_name'] = file.name
         validated_data['file_size'] = file.size
-
         file.seek(0)
         validated_data['mime_type'] = magic.from_buffer(file.read(2048), mime=True)
         file.seek(0)
-
         return super().create(validated_data)
 
 
@@ -139,19 +133,20 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_documents_manquants(self, obj):
-        tous = set(EmployeeDocument.TypeDocument.values)
+        tous = TypeDocument.objects.filter(is_active=True)
         presents = set(
-            obj.documents.filter(is_active=True).values_list('type_document', flat=True)
+            obj.documents.filter(is_active=True).values_list('type_doc_id', flat=True)
         )
-        manquants = tous - presents
+        manquants = tous.exclude(id__in=presents)
         return [
             {
-                'code': t,
-                'label': EmployeeDocument.TypeDocument(t).label,
-                'required': t in EmployeeDocument.REQUIRED_TYPES,
-            }
-            for t in sorted(manquants)
-        ]
+            'id': str(t.id),
+            'code': t.code,
+            'label': t.nom,
+            'required': t.obligatoire,
+        }
+        for t in manquants
+    ]
 
 class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:

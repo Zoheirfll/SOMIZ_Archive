@@ -57,39 +57,39 @@ class AuditLogListView(APIView):
 
 
 class AdminStatsView(APIView):
-    """
-    GET /api/admin/stats/
-    Statistiques globales pour le dashboard admin.
-    """
     permission_classes = [IsAdmin]
 
     def get(self, request):
+        from employees.models import TypeDocument
+        
         total_emp = Employee.objects.filter(statut='actif').count()
 
-        # Taux de complétude par type de document
-        types_requis = ['CNI', 'CONTRAT', 'FICHE_IEP']
+        # Complétude par type — dynamique depuis la BDD
         completude = {}
-        for t in EmployeeDocument.TypeDocument.values:
+        for t in TypeDocument.objects.filter(is_active=True).order_by('ordre', 'nom'):
             nb = EmployeeDocument.objects.filter(
-                type_document=t, is_active=True
+                type_doc=t, is_active=True
             ).values('employee').distinct().count()
-            completude[t] = {
-                'label': EmployeeDocument.TypeDocument(t).label,
+            completude[t.code] = {
+                'label': t.nom,
                 'nb_employes': nb,
                 'pourcentage': round(nb / total_emp * 100, 1) if total_emp else 0,
-                'required': t in types_requis,
+                'required': t.obligatoire,
             }
 
-        # Dossiers complets (les 3 docs obligatoires présents)
-        emp_with_all = Employee.objects.filter(statut='actif')
-        for t in types_requis:
-            emp_with_all = emp_with_all.filter(
-                documents__type_document=t,
+        # Dossiers complets — employés qui ont tous les types obligatoires
+        types_obligatoires = TypeDocument.objects.filter(
+            obligatoire=True, is_active=True
+        )
+        emp_complets = Employee.objects.filter(statut='actif')
+        for t in types_obligatoires:
+            emp_complets = emp_complets.filter(
+                documents__type_doc=t,
                 documents__is_active=True
             )
-        nb_complets = emp_with_all.distinct().count()
+        nb_complets = emp_complets.distinct().count()
 
-        # Activité récente (7 jours)
+        # Activité 7 jours
         from django.utils import timezone
         from datetime import timedelta
         since = timezone.now() - timedelta(days=7)

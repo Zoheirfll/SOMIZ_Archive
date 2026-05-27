@@ -6,6 +6,7 @@ from employees.referentiel_views import (
     PosteListCreateView, PosteDetailView,
     TypeContratListCreateView, TypeContratDetailView,
     CategorieListCreateView, CategorieDetailView,
+    TypeDocumentListCreateView, TypeDocumentDetailView,
 )
 
 urlpatterns = [
@@ -21,4 +22,6 @@ urlpatterns = [
     path('types-contrat/<uuid:pk>/', TypeContratDetailView.as_view()),
     path('categories/', CategorieListCreateView.as_view()),
     path('categories/<uuid:pk>/', CategorieDetailView.as_view()),
+    path('types-documents/', TypeDocumentListCreateView.as_view()),
+    path('types-documents/<uuid:pk>/', TypeDocumentDetailView.as_view()),
 ]

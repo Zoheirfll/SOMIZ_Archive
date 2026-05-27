@@ -27,6 +27,7 @@ from employees.serializers import (
 )
 
 
+
 # ─── EMPLOYEES ────────────────────────────────────────────────────────────────
 
 class EmployeeListCreateView(generics.ListCreateAPIView):
@@ -110,10 +111,19 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_update(self, serializer):
         employee = serializer.save()
+        # Convertir les dates en strings pour que JSON puisse les sérialiser
+        details = {}
+        for k, v in serializer.validated_data.items():
+            if hasattr(v, 'isoformat'):  # date ou datetime
+                details[k] = v.isoformat()
+            elif hasattr(v, 'pk'):  # ForeignKey — on garde juste l'ID
+                details[k] = str(v.pk)
+            else:
+                details[k] = str(v) if v is not None else None
         AuditLog.log(
             self.request, AuditLog.Action.MODIFY_EMP,
             target=employee,
-            details=serializer.validated_data
+            details=details
         )
 
     def perform_destroy(self, instance):

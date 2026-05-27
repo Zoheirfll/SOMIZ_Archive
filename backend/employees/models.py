@@ -119,6 +119,22 @@ class Categorie(models.Model):
     def __str__(self):
         return self.nom
 
+class TypeDocument(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nom = models.CharField(max_length=150, verbose_name="Nom")
+    code = models.CharField(max_length=30, unique=True, verbose_name="Code")
+    obligatoire = models.BooleanField(default=False, verbose_name="Obligatoire")
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+    ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'types_documents'
+        verbose_name = "Type de document"
+        ordering = ['ordre', 'nom']
+
+    def __str__(self):
+        return f"{self.nom} {'*' if self.obligatoire else ''}"
 
 # ─── EMPLOYEE ─────────────────────────────────────────────────────────────────
 
@@ -188,19 +204,23 @@ class Employee(models.Model):
 
     @property
     def dossier_complet(self):
-        docs_requis = {'CNI', 'CONTRAT', 'FICHE_IEP'}
+        types_obligatoires = TypeDocument.objects.filter(
+            obligatoire=True, is_active=True
+        ).values_list('id', flat=True)
         docs_presents = set(
-            self.documents.filter(is_active=True).values_list('type_document', flat=True)
-        )
-        return docs_requis.issubset(docs_presents)
+        self.documents.filter(is_active=True).values_list('type_doc_id', flat=True)
+    )
+        return all(t in docs_presents for t in types_obligatoires)
 
     @property
     def taux_completude(self):
-        total_types = len(EmployeeDocument.TypeDocument.values)
-        docs_presents = self.documents.filter(is_active=True).values_list(
-            'type_document', flat=True
-        ).distinct()
-        return round(len(set(docs_presents)) / total_types * 100)
+        total = TypeDocument.objects.filter(is_active=True).count()
+        if total == 0:
+            return 0
+        presents = self.documents.filter(is_active=True).values_list(
+            'type_doc_id', flat=True
+        ).distinct().count()
+        return round(presents / total * 100)
 
 
 # ─── DOCUMENT ─────────────────────────────────────────────────────────────────
@@ -213,23 +233,17 @@ def document_upload_path(instance, filename):
 
 class EmployeeDocument(models.Model):
 
-    class TypeDocument(models.TextChoices):
-        CNI = 'CNI', "Carte Nationale d'Identité"
-        CONTRAT = 'CONTRAT', "Contrat de Travail"
-        RESIDENCE = 'RESIDENCE', "Justificatif de Résidence"
-        FICHE_IEP = 'FICHE_IEP', "Fiche IEP"
-        DOSSIER_MED = 'DOSSIER_MED', "Dossier Médical"
-        DIPLOME = 'DIPLOME', "Diplôme(s)"
-        PHOTO = 'PHOTO', "Photo d'identité"
-        AUTRE = 'AUTRE', "Document divers"
-
-    REQUIRED_TYPES = {'CNI', 'CONTRAT', 'FICHE_IEP'}
-
+    # Gardez TypeDocument comme TextChoices pour compatibilité historique
+    # mais ajoutez la FK vers le nouveau modèle
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee, on_delete=models.CASCADE, related_name='documents'
     )
-    type_document = models.CharField(max_length=30, choices=TypeDocument.choices)
+    type_doc = models.ForeignKey(
+        TypeDocument, on_delete=models.PROTECT,
+        related_name='documents', verbose_name="Type de document",
+        null=True, blank=True
+    )
     file = models.FileField(
         upload_to=document_upload_path,
         validators=[FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png', 'tiff'])]
@@ -252,7 +266,7 @@ class EmployeeDocument(models.Model):
         ordering = ['-uploaded_at']
 
     def __str__(self):
-        return f"{self.employee.matricule} — {self.get_type_document_display()} v{self.version}"
+        return f"{self.employee.matricule} — {self.type_doc.nom if self.type_doc else '?'} v{self.version}"
 
     @property
     def file_size_kb(self):
@@ -260,18 +274,27 @@ class EmployeeDocument(models.Model):
             return round(self.file_size / 1024, 1)
         return None
 
+    @property
+    def type_document(self):
+        """Compatibilité avec l'ancien code."""
+        return self.type_doc.code if self.type_doc else None
+
+    @property
+    def type_document_label(self):
+        return self.type_doc.nom if self.type_doc else None
+
     def save(self, *args, **kwargs):
         if not self.pk:
             existing = EmployeeDocument.objects.filter(
                 employee=self.employee,
-                type_document=self.type_document,
+                type_doc=self.type_doc,
                 is_active=True
             ).order_by('-version').first()
             if existing:
                 self.version = existing.version + 1
                 EmployeeDocument.objects.filter(
                     employee=self.employee,
-                    type_document=self.type_document,
+                    type_doc=self.type_doc,
                     is_active=True
                 ).update(is_active=False)
         super().save(*args, **kwargs)

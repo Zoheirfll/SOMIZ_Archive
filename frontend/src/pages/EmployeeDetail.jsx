@@ -5,31 +5,26 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 
-const TYPE_LABELS = {
-  CNI: "Carte Nationale d'Identité",
-  CONTRAT: "Contrat de Travail",
-  RESIDENCE: "Justificatif de Résidence",
-  FICHE_IEP: "Fiche IEP",
-  DOSSIER_MED: "Dossier Médical",
-  DIPLOME: "Diplôme(s)",
-  PHOTO: "Photo d'identité",
-  AUTRE: "Document divers",
-};
-
 const EmployeeDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+
+  // ─── States ───────────────────────────────────────────────────────────────
   const [employee, setEmployee] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [docUrl, setDocUrl] = useState(null);
   const [docLoading, setDocLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadType, setUploadType] = useState("CNI");
+  const [uploadType, setUploadType] = useState("");
   const [message, setMessage] = useState(null);
+  const [typesDocuments, setTypesDocuments] = useState({});
+  const [typesDocumentsList, setTypesDocumentsList] = useState([]);
 
+  // ─── Effects ──────────────────────────────────────────────────────────────
   useEffect(() => {
+    fetchTypesDocuments();
     fetchEmployee();
   }, [id]);
 
@@ -39,12 +34,28 @@ const EmployeeDetail = () => {
     };
   }, [docUrl]);
 
+  // ─── Fonctions ────────────────────────────────────────────────────────────
+
+  const fetchTypesDocuments = async () => {
+    try {
+      const response = await api.get("/ref/types-documents/");
+      const types = response.data.results || response.data;
+      const map = {};
+      types.forEach((t) => {
+        map[t.code] = t.nom;
+      });
+      setTypesDocuments(map);
+      setTypesDocumentsList(types);
+      if (types.length > 0) setUploadType(types[0].code);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchEmployee = async () => {
     setLoading(true);
     try {
-      const response = await api.get(`/employees/${id}/`, {
-        params: { no_log: true },
-      });
+      const response = await api.get(`/employees/${id}/`);
       setEmployee(response.data);
       if (response.data.documents?.length > 0) {
         loadDocument(response.data.documents[0]);
@@ -79,7 +90,10 @@ const EmployeeDetail = () => {
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("type_document", uploadType);
+    const typeSelectionne = typesDocumentsList.find(
+      (t) => t.code === uploadType,
+    );
+    formData.append("type_doc", typeSelectionne?.id || uploadType);
     try {
       await api.post(`/employees/${id}/documents/`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -96,6 +110,33 @@ const EmployeeDetail = () => {
       setTimeout(() => setMessage(null), 4000);
     }
   };
+
+  const handleDeleteDoc = async (doc) => {
+    const nomType = typesDocuments[doc.type_document] || doc.type_document;
+    if (
+      !window.confirm(
+        `Supprimer "${nomType} v${doc.version}" ?\nCette action est irréversible.`,
+      )
+    )
+      return;
+
+    try {
+      await api.delete(`/documents/${doc.id}/`);
+      setMessage({ type: "success", text: "Document supprimé." });
+      // Si on supprime le doc affiché, vider le viewer
+      if (selectedDoc?.id === doc.id) {
+        setSelectedDoc(null);
+        setDocUrl(null);
+      }
+      fetchEmployee();
+    } catch (err) {
+      setMessage({ type: "error", text: "Erreur lors de la suppression." });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
+  // ─── Rendu conditionnel ───────────────────────────────────────────────────
 
   if (loading)
     return (
@@ -115,7 +156,6 @@ const EmployeeDetail = () => {
 
   if (!employee) return null;
 
-  // Tous les champs à afficher — ajout/suppression ici sans toucher au JSX
   const infoFields = [
     { label: "Matricule", value: employee.matricule, mono: true },
     {
@@ -138,7 +178,6 @@ const EmployeeDetail = () => {
     <div style={{ background: theme.bg, minHeight: "100vh" }}>
       <Navbar />
       <div style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
-        {/* Retour */}
         <button
           onClick={() => navigate("/employees")}
           style={{
@@ -155,7 +194,6 @@ const EmployeeDetail = () => {
           ← Retour
         </button>
 
-        {/* Message succès / erreur */}
         {message && (
           <div
             style={{
@@ -185,7 +223,6 @@ const EmployeeDetail = () => {
             boxShadow: theme.shadow,
           }}
         >
-          {/* En-tête de la carte */}
           <div
             style={{
               display: "flex",
@@ -235,7 +272,6 @@ const EmployeeDetail = () => {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {/* Barre de complétude */}
               <div style={{ textAlign: "right" }}>
                 <div
                   style={{
@@ -278,7 +314,6 @@ const EmployeeDetail = () => {
                   </span>
                 </div>
               </div>
-
               {user?.role === "ADMIN" && (
                 <button
                   onClick={() => navigate(`/employees/${id}/modifier`)}
@@ -299,7 +334,6 @@ const EmployeeDetail = () => {
             </div>
           </div>
 
-          {/* Grille des champs */}
           <div
             style={{
               display: "grid",
@@ -357,11 +391,11 @@ const EmployeeDetail = () => {
           </div>
         </div>
 
-        {/* Contenu principal : liste docs + viewer */}
+        {/* Documents + Viewer */}
         <div
           style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}
         >
-          {/* Sidebar documents */}
+          {/* Sidebar */}
           <div
             style={{
               background: theme.surface,
@@ -386,14 +420,11 @@ const EmployeeDetail = () => {
               Documents ({employee.documents?.length || 0})
             </div>
 
-            {/* Documents présents */}
+            {/* Documents présents — avec bouton suppression ADMIN */}
             {employee.documents?.map((doc) => (
               <div
                 key={doc.id}
-                onClick={() => loadDocument(doc)}
                 style={{
-                  padding: "12px 16px",
-                  cursor: "pointer",
                   borderBottom: `1px solid ${theme.primaryBorder}`,
                   background:
                     selectedDoc?.id === doc.id
@@ -404,15 +435,63 @@ const EmployeeDetail = () => {
                 }}
               >
                 <div
-                  style={{ color: theme.text, fontSize: 13, fontWeight: 600 }}
+                  onClick={() => loadDocument(doc)}
+                  style={{
+                    padding: "12px 16px",
+                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                  }}
                 >
-                  {TYPE_LABELS[doc.type_document] || doc.type_document}
-                </div>
-                <div
-                  style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}
-                >
-                  v{doc.version} · {doc.file_size_kb} Ko ·{" "}
-                  {new Date(doc.uploaded_at).toLocaleDateString("fr-FR")}
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        color: theme.text,
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {typesDocuments[doc.type_document] || doc.type_document}
+                    </div>
+                    <div
+                      style={{
+                        color: theme.textMuted,
+                        fontSize: 11,
+                        marginTop: 2,
+                      }}
+                    >
+                      v{doc.version} · {doc.file_size_kb} Ko ·{" "}
+                      {new Date(doc.uploaded_at).toLocaleDateString("fr-FR")}
+                    </div>
+                  </div>
+                  {/* Bouton suppression — ADMIN uniquement */}
+                  {user?.role === "ADMIN" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteDoc(doc);
+                      }}
+                      title="Supprimer ce document"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: theme.danger,
+                        cursor: "pointer",
+                        fontSize: 14,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        opacity: 0.5,
+                        transition: "opacity 0.15s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.opacity = 0.5)
+                      }
+                    >
+                      🗑️
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -448,7 +527,7 @@ const EmployeeDetail = () => {
               </div>
             ))}
 
-            {/* Upload — ADMIN uniquement */}
+            {/* Upload ADMIN */}
             {user?.role === "ADMIN" && (
               <div
                 style={{
@@ -482,9 +561,9 @@ const EmployeeDetail = () => {
                     outline: "none",
                   }}
                 >
-                  {Object.entries(TYPE_LABELS).map(([code, label]) => (
-                    <option key={code} value={code}>
-                      {label}
+                  {typesDocumentsList.map((t) => (
+                    <option key={t.code} value={t.code}>
+                      {t.nom}
                     </option>
                   ))}
                 </select>
@@ -518,7 +597,7 @@ const EmployeeDetail = () => {
             )}
           </div>
 
-          {/* Viewer inline */}
+          {/* Viewer */}
           <div
             style={{
               background: theme.surface,
@@ -546,14 +625,14 @@ const EmployeeDetail = () => {
                   <span
                     style={{ color: theme.text, fontWeight: 700, fontSize: 14 }}
                   >
-                    {TYPE_LABELS[selectedDoc.type_document]}
+                    {typesDocuments[selectedDoc.type_document] ||
+                      selectedDoc.type_document}
                   </span>
                   <span style={{ color: theme.textSecondary, fontSize: 12 }}>
                     Version {selectedDoc.version} · {selectedDoc.file_size_kb}{" "}
                     Ko
                   </span>
                 </div>
-
                 {docLoading ? (
                   <div
                     style={{

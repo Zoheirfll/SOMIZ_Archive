@@ -5,7 +5,10 @@ CRUD pour les référentiels : Direction, Département, Service, Poste, TypeCont
 
 from rest_framework import generics, serializers
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
-from employees.models import Direction, Departement, Service, Poste, TypeContrat, Categorie
+from employees.models import (
+    Direction, Departement, Service, Poste,
+    TypeContrat, Categorie, TypeDocument
+)
 
 
 # ─── SERIALIZERS ──────────────────────────────────────────────────────────────
@@ -147,3 +150,22 @@ class CategorieDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CategorieSerializer
     permission_classes = [IsAdmin]
     queryset = Categorie.objects.all()
+
+class TypeDocumentSerializer(serializers.ModelSerializer):
+    nb_documents = serializers.SerializerMethodField()
+    class Meta:
+        model = TypeDocument
+        fields = ['id', 'nom', 'code', 'obligatoire', 'is_active', 'ordre', 'nb_documents']
+    def get_nb_documents(self, obj):
+        return obj.documents.filter(is_active=True).count()
+
+class TypeDocumentListCreateView(generics.ListCreateAPIView):
+    serializer_class = TypeDocumentSerializer
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+    queryset = TypeDocument.objects.all()
+
+class TypeDocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = TypeDocumentSerializer
+    permission_classes = [IsAdmin]
+    queryset = TypeDocument.objects.all()

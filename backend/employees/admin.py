@@ -11,7 +11,7 @@ class EmployeeAdmin(admin.ModelAdmin):
 
 @admin.register(EmployeeDocument)
 class EmployeeDocumentAdmin(admin.ModelAdmin):
-    list_display = ['employee', 'type_document', 'version', 'is_active', 'uploaded_at', 'uploaded_by']
-    list_filter = ['type_document', 'is_active']
+    list_display = ['employee', 'type_doc', 'version', 'is_active', 'uploaded_at', 'uploaded_by']
+    list_filter = ['type_doc', 'is_active']
     search_fields = ['employee__matricule', 'employee__nom']
     readonly_fields = ['id', 'uploaded_at', 'version']

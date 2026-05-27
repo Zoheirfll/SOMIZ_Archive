@@ -253,6 +253,7 @@ const TABS = [
   { key: "postes", label: "Postes" },
   { key: "types-contrat", label: "Types de contrat" },
   { key: "categories", label: "Catégories" },
+  { key: "types-documents", label: "Types de documents" },
 ];
 
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
@@ -522,6 +523,57 @@ const Parametres = () => {
             ),
           },
         ];
+      case "types-documents":
+        return [
+          { key: "nom", label: "Nom", bold: true },
+          { key: "code", label: "Code", mono: true, primary: true },
+          { key: "ordre", label: "Ordre" },
+          {
+            key: "obligatoire",
+            label: "Obligatoire",
+            render: (i) => (
+              <span
+                style={{
+                  background: i.obligatoire ? theme.dangerBg : theme.primaryBg,
+                  color: i.obligatoire ? theme.danger : theme.primary,
+                  border: `1px solid ${i.obligatoire ? theme.dangerBorder : theme.primaryBorder}`,
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {i.obligatoire ? "Obligatoire" : "Optionnel"}
+              </span>
+            ),
+          },
+          {
+            key: "nb_documents",
+            label: "Documents",
+            render: (i) => (
+              <Badge count={i.nb_documents} color={theme.primary} />
+            ),
+          },
+          {
+            key: "is_active",
+            label: "Statut",
+            render: (i) => (
+              <span
+                style={{
+                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
+                  color: i.is_active ? theme.primary : theme.danger,
+                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {i.is_active ? "Actif" : "Inactif"}
+              </span>
+            ),
+          },
+        ];
       default:
         return [];
     }
@@ -761,6 +813,81 @@ const Parametres = () => {
               onChange={handleChange}
               style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
+            <label style={labelStyle}>Statut</label>
+            <select
+              name="is_active"
+              value={form.is_active ?? true}
+              onChange={(e) =>
+                setForm({ ...form, is_active: e.target.value === "true" })
+              }
+              style={inputStyle}
+            >
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+          </>
+        );
+      case "types-documents":
+        return (
+          <>
+            <label style={labelStyle}>
+              Nom <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <input
+              name="nom"
+              value={form.nom || ""}
+              onChange={handleChange}
+              style={inputStyle}
+              placeholder="Attestation de travail"
+            />
+
+            <label style={labelStyle}>
+              Code <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <input
+              name="code"
+              value={form.code || ""}
+              onChange={handleChange}
+              style={inputStyle}
+              placeholder="ATTESTATION"
+              disabled={modal?.mode === "edit"}
+            />
+            {modal?.mode === "edit" && (
+              <div
+                style={{
+                  color: theme.textMuted,
+                  fontSize: 11,
+                  marginTop: -8,
+                  marginBottom: 12,
+                }}
+              >
+                Le code ne peut pas être modifié après création.
+              </div>
+            )}
+
+            <label style={labelStyle}>Ordre d'affichage</label>
+            <input
+              type="number"
+              name="ordre"
+              value={form.ordre ?? 0}
+              onChange={handleChange}
+              style={inputStyle}
+              min="0"
+            />
+
+            <label style={labelStyle}>Obligatoire ?</label>
+            <select
+              name="obligatoire"
+              value={form.obligatoire ?? false}
+              onChange={(e) =>
+                setForm({ ...form, obligatoire: e.target.value === "true" })
+              }
+              style={inputStyle}
+            >
+              <option value="false">Optionnel</option>
+              <option value="true">Obligatoire</option>
+            </select>
+
             <label style={labelStyle}>Statut</label>
             <select
               name="is_active"
