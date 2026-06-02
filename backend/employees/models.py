@@ -227,30 +227,29 @@ class Employee(models.Model):
 
 def document_upload_path(instance, filename):
     ext = filename.split('.')[-1].lower()
-    safe_name = f"{instance.type_document}_{uuid.uuid4().hex[:8]}.{ext}"
-    return os.path.join('employees', str(instance.employee.id), instance.type_document, safe_name)
+    safe_name = f"{instance.document.type_doc.code}_{uuid.uuid4().hex[:8]}.{ext}"
+    return os.path.join(
+        'employees',
+        str(instance.document.employee.id),
+        instance.document.type_doc.code,
+        safe_name
+    )
 
 
 class EmployeeDocument(models.Model):
+    """
+    Conteneur — représente un type de document pour un employé.
+    Contient plusieurs fichiers (EmployeeDocumentFile).
+    """
 
-    # Gardez TypeDocument comme TextChoices pour compatibilité historique
-    # mais ajoutez la FK vers le nouveau modèle
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee, on_delete=models.CASCADE, related_name='documents'
     )
     type_doc = models.ForeignKey(
         TypeDocument, on_delete=models.PROTECT,
-        related_name='documents', verbose_name="Type de document",
-        null=True, blank=True
+        related_name='documents', verbose_name="Type de document"
     )
-    file = models.FileField(
-        upload_to=document_upload_path,
-        validators=[FileExtensionValidator(allowed_extensions=['pdf', 'jpg', 'jpeg', 'png', 'tiff'])]
-    )
-    file_name = models.CharField(max_length=255, blank=True)
-    file_size = models.PositiveIntegerField(null=True, blank=True)
-    mime_type = models.CharField(max_length=50, blank=True)
     version = models.PositiveSmallIntegerField(default=1)
     is_active = models.BooleanField(default=True)
     uploaded_by = models.ForeignKey(
@@ -266,13 +265,7 @@ class EmployeeDocument(models.Model):
         ordering = ['-uploaded_at']
 
     def __str__(self):
-        return f"{self.employee.matricule} — {self.type_doc.nom if self.type_doc else '?'} v{self.version}"
-
-    @property
-    def file_size_kb(self):
-        if self.file_size:
-            return round(self.file_size / 1024, 1)
-        return None
+        return f"{self.employee.matricule} — {self.type_doc.nom} v{self.version}"
 
     @property
     def type_document(self):
@@ -282,6 +275,19 @@ class EmployeeDocument(models.Model):
     @property
     def type_document_label(self):
         return self.type_doc.nom if self.type_doc else None
+
+    @property
+    def nb_fichiers(self):
+        return self.fichiers.filter(is_active=True).count()
+
+    @property
+    def file_size_kb(self):
+        """Taille totale de tous les fichiers."""
+        total = sum(
+            f.file_size or 0
+            for f in self.fichiers.filter(is_active=True)
+        )
+        return round(total / 1024, 1) if total else None
 
     def save(self, *args, **kwargs):
         if not self.pk:
@@ -298,3 +304,39 @@ class EmployeeDocument(models.Model):
                     is_active=True
                 ).update(is_active=False)
         super().save(*args, **kwargs)
+
+class EmployeeDocumentFile(models.Model):
+    """
+    Fichier physique appartenant à un EmployeeDocument.
+    Un document peut avoir plusieurs fichiers (recto/verso, pages multiples).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document = models.ForeignKey(
+        EmployeeDocument, on_delete=models.CASCADE,
+        related_name='fichiers', verbose_name="Document"
+    )
+    file = models.FileField(
+        upload_to=document_upload_path,
+        validators=[FileExtensionValidator(
+            allowed_extensions=['pdf', 'jpg', 'jpeg', 'png', 'tiff']
+        )]
+    )
+    file_name = models.CharField(max_length=255, blank=True)
+    file_size = models.PositiveIntegerField(null=True, blank=True)
+    mime_type = models.CharField(max_length=50, blank=True)
+    ordre = models.PositiveSmallIntegerField(default=1, verbose_name="Ordre")
+    is_active = models.BooleanField(default=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'employee_document_files'
+        verbose_name = "Fichier document"
+        ordering = ['ordre', 'uploaded_at']
+
+    def __str__(self):
+        return f"{self.document} — fichier {self.ordre}"
+
+    @property
+    def file_size_kb(self):
+        return round(self.file_size / 1024, 1) if self.file_size else None

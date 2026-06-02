@@ -16,6 +16,7 @@ const Navbar = () => {
 
   const navLinks = [
     { path: "/employees", label: "👥 Employés" },
+    { path: "/import", label: "📥 Import", adminOnly: true },
     { path: "/dashboard", label: "📊 Dashboard", adminOnly: true },
     { path: "/users", label: "⚙️ Utilisateurs", adminOnly: true },
     { path: "/parametres", label: "⚙️ Paramètres", adminOnly: true },

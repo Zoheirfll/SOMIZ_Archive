@@ -266,6 +266,10 @@ const Parametres = () => {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [importModal, setImportModal] = useState(null); // { tab: 'directions' }
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   // Données des référentiels pour les selects
   const [directions, setDirections] = useState([]);
@@ -330,7 +334,48 @@ const Parametres = () => {
       );
     }
   };
+  const handleImportFile = async () => {
+    if (!importFile || !importModal) return;
+    setImporting(true);
+    setImportResult(null);
 
+    const formData = new FormData();
+    formData.append("file", importFile);
+
+    try {
+      const response = await api.post(
+        `/ref/import/${importModal.tab}/`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      );
+      setImportResult(response.data);
+      fetchTab(activeTab);
+      fetchDirections();
+      fetchDepartements();
+    } catch (err) {
+      setImportResult({
+        error: err.response?.data?.error || "Erreur lors de l'import.",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleDownloadRefTemplate = async (tab) => {
+    try {
+      const response = await api.get(`/ref/import/${tab}/template/`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `template_${tab}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+    }
+  };
   const handleSubmit = async () => {
     setSaving(true);
     try {
@@ -1008,22 +1053,58 @@ const Parametres = () => {
               <div style={{ color: theme.textSecondary, fontSize: 13 }}>
                 {items.length} élément(s)
               </div>
-              <button
-                onClick={openAdd}
-                style={{
-                  background: theme.primary,
-                  border: "none",
-                  color: "#fff",
-                  borderRadius: 8,
-                  padding: "9px 18px",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  boxShadow: `0 2px 8px ${theme.primary}44`,
-                }}
-              >
-                + Ajouter
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => handleDownloadRefTemplate(activeTab)}
+                  style={{
+                    background: theme.primaryBg,
+                    border: `1px solid ${theme.primaryBorder}`,
+                    color: theme.primary,
+                    borderRadius: 8,
+                    padding: "8px 14px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  📥 Template
+                </button>
+                <button
+                  onClick={() => {
+                    setImportModal({ tab: activeTab });
+                    setImportFile(null);
+                    setImportResult(null);
+                  }}
+                  style={{
+                    background: theme.primaryBg,
+                    border: `1px solid ${theme.primaryBorder}`,
+                    color: theme.primary,
+                    borderRadius: 8,
+                    padding: "8px 14px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  📤 Import CSV
+                </button>
+                <button
+                  onClick={openAdd}
+                  style={{
+                    background: theme.primary,
+                    border: "none",
+                    color: "#fff",
+                    borderRadius: 8,
+                    padding: "8px 16px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: `0 2px 8px ${theme.primary}44`,
+                  }}
+                >
+                  + Ajouter
+                </button>
+              </div>
             </div>
 
             <RefTable
@@ -1047,6 +1128,221 @@ const Parametres = () => {
         >
           {renderForm()}
         </Modal>
+      )}
+      {/* Modal Import CSV */}
+      {importModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={() => setImportModal(null)}
+        >
+          <div
+            style={{
+              background: theme.surface,
+              borderRadius: 16,
+              padding: 32,
+              width: 520,
+              maxWidth: "90vw",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+              border: `1px solid ${theme.primaryBorder}`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              style={{
+                color: theme.text,
+                margin: "0 0 20px",
+                fontSize: 16,
+                fontWeight: 800,
+              }}
+            >
+              Import CSV — {TABS.find((t) => t.key === importModal.tab)?.label}
+            </h2>
+
+            {/* Zone dépôt */}
+            <div
+              onClick={() => document.getElementById("ref-csv-input").click()}
+              style={{
+                border: `2px dashed ${importFile ? theme.primary : theme.primaryBorder}`,
+                borderRadius: 10,
+                padding: 24,
+                textAlign: "center",
+                background: importFile ? theme.primaryBg : theme.bg,
+                cursor: "pointer",
+                marginBottom: 16,
+                transition: "all 0.2s",
+              }}
+            >
+              {importFile ? (
+                <div>
+                  <div style={{ color: theme.primary, fontWeight: 700 }}>
+                    ✓ {importFile.name}
+                  </div>
+                  <div
+                    style={{
+                      color: theme.textSecondary,
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
+                    {(importFile.size / 1024).toFixed(1)} Ko — Cliquez pour
+                    changer
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
+                  <div style={{ color: theme.text, fontSize: 14 }}>
+                    Cliquez pour choisir un fichier CSV
+                  </div>
+                </div>
+              )}
+              <input
+                id="ref-csv-input"
+                type="file"
+                accept=".csv"
+                onChange={(e) => setImportFile(e.target.files[0])}
+                style={{ display: "none" }}
+              />
+            </div>
+
+            {/* Résultat */}
+            {importResult && (
+              <div style={{ marginBottom: 16 }}>
+                {importResult.error ? (
+                  <div
+                    style={{
+                      background: theme.dangerBg,
+                      border: `1px solid ${theme.dangerBorder}`,
+                      borderRadius: 8,
+                      padding: 12,
+                      color: theme.danger,
+                      fontSize: 13,
+                    }}
+                  >
+                    ❌ {importResult.error}
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                      {[
+                        {
+                          label: "Créés",
+                          value: importResult.nb_crees,
+                          color: theme.primary,
+                        },
+                        {
+                          label: "Erreurs",
+                          value: importResult.nb_erreurs,
+                          color:
+                            importResult.nb_erreurs > 0
+                              ? theme.danger
+                              : theme.primary,
+                        },
+                      ].map((s) => (
+                        <div
+                          key={s.label}
+                          style={{
+                            flex: 1,
+                            textAlign: "center",
+                            padding: "10px",
+                            background: theme.bg,
+                            borderRadius: 8,
+                            border: `1px solid ${theme.primaryBorder}`,
+                          }}
+                        >
+                          <div
+                            style={{
+                              color: s.color,
+                              fontSize: 22,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {s.value}
+                          </div>
+                          <div
+                            style={{ color: theme.textSecondary, fontSize: 12 }}
+                          >
+                            {s.label}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {importResult.nb_erreurs > 0 && (
+                      <div
+                        style={{
+                          background: theme.dangerBg,
+                          borderRadius: 8,
+                          padding: 10,
+                        }}
+                      >
+                        {importResult.erreurs.slice(0, 5).map((err, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              color: theme.danger,
+                              fontSize: 12,
+                              marginBottom: 3,
+                            }}
+                          >
+                            Ligne {err.ligne} — {err.nom} :{" "}
+                            {err.erreurs.join(", ")}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Boutons */}
+            <div
+              style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
+            >
+              <button
+                onClick={() => setImportModal(null)}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${theme.primaryBorder}`,
+                  color: theme.textSecondary,
+                  borderRadius: 8,
+                  padding: "8px 20px",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Fermer
+              </button>
+              <button
+                onClick={handleImportFile}
+                disabled={!importFile || importing}
+                style={{
+                  background:
+                    !importFile || importing
+                      ? `${theme.primary}88`
+                      : theme.primary,
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 8,
+                  padding: "8px 24px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: !importFile || importing ? "not-allowed" : "pointer",
+                }}
+              >
+                {importing ? "Import..." : "🚀 Importer"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

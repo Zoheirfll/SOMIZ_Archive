@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Users from "./pages/Users";
 import AuditLogs from "./pages/AuditLogs";
 import Parametres from "./pages/Parametres";
+import Import from "./pages/Import";
 
 function App() {
   return (
@@ -78,6 +79,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Parametres />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/import"
+            element={
+              <ProtectedRoute>
+                <Import />
               </ProtectedRoute>
             }
           />

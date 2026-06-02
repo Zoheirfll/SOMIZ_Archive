@@ -5,7 +5,7 @@ API Views — CRUD Employés + Upload + Viewer inline sécurisé
 
 import mimetypes
 import os
-
+import magic
 from django.db.models import Q
 from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
@@ -17,7 +17,12 @@ from rest_framework.parsers import MultiPartParser, FormParser
 
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
 from audit.models import AuditLog
-from employees.models import Employee, EmployeeDocument
+from employees.models import (
+    Employee,
+    EmployeeDocument,
+    EmployeeDocumentFile,
+    TypeDocument,
+)
 from employees.serializers import (
     EmployeeListSerializer,
     EmployeeDetailSerializer,
@@ -36,7 +41,12 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
     POST /api/employees/       → Créer un employé (ADMIN only)
     """
     filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['nom', 'matricule', 'departement', 'date_embauche']
+    ordering_fields = [
+    'nom', 'prenom', 'matricule', 'statut',
+    'direction__nom', 'departement__nom',
+    'service__nom', 'poste__nom', 'type_contrat__nom',
+    'date_embauche',
+    ]
     ordering = ['nom']
 
     def get_queryset(self):
@@ -140,10 +150,6 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ─── DOCUMENTS ────────────────────────────────────────────────────────────────
 
 class DocumentListUploadView(APIView):
-    """
-    GET  /api/employees/{emp_id}/documents/   → Lister les docs (ADMIN + CONSULTANT)
-    POST /api/employees/{emp_id}/documents/   → Uploader un doc (ADMIN only)
-    """
     parser_classes = [MultiPartParser, FormParser]
 
     def get_permissions(self):
@@ -161,35 +167,144 @@ class DocumentListUploadView(APIView):
         employee = self._get_employee(emp_id)
         docs = EmployeeDocument.objects.filter(
             employee=employee, is_active=True
-        ).select_related('uploaded_by')
+        ).select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
         serializer = EmployeeDocumentSerializer(docs, many=True)
         return Response(serializer.data)
 
     def post(self, request, emp_id):
         employee = self._get_employee(emp_id)
-        serializer = DocumentUploadSerializer(data=request.data)
 
-        if serializer.is_valid():
-            doc = serializer.save(
-                employee=employee,
-                uploaded_by=request.user
-            )
-            AuditLog.log(
-                request, AuditLog.Action.UPLOAD,
-                target=doc,
-                details={
-                    'type': doc.type_document,
-                    'version': doc.version,
-                    'size_kb': doc.file_size_kb,
-                }
-            )
+        # Récupérer les fichiers — Django les met dans request.FILES
+        files = request.FILES.getlist('files')
+        type_doc_id = request.data.get('type_doc')
+        notes = request.data.get('notes', '')
+
+        if not files:
             return Response(
-                EmployeeDocumentSerializer(doc).data,
-                status=status.HTTP_201_CREATED
+                {'error': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = DocumentUploadSerializer(data={
+            'type_doc': type_doc_id,
+            'files': files,
+            'notes': notes,
+        })
 
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Créer le conteneur EmployeeDocument
+        doc = EmployeeDocument.objects.create(
+            employee=employee,
+            type_doc=serializer.validated_data['type_doc'],
+            uploaded_by=request.user,
+            notes=serializer.validated_data.get('notes', ''),
+        )
+
+        # Créer un EmployeeDocumentFile pour chaque fichier
+        for ordre, file in enumerate(serializer.validated_data['files'], start=1):
+            file.seek(0)
+            mime = magic.from_buffer(file.read(2048), mime=True)
+            file.seek(0)
+            EmployeeDocumentFile.objects.create(
+                document=doc,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                mime_type=mime,
+                ordre=ordre,
+            )
+
+        AuditLog.log(
+            request, AuditLog.Action.UPLOAD,
+            target=doc,
+            details={
+                'type': doc.type_doc.code,
+                'version': doc.version,
+                'nb_fichiers': doc.nb_fichiers,
+            }
+        )
+
+        return Response(
+            EmployeeDocumentSerializer(doc).data,
+            status=status.HTTP_201_CREATED
+        )
+
+class FileViewerView(APIView):
+    """
+    GET /api/files/{file_id}/view/
+    Sert un fichier individuel en inline.
+    """
+    permission_classes = [IsAdminOrConsultant]
+
+    def get(self, request, file_id):
+        try:
+            file_obj = EmployeeDocumentFile.objects.select_related(
+                'document__employee', 'document__type_doc'
+            ).get(pk=file_id, is_active=True)
+        except EmployeeDocumentFile.DoesNotExist:
+            raise Http404
+
+        if not file_obj.file or not os.path.exists(file_obj.file.path):
+            return Response(
+                {'error': 'Fichier introuvable.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        AuditLog.log(
+            request, AuditLog.Action.VIEW,
+            target=file_obj.document,
+            details={
+                'employee': file_obj.document.employee.matricule,
+                'type': file_obj.document.type_doc.code,
+                'fichier': file_obj.file_name,
+                'ordre': file_obj.ordre,
+            }
+        )
+
+        mime = file_obj.mime_type or 'application/octet-stream'
+
+        def file_iterator(path, chunk_size=8192):
+            with open(path, 'rb') as f:
+                while chunk := f.read(chunk_size):
+                    yield chunk
+
+        response = StreamingHttpResponse(file_iterator(file_obj.file.path), content_type=mime)
+        response['Content-Disposition'] = f'inline; filename="{smart_str(file_obj.file_name)}"'
+        response['Content-Length'] = file_obj.file_size or os.path.getsize(file_obj.file.path)
+        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+        response['Pragma'] = 'no-cache'
+        response['X-Frame-Options'] = 'SAMEORIGIN'
+        response['X-Content-Type-Options'] = 'nosniff'
+        response['Content-Security-Policy'] = "default-src 'self'"
+        return response
+
+
+class FileDeleteView(APIView):
+    """DELETE /api/files/{file_id}/ — ADMIN uniquement"""
+    permission_classes = [IsAdmin]
+
+    def delete(self, request, file_id):
+        try:
+            file_obj = EmployeeDocumentFile.objects.get(pk=file_id)
+        except EmployeeDocumentFile.DoesNotExist:
+            raise Http404
+
+        AuditLog.log(
+            request, AuditLog.Action.DELETE_DOC,
+            target=file_obj.document,
+            details={'fichier': file_obj.file_name, 'ordre': file_obj.ordre}
+        )
+        file_obj.is_active = False
+        file_obj.save(update_fields=['is_active'])
+
+        # Si plus aucun fichier actif → archiver le document aussi
+        if not file_obj.document.fichiers.filter(is_active=True).exists():
+            file_obj.document.is_active = False
+            file_obj.document.save(update_fields=['is_active'])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class DocumentViewerView(APIView):
     """
@@ -298,3 +413,64 @@ def employee_search(request):
     )[:10]
 
     return Response(EmployeeListSerializer(employees, many=True).data)
+
+class EmployeeBulkDeleteView(APIView):
+    """
+    POST /api/employees/bulk-delete/
+    action=archive → soft delete
+    action=delete  → suppression définitive (irréversible)
+    """
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+        ids = request.data.get('ids', [])
+        action = request.data.get('action', 'archive')
+
+        if not ids:
+            return Response(
+                {'error': 'Aucun employé sélectionné.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(ids) > 500:
+            return Response(
+                {'error': 'Maximum 500 employés par opération.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        employees = Employee.objects.filter(id__in=ids)
+        nb = employees.count()
+
+        if nb == 0:
+            return Response(
+                {'error': 'Aucun employé trouvé dans la sélection.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if action == 'delete':
+            # Suppression définitive
+            employees.delete()
+            AuditLog.objects.create(
+                user=request.user,
+                username_snapshot=request.user.username,
+                action=AuditLog.Action.DELETE_EMP,
+                target_model='Employee',
+                target_label=f'Suppression définitive — {nb} employé(s)',
+                ip_address=AuditLog._get_ip(request),
+                details={'ids': ids, 'nb': nb, 'action': 'delete'},
+            )
+            return Response({'nb_supprimes': nb})
+        else:
+            # Soft delete — archivage
+            employees.update(statut=Employee.Statut.ARCHIVE)
+            AuditLog.objects.create(
+                user=request.user,
+                username_snapshot=request.user.username,
+                action=AuditLog.Action.DELETE_EMP,
+                target_model='Employee',
+                target_label=f'Archivage en masse — {nb} employé(s)',
+                ip_address=AuditLog._get_ip(request),
+                details={'ids': ids, 'nb': nb, 'action': 'archive'},
+            )
+            return Response({'nb_archives': nb})
+

@@ -7,10 +7,23 @@ import magic  # python-magic pour validation MIME réelle
 from django.conf import settings
 from rest_framework import serializers
 
-from employees.models import Employee, EmployeeDocument, TypeDocument
+
+from employees.models import Employee, EmployeeDocument, EmployeeDocumentFile, TypeDocument
 
 
 # ─── DOCUMENT ────────────────────────────────────────────────────────────────
+
+class EmployeeDocumentFileSerializer(serializers.ModelSerializer):
+    file_size_kb = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = EmployeeDocumentFile
+        fields = [
+            'id', 'file_name', 'file_size', 'file_size_kb',
+            'mime_type', 'ordre', 'is_active', 'uploaded_at',
+        ]
+        read_only_fields = ['id', 'file_size', 'mime_type', 'uploaded_at']
+
 
 class EmployeeDocumentSerializer(serializers.ModelSerializer):
     uploaded_by_name = serializers.CharField(
@@ -21,55 +34,54 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
     type_doc_id = serializers.UUIDField(source='type_doc.id', read_only=True)
     obligatoire = serializers.BooleanField(source='type_doc.obligatoire', read_only=True)
     file_size_kb = serializers.FloatField(read_only=True)
+    nb_fichiers = serializers.IntegerField(read_only=True)
+    fichiers = EmployeeDocumentFileSerializer(many=True, read_only=True)
 
     class Meta:
         model = EmployeeDocument
         fields = [
-            'id', 'type_doc', 'type_doc_id', 'type_document', 'type_document_label',
-            'obligatoire', 'file_name', 'file_size', 'file_size_kb', 'mime_type',
+            'id', 'type_doc', 'type_doc_id',
+            'type_document', 'type_document_label', 'obligatoire',
+            'nb_fichiers', 'file_size_kb', 'fichiers',
             'version', 'is_active',
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
             'notes',
         ]
-        read_only_fields = [
-            'id', 'file_size', 'mime_type', 'version',
-            'uploaded_by', 'uploaded_at',
-        ]
+        read_only_fields = ['id', 'version', 'uploaded_by', 'uploaded_at']
 
 
-class DocumentUploadSerializer(serializers.ModelSerializer):
-    file = serializers.FileField(write_only=True)
+class DocumentUploadSerializer(serializers.Serializer):
+    """
+    Upload de plusieurs fichiers pour un type de document.
+    On hérite de Serializer (pas ModelSerializer) car
+    on ne mappe pas directement un modèle — on crée
+    EmployeeDocument + N EmployeeDocumentFile.
+    """
     type_doc = serializers.PrimaryKeyRelatedField(
         queryset=TypeDocument.objects.filter(is_active=True)
     )
+    files = serializers.ListField(
+        child=serializers.FileField(),
+        min_length=1,
+        max_length=10,
+    )
+    notes = serializers.CharField(required=False, allow_blank=True)
 
-    class Meta:
-        model = EmployeeDocument
-        fields = ['type_doc', 'file', 'notes']
-
-    def validate_file(self, file):
+    def validate_files(self, files):
         max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-        if file.size > max_size:
-            raise serializers.ValidationError(
-                f"Fichier trop lourd. Maximum {settings.MAX_UPLOAD_SIZE_MB} Mo."
-            )
-        file.seek(0)
-        mime = magic.from_buffer(file.read(2048), mime=True)
-        file.seek(0)
-        if mime not in settings.ALLOWED_MIME_TYPES:
-            raise serializers.ValidationError(
-                f"Type non autorisé ({mime}). Acceptés : PDF, JPEG, PNG, TIFF."
-            )
-        return file
-
-    def create(self, validated_data):
-        file = validated_data['file']
-        validated_data['file_name'] = file.name
-        validated_data['file_size'] = file.size
-        file.seek(0)
-        validated_data['mime_type'] = magic.from_buffer(file.read(2048), mime=True)
-        file.seek(0)
-        return super().create(validated_data)
+        for file in files:
+            if file.size > max_size:
+                raise serializers.ValidationError(
+                    f"{file.name} trop lourd. Maximum {settings.MAX_UPLOAD_SIZE_MB} Mo."
+                )
+            file.seek(0)
+            mime = magic.from_buffer(file.read(2048), mime=True)
+            file.seek(0)
+            if mime not in settings.ALLOWED_MIME_TYPES:
+                raise serializers.ValidationError(
+                    f"{file.name} : type non autorisé ({mime})."
+                )
+        return files
 
 
 # ─── EMPLOYEE ─────────────────────────────────────────────────────────────────
