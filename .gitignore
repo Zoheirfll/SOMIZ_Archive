@@ -1,3 +1,35 @@
-*.log
+# ─── Python / Django ──────────────────────────────────────────────────────────
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+**/*.pyc
+**/*.pyo
+backend/.env
+backend/media/
+backend/logs/
+backend/staticfiles/
+backend/frontend_build/
+backend/db.sqlite3
+backend/.pytest_cache/
+backend/**/.pytest_cache/
+
+# ─── Node / React ─────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/build/
+frontend/coverage/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Système ──────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+*.log
+
+# ─── Outils ──────────────────────────────────────────────────────────────────
+ngrok.exe

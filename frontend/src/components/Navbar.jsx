@@ -107,18 +107,23 @@ const Navbar = () => {
       {/* Profil */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ textAlign: "right" }}>
-          <div style={{ color: theme.text, fontSize: 13, fontWeight: 600 }}>
-            {user?.prenom} {user?.nom}
-          </div>
           <div
-            style={{
-              color: theme.primary,
-              fontSize: 11,
-              fontWeight: 700,
-              textTransform: "uppercase",
-            }}
+            onClick={() => navigate("/profil")}
+            style={{ textAlign: "right", cursor: "pointer" }}
           >
-            {user?.role}
+            <div style={{ color: theme.text, fontSize: 13, fontWeight: 600 }}>
+              {user?.prenom} {user?.nom}
+            </div>
+            <div
+              style={{
+                color: theme.primary,
+                fontSize: 11,
+                fontWeight: 700,
+                textTransform: "uppercase",
+              }}
+            >
+              {user?.role}
+            </div>
           </div>
         </div>
         <div

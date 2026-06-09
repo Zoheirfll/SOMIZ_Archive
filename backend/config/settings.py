@@ -10,7 +10,7 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ─── SÉCURITÉ ────────────────────────────────────────────────────────────────
-SECRET_KEY = config('SECRET_KEY', default='changez-moi-en-production-somiz-2024')
+SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 # Intranet uniquement — adapter selon l'IP du serveur SOMIZ
@@ -69,7 +69,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': config('DB_NAME', default='somiz_archivage'),
         'USER': config('DB_USER', default='somiz_user'),
-        'PASSWORD': config('DB_PASSWORD', default='admin123'),
+        'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
         'OPTIONS': {
@@ -142,6 +142,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:5173',
+    'https://sciential-nonvolatilizable-kendra.ngrok-free.dev',  # 🔴 AJOUT DE VOTRE ADRESSE NGROK
     config('INTRANET_URL', default='http://192.168.1.100'),
 ]
 # ─── FICHIERS MEDIA (Documents scannés) ──────────────────────────────────────
@@ -222,7 +223,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
+        'DIRS': [BASE_DIR / 'templates', BASE_DIR / 'frontend_build'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -242,3 +243,5 @@ LOGIN_LOCKOUT_DURATION = timedelta(minutes=30)
 
 # Alerte audit si trop de consultations
 AUDIT_ALERT_THRESHOLD = 20  # consultations par heure avant alerte
+
+STATICFILES_DIRS = [BASE_DIR / 'frontend_build' / 'static']

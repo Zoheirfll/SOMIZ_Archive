@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = "http://127.0.0.1:8000/api";
+const API_URL = "/api";
 
 const api = axios.create({
   baseURL: API_URL,
@@ -11,20 +11,26 @@ const api = axios.create({
 
 // Ajoute automatiquement le token à chaque requête
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token");
+  // 🔴 LA CORRECTION EST ICI : On lit le local ET la session
+  const token =
+    localStorage.getItem("access_token") ||
+    sessionStorage.getItem("access_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-// Si token expiré — redirige vers login
+// Si token expiré ou accès refusé — redirige vers login
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
+    // Empêche la boucle infinie si c'est juste un mauvais mot de passe
+    const isLoginRequest = error.config.url.includes("/auth/login");
+
+    if (error.response?.status === 401 && !isLoginRequest) {
+      localStorage.clear();
+      sessionStorage.clear();
       window.location.href = "/login";
     }
     return Promise.reject(error);

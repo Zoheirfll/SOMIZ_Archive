@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { login } from "../services/auth";
 import { useAuth } from "../context/AuthContext";
 import { theme } from "../styles/theme";
+import api from "../services/api";
 
 const Login = () => {
   const [username, setUsername] = useState("");
@@ -11,6 +12,8 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const { loginSuccess } = useAuth();
   const navigate = useNavigate();
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,6 +21,19 @@ const Login = () => {
     setError("");
     try {
       const data = await login(username, password);
+      // Dans votre handleSubmit de Login.jsx, remplacez les lignes de stockage par :
+      const accessToken = data.access || data.access_token || data.token;
+      const refreshToken = data.refresh || data.refresh_token;
+
+      if (rememberMe) {
+        localStorage.setItem("access_token", accessToken);
+        localStorage.setItem("refresh_token", refreshToken);
+        localStorage.setItem("user", JSON.stringify(data.user));
+      } else {
+        sessionStorage.setItem("access_token", accessToken);
+        sessionStorage.setItem("refresh_token", refreshToken);
+        sessionStorage.setItem("user", JSON.stringify(data.user));
+      }
       loginSuccess(data.user);
       navigate("/employees");
     } catch (err) {
@@ -134,23 +150,43 @@ const Login = () => {
             >
               Mot de passe
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: "100%",
-                border: `1px solid ${theme.primaryBorder}`,
-                borderRadius: 8,
-                padding: "10px 14px",
-                color: theme.text,
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-                background: theme.bg,
-              }}
-              placeholder="••••••••••"
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{
+                  width: "100%",
+                  border: `1px solid ${theme.primaryBorder}`,
+                  borderRadius: 8,
+                  padding: "10px 40px 10px 14px",
+                  color: theme.text,
+                  fontSize: 14,
+                  outline: "none",
+                  background: theme.bg,
+                  boxSizing: "border-box",
+                }}
+                placeholder="••••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 16,
+                  color: theme.textSecondary,
+                  padding: 0,
+                }}
+              >
+                {showPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -168,7 +204,39 @@ const Login = () => {
               {error}
             </div>
           )}
-
+          {/* AJOUTEZ LA CASE À COCHER ICI 👇 */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 16,
+            }}
+          >
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              style={{
+                width: 15,
+                height: 15,
+                cursor: "pointer",
+                accentColor: theme.primary,
+              }}
+            />
+            <label
+              htmlFor="rememberMe"
+              style={{
+                color: theme.textSecondary,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Se rappeler de moi
+            </label>
+          </div>
+          {/* FIN DE L'AJOUT 👆 */}
           <button
             type="submit"
             disabled={loading}

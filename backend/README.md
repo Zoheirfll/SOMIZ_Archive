@@ -2,13 +2,17 @@
 ## Backend Django REST API
 
 ### Prérequis
-- Python 3.11+
-- PostgreSQL 15
-- Redis 7
+- Python 3.10+
+- PostgreSQL 18
+- Redis 6+ (optionnel en développement)
 
 ---
 
 ### Installation
+
+**Option rapide (Windows) — double-cliquer sur `install.bat` à la racine du projet.**
+
+Ou manuellement :
 
 ```bash
 # 1. Créer l'environnement virtuel
@@ -17,31 +21,35 @@ source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 
 # 2. Installer les dépendances
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 
 # 3. Configurer l'environnement
-cp .env.example .env
-# → Éditer .env avec vos valeurs
+# Créer backend/.env avec les variables (voir section Configuration ci-dessous)
 
 # 4. Créer la base de données PostgreSQL
 psql -U postgres
 CREATE DATABASE somiz_archivage;
 CREATE USER somiz_user WITH PASSWORD 'votre_mot_de_passe';
 GRANT ALL PRIVILEGES ON DATABASE somiz_archivage TO somiz_user;
+ALTER USER somiz_user CREATEDB;  -- requis pour les tests
 \q
 
 # 5. Appliquer les migrations
-python manage.py makemigrations accounts employees audit
 python manage.py migrate
 
 # 6. Créer le premier compte ADMIN
 python manage.py createsuperuser
 
-# 7. Créer le dossier logs
-mkdir logs
-
-# 8. Lancer le serveur de développement
+# 7. Lancer le serveur de développement
 python manage.py runserver
+```
+
+### Lancer les tests
+
+```bash
+# Depuis backend/
+python -m pip install pytest pytest-django
+python -m pytest tests/ -v
 ```
 
 ---
@@ -49,30 +57,35 @@ python manage.py runserver
 ### Structure du projet
 
 ```
-somiz_archivage/
-├── config/
-│   ├── settings.py      ← Configuration principale
-│   └── urls.py          ← Routage
-├── apps/
-│   ├── accounts/        ← Utilisateurs + Auth JWT
-│   │   ├── models.py    ← User custom (ADMIN / CONSULTANT)
-│   │   ├── views.py     ← Login / Logout / Me
-│   │   ├── permissions.py
-│   │   └── urls.py
-│   ├── employees/       ← Employés + Documents
-│   │   ├── models.py    ← Employee + EmployeeDocument
-│   │   ├── serializers.py
-│   │   ├── views.py     ← CRUD + Viewer inline
-│   │   └── urls.py
-│   └── audit/           ← Traçabilité RGPD/ANPDP
-│       ├── models.py    ← AuditLog
-│       ├── middleware.py
-│       ├── views.py
-│       └── urls.py
-├── media/               ← Fichiers scannés (hors accès public)
-├── logs/                ← Logs applicatifs
-├── requirements.txt
-└── .env.example
+SOMIZ/
+├── install.bat / install.sh     ← Scripts d'installation automatique
+├── contenu.md                   ← Documentation complète du projet
+├── requirements.md              ← Dépendances pour le chef de département
+│
+├── backend/
+│   ├── manage.py
+│   ├── requirements.txt
+│   ├── pytest.ini               ← Config tests (lancés depuis backend/)
+│   ├── .env                     ← Variables d'environnement (non versionné)
+│   ├── config/
+│   │   ├── settings.py          ← Configuration Django complète
+│   │   └── urls.py              ← Routing principal
+│   ├── accounts/                ← Utilisateurs + Auth JWT
+│   ├── employees/               ← Employés + Documents + Référentiels
+│   ├── audit/                   ← Journal de traçabilité
+│   ├── media/                   ← Fichiers uploadés (non versionné)
+│   ├── logs/                    ← Logs applicatifs (non versionné)
+│   └── tests/                   ← 109 tests pytest
+│
+└── frontend/
+    ├── package.json
+    ├── src/
+    │   ├── pages/               ← 10 pages React
+    │   ├── components/          ← Navbar, ProtectedRoute, SecureDocViewer
+    │   ├── services/            ← api.js, auth.js
+    │   ├── context/             ← AuthContext.js
+    │   └── __tests__/          ← Tests React (Jest + RTL)
+    └── public/
 ```
 
 ---

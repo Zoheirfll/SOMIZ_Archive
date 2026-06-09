@@ -18,6 +18,14 @@ const Users = () => {
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [resetModal, setResetModal] = useState(null);
+  const [resetForm, setResetForm] = useState({
+    nouveau_mot_de_passe: "",
+    confirmation: "",
+  });
+  const [resetting, setResetting] = useState(false);
+  const [showResetMdp, setShowResetMdp] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -97,6 +105,41 @@ const Users = () => {
       fetchUsers();
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (resetForm.nouveau_mot_de_passe !== resetForm.confirmation) {
+      setMessage({
+        type: "error",
+        text: "Les mots de passe ne correspondent pas.",
+      });
+      return;
+    }
+    if (resetForm.nouveau_mot_de_passe.length < 10) {
+      setMessage({ type: "error", text: "Minimum 10 caractères." });
+      return;
+    }
+    setResetting(true);
+    try {
+      await api.post(
+        `/admin-users/${resetModal.id}/reset-password/`,
+        resetForm,
+      );
+      setMessage({
+        type: "success",
+        text: `Mot de passe de ${resetModal.username} réinitialisé.`,
+      });
+      setResetModal(null);
+      setResetForm({ nouveau_mot_de_passe: "", confirmation: "" });
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur.",
+      });
+    } finally {
+      setResetting(false);
+      setTimeout(() => setMessage(null), 4000);
     }
   };
 
@@ -415,7 +458,7 @@ const Users = () => {
                     "Rôle",
                     "Dernière connexion",
                     "Statut",
-                    "Action",
+                    "Actions",
                   ].map((h) => (
                     <th
                       key={h}
@@ -509,23 +552,49 @@ const Users = () => {
                       </span>
                     </td>
                     <td style={{ padding: "12px 16px" }}>
-                      <button
-                        onClick={() => toggleActive(u)}
-                        style={{
-                          background: u.is_active
-                            ? theme.dangerBg
-                            : theme.primaryBg,
-                          border: `1px solid ${u.is_active ? theme.dangerBorder : theme.primaryBorder}`,
-                          color: u.is_active ? theme.danger : theme.primary,
-                          borderRadius: 6,
-                          padding: "5px 12px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {u.is_active ? "Désactiver" : "Activer"}
-                      </button>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => toggleActive(u)}
+                          style={{
+                            background: u.is_active
+                              ? theme.dangerBg
+                              : theme.primaryBg,
+                            border: `1px solid ${u.is_active ? theme.dangerBorder : theme.primaryBorder}`,
+                            color: u.is_active ? theme.danger : theme.primary,
+                            borderRadius: 6,
+                            padding: "5px 12px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {u.is_active ? "Désactiver" : "Activer"}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setResetModal(u);
+                            setResetForm({
+                              nouveau_mot_de_passe: "",
+                              confirmation: "",
+                            });
+                            setShowResetMdp(false);
+                            setShowResetConfirm(false);
+                          }}
+                          style={{
+                            background: "#FFF8E1",
+                            border: "1px solid #FFE082",
+                            color: theme.warning,
+                            borderRadius: 6,
+                            padding: "5px 12px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          🔑 Reset MDP
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -534,6 +603,212 @@ const Users = () => {
           )}
         </div>
       </div>
+
+      {/* Modal Reset Mot de Passe */}
+      {resetModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={() => setResetModal(null)}
+        >
+          <div
+            style={{
+              background: theme.surface,
+              borderRadius: 16,
+              padding: 32,
+              width: 420,
+              maxWidth: "90vw",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+              border: `1px solid ${theme.primaryBorder}`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              style={{
+                color: theme.text,
+                margin: "0 0 8px",
+                fontSize: 16,
+                fontWeight: 800,
+              }}
+            >
+              Réinitialiser le mot de passe
+            </h2>
+            <div
+              style={{
+                color: theme.textSecondary,
+                fontSize: 13,
+                marginBottom: 20,
+              }}
+            >
+              Compte :{" "}
+              <strong style={{ color: theme.primary }}>
+                {resetModal.username}
+              </strong>{" "}
+              — {resetModal.prenom} {resetModal.nom}
+            </div>
+
+            {/* Nouveau mot de passe */}
+            <div style={{ marginBottom: 14 }}>
+              <label
+                style={{
+                  color: theme.text,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: "block",
+                  marginBottom: 5,
+                }}
+              >
+                Nouveau mot de passe
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showResetMdp ? "text" : "password"}
+                  value={resetForm.nouveau_mot_de_passe}
+                  onChange={(e) =>
+                    setResetForm({
+                      ...resetForm,
+                      nouveau_mot_de_passe: e.target.value,
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    border: `1px solid ${theme.primaryBorder}`,
+                    borderRadius: 8,
+                    padding: "9px 40px 9px 14px",
+                    color: theme.text,
+                    fontSize: 13,
+                    outline: "none",
+                    background: theme.bg,
+                    boxSizing: "border-box",
+                  }}
+                  placeholder="••••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetMdp(!showResetMdp)}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 15,
+                    color: theme.textSecondary,
+                    padding: 0,
+                  }}
+                >
+                  {showResetMdp ? "🙈" : "👁️"}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirmation */}
+            <div style={{ marginBottom: 16 }}>
+              <label
+                style={{
+                  color: theme.text,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: "block",
+                  marginBottom: 5,
+                }}
+              >
+                Confirmer
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showResetConfirm ? "text" : "password"}
+                  value={resetForm.confirmation}
+                  onChange={(e) =>
+                    setResetForm({ ...resetForm, confirmation: e.target.value })
+                  }
+                  style={{
+                    width: "100%",
+                    border: `1px solid ${theme.primaryBorder}`,
+                    borderRadius: 8,
+                    padding: "9px 40px 9px 14px",
+                    color: theme.text,
+                    fontSize: 13,
+                    outline: "none",
+                    background: theme.bg,
+                    boxSizing: "border-box",
+                  }}
+                  placeholder="••••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirm(!showResetConfirm)}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 15,
+                    color: theme.textSecondary,
+                    padding: 0,
+                  }}
+                >
+                  {showResetConfirm ? "🙈" : "👁️"}
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{ color: theme.textMuted, fontSize: 12, marginBottom: 20 }}
+            >
+              Minimum 10 caractères. Le compte sera déverrouillé
+              automatiquement.
+            </div>
+
+            <div
+              style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
+            >
+              <button
+                onClick={() => setResetModal(null)}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${theme.primaryBorder}`,
+                  color: theme.textSecondary,
+                  borderRadius: 8,
+                  padding: "8px 20px",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleResetPassword}
+                disabled={resetting}
+                style={{
+                  background: resetting ? `${theme.warning}88` : theme.warning,
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 8,
+                  padding: "8px 24px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: resetting ? "not-allowed" : "pointer",
+                }}
+              >
+                {resetting ? "Réinitialisation..." : "🔑 Réinitialiser"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

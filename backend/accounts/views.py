@@ -12,11 +12,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-
+from django.http import Http404
+from accounts.permissions import IsAdmin
 from audit.models import AuditLog
 
 User = get_user_model()
 
+
+from django.contrib.auth.models import update_last_login  # 🔴 AJOUT DE L'IMPORT
 
 class LoginView(APIView):
     """
@@ -99,6 +102,9 @@ class LoginView(APIView):
         user.last_login_ip = AuditLog._get_ip(request)
         user.save(update_fields=['last_login_ip'])
 
+        # 🔴 CORRECTION ICI : Met à jour le champ last_login en base de données 🪄
+        update_last_login(None, user) 
+
         refresh = RefreshToken.for_user(user)
 
         AuditLog.log(request, AuditLog.Action.LOGIN, target=user)
@@ -152,3 +158,96 @@ class UserMeView(APIView):
             'role': user.role,
             'is_admin': user.is_admin,
         })
+
+class ChangePasswordView(APIView):
+    """
+    POST /api/auth/change-password/
+    L'utilisateur connecté change son propre mot de passe.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ancien = request.data.get('ancien_mot_de_passe')
+        nouveau = request.data.get('nouveau_mot_de_passe')
+        confirmation = request.data.get('confirmation')
+
+        if not ancien or not nouveau or not confirmation:
+            return Response(
+                {'error': 'Tous les champs sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not request.user.check_password(ancien):
+            return Response(
+                {'error': 'Ancien mot de passe incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if nouveau != confirmation:
+            return Response(
+                {'error': 'Les nouveaux mots de passe ne correspondent pas.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(nouveau) < 10:
+            return Response(
+                {'error': 'Le mot de passe doit contenir au moins 10 caractères.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        request.user.set_password(nouveau)
+        request.user.save()
+
+        AuditLog.log(request, AuditLog.Action.MODIFY_EMP,
+            target=request.user,
+            details={'action': 'change_password'}
+        )
+
+        return Response({'message': 'Mot de passe modifié avec succès.'})
+
+
+class AdminResetPasswordView(APIView):
+    """
+    POST /api/admin-users/{id}/reset-password/
+    L'ADMIN réinitialise le mot de passe d'un utilisateur.
+    """
+    permission_classes = [IsAdmin]
+
+    def post(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            raise Http404
+
+        nouveau = request.data.get('nouveau_mot_de_passe')
+        confirmation = request.data.get('confirmation')
+
+        if not nouveau or not confirmation:
+            return Response(
+                {'error': 'Tous les champs sont obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if nouveau != confirmation:
+            return Response(
+                {'error': 'Les mots de passe ne correspondent pas.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if len(nouveau) < 10:
+            return Response(
+                {'error': 'Minimum 10 caractères.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.set_password(nouveau)
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        user.save()
+
+        AuditLog.log(request, AuditLog.Action.MODIFY_EMP,
+            target=user,
+            details={'action': 'admin_reset_password', 'target_user': user.username}
+        )
+
+        return Response({'message': f'Mot de passe de {user.username} réinitialisé.'})

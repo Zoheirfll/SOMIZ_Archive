@@ -1,11 +1,45 @@
+# ─── SOMIZ — Dépendances Python (backend) ────────────────────────────────────
+# Généré depuis le venv de production — 09/06/2026
+#
+# Installation :
+#   pip install -r requirements.txt
+
+# Django & REST
 Django==4.2.13
 djangorestframework==3.15.1
 djangorestframework-simplejwt==5.3.1
+asgiref==3.11.1
+sqlparse==0.5.5
+
+# CORS
 django-cors-headers==4.3.1
+
+# Base de données PostgreSQL
 psycopg2-binary==2.9.9
-Pillow==10.3.0
-python-magic==0.4.27
+
+# Cache Redis
 redis==5.0.4
 django-redis==5.4.0
+async-timeout==5.0.1
+
+# JWT
+PyJWT==2.13.0
+
+# Fichiers & images
+Pillow==10.3.0
+
+# Validation MIME réelle (Windows)
+python-magic-bin==0.4.14
+# Validation MIME réelle (Linux/macOS) — décommenter si Linux :
+# python-magic==0.4.27
+
+# Variables d'environnement (.env)
 python-decouple==3.8
+
+# Serveur WSGI production
 gunicorn==22.0.0
+
+# Utilitaires
+typing_extensions==4.15.0
+tzdata==2026.2
+packaging==26.2
