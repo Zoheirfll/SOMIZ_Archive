@@ -22,6 +22,7 @@ const EmployeeDetail = () => {
   const [message, setMessage] = useState(null);
   const [typesDocuments, setTypesDocuments] = useState({});
   const [typesDocumentsList, setTypesDocumentsList] = useState([]);
+  const [quickUploadingCode, setQuickUploadingCode] = useState(null);
 
   useEffect(() => {
     fetchTypesDocuments();
@@ -613,29 +614,71 @@ const EmployeeDetail = () => {
               <div
                 key={doc.code}
                 style={{
-                  padding: "12px 16px",
+                  padding: "10px 16px",
                   borderBottom: `1px solid ${theme.primaryBorder}`,
                   background: "#FAFAFA",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
-                <div style={{ color: theme.textMuted, fontSize: 13 }}>
-                  {doc.required && (
-                    <span style={{ color: theme.danger, marginRight: 4 }}>
-                      *
-                    </span>
-                  )}
-                  {doc.label}
+                <div>
+                  <div style={{ color: theme.textMuted, fontSize: 13 }}>
+                    {doc.required && (
+                      <span style={{ color: theme.danger, marginRight: 4 }}>*</span>
+                    )}
+                    {doc.label}
+                  </div>
+                  <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 2, fontStyle: "italic" }}>
+                    Non uploadé
+                  </div>
                 </div>
-                <div
-                  style={{
-                    color: theme.textMuted,
-                    fontSize: 11,
-                    marginTop: 2,
-                    fontStyle: "italic",
-                  }}
-                >
-                  Non uploadé
-                </div>
+                {user?.role === "ADMIN" && (
+                  <label
+                    title={`Uploader ${doc.label}`}
+                    style={{
+                      background: quickUploadingCode === doc.code ? `${theme.primary}88` : theme.primaryBg,
+                      border: `1px solid ${theme.primaryBorder}`,
+                      color: theme.primary,
+                      borderRadius: 6,
+                      padding: "4px 8px",
+                      fontSize: 13,
+                      cursor: quickUploadingCode === doc.code ? "not-allowed" : "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {quickUploadingCode === doc.code ? "⏳" : "📎"}
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.tiff"
+                      multiple
+                      style={{ display: "none" }}
+                      disabled={quickUploadingCode === doc.code}
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files);
+                        if (!files.length) return;
+                        setQuickUploadingCode(doc.code);
+                        const typeDoc = typesDocumentsList.find((t) => t.code === doc.code);
+                        const formData = new FormData();
+                        formData.append("type_doc", typeDoc?.id || doc.code);
+                        files.forEach((f) => formData.append("files", f));
+                        try {
+                          await api.post(`/employees/${id}/documents/`, formData, {
+                            headers: { "Content-Type": "multipart/form-data" },
+                          });
+                          setMessage({ type: "success", text: `${doc.label} uploadé avec succès.` });
+                          fetchEmployee();
+                        } catch (err) {
+                          setMessage({ type: "error", text: err.response?.data?.files?.[0] || "Erreur lors de l'upload." });
+                        } finally {
+                          setQuickUploadingCode(null);
+                          e.target.value = "";
+                          setTimeout(() => setMessage(null), 4000);
+                        }
+                      }}
+                    />
+                  </label>
+                )}
               </div>
             ))}
 
