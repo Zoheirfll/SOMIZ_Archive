@@ -8,7 +8,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 
-from employees.models import Employee, EmployeeDocument, EmployeeDocumentFile, TypeDocument
+from employees.models import Employee, EmployeeDocument, EmployeeDocumentFile, TypeDocument, Contrat
 
 
 # ─── DOCUMENT ────────────────────────────────────────────────────────────────
@@ -43,11 +43,69 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
             'id', 'type_doc', 'type_doc_id',
             'type_document', 'type_document_label', 'obligatoire',
             'nb_fichiers', 'file_size_kb', 'fichiers',
-            'version', 'is_active',
+            'version', 'is_active', 'contrat',
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
             'notes',
         ]
         read_only_fields = ['id', 'version', 'uploaded_by', 'uploaded_at']
+
+
+# ─── CONTRAT ─────────────────────────────────────────────────────────────────
+
+class ContratListSerializer(serializers.ModelSerializer):
+    type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
+    nb_documents = serializers.IntegerField(read_only=True)
+    employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_matricule = serializers.CharField(source='employee.matricule', read_only=True)
+    employee_nom = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_statut = serializers.CharField(source='employee.statut', read_only=True)
+
+    class Meta:
+        model = Contrat
+        fields = [
+            'id', 'numero_contrat',
+            'employee_id', 'employee_matricule', 'employee_nom', 'employee_statut',
+            'type_contrat', 'type_contrat_nom',
+            'date_debut', 'date_fin', 'statut',
+            'nb_documents', 'created_at',
+        ]
+
+
+class ContratDetailSerializer(serializers.ModelSerializer):
+    type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
+    nb_documents = serializers.IntegerField(read_only=True)
+    employee_id = serializers.UUIDField(source='employee.id', read_only=True)
+    employee_matricule = serializers.CharField(source='employee.matricule', read_only=True)
+    employee_nom = serializers.CharField(source='employee.full_name', read_only=True)
+    documents = EmployeeDocumentSerializer(many=True, read_only=True, source='documents_actifs')
+
+    class Meta:
+        model = Contrat
+        fields = [
+            'id', 'numero_contrat',
+            'employee_id', 'employee_matricule', 'employee_nom',
+            'type_contrat', 'type_contrat_nom',
+            'date_debut', 'date_fin', 'statut', 'notes',
+            'nb_documents', 'documents',
+            'created_at', 'updated_at',
+        ]
+
+
+class ContratCreateUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contrat
+        fields = [
+            'numero_contrat', 'type_contrat',
+            'date_debut', 'date_fin', 'statut', 'notes',
+        ]
+
+    def validate_numero_contrat(self, value):
+        v = value.strip()
+        if not v.isdigit():
+            raise serializers.ValidationError(
+                "Le N° contrat doit contenir uniquement des chiffres (ex : 024141)."
+            )
+        return v
 
 
 class DocumentUploadSerializer(serializers.Serializer):
@@ -90,6 +148,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     dossier_complet = serializers.BooleanField(read_only=True)
     taux_completude = serializers.IntegerField(read_only=True)
     nb_documents = serializers.SerializerMethodField()
+    numero_contrat_actif = serializers.SerializerMethodField()
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     service_nom = serializers.CharField(source='service.nom', read_only=True)
@@ -99,7 +158,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            'id', 'matricule', 'nom', 'prenom',
+            'id', 'matricule', 'numero_contrat_actif', 'nom', 'prenom',
             'direction_nom', 'departement_nom', 'service_nom',
             'poste_nom', 'type_contrat_nom',
             'statut', 'dossier_complet', 'taux_completude', 'nb_documents',
@@ -107,6 +166,14 @@ class EmployeeListSerializer(serializers.ModelSerializer):
 
     def get_nb_documents(self, obj):
         return obj.documents.filter(is_active=True).count()
+
+    def get_numero_contrat_actif(self, obj):
+        from django.db.models.functions import Cast
+        from django.db.models import IntegerField
+        contrat = obj.contrats.annotate(
+            num_int=Cast('numero_contrat', IntegerField())
+        ).order_by('-num_int').first()
+        return contrat.numero_contrat if contrat else None
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     documents = EmployeeDocumentSerializer(

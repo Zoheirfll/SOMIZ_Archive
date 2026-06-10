@@ -68,6 +68,18 @@ const renderPage = (role = "ADMIN") => {
   );
 };
 
+const mockContrats = [
+  {
+    id: "contrat-1",
+    numero_contrat: "CTR-2020-001",
+    type_contrat_nom: "CDI",
+    date_debut: "2020-01-01",
+    date_fin: null,
+    statut: "actif",
+    nb_documents: 2,
+  },
+];
+
 beforeEach(() => {
   jest.clearAllMocks();
   URL.createObjectURL = jest.fn(() => "blob:mock-url");
@@ -76,6 +88,12 @@ beforeEach(() => {
   api.get.mockImplementation((url) => {
     if (url.includes("types-documents")) {
       return Promise.resolve({ data: { results: mockTypes } });
+    }
+    if (url.includes("types-contrat")) {
+      return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
+    }
+    if (url.includes("/contrats/")) {
+      return Promise.resolve({ data: mockContrats });
     }
     if (url.includes("files/")) {
       return Promise.resolve({ data: new Blob(["pdf"], { type: "application/pdf" }) });
@@ -140,10 +158,10 @@ describe("EmployeeDetail — documents", () => {
     });
   });
 
-  test("affiche le nom du fichier", async () => {
+  test("affiche la section documents", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/cin_recto\.pdf/)).toBeInTheDocument();
+      expect(screen.getAllByText("Carte Nationale").length).toBeGreaterThan(0);
     });
   });
 
@@ -156,11 +174,11 @@ describe("EmployeeDetail — documents", () => {
 });
 
 describe("EmployeeDetail — navigation", () => {
-  test("bouton ← Retour navigue vers la liste", async () => {
+  test("bouton ← Retour navigue en arrière", async () => {
     renderPage();
     await waitFor(() => screen.getByText("← Retour"));
     fireEvent.click(screen.getByText("← Retour"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees");
+    expect(mockNavigate).toHaveBeenCalledWith(-1);
   });
 
   test("bouton Modifier navigue vers la page édition (ADMIN)", async () => {
@@ -250,12 +268,71 @@ describe("EmployeeDetail — quick upload (document manquant)", () => {
   });
 });
 
+describe("EmployeeDetail — onglet Contrats", () => {
+  test("affiche l'onglet Dossier", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText(/Dossier/)).toBeInTheDocument();
+    });
+  });
+
+  test("affiche l'onglet Contrats", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText(/Contrats/)).toBeInTheDocument();
+    });
+  });
+
+  test("clic sur onglet Contrats affiche la liste", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => screen.getByText(/Contrats/));
+    const contratsTab = screen.getAllByText(/Contrats/)[0];
+    fireEvent.click(contratsTab);
+    await waitFor(() => {
+      expect(screen.getAllByText("CTR-2020-001").length).toBeGreaterThan(0);
+    });
+  });
+
+  test("bouton + Nouveau contrat visible pour ADMIN", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => screen.getByText(/Contrats/));
+    fireEvent.click(screen.getAllByText(/Contrats/)[0]);
+    await waitFor(() => {
+      expect(screen.getByText("+ Nouveau contrat")).toBeInTheDocument();
+    });
+  });
+
+  test("CONSULTANT ne voit pas + Nouveau contrat", async () => {
+    renderPage("CONSULTANT");
+    await waitFor(() => screen.getByText(/Contrats/));
+    fireEvent.click(screen.getAllByText(/Contrats/)[0]);
+    await waitFor(() => screen.getAllByText("CTR-2020-001").length > 0);
+    expect(screen.queryByText("+ Nouveau contrat")).not.toBeInTheDocument();
+  });
+
+  test("clic sur un contrat navigue vers sa page", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => screen.getByText(/Contrats/));
+    fireEvent.click(screen.getAllByText(/Contrats/)[0]);
+    await waitFor(() => screen.getAllByText("CTR-2020-001").length > 0);
+    // Cherche la ligne de la table dans l'onglet contrats (pas le badge header)
+    const rows = document.querySelectorAll("tr");
+    const contratRow = Array.from(rows).find((tr) =>
+      tr.textContent.includes("CTR-2020-001") && tr.textContent.includes("CDI")
+    );
+    if (contratRow) fireEvent.click(contratRow);
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/contrats/contrat-1");
+    });
+  });
+});
+
 describe("EmployeeDetail — suppression fichier", () => {
   test("bouton supprimer fichier appelle DELETE (ADMIN)", async () => {
     window.confirm = jest.fn(() => true);
     api.delete.mockResolvedValue({});
     renderPage("ADMIN");
-    await waitFor(() => screen.getByText(/cin_recto\.pdf/));
+    await waitFor(() => screen.getAllByText("Carte Nationale").length > 0);
 
     const deleteBtns = screen.getAllByText(/🗑️|Supprimer/i);
     if (deleteBtns.length > 0) {

@@ -75,16 +75,16 @@ SOMIZ/
 │   ├── audit/                   ← Journal de traçabilité
 │   ├── media/                   ← Fichiers uploadés (non versionné)
 │   ├── logs/                    ← Logs applicatifs (non versionné)
-│   └── tests/                   ← 109 tests pytest
+│   └── tests/                   ← ~141 tests pytest
 │
 └── frontend/
     ├── package.json
     ├── src/
-    │   ├── pages/               ← 10 pages React
+    │   ├── pages/               ← 11 pages React
     │   ├── components/          ← Navbar, ProtectedRoute, SecureDocViewer
-    │   ├── services/            ← api.js, auth.js
-    │   ├── context/             ← AuthContext.js
-    │   └── __tests__/          ← Tests React (Jest + RTL)
+    │   ├── services/            ← api.js (withCredentials), auth.js
+    │   ├── context/             ← AuthContext.js (authChecked)
+    │   └── __tests__/          ← 206 tests React (Jest + RTL)
     └── public/
 ```
 
@@ -107,8 +107,11 @@ SOMIZ/
 
 ### Sécurité — points critiques
 
+- **Cookies httpOnly** : les tokens JWT sont dans des cookies httpOnly (inaccessibles depuis JavaScript) — résistant aux attaques XSS. Classe `JWTCookieAuthentication` dans `accounts/cookie_auth.py`
+- **Refresh silencieux** : `CookieTokenRefreshView` renouvelle le cookie access à partir du cookie refresh, sans exposer les tokens au frontend
 - **Zéro téléchargement** : `Content-Disposition: inline` systématique
 - **Fichiers inaccessibles** : `/media/` n'est pas servi par Nginx directement
-- **JWT court** : 2h access / 24h refresh avec blacklist au logout
+- **JWT court** : 2h access / 24h refresh avec rotation et blacklist au logout
 - **Audit complet** : chaque consultation est tracée (qui, quoi, quand, IP)
 - **Blocage brute-force** : 5 tentatives max puis 30 min de blocage
+- **Throttling** : 10 req/min anonymes, 200 req/min authentifiés

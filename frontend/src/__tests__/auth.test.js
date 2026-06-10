@@ -1,38 +1,28 @@
 /**
  * Tests — services/auth.js
- * Couvre : login(), logout(), getUser(), isAuthenticated()
+ * Tokens dans cookies httpOnly — auth.js gère uniquement les données user
  */
 
 jest.mock("../services/api", () => ({
   __esModule: true,
-  default: {
-    post: jest.fn(),
-  },
+  default: { post: jest.fn() },
 }));
 
 import api from "../services/api";
 import { login, logout, getUser, isAuthenticated } from "../services/auth";
 
 beforeEach(() => {
-  localStorage.clear();
   sessionStorage.clear();
   jest.clearAllMocks();
 });
 
 describe("login()", () => {
   test("appelle POST /auth/login/ et retourne les données", async () => {
-    const mockData = {
-      access: "access_token",
-      refresh: "refresh_token",
-      user: { id: "1", username: "admin", role: "ADMIN" },
-    };
+    const mockData = { user: { id: "1", username: "admin", role: "ADMIN" } };
     api.post.mockResolvedValueOnce({ data: mockData });
 
     const result = await login("admin", "pass");
-    expect(api.post).toHaveBeenCalledWith("/auth/login/", {
-      username: "admin",
-      password: "pass",
-    });
+    expect(api.post).toHaveBeenCalledWith("/auth/login/", { username: "admin", password: "pass" });
     expect(result).toEqual(mockData);
   });
 
@@ -43,52 +33,15 @@ describe("login()", () => {
 });
 
 describe("logout()", () => {
-  test("appelle POST /auth/logout/ avec le refresh token de localStorage", async () => {
-    localStorage.setItem("refresh_token", "myrefresh");
+  test("appelle POST /api/auth/logout/", async () => {
     api.post.mockResolvedValueOnce({});
-
     await logout();
-    expect(api.post).toHaveBeenCalledWith("/auth/logout/", { refresh: "myrefresh" });
+    expect(api.post).toHaveBeenCalledWith("/auth/logout/");
   });
 
-  test("appelle POST /auth/logout/ avec le refresh token de sessionStorage", async () => {
-    sessionStorage.setItem("refresh_token", "session_refresh");
-    api.post.mockResolvedValueOnce({});
-
-    await logout();
-    expect(api.post).toHaveBeenCalledWith("/auth/logout/", { refresh: "session_refresh" });
-  });
-
-  test("efface localStorage après logout", async () => {
-    localStorage.setItem("access_token", "tok");
-    localStorage.setItem("refresh_token", "ref");
-    localStorage.setItem("user", JSON.stringify({ username: "admin" }));
-    api.post.mockResolvedValueOnce({});
-
-    await logout();
-    expect(localStorage.getItem("access_token")).toBeNull();
-    expect(localStorage.getItem("refresh_token")).toBeNull();
-    expect(localStorage.getItem("user")).toBeNull();
-  });
-
-  test("efface sessionStorage après logout", async () => {
-    sessionStorage.setItem("access_token", "tok");
-    sessionStorage.setItem("refresh_token", "ref");
-    sessionStorage.setItem("user", JSON.stringify({ username: "admin" }));
-    api.post.mockResolvedValueOnce({});
-
-    await logout();
-    expect(sessionStorage.getItem("access_token")).toBeNull();
-    expect(sessionStorage.getItem("refresh_token")).toBeNull();
-    expect(sessionStorage.getItem("user")).toBeNull();
-  });
-
-  test("efface le storage même si la requête échoue", async () => {
-    localStorage.setItem("access_token", "tok");
+  test("ne propage pas l'erreur si la requête échoue", async () => {
     api.post.mockRejectedValueOnce(new Error("Network error"));
-
-    await logout().catch(() => {});
-    expect(localStorage.getItem("access_token")).toBeNull();
+    await expect(logout()).resolves.toBeUndefined();
   });
 });
 
@@ -97,45 +50,26 @@ describe("getUser()", () => {
     expect(getUser()).toBeNull();
   });
 
-  test("retourne l'user depuis localStorage", () => {
-    const user = { id: "1", username: "admin", role: "ADMIN" };
-    localStorage.setItem("user", JSON.stringify(user));
-    expect(getUser()).toEqual(user);
-  });
-
   test("retourne l'user depuis sessionStorage", () => {
-    const user = { id: "2", username: "cons", role: "CONSULTANT" };
+    const user = { id: "1", username: "admin", role: "ADMIN" };
     sessionStorage.setItem("user", JSON.stringify(user));
     expect(getUser()).toEqual(user);
-  });
-
-  test("préfère localStorage sur sessionStorage", () => {
-    const local = { id: "1", username: "local" };
-    const session = { id: "2", username: "session" };
-    localStorage.setItem("user", JSON.stringify(local));
-    sessionStorage.setItem("user", JSON.stringify(session));
-    expect(getUser()?.username).toBe("local");
   });
 });
 
 describe("isAuthenticated()", () => {
-  test("retourne false si aucun token", () => {
+  test("retourne false si pas d'user en session", () => {
     expect(isAuthenticated()).toBe(false);
   });
 
-  test("retourne true si token dans localStorage", () => {
-    localStorage.setItem("access_token", "tok");
+  test("retourne true si user en sessionStorage", () => {
+    sessionStorage.setItem("user", JSON.stringify({ username: "admin" }));
     expect(isAuthenticated()).toBe(true);
   });
 
-  test("retourne true si token dans sessionStorage", () => {
-    sessionStorage.setItem("access_token", "tok");
-    expect(isAuthenticated()).toBe(true);
-  });
-
-  test("retourne false si tokens supprimés", () => {
-    localStorage.setItem("access_token", "tok");
-    localStorage.removeItem("access_token");
+  test("retourne false après suppression", () => {
+    sessionStorage.setItem("user", JSON.stringify({ username: "admin" }));
+    sessionStorage.removeItem("user");
     expect(isAuthenticated()).toBe(false);
   });
 });

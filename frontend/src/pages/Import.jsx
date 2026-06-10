@@ -64,7 +64,7 @@ const Import = () => {
   return (
     <div style={{ background: theme.bg, minHeight: "100vh" }}>
       <Navbar />
-      <div style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}>
         {/* Header */}
         <div
           style={{
@@ -145,7 +145,7 @@ const Import = () => {
                   obligatoires
                 </span>
               </div>
-              {["matricule", "nom", "prenom"].map((c) => (
+              {["matricule", "numero_contrat", "nom", "prenom"].map((c) => (
                 <div
                   key={c}
                   style={{

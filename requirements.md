@@ -200,4 +200,4 @@ cd frontend && npm start
 
 ---
 
-*Document préparé le 09/06/2026 — Projet SOMIZ v1.0*
+*Document préparé le 10/06/2026 — Projet SOMIZ v1.1*

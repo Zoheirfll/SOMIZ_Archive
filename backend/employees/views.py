@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from django.shortcuts import get_object_or_404
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
 from audit.models import AuditLog
 from employees.models import (
@@ -22,6 +23,7 @@ from employees.models import (
     EmployeeDocument,
     EmployeeDocumentFile,
     TypeDocument,
+    Contrat,
 )
 from employees.serializers import (
     EmployeeListSerializer,
@@ -29,6 +31,9 @@ from employees.serializers import (
     EmployeeCreateUpdateSerializer,
     DocumentUploadSerializer,
     EmployeeDocumentSerializer,
+    ContratListSerializer,
+    ContratDetailSerializer,
+    ContratCreateUpdateSerializer,
 )
 
 
@@ -62,8 +67,9 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(
                 Q(nom__icontains=q) |
                 Q(prenom__icontains=q) |
-                Q(matricule__icontains=q)
-            )
+                Q(matricule__icontains=q) |
+                Q(contrats__numero_contrat__icontains=q)
+            ).distinct()
         if dept:
             qs = qs.filter(departement__icontains=dept)
         if statut:
@@ -390,6 +396,164 @@ class DocumentDeleteView(APIView):
         doc.save(update_fields=['is_active'])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ─── CONTRATS ─────────────────────────────────────────────────────────────────
+
+class ContratListCreateView(APIView):
+    """
+    GET  /api/employees/{emp_id}/contrats/  → Liste des contrats (ADMIN + CONSULTANT)
+    POST /api/employees/{emp_id}/contrats/  → Créer un contrat (ADMIN only)
+    """
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAdmin()]
+        return [IsAdminOrConsultant()]
+
+    def get(self, request, emp_id):
+        from django.db.models.functions import Cast
+        from django.db.models import IntegerField
+        employee = get_object_or_404(Employee, pk=emp_id)
+        contrats = employee.contrats.select_related('type_contrat').annotate(
+            num_int=Cast('numero_contrat', IntegerField())
+        ).order_by('-num_int')
+        serializer = ContratListSerializer(contrats, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, emp_id):
+        employee = get_object_or_404(Employee, pk=emp_id)
+        serializer = ContratCreateUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        contrat = serializer.save(employee=employee, created_by=request.user)
+        AuditLog.log(
+            request, AuditLog.Action.CREATE_EMP,
+            target=employee,
+            details={'action': 'create_contrat', 'numero_contrat': contrat.numero_contrat}
+        )
+        return Response(ContratListSerializer(contrat).data, status=status.HTTP_201_CREATED)
+
+
+class ContratDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET    /api/contrats/{id}/  → Détail + documents du contrat
+    PATCH  /api/contrats/{id}/  → Modifier (ADMIN only)
+    DELETE /api/contrats/{id}/  → Supprimer (ADMIN only)
+    """
+    queryset = Contrat.objects.select_related('employee', 'type_contrat')
+
+    def get_serializer_class(self):
+        if self.request.method in ('PATCH', 'PUT'):
+            return ContratCreateUpdateSerializer
+        return ContratDetailSerializer
+
+    def get_permissions(self):
+        if self.request.method in ('PATCH', 'PUT', 'DELETE'):
+            return [IsAdmin()]
+        return [IsAdminOrConsultant()]
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if not request.query_params.get('no_log'):
+            AuditLog.log(
+                request, AuditLog.Action.VIEW,
+                target=instance.employee,
+                details={'action': 'view_contrat', 'numero_contrat': instance.numero_contrat}
+            )
+        return super().retrieve(request, *args, **kwargs)
+
+    def perform_update(self, serializer):
+        contrat = serializer.save()
+        AuditLog.log(
+            self.request, AuditLog.Action.MODIFY_EMP,
+            target=contrat.employee,
+            details={'action': 'modify_contrat', 'numero_contrat': contrat.numero_contrat}
+        )
+
+    def perform_destroy(self, instance):
+        AuditLog.log(
+            self.request, AuditLog.Action.DELETE_EMP,
+            target=instance.employee,
+            details={'action': 'delete_contrat', 'numero_contrat': instance.numero_contrat}
+        )
+        instance.delete()
+
+
+class ContratDocumentListUploadView(APIView):
+    """
+    GET  /api/contrats/{contrat_id}/documents/  → Documents du contrat
+    POST /api/contrats/{contrat_id}/documents/  → Upload vers le dossier du contrat
+    """
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAdmin()]
+        return [IsAdminOrConsultant()]
+
+    def get(self, request, contrat_id):
+        contrat = get_object_or_404(Contrat, pk=contrat_id)
+        docs = EmployeeDocument.objects.filter(
+            contrat=contrat, is_active=True
+        ).select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
+        serializer = EmployeeDocumentSerializer(docs, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, contrat_id):
+        contrat = get_object_or_404(Contrat, pk=contrat_id)
+        files = request.FILES.getlist('files')
+        type_doc_id = request.data.get('type_doc')
+        notes = request.data.get('notes', '')
+
+        if not files:
+            return Response(
+                {'error': 'Aucun fichier fourni.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = DocumentUploadSerializer(data={
+            'type_doc': type_doc_id,
+            'files': files,
+            'notes': notes,
+        })
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        doc = EmployeeDocument.objects.create(
+            employee=contrat.employee,
+            contrat=contrat,
+            type_doc=serializer.validated_data['type_doc'],
+            uploaded_by=request.user,
+            notes=serializer.validated_data.get('notes', ''),
+        )
+
+        for ordre, file in enumerate(serializer.validated_data['files'], start=1):
+            file.seek(0)
+            mime = magic.from_buffer(file.read(2048), mime=True)
+            file.seek(0)
+            EmployeeDocumentFile.objects.create(
+                document=doc,
+                file=file,
+                file_name=file.name,
+                file_size=file.size,
+                mime_type=mime,
+                ordre=ordre,
+            )
+
+        AuditLog.log(
+            request, AuditLog.Action.UPLOAD,
+            target=doc,
+            details={
+                'contrat': contrat.numero_contrat,
+                'type': doc.type_doc.code,
+                'version': doc.version,
+                'nb_fichiers': doc.nb_fichiers,
+            }
+        )
+        return Response(
+            EmployeeDocumentSerializer(doc).data,
+            status=status.HTTP_201_CREATED
+        )
 
 
 # ─── RECHERCHE RAPIDE ─────────────────────────────────────────────────────────

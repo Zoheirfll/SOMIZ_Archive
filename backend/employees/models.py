@@ -223,11 +223,70 @@ class Employee(models.Model):
         return round(presents / total * 100)
 
 
+# ─── CONTRAT ──────────────────────────────────────────────────────────────────
+
+class Contrat(models.Model):
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        ARCHIVE = 'archive', 'Archivé'
+        DEMOBILISE = 'demobilise', 'Démobilisé'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    numero_contrat = models.CharField(
+        max_length=50, unique=True, db_index=True, verbose_name="N° Contrat"
+    )
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE, related_name='contrats'
+    )
+    type_contrat = models.ForeignKey(
+        TypeContrat, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='contrats'
+    )
+    date_debut = models.DateField(null=True, blank=True, verbose_name="Date début")
+    date_fin = models.DateField(null=True, blank=True, verbose_name="Date fin")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.ACTIF
+    )
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True,
+        on_delete=models.SET_NULL, related_name='contrats_created'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'contrats'
+        verbose_name = "Contrat"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.numero_contrat} — {self.employee.matricule}"
+
+    @property
+    def documents_actifs(self):
+        return self.documents.filter(is_active=True)
+
+    @property
+    def nb_documents(self):
+        return self.documents.filter(is_active=True).count()
+
+
 # ─── DOCUMENT ─────────────────────────────────────────────────────────────────
 
 def document_upload_path(instance, filename):
     ext = filename.split('.')[-1].lower()
     safe_name = f"{instance.document.type_doc.code}_{uuid.uuid4().hex[:8]}.{ext}"
+    if instance.document.contrat_id:
+        return os.path.join(
+            'employees',
+            str(instance.document.employee.id),
+            'contrats',
+            str(instance.document.contrat.numero_contrat),
+            instance.document.type_doc.code,
+            safe_name
+        )
     return os.path.join(
         'employees',
         str(instance.document.employee.id),
@@ -238,13 +297,17 @@ def document_upload_path(instance, filename):
 
 class EmployeeDocument(models.Model):
     """
-    Conteneur — représente un type de document pour un employé.
+    Conteneur — représente un type de document pour un employé (ou un contrat).
     Contient plusieurs fichiers (EmployeeDocumentFile).
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(
         Employee, on_delete=models.CASCADE, related_name='documents'
+    )
+    contrat = models.ForeignKey(
+        Contrat, null=True, blank=True,
+        on_delete=models.CASCADE, related_name='documents'
     )
     type_doc = models.ForeignKey(
         TypeDocument, on_delete=models.PROTECT,
@@ -293,6 +356,7 @@ class EmployeeDocument(models.Model):
         if not self.pk:
             existing = EmployeeDocument.objects.filter(
                 employee=self.employee,
+                contrat=self.contrat,
                 type_doc=self.type_doc,
                 is_active=True
             ).order_by('-version').first()
@@ -300,6 +364,7 @@ class EmployeeDocument(models.Model):
                 self.version = existing.version + 1
                 EmployeeDocument.objects.filter(
                     employee=self.employee,
+                    contrat=self.contrat,
                     type_doc=self.type_doc,
                     is_active=True
                 ).update(is_active=False)

@@ -5,8 +5,9 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 
-const StatCard = ({ label, value, sub, color, icon }) => (
+const StatCard = ({ label, value, sub, color, icon, className }) => (
   <div
+    className={`card-lift${className ? ` ${className}` : ""}`}
     style={{
       background: theme.surface,
       border: `1px solid ${theme.primaryBorder}`,
@@ -133,6 +134,7 @@ const Dashboard = () => {
             value={total}
             color={theme.primary}
             icon="👥"
+            className="anim-slide-up delay-1"
           />
           <StatCard
             label="Dossiers complets"
@@ -140,6 +142,7 @@ const Dashboard = () => {
             sub={`sur ${total} employés`}
             color={theme.primary}
             icon="✅"
+            className="anim-slide-up delay-2"
           />
           <StatCard
             label="Taux de complétude"
@@ -150,12 +153,14 @@ const Dashboard = () => {
                 : theme.warning
             }
             icon="📊"
+            className="anim-slide-up delay-3"
           />
           <StatCard
             label="Total documents"
             value={stats?.total_documents ?? 0}
             color={theme.textSecondary}
             icon="📄"
+            className="anim-slide-up delay-4"
           />
         </div>
 
@@ -191,6 +196,7 @@ const Dashboard = () => {
           >
             {/* Complétude par type */}
             <div
+              className="anim-fade-in delay-2"
               style={{
                 background: theme.surface,
                 border: `1px solid ${theme.primaryBorder}`,
@@ -266,6 +272,7 @@ const Dashboard = () => {
 
             {/* Activité récente */}
             <div
+              className="anim-fade-in delay-3"
               style={{
                 background: theme.surface,
                 border: `1px solid ${theme.primaryBorder}`,

@@ -21,19 +21,8 @@ const Login = () => {
     setError("");
     try {
       const data = await login(username, password);
-      // Dans votre handleSubmit de Login.jsx, remplacez les lignes de stockage par :
-      const accessToken = data.access || data.access_token || data.token;
-      const refreshToken = data.refresh || data.refresh_token;
-
-      if (rememberMe) {
-        localStorage.setItem("access_token", accessToken);
-        localStorage.setItem("refresh_token", refreshToken);
-        localStorage.setItem("user", JSON.stringify(data.user));
-      } else {
-        sessionStorage.setItem("access_token", accessToken);
-        sessionStorage.setItem("refresh_token", refreshToken);
-        sessionStorage.setItem("user", JSON.stringify(data.user));
-      }
+      // Les tokens JWT sont dans les cookies httpOnly — on stocke uniquement les infos user
+      sessionStorage.setItem("user", JSON.stringify(data.user));
       loginSuccess(data.user);
       navigate("/employees");
     } catch (err) {
@@ -66,6 +55,7 @@ const Login = () => {
       />
 
       <div
+        className="anim-scale-in"
         style={{
           background: theme.surface,
           border: `1px solid ${theme.primaryBorder}`,
@@ -122,6 +112,7 @@ const Login = () => {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              className="input-focus"
               style={{
                 width: "100%",
                 border: `1px solid ${theme.primaryBorder}`,
@@ -132,7 +123,6 @@ const Login = () => {
                 outline: "none",
                 boxSizing: "border-box",
                 background: theme.bg,
-                transition: "border 0.15s",
               }}
               placeholder="votre.identifiant"
             />
@@ -155,6 +145,7 @@ const Login = () => {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="input-focus"
                 style={{
                   width: "100%",
                   border: `1px solid ${theme.primaryBorder}`,
@@ -240,6 +231,7 @@ const Login = () => {
           <button
             type="submit"
             disabled={loading}
+            className="btn-lift"
             style={{
               width: "100%",
               background: loading ? `${theme.primary}88` : theme.primary,
@@ -251,7 +243,6 @@ const Login = () => {
               fontSize: 15,
               cursor: loading ? "not-allowed" : "pointer",
               boxShadow: `0 2px 8px ${theme.primary}44`,
-              transition: "all 0.2s",
             }}
           >
             {loading ? "Connexion..." : "Se connecter"}

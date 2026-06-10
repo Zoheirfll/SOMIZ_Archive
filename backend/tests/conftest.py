@@ -6,7 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from employees.models import (
     Direction, Departement, Service, Poste,
-    TypeContrat, Categorie, TypeDocument, Employee
+    TypeContrat, Categorie, TypeDocument, Employee, Contrat
 )
 
 User = get_user_model()
@@ -90,5 +90,17 @@ def employee(db, admin_user, direction, departement, service, poste, type_contra
         poste=poste,
         type_contrat=type_contrat,
         categorie=categorie,
+        created_by=admin_user,
+    )
+
+
+@pytest.fixture
+def contrat(db, employee, type_contrat, admin_user):
+    return Contrat.objects.create(
+        numero_contrat="CTR-2024-001",
+        employee=employee,
+        type_contrat=type_contrat,
+        date_debut="2024-01-01",
+        statut="actif",
         created_by=admin_user,
     )

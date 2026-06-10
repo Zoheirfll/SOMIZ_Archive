@@ -102,7 +102,7 @@ const Profil = () => {
   return (
     <div style={{ background: theme.bg, minHeight: "100vh" }}>
       <Navbar />
-      <div style={{ padding: "32px", maxWidth: 600, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 600, margin: "0 auto" }}>
         <button
           onClick={() => navigate(-1)}
           style={{

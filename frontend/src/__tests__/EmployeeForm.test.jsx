@@ -208,7 +208,7 @@ describe("EmployeeForm — soumission création", () => {
     await waitFor(() => screen.getByText(/Créer l'employé/));
 
     // Remplir les champs obligatoires
-    fireEvent.change(screen.getByPlaceholderText("024141"), {
+    fireEvent.change(screen.getByPlaceholderText("EMP-001"), {
       target: { name: "matricule", value: "EMP-999" },
     });
     fireEvent.change(screen.getByPlaceholderText("FILALI"), {

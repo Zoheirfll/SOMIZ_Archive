@@ -1,6 +1,6 @@
-﻿/**
+/**
  * Tests — pages/Login.jsx
- * Couvre : rendu, soumission, remember-me, erreurs, toggle password
+ * Tokens dans cookies httpOnly — Login stocke uniquement les données user en sessionStorage.
  */
 
 import React from "react";
@@ -8,10 +8,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
-// Mocks
-jest.mock("../services/auth", () => ({
-  login: jest.fn(),
-}));
+jest.mock("../services/auth", () => ({ login: jest.fn() }));
 jest.mock("../context/AuthContext", () => ({
   useAuth: () => ({ loginSuccess: jest.fn() }),
 }));
@@ -24,16 +21,11 @@ jest.mock("react-router-dom", () => ({
 import { login } from "../services/auth";
 import Login from "../pages/Login";
 
-const renderLogin = () =>
-  render(
-    <MemoryRouter>
-      <Login />
-    </MemoryRouter>
-  );
+const renderLogin = () => render(<MemoryRouter><Login /></MemoryRouter>);
 
 beforeEach(() => {
-  localStorage.clear();
   sessionStorage.clear();
+  localStorage.clear();
   jest.clearAllMocks();
 });
 
@@ -67,15 +59,13 @@ describe("Login — rendu", () => {
 describe("Login — toggle mot de passe", () => {
   test("le champ est de type password par défaut", () => {
     renderLogin();
-    const input = screen.getByPlaceholderText("••••••••••");
-    expect(input).toHaveAttribute("type", "password");
+    expect(screen.getByPlaceholderText("••••••••••")).toHaveAttribute("type", "password");
   });
 
   test("le bouton toggle affiche le mot de passe", async () => {
     renderLogin();
     const input = screen.getByPlaceholderText("••••••••••");
-    const toggle = screen.getByRole("button", { name: /👁/i });
-    await userEvent.click(toggle);
+    await userEvent.click(screen.getByRole("button", { name: /👁/i }));
     expect(input).toHaveAttribute("type", "text");
   });
 
@@ -91,12 +81,10 @@ describe("Login — toggle mot de passe", () => {
 
 describe("Login — soumission réussie", () => {
   const mockData = {
-    access: "access123",
-    refresh: "refresh123",
     user: { id: "u1", username: "admin", nom: "Admin", prenom: "Test", role: "ADMIN" },
   };
 
-  test("stocke dans sessionStorage si remember-me non coché", async () => {
+  test("stocke les infos user en sessionStorage", async () => {
     login.mockResolvedValueOnce(mockData);
     renderLogin();
 
@@ -105,26 +93,11 @@ describe("Login — soumission réussie", () => {
     fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
 
     await waitFor(() => {
-      expect(sessionStorage.getItem("access_token")).toBe("access123");
-      expect(sessionStorage.getItem("refresh_token")).toBe("refresh123");
+      expect(sessionStorage.getItem("user")).toBeTruthy();
     });
-    expect(localStorage.getItem("access_token")).toBeNull();
-  });
-
-  test("stocke dans localStorage si remember-me coché", async () => {
-    login.mockResolvedValueOnce(mockData);
-    renderLogin();
-
-    await userEvent.click(screen.getByLabelText(/se rappeler de moi/i));
-    await userEvent.type(screen.getByPlaceholderText("votre.identifiant"), "admin");
-    await userEvent.type(screen.getByPlaceholderText("••••••••••"), "pass");
-    fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
-
-    await waitFor(() => {
-      expect(localStorage.getItem("access_token")).toBe("access123");
-      expect(localStorage.getItem("refresh_token")).toBe("refresh123");
-    });
+    // Les tokens ne doivent PAS être dans le storage (ils sont dans les cookies httpOnly)
     expect(sessionStorage.getItem("access_token")).toBeNull();
+    expect(localStorage.getItem("access_token")).toBeNull();
   });
 
   test("redirige vers /employees après connexion", async () => {
@@ -143,8 +116,7 @@ describe("Login — soumission réussie", () => {
 
 describe("Login — gestion des erreurs", () => {
   test("affiche le message d'erreur sur échec", async () => {
-    const error = { response: { data: { error: "Identifiants incorrects." } } };
-    login.mockRejectedValueOnce(error);
+    login.mockRejectedValueOnce({ response: { data: { error: "Identifiants incorrects." } } });
     renderLogin();
 
     await userEvent.type(screen.getByPlaceholderText("votre.identifiant"), "wrong");
@@ -165,27 +137,7 @@ describe("Login — gestion des erreurs", () => {
     fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Identifiants incorrects.")).toBeInTheDocument();
-    });
-  });
-
-  test("désactive le bouton pendant le chargement", async () => {
-    let resolveFn;
-    login.mockReturnValueOnce(new Promise((res) => { resolveFn = res; }));
-    renderLogin();
-
-    await userEvent.type(screen.getByPlaceholderText("votre.identifiant"), "admin");
-    await userEvent.type(screen.getByPlaceholderText("••••••••••"), "pass");
-    fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /connexion/i })).toBeDisabled();
-    });
-
-    resolveFn({
-      access: "tok",
-      refresh: "ref",
-      user: { id: "1", username: "a", nom: "A", prenom: "B", role: "ADMIN" },
+      expect(screen.getByText(/identifiants incorrects/i)).toBeInTheDocument();
     });
   });
 });

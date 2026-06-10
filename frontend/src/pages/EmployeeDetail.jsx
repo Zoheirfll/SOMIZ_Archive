@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
@@ -9,9 +9,14 @@ import SecureDocViewer from "../components/SecureDocViewer";
 const EmployeeDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
 
   const [employee, setEmployee] = useState(null);
+  const [contrats, setContrats] = useState([]);
+  const [activeTab, setActiveTab] = useState(
+    searchParams.get("tab") || "dossier",
+  );
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [docUrl, setDocUrl] = useState(null);
@@ -23,10 +28,23 @@ const EmployeeDetail = () => {
   const [typesDocuments, setTypesDocuments] = useState({});
   const [typesDocumentsList, setTypesDocumentsList] = useState([]);
   const [quickUploadingCode, setQuickUploadingCode] = useState(null);
+  const [showNewContratForm, setShowNewContratForm] = useState(false);
+  const [newContrat, setNewContrat] = useState({
+    numero_contrat: "",
+    type_contrat: "",
+    date_debut: "",
+    date_fin: "",
+    statut: "actif",
+    notes: "",
+  });
+  const [typesContrat, setTypesContrat] = useState([]);
+  const [savingContrat, setSavingContrat] = useState(false);
 
   useEffect(() => {
     fetchTypesDocuments();
     fetchEmployee();
+    fetchContrats();
+    fetchTypesContrat();
   }, [id]);
 
   useEffect(() => {
@@ -48,6 +66,56 @@ const EmployeeDetail = () => {
       if (types.length > 0) setUploadType(types[0].code);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const fetchContrats = async () => {
+    try {
+      const response = await api.get(`/employees/${id}/contrats/`);
+      setContrats(response.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchTypesContrat = async () => {
+    try {
+      const response = await api.get("/ref/types-contrat/");
+      setTypesContrat(response.data.results || response.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateContrat = async (e) => {
+    e.preventDefault();
+    setSavingContrat(true);
+    try {
+      const payload = { ...newContrat };
+      if (!payload.type_contrat) delete payload.type_contrat;
+      if (!payload.date_debut) delete payload.date_debut;
+      if (!payload.date_fin) delete payload.date_fin;
+      await api.post(`/employees/${id}/contrats/`, payload);
+      setMessage({ type: "success", text: "Contrat créé avec succès." });
+      setShowNewContratForm(false);
+      setNewContrat({
+        numero_contrat: "",
+        type_contrat: "",
+        date_debut: "",
+        date_fin: "",
+        statut: "actif",
+        notes: "",
+      });
+      fetchContrats();
+    } catch (err) {
+      const detail =
+        err.response?.data?.numero_contrat?.[0] ||
+        err.response?.data?.non_field_errors?.[0] ||
+        "Erreur lors de la création.";
+      setMessage({ type: "error", text: detail });
+    } finally {
+      setSavingContrat(false);
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
@@ -196,6 +264,11 @@ const EmployeeDetail = () => {
   const infoFields = [
     { label: "Matricule", value: employee.matricule, mono: true },
     {
+      label: "N° Contrat",
+      value: contrats[0]?.numero_contrat || "—",
+      mono: true,
+    },
+    {
       label: "Nom & Prénom",
       value: `${employee.nom} ${employee.prenom}`,
       bold: true,
@@ -216,7 +289,7 @@ const EmployeeDetail = () => {
       <Navbar />
       <div style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
         <button
-          onClick={() => navigate("/employees")}
+          onClick={() => navigate(-1)}
           style={{
             background: "transparent",
             border: `1px solid ${theme.primaryBorder}`,
@@ -233,6 +306,7 @@ const EmployeeDetail = () => {
 
         {message && (
           <div
+            className="notif-banner"
             style={{
               background:
                 message.type === "success" ? theme.primaryBg : theme.dangerBg,
@@ -251,6 +325,7 @@ const EmployeeDetail = () => {
 
         {/* Infos employé */}
         <div
+          className="anim-slide-up"
           style={{
             background: theme.surface,
             border: `1px solid ${theme.primaryBorder}`,
@@ -297,13 +372,46 @@ const EmployeeDetail = () => {
                 </div>
                 <div
                   style={{
-                    color: theme.primary,
-                    fontFamily: "monospace",
-                    fontSize: 13,
-                    marginTop: 2,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginTop: 4,
                   }}
                 >
-                  {employee.matricule}
+                  <span
+                    style={{
+                      color: theme.primary,
+                      fontFamily: "monospace",
+                      fontSize: 13,
+                    }}
+                  >
+                    {employee.matricule}
+                  </span>
+                  {contrats.length > 0 && (
+                    <>
+                      <span style={{ color: theme.textMuted, fontSize: 12 }}>
+                        •
+                      </span>
+                      <span
+                        onClick={() => navigate(`/contrats/${contrats[0].id}`)}
+                        style={{
+                          fontFamily: "monospace",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          color: theme.primary,
+                          background: theme.primaryBg,
+                          border: `1px solid ${theme.primaryBorder}`,
+                          borderRadius: 5,
+                          padding: "1px 8px",
+                          cursor: "pointer",
+                          letterSpacing: "0.06em",
+                        }}
+                        title="Contrat le plus récent — cliquer pour ouvrir"
+                      >
+                        {contrats[0].numero_contrat}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -428,12 +536,39 @@ const EmployeeDetail = () => {
           </div>
         </div>
 
-        {/* Documents + Viewer */}
-        <div
-          style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}
-        >
-          {/* Sidebar */}
+        {/* Onglets */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+          {[
+            {
+              key: "dossier",
+              label: `Dossier (${employee.documents?.length || 0})`,
+            },
+            { key: "contrats", label: `Contrats (${contrats.length})` },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                background:
+                  activeTab === tab.key ? theme.primary : theme.surface,
+                border: `1px solid ${activeTab === tab.key ? theme.primary : theme.primaryBorder}`,
+                color: activeTab === tab.key ? "#fff" : theme.text,
+                borderRadius: 8,
+                padding: "8px 20px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Onglet Contrats */}
+        {activeTab === "contrats" && (
           <div
+            className="tab-content"
             style={{
               background: theme.surface,
               border: `1px solid ${theme.primaryBorder}`,
@@ -444,460 +579,991 @@ const EmployeeDetail = () => {
           >
             <div
               style={{
-                padding: "14px 16px",
+                padding: "14px 20px",
                 borderBottom: `1px solid ${theme.primaryBorder}`,
-                color: theme.primary,
-                fontWeight: 700,
-                fontSize: 12,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
                 background: theme.primaryBg,
               }}
             >
-              Documents ({employee.documents?.length || 0})
-            </div>
-
-            {/* Documents présents */}
-            {employee.documents?.map((doc) => (
-              <div
-                key={doc.id}
+              <span
                 style={{
-                  borderBottom: `1px solid ${theme.primaryBorder}`,
-                  background:
-                    selectedDoc?.id === doc.id
-                      ? theme.primaryBg
-                      : "transparent",
-                  borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : "transparent"}`,
+                  color: theme.primary,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
                 }}
               >
-                {/* En-tête du document */}
-                <div
-                  onClick={() => handleSelectDoc(doc)}
+                Contrats de {employee.prenom} {employee.nom}
+              </span>
+              {user?.role === "ADMIN" && (
+                <button
+                  onClick={() => {
+                    if (!showNewContratForm) {
+                      setNewContrat({
+                        numero_contrat: "",
+                        type_contrat: "",
+                        date_debut: employee?.date_embauche || "",
+                        date_fin: "",
+                        statut: "actif",
+                        notes: "",
+                      });
+                    }
+                    setShowNewContratForm(!showNewContratForm);
+                  }}
                   style={{
-                    padding: "10px 16px",
+                    background: theme.primary,
+                    border: "none",
+                    color: "#fff",
+                    borderRadius: 6,
+                    padding: "6px 14px",
+                    fontSize: 12,
+                    fontWeight: 600,
                     cursor: "pointer",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
                   }}
                 >
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        color: theme.text,
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {typesDocuments[doc.type_document] || doc.type_document}
-                    </div>
-                    <div
+                  + Nouveau contrat
+                </button>
+              )}
+            </div>
+
+            {/* Formulaire nouveau contrat */}
+            {showNewContratForm && (
+              <form
+                onSubmit={handleCreateContrat}
+                style={{
+                  padding: 20,
+                  borderBottom: `1px solid ${theme.primaryBorder}`,
+                  background: "#FAFFFE",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 12,
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <label
                       style={{
                         color: theme.textMuted,
                         fontSize: 11,
-                        marginTop: 2,
+                        textTransform: "uppercase",
+                        display: "block",
+                        marginBottom: 4,
                       }}
                     >
-                      v{doc.version} · {doc.nb_fichiers} fichier(s) ·{" "}
-                      {doc.file_size_kb} Ko
-                    </div>
-                  </div>
-                  {user?.role === "ADMIN" && (
-                    <button
-                      onClick={(e) => handleDeleteDoc(doc, e)}
-                      title="Supprimer ce document"
-                      style={{
-                        background: "transparent",
-                        border: "none",
-                        color: theme.danger,
-                        cursor: "pointer",
-                        fontSize: 13,
-                        padding: "2px 4px",
-                        opacity: 0.5,
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.opacity = 0.5)
-                      }
-                    >
-                      🗑️
-                    </button>
-                  )}
-                </div>
-
-                {/* Fichiers du document — affichés si document sélectionné */}
-                {selectedDoc?.id === doc.id && doc.fichiers?.length > 0 && (
-                  <div
-                    style={{
-                      borderTop: `1px dashed ${theme.primaryBorder}`,
-                      background: theme.bg,
-                    }}
-                  >
-                    {doc.fichiers.map((file, index) => (
-                      <div
-                        key={file.id}
-                        onClick={() => loadFile(file)}
-                        style={{
-                          padding: "8px 16px 8px 24px",
-                          cursor: "pointer",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          background:
-                            selectedFile?.id === file.id
-                              ? `${theme.primary}18`
-                              : "transparent",
-                          borderLeft: `3px solid ${selectedFile?.id === file.id ? theme.primaryLight : "transparent"}`,
-                          transition: "all 0.15s",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          <span
-                            style={{ color: theme.textMuted, fontSize: 11 }}
-                          >
-                            {file.mime_type?.includes("pdf") ? "📄" : "🖼️"}
-                          </span>
-                          <div>
-                            <div
-                              style={{
-                                color: theme.text,
-                                fontSize: 12,
-                                fontWeight:
-                                  selectedFile?.id === file.id ? 600 : 400,
-                              }}
-                            >
-                              Page {index + 1}
-                            </div>
-                            <div
-                              style={{ color: theme.textMuted, fontSize: 10 }}
-                            >
-                              {file.file_size_kb} Ko
-                            </div>
-                          </div>
-                        </div>
-                        {user?.role === "ADMIN" && (
-                          <button
-                            onClick={(e) => handleDeleteFile(file, e)}
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: theme.danger,
-                              cursor: "pointer",
-                              fontSize: 11,
-                              opacity: 0.5,
-                            }}
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.opacity = 1)
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.opacity = 0.5)
-                            }
-                          >
-                            🗑️
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Documents manquants */}
-            {employee.documents_manquants?.map((doc) => (
-              <div
-                key={doc.code}
-                style={{
-                  padding: "10px 16px",
-                  borderBottom: `1px solid ${theme.primaryBorder}`,
-                  background: "#FAFAFA",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <div style={{ color: theme.textMuted, fontSize: 13 }}>
-                    {doc.required && (
-                      <span style={{ color: theme.danger, marginRight: 4 }}>*</span>
-                    )}
-                    {doc.label}
-                  </div>
-                  <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 2, fontStyle: "italic" }}>
-                    Non uploadé
-                  </div>
-                </div>
-                {user?.role === "ADMIN" && (
-                  <label
-                    title={`Uploader ${doc.label}`}
-                    style={{
-                      background: quickUploadingCode === doc.code ? `${theme.primary}88` : theme.primaryBg,
-                      border: `1px solid ${theme.primaryBorder}`,
-                      color: theme.primary,
-                      borderRadius: 6,
-                      padding: "4px 8px",
-                      fontSize: 13,
-                      cursor: quickUploadingCode === doc.code ? "not-allowed" : "pointer",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {quickUploadingCode === doc.code ? "⏳" : "📎"}
+                      N° Contrat *
+                    </label>
                     <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.tiff"
-                      multiple
-                      style={{ display: "none" }}
-                      disabled={quickUploadingCode === doc.code}
-                      onChange={async (e) => {
-                        const files = Array.from(e.target.files);
-                        if (!files.length) return;
-                        setQuickUploadingCode(doc.code);
-                        const typeDoc = typesDocumentsList.find((t) => t.code === doc.code);
-                        const formData = new FormData();
-                        formData.append("type_doc", typeDoc?.id || doc.code);
-                        files.forEach((f) => formData.append("files", f));
-                        try {
-                          await api.post(`/employees/${id}/documents/`, formData, {
-                            headers: { "Content-Type": "multipart/form-data" },
-                          });
-                          setMessage({ type: "success", text: `${doc.label} uploadé avec succès.` });
-                          fetchEmployee();
-                        } catch (err) {
-                          setMessage({ type: "error", text: err.response?.data?.files?.[0] || "Erreur lors de l'upload." });
-                        } finally {
-                          setQuickUploadingCode(null);
-                          e.target.value = "";
-                          setTimeout(() => setMessage(null), 4000);
-                        }
+                      required
+                      value={newContrat.numero_contrat}
+                      onChange={(e) =>
+                        setNewContrat({
+                          ...newContrat,
+                          numero_contrat: e.target.value,
+                        })
+                      }
+                      placeholder=""
+                      style={{
+                        width: "100%",
+                        border: `1px solid ${theme.primaryBorder}`,
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        color: theme.text,
+                        background: theme.surface,
+                        outline: "none",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
                       }}
                     />
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        color: theme.textMuted,
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        display: "block",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Type de contrat
+                    </label>
+                    <select
+                      value={newContrat.type_contrat}
+                      onChange={(e) =>
+                        setNewContrat({
+                          ...newContrat,
+                          type_contrat: e.target.value,
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        border: `1px solid ${theme.primaryBorder}`,
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        color: theme.text,
+                        background: theme.surface,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      <option value="">— Sélectionner —</option>
+                      {typesContrat.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nom}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        color: theme.textMuted,
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        display: "block",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Statut
+                    </label>
+                    <select
+                      value={newContrat.statut}
+                      onChange={(e) =>
+                        setNewContrat({ ...newContrat, statut: e.target.value })
+                      }
+                      style={{
+                        width: "100%",
+                        border: `1px solid ${theme.primaryBorder}`,
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        color: theme.text,
+                        background: theme.surface,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      <option value="actif">Actif</option>
+                      <option value="archive">Archivé</option>
+                      <option value="demobilise">Démobilisé</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        color: theme.textMuted,
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        display: "block",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Date début
+                    </label>
+                    <input
+                      type="date"
+                      value={newContrat.date_debut}
+                      onChange={(e) =>
+                        setNewContrat({
+                          ...newContrat,
+                          date_debut: e.target.value,
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        border: `1px solid ${theme.primaryBorder}`,
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        color: theme.text,
+                        background: theme.surface,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      style={{
+                        color: theme.textMuted,
+                        fontSize: 11,
+                        textTransform: "uppercase",
+                        display: "block",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Date fin
+                    </label>
+                    <input
+                      type="date"
+                      value={newContrat.date_fin}
+                      onChange={(e) =>
+                        setNewContrat({
+                          ...newContrat,
+                          date_fin: e.target.value,
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        border: `1px solid ${theme.primaryBorder}`,
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        fontSize: 13,
+                        color: theme.text,
+                        background: theme.surface,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label
+                    style={{
+                      color: theme.textMuted,
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      display: "block",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Notes
                   </label>
-                )}
-              </div>
-            ))}
+                  <textarea
+                    value={newContrat.notes}
+                    onChange={(e) =>
+                      setNewContrat({ ...newContrat, notes: e.target.value })
+                    }
+                    rows={2}
+                    style={{
+                      width: "100%",
+                      border: `1px solid ${theme.primaryBorder}`,
+                      borderRadius: 6,
+                      padding: "8px 10px",
+                      fontSize: 13,
+                      color: theme.text,
+                      background: theme.surface,
+                      outline: "none",
+                      boxSizing: "border-box",
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="submit"
+                    disabled={savingContrat}
+                    style={{
+                      background: savingContrat
+                        ? `${theme.primary}88`
+                        : theme.primary,
+                      border: "none",
+                      color: "#fff",
+                      borderRadius: 6,
+                      padding: "8px 20px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: savingContrat ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {savingContrat ? "Création..." : "Créer le contrat"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewContratForm(false)}
+                    style={{
+                      background: "transparent",
+                      border: `1px solid ${theme.primaryBorder}`,
+                      color: theme.textSecondary,
+                      borderRadius: 6,
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </form>
+            )}
 
-            {/* Upload ADMIN */}
-            {user?.role === "ADMIN" && (
+            {/* Liste des contrats */}
+            {contrats.length === 0 ? (
               <div
                 style={{
-                  padding: 16,
-                  borderTop: `2px solid ${theme.primaryBorder}`,
-                  background: theme.bg,
+                  padding: 40,
+                  textAlign: "center",
+                  color: theme.textMuted,
+                  fontSize: 13,
                 }}
               >
-                <div
-                  style={{
-                    color: theme.text,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    marginBottom: 8,
-                  }}
-                >
-                  Ajouter un document
-                </div>
-                <select
-                  value={uploadType}
-                  onChange={(e) => setUploadType(e.target.value)}
-                  style={{
-                    width: "100%",
-                    border: `1px solid ${theme.primaryBorder}`,
-                    borderRadius: 6,
-                    padding: "7px 10px",
-                    fontSize: 12,
-                    color: theme.text,
-                    background: theme.surface,
-                    marginBottom: 8,
-                    outline: "none",
-                  }}
-                >
-                  {typesDocumentsList.map((t) => (
-                    <option key={t.code} value={t.code}>
-                      {t.nom}
-                    </option>
-                  ))}
-                </select>
-                <label
-                  style={{
-                    display: "block",
-                    width: "100%",
-                    background: uploading
-                      ? `${theme.primary}88`
-                      : theme.primary,
-                    color: "#fff",
-                    borderRadius: 6,
-                    padding: "8px",
-                    textAlign: "center",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: uploading ? "not-allowed" : "pointer",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  {uploading ? "Upload en cours..." : "📎 Choisir fichier(s)"}
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.tiff"
-                    onChange={handleUpload}
-                    style={{ display: "none" }}
-                    disabled={uploading}
-                    multiple /* ← permet sélection multiple */
-                  />
-                </label>
-                <div
-                  style={{
-                    color: theme.textMuted,
-                    fontSize: 10,
-                    marginTop: 6,
-                    textAlign: "center",
-                  }}
-                >
-                  Maintenez Ctrl pour sélectionner plusieurs fichiers
-                </div>
+                Aucun contrat enregistré
               </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: theme.bg }}>
+                    {[
+                      "N° Contrat",
+                      "Type",
+                      "Date début",
+                      "Date fin",
+                      "Statut",
+                      "Documents",
+                      "",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        style={{
+                          padding: "10px 16px",
+                          textAlign: "left",
+                          fontSize: 11,
+                          color: theme.textMuted,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          fontWeight: 600,
+                          borderBottom: `1px solid ${theme.primaryBorder}`,
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {contrats.map((c) => {
+                    const statutColors = {
+                      actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
+                      archive:    { bg: "#F5F5F5",       border: "#BDBDBD",           color: "#616161",      label: "Archivé" },
+                      demobilise: { bg: theme.dangerBg,  border: theme.dangerBorder,  color: theme.danger,   label: "Démobilisé" },
+                    };
+                    const sc = statutColors[c.statut] || statutColors.actif;
+                    return (
+                      <tr
+                        key={c.id}
+                        onClick={() => navigate(`/contrats/${c.id}`)}
+                        style={{
+                          cursor: "pointer",
+                          borderBottom: `1px solid ${theme.primaryBorder}`,
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = theme.primaryBg)
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = "transparent")
+                        }
+                      >
+                        <td
+                          style={{
+                            padding: "12px 16px",
+                            fontFamily: "monospace",
+                            fontSize: 13,
+                            color: theme.primary,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {c.numero_contrat}
+                        </td>
+                        <td
+                          style={{
+                            padding: "12px 16px",
+                            fontSize: 13,
+                            color: theme.text,
+                          }}
+                        >
+                          {c.type_contrat_nom || "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "12px 16px",
+                            fontSize: 13,
+                            color: theme.text,
+                          }}
+                        >
+                          {c.date_debut || "—"}
+                        </td>
+                        <td
+                          style={{
+                            padding: "12px 16px",
+                            fontSize: 13,
+                            color: theme.text,
+                          }}
+                        >
+                          {c.date_fin || "—"}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span
+                            style={{
+                              background: sc.bg,
+                              border: `1px solid ${sc.border}`,
+                              color: sc.color,
+                              borderRadius: 5,
+                              padding: "3px 10px",
+                              fontSize: 11,
+                              fontWeight: 600,
+                            }}
+                          >
+                            {sc.label}
+                          </span>
+                        </td>
+                        <td
+                          style={{
+                            padding: "12px 16px",
+                            fontSize: 13,
+                            color: theme.textSecondary,
+                          }}
+                        >
+                          {c.nb_documents} doc(s)
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span style={{ color: theme.primary, fontSize: 12 }}>
+                            Voir →
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
+        )}
 
-          {/* Viewer */}
+        {/* Documents + Viewer */}
+        {activeTab === "dossier" && (
           <div
+            className="tab-content"
             style={{
-              background: theme.surface,
-              border: `1px solid ${theme.primaryBorder}`,
-              borderRadius: 12,
-              overflow: "hidden",
-              boxShadow: theme.shadow,
-              minHeight: 600,
-              display: "flex",
-              flexDirection: "column",
+              display: "grid",
+              gridTemplateColumns: "300px 1fr",
+              gap: 20,
             }}
           >
-            {selectedFile ? (
-              <>
+            {/* Sidebar */}
+            <div
+              style={{
+                background: theme.surface,
+                border: `1px solid ${theme.primaryBorder}`,
+                borderRadius: 12,
+                overflow: "hidden",
+                boxShadow: theme.shadow,
+              }}
+            >
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderBottom: `1px solid ${theme.primaryBorder}`,
+                  color: theme.primary,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  background: theme.primaryBg,
+                }}
+              >
+                Documents ({employee.documents?.length || 0})
+              </div>
+
+              {/* Documents présents */}
+              {employee.documents?.map((doc) => (
                 <div
+                  key={doc.id}
                   style={{
-                    padding: "14px 20px",
                     borderBottom: `1px solid ${theme.primaryBorder}`,
-                    background: theme.primaryBg,
+                    background:
+                      selectedDoc?.id === doc.id
+                        ? theme.primaryBg
+                        : "transparent",
+                    borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : "transparent"}`,
+                  }}
+                >
+                  {/* En-tête du document */}
+                  <div
+                    onClick={() => handleSelectDoc(doc)}
+                    style={{
+                      padding: "10px 16px",
+                      cursor: "pointer",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span
+                          style={{
+                            color: theme.text,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {typesDocuments[doc.type_document] || doc.type_document}
+                        </span>
+                        {doc.contrat && (() => {
+                          const c = contrats.find((c) => c.id === doc.contrat);
+                          return c ? (
+                            <span style={{
+                              background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`,
+                              color: theme.primary, borderRadius: 4, padding: "1px 7px",
+                              fontSize: 10, fontWeight: 700, fontFamily: "monospace",
+                            }}>
+                              {c.numero_contrat}
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
+                      <div
+                        style={{
+                          color: theme.textMuted,
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        v{doc.version} · {doc.nb_fichiers} fichier(s) ·{" "}
+                        {doc.file_size_kb} Ko
+                      </div>
+                    </div>
+                    {user?.role === "ADMIN" && (
+                      <button
+                        onClick={(e) => handleDeleteDoc(doc, e)}
+                        title="Supprimer ce document"
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: theme.danger,
+                          cursor: "pointer",
+                          fontSize: 13,
+                          padding: "2px 4px",
+                          opacity: 0.5,
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.opacity = 1)
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.opacity = 0.5)
+                        }
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Fichiers du document — affichés si document sélectionné */}
+                  {selectedDoc?.id === doc.id && doc.fichiers?.length > 0 && (
+                    <div
+                      style={{
+                        borderTop: `1px dashed ${theme.primaryBorder}`,
+                        background: theme.bg,
+                      }}
+                    >
+                      {doc.fichiers.map((file, index) => (
+                        <div
+                          key={file.id}
+                          onClick={() => loadFile(file)}
+                          style={{
+                            padding: "8px 16px 8px 24px",
+                            cursor: "pointer",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            background:
+                              selectedFile?.id === file.id
+                                ? `${theme.primary}18`
+                                : "transparent",
+                            borderLeft: `3px solid ${selectedFile?.id === file.id ? theme.primaryLight : "transparent"}`,
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
+                            <span
+                              style={{ color: theme.textMuted, fontSize: 11 }}
+                            >
+                              {file.mime_type?.includes("pdf") ? "📄" : "🖼️"}
+                            </span>
+                            <div>
+                              <div
+                                style={{
+                                  color: theme.text,
+                                  fontSize: 12,
+                                  fontWeight:
+                                    selectedFile?.id === file.id ? 600 : 400,
+                                }}
+                              >
+                                Page {index + 1}
+                              </div>
+                              <div
+                                style={{ color: theme.textMuted, fontSize: 10 }}
+                              >
+                                {file.file_size_kb} Ko
+                              </div>
+                            </div>
+                          </div>
+                          {user?.role === "ADMIN" && (
+                            <button
+                              onClick={(e) => handleDeleteFile(file, e)}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: theme.danger,
+                                cursor: "pointer",
+                                fontSize: 11,
+                                opacity: 0.5,
+                              }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.opacity = 1)
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.opacity = 0.5)
+                              }
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Documents manquants */}
+              {employee.documents_manquants?.map((doc) => (
+                <div
+                  key={doc.code}
+                  style={{
+                    padding: "10px 16px",
+                    borderBottom: `1px solid ${theme.primaryBorder}`,
+                    background: "#FAFAFA",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                   }}
                 >
                   <div>
-                    <span
+                    <div style={{ color: theme.textMuted, fontSize: 13 }}>
+                      {doc.required && (
+                        <span style={{ color: theme.danger, marginRight: 4 }}>
+                          *
+                        </span>
+                      )}
+                      {doc.label}
+                    </div>
+                    <div
                       style={{
-                        color: theme.text,
-                        fontWeight: 700,
-                        fontSize: 14,
+                        color: theme.textMuted,
+                        fontSize: 11,
+                        marginTop: 2,
+                        fontStyle: "italic",
                       }}
                     >
-                      {typesDocuments[selectedDoc?.type_document] ||
-                        selectedDoc?.type_document}
-                    </span>
-                    <span
+                      Non uploadé
+                    </div>
+                  </div>
+                  {user?.role === "ADMIN" && (
+                    <label
+                      title={`Uploader ${doc.label}`}
                       style={{
-                        color: theme.textSecondary,
-                        fontSize: 12,
-                        marginLeft: 8,
+                        background:
+                          quickUploadingCode === doc.code
+                            ? `${theme.primary}88`
+                            : theme.primaryBg,
+                        border: `1px solid ${theme.primaryBorder}`,
+                        color: theme.primary,
+                        borderRadius: 6,
+                        padding: "4px 8px",
+                        fontSize: 13,
+                        cursor:
+                          quickUploadingCode === doc.code
+                            ? "not-allowed"
+                            : "pointer",
+                        flexShrink: 0,
                       }}
                     >
-                      — {selectedFile.file_name}
-                    </span>
-                  </div>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 12 }}
-                  >
-                    {/* Onglets fichiers */}
-                    {selectedDoc?.fichiers?.length > 1 && (
-                      <div style={{ display: "flex", gap: 4 }}>
-                        {selectedDoc.fichiers.map((file, index) => (
-                          <button
-                            key={file.id}
-                            onClick={() => loadFile(file)}
-                            style={{
-                              background:
-                                selectedFile.id === file.id
-                                  ? theme.primary
-                                  : theme.primaryBg,
-                              border: `1px solid ${theme.primaryBorder}`,
-                              color:
-                                selectedFile.id === file.id
-                                  ? "#fff"
-                                  : theme.primary,
-                              borderRadius: 6,
-                              padding: "4px 10px",
-                              fontSize: 11,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Page {index + 1}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <span style={{ color: theme.textSecondary, fontSize: 12 }}>
-                      {selectedFile.file_size_kb} Ko
-                    </span>
-                  </div>
+                      {quickUploadingCode === doc.code ? "⏳" : "📎"}
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.tiff"
+                        multiple
+                        style={{ display: "none" }}
+                        disabled={quickUploadingCode === doc.code}
+                        onChange={async (e) => {
+                          const files = Array.from(e.target.files);
+                          if (!files.length) return;
+                          setQuickUploadingCode(doc.code);
+                          const typeDoc = typesDocumentsList.find(
+                            (t) => t.code === doc.code,
+                          );
+                          const formData = new FormData();
+                          formData.append("type_doc", typeDoc?.id || doc.code);
+                          files.forEach((f) => formData.append("files", f));
+                          try {
+                            await api.post(
+                              `/employees/${id}/documents/`,
+                              formData,
+                              {
+                                headers: {
+                                  "Content-Type": "multipart/form-data",
+                                },
+                              },
+                            );
+                            setMessage({
+                              type: "success",
+                              text: `${doc.label} uploadé avec succès.`,
+                            });
+                            fetchEmployee();
+                          } catch (err) {
+                            setMessage({
+                              type: "error",
+                              text:
+                                err.response?.data?.files?.[0] ||
+                                "Erreur lors de l'upload.",
+                            });
+                          } finally {
+                            setQuickUploadingCode(null);
+                            e.target.value = "";
+                            setTimeout(() => setMessage(null), 4000);
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
+              ))}
 
-                {docLoading ? (
+              {/* Upload ADMIN */}
+              {user?.role === "ADMIN" && (
+                <div
+                  style={{
+                    padding: 16,
+                    borderTop: `2px solid ${theme.primaryBorder}`,
+                    background: theme.bg,
+                  }}
+                >
                   <div
                     style={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: theme.textSecondary,
+                      color: theme.text,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      marginBottom: 8,
                     }}
                   >
-                    Chargement...
+                    Ajouter un document
                   </div>
-                ) : docUrl ? (
-                  <SecureDocViewer
-                    url={docUrl}
-                    mimeType={selectedFile?.mime_type}
-                    fileName={selectedFile?.file_name}
-                  />
-                ) : (
+                  <select
+                    value={uploadType}
+                    onChange={(e) => setUploadType(e.target.value)}
+                    style={{
+                      width: "100%",
+                      border: `1px solid ${theme.primaryBorder}`,
+                      borderRadius: 6,
+                      padding: "7px 10px",
+                      fontSize: 12,
+                      color: theme.text,
+                      background: theme.surface,
+                      marginBottom: 8,
+                      outline: "none",
+                    }}
+                  >
+                    {typesDocumentsList.map((t) => (
+                      <option key={t.code} value={t.code}>
+                        {t.nom}
+                      </option>
+                    ))}
+                  </select>
+                  <label
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      background: uploading
+                        ? `${theme.primary}88`
+                        : theme.primary,
+                      color: "#fff",
+                      borderRadius: 6,
+                      padding: "8px",
+                      textAlign: "center",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: uploading ? "not-allowed" : "pointer",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {uploading ? "Upload en cours..." : "📎 Choisir fichier(s)"}
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.tiff"
+                      onChange={handleUpload}
+                      style={{ display: "none" }}
+                      disabled={uploading}
+                      multiple /* ← permet sélection multiple */
+                    />
+                  </label>
                   <div
                     style={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: theme.danger,
+                      color: theme.textMuted,
+                      fontSize: 10,
+                      marginTop: 6,
+                      textAlign: "center",
                     }}
                   >
-                    Impossible de charger le fichier.
+                    Maintenez Ctrl pour sélectionner plusieurs fichiers
                   </div>
-                )}
-              </>
-            ) : (
-              <div
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: theme.textMuted,
-                }}
-              >
-                <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
-                <div style={{ fontSize: 14 }}>
-                  Sélectionnez un document pour le visualiser
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* Viewer */}
+            <div
+              style={{
+                background: theme.surface,
+                border: `1px solid ${theme.primaryBorder}`,
+                borderRadius: 12,
+                overflow: "hidden",
+                boxShadow: theme.shadow,
+                minHeight: 600,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {selectedFile ? (
+                <>
+                  <div
+                    style={{
+                      padding: "14px 20px",
+                      borderBottom: `1px solid ${theme.primaryBorder}`,
+                      background: theme.primaryBg,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <span
+                        style={{
+                          color: theme.text,
+                          fontWeight: 700,
+                          fontSize: 14,
+                        }}
+                      >
+                        {typesDocuments[selectedDoc?.type_document] ||
+                          selectedDoc?.type_document}
+                      </span>
+                      <span
+                        style={{
+                          color: theme.textSecondary,
+                          fontSize: 12,
+                          marginLeft: 8,
+                        }}
+                      >
+                        {selectedFile.file_size_kb} Ko
+                      </span>
+                    </div>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 12 }}
+                    >
+                      {/* Onglets fichiers */}
+                      {selectedDoc?.fichiers?.length > 1 && (
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {selectedDoc.fichiers.map((file, index) => (
+                            <button
+                              key={file.id}
+                              onClick={() => loadFile(file)}
+                              style={{
+                                background:
+                                  selectedFile.id === file.id
+                                    ? theme.primary
+                                    : theme.primaryBg,
+                                border: `1px solid ${theme.primaryBorder}`,
+                                color:
+                                  selectedFile.id === file.id
+                                    ? "#fff"
+                                    : theme.primary,
+                                borderRadius: 6,
+                                padding: "4px 10px",
+                                fontSize: 11,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Page {index + 1}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <span
+                        style={{ color: theme.textSecondary, fontSize: 12 }}
+                      >
+                        {selectedFile.file_size_kb} Ko
+                      </span>
+                    </div>
+                  </div>
+
+                  {docLoading ? (
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: theme.textSecondary,
+                      }}
+                    >
+                      Chargement...
+                    </div>
+                  ) : docUrl ? (
+                    <SecureDocViewer
+                      url={docUrl}
+                      mimeType={selectedFile?.mime_type}
+                      fileName={selectedFile?.file_name}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: theme.danger,
+                      }}
+                    >
+                      Impossible de charger le fichier.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: theme.textMuted,
+                  }}
+                >
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
+                  <div style={{ fontSize: 14 }}>
+                    Sélectionnez un document pour le visualiser
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
