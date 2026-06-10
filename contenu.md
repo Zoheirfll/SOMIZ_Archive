@@ -70,12 +70,12 @@ SOMIZ/
 │   ├── config/           ← Paramètres Django, URLs racine
 │   ├── media/            ← Fichiers uploadés (non versionné)
 │   ├── logs/             ← Logs applicatifs (non versionné)
-│   └── tests/            ← 109 tests pytest
+│   └── tests/            ← ~141 tests pytest
 │
 └── frontend/             ← Application React
     ├── package.json
     ├── src/
-    │   ├── pages/        ← 10 pages
+    │   ├── pages/        ← 11 pages
     │   ├── components/   ← 3 composants réutilisables
     │   ├── services/     ← Client HTTP + fonctions auth
     │   ├── context/      ← Contexte d'authentification
@@ -122,9 +122,9 @@ Cœur métier de l'application. Gère les référentiels organisationnels, les e
 **Fichiers clés :**
 | Fichier | Rôle |
 |---|---|
-| `models.py` | `Employee`, `EmployeeDocument`, `EmployeeDocumentFile`, `TypeDocument`, `Direction`, `Departement`, `Service`, `Poste`, `TypeContrat`, `Categorie` |
-| `serializers.py` | Sérialisation DRF avec validation MIME (python-magic) |
-| `views.py` | CRUD employés, upload/visualisation/suppression de fichiers, recherche, bulk-delete |
+| `models.py` | `Employee`, `Contrat`, `EmployeeDocument`, `EmployeeDocumentFile`, `TypeDocument`, `Direction`, `Departement`, `Service`, `Poste`, `TypeContrat`, `Categorie` |
+| `serializers.py` | Sérialisation DRF avec validation MIME (python-magic), serializers Contrat |
+| `views.py` | CRUD employés, CRUD contrats, upload/visualisation/suppression de fichiers, recherche, bulk-delete |
 | `referentiel_views.py` | CRUD des référentiels (directions, postes, etc.) |
 | `import_views.py` | Import en masse d'employés via CSV |
 | `urls.py` + `referentiel_urls.py` | Routes `/api/employees/`, `/api/ref/`, `/api/files/` |
@@ -210,25 +210,50 @@ Propriétés calculées :
 - taux_completude     → % de documents présents sur total des types actifs
 ```
 
+#### Contrat (`employees/models.py`)
+
+```
+Contrat
+├── id                UUID (PK)
+├── numero_contrat    CharField unique (indexé) — stocké en majuscules
+├── employee          FK(Employee, related_name='contrats')
+├── type_contrat      FK(TypeContrat, nullable)
+├── date_debut        DateField (nullable)
+├── date_fin          DateField (nullable)
+├── statut            actif | termine | suspendu
+├── notes             TextField
+└── created_by        FK(User)
+
+Propriétés calculées :
+- documents_actifs    → queryset des docs actifs liés à ce contrat
+- nb_documents        → entier
+
+Relation : 1 Employee → N Contrats
+           1 Contrat  → N EmployeeDocument (dossier propre au contrat)
+```
+
 #### Documents (`employees/models.py`)
 
 ```
 EmployeeDocument  (conteneur)
 ├── id              UUID (PK)
 ├── employee        FK(Employee)
+├── contrat         FK(Contrat, nullable) — null = dossier général, sinon dossier du contrat
 ├── type_doc        FK(TypeDocument)
-├── version         auto-incrémenté à chaque nouvel upload du même type
+├── version         auto-incrémenté à chaque nouvel upload du même (employee, contrat, type)
 ├── is_active       False pour les anciennes versions
 ├── uploaded_by     FK(User)
 └── notes           TextField
 
-Comportement : lors d'un nouvel upload du même type pour le même employé,
-l'ancienne version passe is_active=False et version s'incrémente automatiquement.
+Comportement : versioning scoped par (employee + contrat + type_doc).
+Un document lié à CTR-001 n'interfère pas avec le même type sur CTR-002.
 
 EmployeeDocumentFile  (fichier physique)
 ├── id              UUID (PK)
 ├── document        FK(EmployeeDocument)
-├── file            FileField (chemin : employees/{employee_id}/{type_code}/{uuid}.ext)
+├── file            FileField
+│                   Dossier général : employees/{employee_id}/{type_code}/{uuid}.ext
+│                   Dossier contrat : employees/{employee_id}/contrats/{numero}/{type_code}/{uuid}.ext
 ├── file_name, file_size, mime_type
 ├── ordre           ordre d'affichage
 └── is_active       soft-delete
@@ -282,10 +307,21 @@ AuditLog (BIGSERIAL — pas UUID, plus rapide pour les logs)
 | DELETE | `/api/employees/{id}/` | Archiver (soft-delete → statut=archive) | ADMIN |
 | POST | `/api/employees/bulk-delete/` | Archive ou suppression en masse (max 500) | ADMIN |
 
+#### Contrats (`/api/employees/{id}/contrats/` et `/api/contrats/`)
+| Méthode | URL | Description | Accès |
+|---|---|---|---|
+| GET | `/api/employees/{id}/contrats/` | Liste des contrats d'un employé | Authentifié |
+| POST | `/api/employees/{id}/contrats/` | Créer un contrat | ADMIN |
+| GET | `/api/contrats/{id}/` | Détail du contrat + documents | Authentifié |
+| PATCH | `/api/contrats/{id}/` | Modifier un contrat | ADMIN |
+| DELETE | `/api/contrats/{id}/` | Supprimer un contrat | ADMIN |
+| GET | `/api/contrats/{id}/documents/` | Liste des documents du contrat | Authentifié |
+| POST | `/api/contrats/{id}/documents/` | Uploader un fichier dans le dossier contrat | ADMIN |
+
 #### Documents et fichiers
 | Méthode | URL | Description | Accès |
 |---|---|---|---|
-| GET | `/api/employees/{id}/documents/` | Liste des documents d'un employé | Authentifié |
+| GET | `/api/employees/{id}/documents/` | Liste des documents généraux d'un employé | Authentifié |
 | POST | `/api/employees/{id}/documents/` | Uploader un ou plusieurs fichiers | ADMIN |
 | GET | `/api/documents/{doc_id}/view/` | Visionner un document (inline) | Authentifié |
 | DELETE | `/api/documents/{doc_id}/` | Supprimer un document | ADMIN |
@@ -391,8 +427,9 @@ frontend/src/
 ├── pages/
 │   ├── Login.jsx           ← Page de connexion
 │   ├── Employees.jsx       ← Liste des employés
-│   ├── EmployeeDetail.jsx  ← Fiche complète d'un employé
+│   ├── EmployeeDetail.jsx  ← Fiche employé (onglets Dossier / Contrats)
 │   ├── EmployeeForm.jsx    ← Formulaire création/édition
+│   ├── ContratDetail.jsx   ← Dossier d'un contrat (viewer + upload)
 │   ├── Dashboard.jsx       ← Tableau de bord statistiques
 │   ├── Users.jsx           ← Gestion des utilisateurs (ADMIN)
 │   ├── AuditLogs.jsx       ← Journal d'audit (ADMIN)
@@ -430,13 +467,23 @@ frontend/src/
 #### `EmployeeDetail.jsx` — Fiche employé
 - Affichage complet des informations de l'employé (matricule, nom, statut, direction, département, poste, etc.)
 - Taux de complétude du dossier en pourcentage
-- Liste des documents présents avec leurs fichiers
-- Liste des documents manquants (types obligatoires non uploadés)
+- **Onglet Dossier** : liste des documents généraux + documents manquants + upload inline
+- **Onglet Contrats** : liste de tous les contrats de l'employé (N°, type, dates, statut, nb docs)
+  - Formulaire de création de contrat inline (ADMIN)
+  - Clic sur un contrat → navigation vers `ContratDetail`
 - Visionneuse de fichiers inline (PDF via `react-pdf`, images)
 - Upload de un ou plusieurs fichiers par type de document (ADMIN)
 - Suppression de fichiers avec confirmation (ADMIN)
 - Bouton "Modifier l'employé" (ADMIN)
 - Nettoyage automatique des URLs blob à la destruction du composant
+
+#### `ContratDetail.jsx` — Dossier d'un contrat
+- Fil d'ariane : Employés › Fiche employé › N° Contrat
+- Carte récapitulative : N° contrat, type, dates, statut, nb documents
+- Sidebar : liste des documents propres au contrat (versioning indépendant)
+- Visionneuse sécurisée inline identique à `EmployeeDetail`
+- Upload de fichiers dans le dossier du contrat (ADMIN) → stocké sous `employees/{id}/contrats/{numero}/`
+- Suppression de fichiers / documents (ADMIN)
 
 #### `EmployeeForm.jsx` — Création / Modification d'employé
 - Formulaire complet avec tous les champs employé
@@ -571,15 +618,16 @@ Outil : **pytest** avec **pytest-django**
 
 | Fichier | Ce qui est testé | Nb cas |
 |---|---|---|
-| `conftest.py` | Fixtures partagées (users, employee, référentiels) | — |
+| `conftest.py` | Fixtures partagées (users, employee, contrat, référentiels) | — |
 | `test_accounts_models.py` | `UserManager`, propriétés `User`, brute-force (lock, reset) | 16 |
 | `test_accounts_views.py` | `LoginView`, `LogoutView`, `UserMeView`, `ChangePasswordView`, `AdminResetPasswordView` | 25 |
-| `test_employees_models.py` | `Employee`, versioning auto des documents, `taux_completude`, `dossier_complet`, référentiels | 20 |
+| `test_employees_models.py` | `Employee`, `Contrat`, versioning (general + par contrat), `taux_completude`, `dossier_complet`, référentiels | 31 |
 | `test_employees_views.py` | CRUD employés, recherche, filtres, bulk-delete, permissions ADMIN/CONSULTANT | 23 |
+| `test_contrat_views.py` | `ContratListCreateView`, `ContratDetailView`, `ContratDocumentListUploadView`, permissions | 21 |
 | `test_audit_models.py` | `AuditLog.log()`, `_get_ip()` (X-Forwarded-For), toutes les actions | 17 |
 | `test_permissions.py` | `IsAdmin`, `IsAdminOrConsultant` | 8 |
 
-**Total : 109 cas de test backend — tous passants**
+**Total : ~141 cas de test backend**
 
 ### 5.2 Tests frontend
 
@@ -594,7 +642,8 @@ Outils : **Jest** + **React Testing Library** + **@testing-library/user-event**
 | `ProtectedRoute.test.jsx` | `components/ProtectedRoute.jsx` | Redirection si non-authentifié, affichage si authentifié |
 | `Login.test.jsx` | `pages/Login.jsx` | Rendu, toggle password, remember-me, succès/erreur, bouton disabled |
 | `Employees.test.jsx` | `pages/Employees.jsx` | Liste, recherche, filtre, checkboxes ADMIN/CONSULTANT, bulk actions |
-| `EmployeeDetail.test.jsx` | `pages/EmployeeDetail.jsx` | Infos employé, documents, upload, suppression, navigation |
+| `EmployeeDetail.test.jsx` | `pages/EmployeeDetail.jsx` | Infos employé, onglets Dossier/Contrats, liste contrats, creation contrat, upload, suppression, navigation |
+| `ContratDetail.test.jsx` | `pages/ContratDetail.jsx` | Rendu, fil d'ariane, documents du contrat, upload, suppression, permissions ADMIN/CONSULTANT |
 | `EmployeeForm.test.jsx` | `pages/EmployeeForm.jsx` | Mode création/édition, pré-remplissage, référentiels, navigation, soumission |
 | `Dashboard.test.jsx` | `pages/Dashboard.jsx` | Redirection CONSULTANT, 4 StatCards, complétude, activité, vide, erreur API |
 | `Users.test.jsx` | `pages/Users.jsx` | Liste, création, validation, toggle actif, modal reset MDP |
@@ -603,7 +652,7 @@ Outils : **Jest** + **React Testing Library** + **@testing-library/user-event**
 | `Profil.test.jsx` | `pages/Profil.jsx` | Infos user, changement MDP, toggle password, messages succès/erreur |
 | `Import.test.jsx` | `pages/Import.jsx` | Drag & drop, sélection CSV, import POST, erreurs, téléchargement template |
 
-**Total : ~120 cas de test frontend**
+**Total : ~145 cas de test frontend**
 
 ---
 
@@ -764,13 +813,14 @@ SOMIZ/
 │   ├── logs/                           ← Logs rotatifs (non versionné)
 │   │   └── somiz.log
 │   │
-│   └── tests/                          ← 109 tests pytest
+│   └── tests/                          ← ~141 tests pytest
 │       ├── __init__.py
 │       ├── conftest.py
 │       ├── test_accounts_models.py
 │       ├── test_accounts_views.py
 │       ├── test_employees_models.py
 │       ├── test_employees_views.py
+│       ├── test_contrat_views.py
 │       ├── test_audit_models.py
 │       └── test_permissions.py
 │
@@ -796,6 +846,7 @@ SOMIZ/
         │   ├── Employees.jsx
         │   ├── EmployeeDetail.jsx
         │   ├── EmployeeForm.jsx
+        │   ├── ContratDetail.jsx
         │   ├── Dashboard.jsx
         │   ├── Users.jsx
         │   ├── AuditLogs.jsx
@@ -814,6 +865,7 @@ SOMIZ/
             ├── Login.test.jsx
             ├── Employees.test.jsx
             ├── EmployeeDetail.test.jsx
+            ├── ContratDetail.test.jsx
             ├── EmployeeForm.test.jsx
             ├── Dashboard.test.jsx
             ├── Users.test.jsx
@@ -879,6 +931,16 @@ SOMIZ/
 - [x] Taux de complétude du dossier calculé automatiquement
 - [x] Détection des documents manquants (types obligatoires)
 
+#### Gestion des contrats
+- [x] Modèle `Contrat` : N° contrat unique, lié à un employé, type, dates, statut
+- [x] 1 matricule → N contrats
+- [x] Chaque contrat a son propre dossier de documents (indépendant du dossier général)
+- [x] Versioning des documents scoped par contrat
+- [x] Chemin de stockage dédié : `employees/{id}/contrats/{numero}/{type}/`
+- [x] API complète : CRUD contrats + upload/suppression de documents par contrat
+- [x] Onglet "Contrats" dans la fiche employé avec formulaire de création inline
+- [x] Page `ContratDetail` avec viewer de documents identique au dossier général
+
 #### Gestion des documents
 - [x] Upload de un ou plusieurs fichiers par type de document
 - [x] Versioning automatique (ancienne version désactivée, nouvelle créée)
@@ -935,4 +997,4 @@ SOMIZ/
 
 ---
 
-*Document mis à jour le 09/06/2026 — SOMIZ v1.0 — 109 tests backend passants*
+*Document mis à jour le 10/06/2026 — SOMIZ v1.1 — feature/us2 : gestion des contrats par N° contrat*

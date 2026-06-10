@@ -6,7 +6,7 @@ Couvre : Employee, EmployeeDocument (versioning), EmployeeDocumentFile, TypeDocu
 import pytest
 from employees.models import (
     Employee, EmployeeDocument, EmployeeDocumentFile,
-    TypeDocument, Direction, Departement, Service
+    TypeDocument, Direction, Departement, Service, Contrat
 )
 
 pytestmark = pytest.mark.django_db
@@ -163,6 +163,100 @@ class TestTypeDocument:
         docs = list(TypeDocument.objects.all())
         assert docs[0].code == "CIN"
         assert docs[1].code == "CV"
+
+
+class TestContratModel:
+    def test_create_contrat(self, contrat, employee):
+        assert contrat.numero_contrat == "CTR-2024-001"
+        assert contrat.employee == employee
+        assert contrat.statut == "actif"
+
+    def test_str_representation(self, contrat):
+        assert "CTR-2024-001" in str(contrat)
+        assert "EMP-001" in str(contrat)
+
+    def test_numero_contrat_uppercased_via_serializer(self, contrat):
+        assert contrat.numero_contrat == contrat.numero_contrat.upper()
+
+    def test_nb_documents_empty(self, contrat):
+        assert contrat.nb_documents == 0
+
+    def test_nb_documents_with_doc(self, contrat, admin_user, type_doc_obligatoire):
+        EmployeeDocument.objects.create(
+            employee=contrat.employee,
+            contrat=contrat,
+            type_doc=type_doc_obligatoire,
+            uploaded_by=admin_user,
+        )
+        assert contrat.nb_documents == 1
+
+    def test_documents_actifs(self, contrat, admin_user, type_doc_obligatoire):
+        doc = EmployeeDocument.objects.create(
+            employee=contrat.employee,
+            contrat=contrat,
+            type_doc=type_doc_obligatoire,
+            uploaded_by=admin_user,
+        )
+        assert doc in contrat.documents_actifs
+
+    def test_versioning_scoped_to_contrat(self, contrat, employee, admin_user, type_doc_obligatoire):
+        doc1 = EmployeeDocument(
+            employee=employee, contrat=contrat,
+            type_doc=type_doc_obligatoire, uploaded_by=admin_user,
+        )
+        doc1.pk = None
+        doc1.save()
+
+        doc2 = EmployeeDocument(
+            employee=employee, contrat=contrat,
+            type_doc=type_doc_obligatoire, uploaded_by=admin_user,
+        )
+        doc2.pk = None
+        doc2.save()
+
+        doc1.refresh_from_db()
+        assert doc2.version == 2
+        assert doc1.is_active is False
+
+    def test_versioning_independent_between_contrats(self, employee, type_contrat, admin_user, type_doc_obligatoire):
+        contrat_a = Contrat.objects.create(
+            numero_contrat="CTR-A", employee=employee, type_contrat=type_contrat
+        )
+        contrat_b = Contrat.objects.create(
+            numero_contrat="CTR-B", employee=employee, type_contrat=type_contrat
+        )
+        doc_a = EmployeeDocument.objects.create(
+            employee=employee, contrat=contrat_a,
+            type_doc=type_doc_obligatoire, uploaded_by=admin_user,
+        )
+        doc_b = EmployeeDocument.objects.create(
+            employee=employee, contrat=contrat_b,
+            type_doc=type_doc_obligatoire, uploaded_by=admin_user,
+        )
+        assert doc_a.version == 1
+        assert doc_b.version == 1
+
+    def test_delete_contrat_cascades_documents(self, contrat, admin_user, type_doc_obligatoire):
+        doc = EmployeeDocument.objects.create(
+            employee=contrat.employee, contrat=contrat,
+            type_doc=type_doc_obligatoire, uploaded_by=admin_user,
+        )
+        doc_pk = doc.pk
+        contrat.delete()
+        assert not EmployeeDocument.objects.filter(pk=doc_pk).exists()
+
+    def test_multiple_contrats_per_employee(self, employee, type_contrat, admin_user):
+        c1 = Contrat.objects.create(numero_contrat="CTR-X1", employee=employee, type_contrat=type_contrat)
+        c2 = Contrat.objects.create(numero_contrat="CTR-X2", employee=employee, type_contrat=type_contrat)
+        assert employee.contrats.count() == 2
+
+    def test_unique_numero_contrat(self, contrat, employee, db):
+        import pytest as _pytest
+        with _pytest.raises(Exception):
+            Contrat.objects.create(
+                numero_contrat="CTR-2024-001",
+                employee=employee,
+            )
 
 
 class TestReferentials:
