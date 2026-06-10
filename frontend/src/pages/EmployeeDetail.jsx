@@ -281,6 +281,7 @@ const EmployeeDetail = () => {
 
         {message && (
           <div
+            className="notif-banner"
             style={{
               background:
                 message.type === "success" ? theme.primaryBg : theme.dangerBg,
@@ -299,6 +300,7 @@ const EmployeeDetail = () => {
 
         {/* Infos employé */}
         <div
+          className="anim-slide-up"
           style={{
             background: theme.surface,
             border: `1px solid ${theme.primaryBorder}`,
@@ -500,7 +502,7 @@ const EmployeeDetail = () => {
 
         {/* Onglet Contrats */}
         {activeTab === "contrats" && (
-          <div style={{
+          <div className="tab-content" style={{
             background: theme.surface, border: `1px solid ${theme.primaryBorder}`,
             borderRadius: 12, overflow: "hidden", boxShadow: theme.shadow,
           }}>
@@ -726,6 +728,7 @@ const EmployeeDetail = () => {
 
         {/* Documents + Viewer */}
         {activeTab === "dossier" && <div
+          className="tab-content"
           style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}
         >
           {/* Sidebar */}

@@ -258,7 +258,7 @@ const EmployeeForm = () => {
   return (
     <div style={{ background: theme.bg, minHeight: "100vh" }}>
       <Navbar />
-      <div style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}>
         <button
           onClick={() => navigate(isEdit ? `/employees/${id}` : "/employees")}
           style={{

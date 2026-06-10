@@ -66,6 +66,7 @@ const Login = () => {
       />
 
       <div
+        className="anim-scale-in"
         style={{
           background: theme.surface,
           border: `1px solid ${theme.primaryBorder}`,
@@ -122,6 +123,7 @@ const Login = () => {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              className="input-focus"
               style={{
                 width: "100%",
                 border: `1px solid ${theme.primaryBorder}`,
@@ -132,7 +134,6 @@ const Login = () => {
                 outline: "none",
                 boxSizing: "border-box",
                 background: theme.bg,
-                transition: "border 0.15s",
               }}
               placeholder="votre.identifiant"
             />
@@ -155,6 +156,7 @@ const Login = () => {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className="input-focus"
                 style={{
                   width: "100%",
                   border: `1px solid ${theme.primaryBorder}`,
@@ -240,6 +242,7 @@ const Login = () => {
           <button
             type="submit"
             disabled={loading}
+            className="btn-lift"
             style={{
               width: "100%",
               background: loading ? `${theme.primary}88` : theme.primary,
@@ -251,7 +254,6 @@ const Login = () => {
               fontSize: 15,
               cursor: loading ? "not-allowed" : "pointer",
               boxShadow: `0 2px 8px ${theme.primary}44`,
-              transition: "all 0.2s",
             }}
           >
             {loading ? "Connexion..." : "Se connecter"}

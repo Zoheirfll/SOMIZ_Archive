@@ -199,7 +199,7 @@ const ContratDetail = () => {
         </div>
 
         {message && (
-          <div style={{
+          <div className="notif-banner" style={{
             background: message.type === "success" ? theme.primaryBg : theme.dangerBg,
             border: `1px solid ${message.type === "success" ? theme.primaryBorder : theme.dangerBorder}`,
             color: message.type === "success" ? theme.primary : theme.danger,
@@ -210,7 +210,7 @@ const ContratDetail = () => {
         )}
 
         {/* Infos contrat */}
-        <div style={{
+        <div className="anim-slide-up delay-1" style={{
           background: theme.surface, border: `1px solid ${theme.primaryBorder}`,
           borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: theme.shadow,
         }}>
@@ -285,7 +285,7 @@ const ContratDetail = () => {
         </div>
 
         {/* Documents + Viewer */}
-        <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}>
+        <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}>
           {/* Sidebar documents */}
           <div style={{
             background: theme.surface, border: `1px solid ${theme.primaryBorder}`,

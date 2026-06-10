@@ -179,6 +179,7 @@ const Employees = () => {
         {/* Message */}
         {message && (
           <div
+            className="notif-banner"
             style={{
               background:
                 message.type === "success" ? theme.primaryBg : theme.dangerBg,
@@ -249,6 +250,7 @@ const Employees = () => {
         {/* Barre d'actions — apparaît quand sélection active */}
         {someSelected && user?.role === "ADMIN" && (
           <div
+            className="anim-slide-down"
             style={{
               background: theme.primaryBg,
               border: `1px solid ${theme.primaryBorder}`,
@@ -596,6 +598,7 @@ const Employees = () => {
                       >
                         <button
                           onClick={() => navigate(`/employees/${emp.id}`)}
+                          className="btn-lift"
                           style={{
                             background: theme.primaryBg,
                             border: `1px solid ${theme.primaryBorder}`,

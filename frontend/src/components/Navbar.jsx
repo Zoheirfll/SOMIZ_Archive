@@ -81,6 +81,7 @@ const Navbar = () => {
           <button
             key={item.path}
             onClick={() => navigate(item.path)}
+            className="nav-link"
             style={{
               background:
                 location.pathname === item.path
@@ -96,7 +97,6 @@ const Navbar = () => {
               cursor: "pointer",
               fontSize: 13,
               fontWeight: location.pathname === item.path ? 700 : 400,
-              transition: "all 0.15s",
             }}
           >
             {item.label}
