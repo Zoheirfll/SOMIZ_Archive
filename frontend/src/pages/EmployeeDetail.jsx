@@ -12,6 +12,8 @@ const EmployeeDetail = () => {
   const { user } = useAuth();
 
   const [employee, setEmployee] = useState(null);
+  const [contrats, setContrats] = useState([]);
+  const [activeTab, setActiveTab] = useState("dossier");
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [docUrl, setDocUrl] = useState(null);
@@ -23,10 +25,16 @@ const EmployeeDetail = () => {
   const [typesDocuments, setTypesDocuments] = useState({});
   const [typesDocumentsList, setTypesDocumentsList] = useState([]);
   const [quickUploadingCode, setQuickUploadingCode] = useState(null);
+  const [showNewContratForm, setShowNewContratForm] = useState(false);
+  const [newContrat, setNewContrat] = useState({ numero_contrat: "", type_contrat: "", date_debut: "", date_fin: "", statut: "actif", notes: "" });
+  const [typesContrat, setTypesContrat] = useState([]);
+  const [savingContrat, setSavingContrat] = useState(false);
 
   useEffect(() => {
     fetchTypesDocuments();
     fetchEmployee();
+    fetchContrats();
+    fetchTypesContrat();
   }, [id]);
 
   useEffect(() => {
@@ -48,6 +56,46 @@ const EmployeeDetail = () => {
       if (types.length > 0) setUploadType(types[0].code);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const fetchContrats = async () => {
+    try {
+      const response = await api.get(`/employees/${id}/contrats/`);
+      setContrats(response.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchTypesContrat = async () => {
+    try {
+      const response = await api.get("/ref/types-contrat/");
+      setTypesContrat(response.data.results || response.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateContrat = async (e) => {
+    e.preventDefault();
+    setSavingContrat(true);
+    try {
+      const payload = { ...newContrat };
+      if (!payload.type_contrat) delete payload.type_contrat;
+      if (!payload.date_debut) delete payload.date_debut;
+      if (!payload.date_fin) delete payload.date_fin;
+      await api.post(`/employees/${id}/contrats/`, payload);
+      setMessage({ type: "success", text: "Contrat créé avec succès." });
+      setShowNewContratForm(false);
+      setNewContrat({ numero_contrat: "", type_contrat: "", date_debut: "", date_fin: "", statut: "actif", notes: "" });
+      fetchContrats();
+    } catch (err) {
+      const detail = err.response?.data?.numero_contrat?.[0] || err.response?.data?.non_field_errors?.[0] || "Erreur lors de la création.";
+      setMessage({ type: "error", text: detail });
+    } finally {
+      setSavingContrat(false);
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
@@ -428,8 +476,256 @@ const EmployeeDetail = () => {
           </div>
         </div>
 
+        {/* Onglets */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+          {[
+            { key: "dossier", label: `Dossier (${employee.documents?.length || 0})` },
+            { key: "contrats", label: `Contrats (${contrats.length})` },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                background: activeTab === tab.key ? theme.primary : theme.surface,
+                border: `1px solid ${activeTab === tab.key ? theme.primary : theme.primaryBorder}`,
+                color: activeTab === tab.key ? "#fff" : theme.text,
+                borderRadius: 8, padding: "8px 20px",
+                fontSize: 13, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Onglet Contrats */}
+        {activeTab === "contrats" && (
+          <div style={{
+            background: theme.surface, border: `1px solid ${theme.primaryBorder}`,
+            borderRadius: 12, overflow: "hidden", boxShadow: theme.shadow,
+          }}>
+            <div style={{
+              padding: "14px 20px", borderBottom: `1px solid ${theme.primaryBorder}`,
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              background: theme.primaryBg,
+            }}>
+              <span style={{ color: theme.primary, fontWeight: 700, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Contrats de {employee.prenom} {employee.nom}
+              </span>
+              {user?.role === "ADMIN" && (
+                <button
+                  onClick={() => setShowNewContratForm(!showNewContratForm)}
+                  style={{
+                    background: theme.primary, border: "none", color: "#fff",
+                    borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  + Nouveau contrat
+                </button>
+              )}
+            </div>
+
+            {/* Formulaire nouveau contrat */}
+            {showNewContratForm && (
+              <form onSubmit={handleCreateContrat} style={{
+                padding: 20, borderBottom: `1px solid ${theme.primaryBorder}`,
+                background: "#FAFFFE",
+              }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                      N° Contrat *
+                    </label>
+                    <input
+                      required
+                      value={newContrat.numero_contrat}
+                      onChange={(e) => setNewContrat({ ...newContrat, numero_contrat: e.target.value })}
+                      placeholder="ex: CTR-2024-001"
+                      style={{
+                        width: "100%", border: `1px solid ${theme.primaryBorder}`, borderRadius: 6,
+                        padding: "8px 10px", fontSize: 13, color: theme.text,
+                        background: theme.surface, outline: "none", boxSizing: "border-box",
+                        fontFamily: "monospace",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                      Type de contrat
+                    </label>
+                    <select
+                      value={newContrat.type_contrat}
+                      onChange={(e) => setNewContrat({ ...newContrat, type_contrat: e.target.value })}
+                      style={{
+                        width: "100%", border: `1px solid ${theme.primaryBorder}`, borderRadius: 6,
+                        padding: "8px 10px", fontSize: 13, color: theme.text,
+                        background: theme.surface, outline: "none", boxSizing: "border-box",
+                      }}
+                    >
+                      <option value="">— Sélectionner —</option>
+                      {typesContrat.map((t) => (
+                        <option key={t.id} value={t.id}>{t.nom}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                      Statut
+                    </label>
+                    <select
+                      value={newContrat.statut}
+                      onChange={(e) => setNewContrat({ ...newContrat, statut: e.target.value })}
+                      style={{
+                        width: "100%", border: `1px solid ${theme.primaryBorder}`, borderRadius: 6,
+                        padding: "8px 10px", fontSize: 13, color: theme.text,
+                        background: theme.surface, outline: "none", boxSizing: "border-box",
+                      }}
+                    >
+                      <option value="actif">Actif</option>
+                      <option value="termine">Terminé</option>
+                      <option value="suspendu">Suspendu</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                      Date début
+                    </label>
+                    <input
+                      type="date"
+                      value={newContrat.date_debut}
+                      onChange={(e) => setNewContrat({ ...newContrat, date_debut: e.target.value })}
+                      style={{
+                        width: "100%", border: `1px solid ${theme.primaryBorder}`, borderRadius: 6,
+                        padding: "8px 10px", fontSize: 13, color: theme.text,
+                        background: theme.surface, outline: "none", boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                      Date fin
+                    </label>
+                    <input
+                      type="date"
+                      value={newContrat.date_fin}
+                      onChange={(e) => setNewContrat({ ...newContrat, date_fin: e.target.value })}
+                      style={{
+                        width: "100%", border: `1px solid ${theme.primaryBorder}`, borderRadius: 6,
+                        padding: "8px 10px", fontSize: 13, color: theme.text,
+                        background: theme.surface, outline: "none", boxSizing: "border-box",
+                      }}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+                    Notes
+                  </label>
+                  <textarea
+                    value={newContrat.notes}
+                    onChange={(e) => setNewContrat({ ...newContrat, notes: e.target.value })}
+                    rows={2}
+                    style={{
+                      width: "100%", border: `1px solid ${theme.primaryBorder}`, borderRadius: 6,
+                      padding: "8px 10px", fontSize: 13, color: theme.text,
+                      background: theme.surface, outline: "none", boxSizing: "border-box", resize: "vertical",
+                    }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="submit"
+                    disabled={savingContrat}
+                    style={{
+                      background: savingContrat ? `${theme.primary}88` : theme.primary,
+                      border: "none", color: "#fff", borderRadius: 6,
+                      padding: "8px 20px", fontSize: 13, fontWeight: 600,
+                      cursor: savingContrat ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {savingContrat ? "Création..." : "Créer le contrat"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewContratForm(false)}
+                    style={{
+                      background: "transparent", border: `1px solid ${theme.primaryBorder}`,
+                      color: theme.textSecondary, borderRadius: 6, padding: "8px 16px",
+                      fontSize: 13, cursor: "pointer",
+                    }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Liste des contrats */}
+            {contrats.length === 0 ? (
+              <div style={{ padding: 40, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>
+                Aucun contrat enregistré
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: theme.bg }}>
+                    {["N° Contrat", "Type", "Date début", "Date fin", "Statut", "Documents", ""].map((h) => (
+                      <th key={h} style={{
+                        padding: "10px 16px", textAlign: "left", fontSize: 11,
+                        color: theme.textMuted, textTransform: "uppercase",
+                        letterSpacing: "0.05em", fontWeight: 600,
+                        borderBottom: `1px solid ${theme.primaryBorder}`,
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {contrats.map((c) => {
+                    const statutColors = {
+                      actif: { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary },
+                      termine: { bg: "#F5F5F5", border: "#BDBDBD", color: "#616161" },
+                      suspendu: { bg: theme.dangerBg, border: theme.dangerBorder, color: theme.danger },
+                    };
+                    const sc = statutColors[c.statut] || statutColors.actif;
+                    return (
+                      <tr key={c.id}
+                        onClick={() => navigate(`/contrats/${c.id}`)}
+                        style={{ cursor: "pointer", borderBottom: `1px solid ${theme.primaryBorder}` }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = theme.primaryBg)}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 13, color: theme.primary, fontWeight: 700 }}>
+                          {c.numero_contrat}
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: theme.text }}>{c.type_contrat_nom || "—"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: theme.text }}>{c.date_debut || "—"}</td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: theme.text }}>{c.date_fin || "—"}</td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span style={{
+                            background: sc.bg, border: `1px solid ${sc.border}`,
+                            color: sc.color, borderRadius: 5, padding: "3px 10px",
+                            fontSize: 11, fontWeight: 600,
+                          }}>
+                            {c.statut}
+                          </span>
+                        </td>
+                        <td style={{ padding: "12px 16px", fontSize: 13, color: theme.textSecondary }}>
+                          {c.nb_documents} doc(s)
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span style={{ color: theme.primary, fontSize: 12 }}>Voir →</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
         {/* Documents + Viewer */}
-        <div
+        {activeTab === "dossier" && <div
           style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}
         >
           {/* Sidebar */}
@@ -897,7 +1193,7 @@ const EmployeeDetail = () => {
               </div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import AuditLogs from "./pages/AuditLogs";
 import Parametres from "./pages/Parametres";
 import Import from "./pages/Import";
 import Profil from "./pages/Profil";
+import ContratDetail from "./pages/ContratDetail";
 
 function App() {
   return (
@@ -96,6 +97,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Profil />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/contrats/:id"
+            element={
+              <ProtectedRoute>
+                <ContratDetail />
               </ProtectedRoute>
             }
           />
