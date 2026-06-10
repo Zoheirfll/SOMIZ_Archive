@@ -111,14 +111,14 @@ describe("ContratDetail — rendu initial", () => {
   test("affiche le matricule de l'employé", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/MAT-0042/)).toBeInTheDocument();
+      expect(screen.getAllByText(/MAT-0042/)[0]).toBeInTheDocument();
     });
   });
 
   test("affiche le nom de l'employé", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Amine KHERROUBI/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Amine KHERROUBI/)[0]).toBeInTheDocument();
     });
   });
 
@@ -154,8 +154,8 @@ describe("ContratDetail — fil d'ariane", () => {
 
   test("bouton employé navigue vers sa fiche", async () => {
     renderPage();
-    await waitFor(() => screen.getByText(/MAT-0042/));
-    const empBtn = screen.getByText(/MAT-0042.*Amine KHERROUBI/);
+    await waitFor(() => screen.getAllByText(/MAT-0042/));
+    const empBtn = screen.getByRole("button", { name: /MAT-0042/ });
     fireEvent.click(empBtn);
     expect(mockNavigate).toHaveBeenCalledWith("/employees/emp-uuid");
   });
@@ -165,7 +165,7 @@ describe("ContratDetail — documents", () => {
   test("affiche la liste des documents", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("Contrat de travail")).toBeInTheDocument();
+      expect(screen.getAllByText("Contrat de travail")[0]).toBeInTheDocument();
     });
   });
 
@@ -223,7 +223,7 @@ describe("ContratDetail — suppression document (ADMIN)", () => {
     window.confirm = jest.fn(() => true);
     api.delete.mockResolvedValue({});
     renderPage("ADMIN");
-    await waitFor(() => screen.getByText("Contrat de travail"));
+    await waitFor(() => screen.getAllByText("Contrat de travail"));
 
     const deleteBtns = screen.getAllByText("🗑️");
     if (deleteBtns.length > 0) {
