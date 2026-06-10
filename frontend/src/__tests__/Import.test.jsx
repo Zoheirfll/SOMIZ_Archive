@@ -7,18 +7,19 @@ import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
+jest.mock("../services/api", () => ({
+  __esModule: true,
   default: { post: jest.fn(), get: jest.fn() },
 }));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 const mockNavigate = jest.fn();
 jest.mock("react-router-dom", () => ({
   ...jest.requireActual("react-router-dom"),
   useNavigate: () => mockNavigate,
 }));
 
-import api from "../../frontend/src/services/api";
-import Import from "../../frontend/src/pages/Import";
+import api from "../services/api";
+import Import from "../pages/Import";
 
 const renderPage = () =>
   render(
@@ -47,7 +48,7 @@ describe("Import — rendu", () => {
 
   test("le bouton Importer est désactivé si aucun fichier sélectionné", () => {
     renderPage();
-    const btn = screen.getByRole("button", { name: /Importer/i });
+    const btn = screen.getByRole("button", { name: /Lancer l'import|Importer/i });
     expect(btn).toBeDisabled();
   });
 });
@@ -55,18 +56,14 @@ describe("Import — rendu", () => {
 describe("Import — sélection fichier", () => {
   test("sélectionner un fichier CSV active le bouton Importer", () => {
     renderPage();
-    const input = screen.getByRole("button", { hidden: true, name: /parcourir/i }) ||
-      document.querySelector('input[type="file"]');
     const file = new File(["matricule,nom,prenom\nEMP-001,Dupont,Jean"], "employes.csv", {
       type: "text/csv",
     });
-
     const fileInput = document.querySelector('input[type="file"]');
-    if (fileInput) {
-      fireEvent.change(fileInput, { target: { files: [file] } });
-      const btn = screen.getByRole("button", { name: /Importer/i });
-      expect(btn).not.toBeDisabled();
-    }
+    expect(fileInput).not.toBeNull();
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    const btn = screen.getByRole("button", { name: /Lancer l'import|Importer/i });
+    expect(btn).not.toBeDisabled();
   });
 });
 
@@ -103,7 +100,7 @@ describe("Import — résultat import", () => {
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) {
       fireEvent.change(fileInput, { target: { files: [file] } });
-      const btn = screen.getByRole("button", { name: /Importer/i });
+      const btn = screen.getByRole("button", { name: /Lancer l'import|Importer/i });
       fireEvent.click(btn);
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith(
@@ -127,10 +124,10 @@ describe("Import — résultat import", () => {
     const fileInput = document.querySelector('input[type="file"]');
     if (fileInput) {
       fireEvent.change(fileInput, { target: { files: [file] } });
-      const btn = screen.getByRole("button", { name: /Importer/i });
+      const btn = screen.getByRole("button", { name: /Lancer l'import|Importer/i });
       fireEvent.click(btn);
       await waitFor(() => {
-        expect(screen.getByText("Fichier invalide.")).toBeInTheDocument();
+        expect(screen.getByText(/Fichier invalide\./)).toBeInTheDocument();
       });
     }
   });
@@ -140,18 +137,15 @@ describe("Import — template", () => {
   test("clic Télécharger le template appelle l'API GET", async () => {
     const blob = new Blob(["csv data"], { type: "text/csv" });
     api.get.mockResolvedValue({ data: blob });
-
-    // Mock URL.createObjectURL
     URL.createObjectURL = jest.fn(() => "blob:mock");
     URL.revokeObjectURL = jest.fn();
 
-    const mockClick = jest.fn();
-    jest.spyOn(document, "createElement").mockImplementation((tag) => {
-      if (tag === "a") {
-        return { href: "", download: "", click: mockClick };
-      }
-      return document.createElement(tag);
-    });
+    // Mock createElement pour éviter l'erreur d'appendchild
+    const fakeAnchor = { href: "", download: "", click: jest.fn(), style: {} };
+    const origCreate = document.createElement.bind(document);
+    jest.spyOn(document, "createElement").mockImplementation((tag) =>
+      tag === "a" ? fakeAnchor : origCreate(tag)
+    );
 
     renderPage();
     fireEvent.click(screen.getByText(/Télécharger le template/i));
@@ -161,7 +155,6 @@ describe("Import — template", () => {
         expect.objectContaining({ responseType: "blob" })
       );
     });
-
     jest.restoreAllMocks();
   });
 });

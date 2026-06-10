@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — pages/Dashboard.jsx
  * Couvre : rendu, redirection CONSULTANT, stats, état vide, erreur API
  */
@@ -7,11 +7,11 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
-  default: { get: jest.fn() },
+jest.mock("../services/api", () => ({
+  __esModule: true, default: { get: jest.fn() },
 }));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
-jest.mock("../../frontend/src/context/AuthContext", () => ({
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
 const mockNavigate = jest.fn();
@@ -20,9 +20,9 @@ jest.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import api from "../../frontend/src/services/api";
-import { useAuth } from "../../frontend/src/context/AuthContext";
-import Dashboard from "../../frontend/src/pages/Dashboard";
+import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import Dashboard from "../pages/Dashboard";
 
 const mockStats = {
   employes_actifs: 50,

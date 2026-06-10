@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — services/api.js
  * Couvre : intercepteur request (token), intercepteur response (401)
  */
@@ -36,7 +36,7 @@ describe("api.js — intercepteur de requête", () => {
     };
     jest.doMock("axios", () => ({ default: { create: () => mockAxiosInstance }, create: () => mockAxiosInstance }));
 
-    require("../../frontend/src/services/api");
+    require("../services/api");
   });
 
   test("ajoute le Bearer token depuis localStorage", () => {
@@ -89,7 +89,7 @@ describe("api.js — intercepteur de réponse (401)", () => {
     delete window.location;
     window.location = { href: "" };
 
-    require("../../frontend/src/services/api");
+    require("../services/api");
   });
 
   test("redirige vers /login sur 401 hors login", async () => {

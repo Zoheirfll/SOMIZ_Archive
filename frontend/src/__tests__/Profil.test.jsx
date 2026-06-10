@@ -7,11 +7,12 @@ import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
+jest.mock("../services/api", () => ({
+  __esModule: true,
   default: { post: jest.fn() },
 }));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
-jest.mock("../../frontend/src/context/AuthContext", () => ({
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
 const mockNavigate = jest.fn();
@@ -20,9 +21,9 @@ jest.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import api from "../../frontend/src/services/api";
-import { useAuth } from "../../frontend/src/context/AuthContext";
-import Profil from "../../frontend/src/pages/Profil";
+import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import Profil from "../pages/Profil";
 
 const adminUser = {
   id: "1",
@@ -61,8 +62,8 @@ describe("Profil — informations utilisateur", () => {
 
   test("affiche les initiales dans l'avatar", () => {
     renderPage();
-    // Les initiales "TA" (Test Admin) devraient être présentes
-    expect(screen.getByText(/T/)).toBeInTheDocument();
+    // Les initiales de "Test Admin" dans l'avatar
+    expect(screen.getByText("TA")).toBeInTheDocument();
   });
 
   test("affiche le titre Changer le mot de passe", () => {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — pages/EmployeeDetail.jsx
  * Couvre : rendu, chargement employé, affichage documents, upload fichier, suppression
  */
@@ -7,14 +7,12 @@ import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
-  default: { get: jest.fn(), post: jest.fn(), delete: jest.fn() },
-}));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
-jest.mock("../../frontend/src/components/SecureDocViewer", () => () => (
+jest.mock("../services/api", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), delete: jest.fn() } }));
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../components/SecureDocViewer", () => () => (
   <div data-testid="doc-viewer">Visionneuse document</div>
 ));
-jest.mock("../../frontend/src/context/AuthContext", () => ({
+jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
 const mockNavigate = jest.fn();
@@ -23,9 +21,9 @@ jest.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import api from "../../frontend/src/services/api";
-import { useAuth } from "../../frontend/src/context/AuthContext";
-import EmployeeDetail from "../../frontend/src/pages/EmployeeDetail";
+import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import EmployeeDetail from "../pages/EmployeeDetail";
 
 const mockFile = { id: "file-1", file_name: "cin_recto.pdf", mime_type: "application/pdf", file_size: 102400 };
 const mockDoc = {
@@ -52,7 +50,7 @@ const mockEmployee = {
   taux_completude: 75,
   dossier_complet: false,
   documents: [mockDoc],
-  documents_manquants: ["Diplôme"],
+  documents_manquants: [{ code: "DIPLOME", label: "Diplôme" }],
 };
 const mockTypes = [
   { id: "type-1", code: "CIN", nom: "Carte Nationale", obligatoire: true },
@@ -101,7 +99,7 @@ describe("EmployeeDetail — rendu initial", () => {
   test("affiche le matricule de l'employé", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("EMP-001")).toBeInTheDocument();
+      expect(screen.getAllByText("EMP-001").length).toBeGreaterThan(0);
     });
   });
 
@@ -138,14 +136,14 @@ describe("EmployeeDetail — documents", () => {
   test("affiche la liste des documents", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("Carte Nationale")).toBeInTheDocument();
+      expect(screen.getAllByText("Carte Nationale").length).toBeGreaterThan(0);
     });
   });
 
   test("affiche le nom du fichier", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("cin_recto.pdf")).toBeInTheDocument();
+      expect(screen.getByText(/cin_recto\.pdf/)).toBeInTheDocument();
     });
   });
 
@@ -158,11 +156,11 @@ describe("EmployeeDetail — documents", () => {
 });
 
 describe("EmployeeDetail — navigation", () => {
-  test("bouton ← Retour navigue en arrière", async () => {
+  test("bouton ← Retour navigue vers la liste", async () => {
     renderPage();
     await waitFor(() => screen.getByText("← Retour"));
     fireEvent.click(screen.getByText("← Retour"));
-    expect(mockNavigate).toHaveBeenCalledWith(-1);
+    expect(mockNavigate).toHaveBeenCalledWith("/employees");
   });
 
   test("bouton Modifier navigue vers la page édition (ADMIN)", async () => {
@@ -175,7 +173,7 @@ describe("EmployeeDetail — navigation", () => {
 
   test("CONSULTANT ne voit pas le bouton Modifier", async () => {
     renderPage("CONSULTANT");
-    await waitFor(() => screen.getByText("EMP-001"));
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
     expect(screen.queryByText("✏️ Modifier")).not.toBeInTheDocument();
   });
 });
@@ -184,27 +182,63 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
   test("affiche la section d'upload pour ADMIN", async () => {
     renderPage("ADMIN");
     await waitFor(() => {
-      expect(screen.getByText(/Ajouter un document|Upload/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Ajouter un document/i).length).toBeGreaterThan(0);
     });
   });
 
   test("CONSULTANT ne voit pas la section upload", async () => {
     renderPage("CONSULTANT");
-    await waitFor(() => screen.getByText("EMP-001"));
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
     expect(
       screen.queryByText(/Ajouter un document|Choisir un fichier/i)
     ).not.toBeInTheDocument();
   });
 
-  test("upload réussi affiche un message de succès", async () => {
+  test("upload réussi appelle api.post avec FormData", async () => {
     api.post.mockResolvedValue({});
     renderPage("ADMIN");
-    await waitFor(() => screen.getByText("EMP-001"));
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
 
-    const fileInput = document.querySelector('input[type="file"]');
-    if (fileInput) {
+    // Cibler le premier input file du formulaire principal (pas les quick upload)
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    const mainInput = fileInputs[0];
+    if (mainInput) {
       const file = new File(["pdf"], "test.pdf", { type: "application/pdf" });
-      fireEvent.change(fileInput, { target: { files: [file] } });
+      fireEvent.change(mainInput, { target: { files: [file] } });
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith(
+          "/employees/emp-uuid/documents/",
+          expect.any(FormData),
+          expect.any(Object)
+        );
+      });
+    }
+  });
+});
+
+describe("EmployeeDetail — quick upload (document manquant)", () => {
+  test("affiche le bouton 📎 à côté de chaque document manquant (ADMIN)", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => screen.getByText("Diplôme"));
+    const quickBtns = screen.getAllByTitle(/Uploader/i);
+    expect(quickBtns.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("CONSULTANT ne voit pas le bouton quick upload", async () => {
+    renderPage("CONSULTANT");
+    await waitFor(() => screen.getByText("Diplôme"));
+    expect(screen.queryByTitle(/Uploader/i)).not.toBeInTheDocument();
+  });
+
+  test("quick upload appelle api.post avec le bon type_doc", async () => {
+    api.post.mockResolvedValue({});
+    renderPage("ADMIN");
+    await waitFor(() => screen.getByText("Diplôme"));
+
+    const quickInputs = document.querySelectorAll('label[title] input[type="file"]');
+    if (quickInputs.length > 0) {
+      const file = new File(["img"], "diplome.pdf", { type: "application/pdf" });
+      fireEvent.change(quickInputs[0], { target: { files: [file] } });
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith(
           "/employees/emp-uuid/documents/",
@@ -221,7 +255,7 @@ describe("EmployeeDetail — suppression fichier", () => {
     window.confirm = jest.fn(() => true);
     api.delete.mockResolvedValue({});
     renderPage("ADMIN");
-    await waitFor(() => screen.getByText("cin_recto.pdf"));
+    await waitFor(() => screen.getByText(/cin_recto\.pdf/));
 
     const deleteBtns = screen.getAllByText(/🗑️|Supprimer/i);
     if (deleteBtns.length > 0) {

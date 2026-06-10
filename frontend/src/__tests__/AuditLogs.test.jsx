@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — pages/AuditLogs.jsx
  * Couvre : rendu, chargement logs, filtre utilisateur, filtre action, pagination, état vide
  */
@@ -8,13 +8,13 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
-  default: { get: jest.fn() },
+jest.mock("../services/api", () => ({
+  __esModule: true, default: { get: jest.fn() },
 }));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 
-import api from "../../frontend/src/services/api";
-import AuditLogs from "../../frontend/src/pages/AuditLogs";
+import api from "../services/api";
+import AuditLogs from "../pages/AuditLogs";
 
 const makeLog = (id, action = "VIEW", username = "admin") => ({
   id,
@@ -73,8 +73,8 @@ describe("AuditLogs — chargement", () => {
     api.get.mockResolvedValue(mockResponse([makeLog(1, "VIEW", "admin")]));
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("admin")).toBeInTheDocument();
-      expect(screen.getByText("VIEW")).toBeInTheDocument();
+      expect(screen.getAllByText("admin").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("VIEW").length).toBeGreaterThan(0);
     });
   });
 

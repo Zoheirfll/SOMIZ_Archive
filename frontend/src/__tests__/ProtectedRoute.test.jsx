@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — components/ProtectedRoute.jsx
  * Couvre : redirection si non-authentifié, rendu des enfants si authentifié
  */
@@ -7,12 +7,12 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
-jest.mock("../../frontend/src/context/AuthContext", () => ({
+jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
 
-import { useAuth } from "../../frontend/src/context/AuthContext";
-import ProtectedRoute from "../../frontend/src/components/ProtectedRoute";
+import { useAuth } from "../context/AuthContext";
+import ProtectedRoute from "../components/ProtectedRoute";
 
 const renderWithRouter = (authenticated) => {
   useAuth.mockReturnValue({ authenticated });

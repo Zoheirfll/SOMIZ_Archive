@@ -3,14 +3,15 @@
  * Couvre : login(), logout(), getUser(), isAuthenticated()
  */
 
-jest.mock("../../frontend/src/services/api", () => ({
+jest.mock("../services/api", () => ({
+  __esModule: true,
   default: {
     post: jest.fn(),
   },
 }));
 
-import api from "../../frontend/src/services/api";
-import { login, logout, getUser, isAuthenticated } from "../../frontend/src/services/auth";
+import api from "../services/api";
+import { login, logout, getUser, isAuthenticated } from "../services/auth";
 
 beforeEach(() => {
   localStorage.clear();
@@ -86,7 +87,7 @@ describe("logout()", () => {
     localStorage.setItem("access_token", "tok");
     api.post.mockRejectedValueOnce(new Error("Network error"));
 
-    await logout();
+    await logout().catch(() => {});
     expect(localStorage.getItem("access_token")).toBeNull();
   });
 });

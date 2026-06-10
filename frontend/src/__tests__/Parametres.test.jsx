@@ -7,7 +7,8 @@ import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
+jest.mock("../services/api", () => ({
+  __esModule: true,
   default: {
     get: jest.fn(),
     post: jest.fn(),
@@ -15,10 +16,10 @@ jest.mock("../../frontend/src/services/api", () => ({
     delete: jest.fn(),
   },
 }));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 
-import api from "../../frontend/src/services/api";
-import Parametres from "../../frontend/src/pages/Parametres";
+import api from "../services/api";
+import Parametres from "../pages/Parametres";
 
 const makeItem = (id, nom, code = "") => ({ id, nom, code, is_active: true });
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — pages/EmployeeForm.jsx
  * Couvre : rendu création, rendu édition, chargement référentiels, validation, soumission
  */
@@ -7,18 +7,18 @@ import React from "react";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
-  default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },
+jest.mock("../services/api", () => ({
+  __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },
 }));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 const mockNavigate = jest.fn();
 jest.mock("react-router-dom", () => ({
   ...jest.requireActual("react-router-dom"),
   useNavigate: () => mockNavigate,
 }));
 
-import api from "../../frontend/src/services/api";
-import EmployeeForm from "../../frontend/src/pages/EmployeeForm";
+import api from "../services/api";
+import EmployeeForm from "../pages/EmployeeForm";
 
 const emptyRefs = {
   directions: [],
@@ -76,16 +76,20 @@ const renderEdit = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
-  // Par défaut : refs OK, pas d'employé à charger
   api.get.mockImplementation((url) => {
-    if (url.includes("/ref/")) return Promise.resolve({ data: emptyRefs });
+    if (url.includes("/ref/directions/")) return Promise.resolve({ data: mockRefs.directions });
+    if (url.includes("/ref/departements/")) return Promise.resolve({ data: mockRefs.departements });
+    if (url.includes("/ref/services/")) return Promise.resolve({ data: mockRefs.services });
+    if (url.includes("/ref/postes/")) return Promise.resolve({ data: mockRefs.postes });
+    if (url.includes("/ref/types-contrat/")) return Promise.resolve({ data: mockRefs.types_contrat });
+    if (url.includes("/ref/categories/")) return Promise.resolve({ data: mockRefs.categories });
     return Promise.resolve({ data: mockEmployee });
   });
 });
 
 describe("EmployeeForm — rendu création", () => {
   test("affiche le titre Nouvel employé", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText(/Nouvel employé/)).toBeInTheDocument();
@@ -93,7 +97,7 @@ describe("EmployeeForm — rendu création", () => {
   });
 
   test("affiche le champ Matricule", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText("Matricule")).toBeInTheDocument();
@@ -101,7 +105,7 @@ describe("EmployeeForm — rendu création", () => {
   });
 
   test("affiche le champ Nom", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText("Nom")).toBeInTheDocument();
@@ -109,7 +113,7 @@ describe("EmployeeForm — rendu création", () => {
   });
 
   test("affiche le champ Prénom", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText("Prénom")).toBeInTheDocument();
@@ -117,7 +121,7 @@ describe("EmployeeForm — rendu création", () => {
   });
 
   test("affiche le bouton Créer l'employé", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText(/Créer l'employé/)).toBeInTheDocument();
@@ -125,7 +129,7 @@ describe("EmployeeForm — rendu création", () => {
   });
 
   test("affiche le bouton Annuler", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText("Annuler")).toBeInTheDocument();
@@ -136,7 +140,7 @@ describe("EmployeeForm — rendu création", () => {
 describe("EmployeeForm — rendu édition", () => {
   test("affiche le titre Modifier l'employé", async () => {
     api.get.mockImplementation((url) => {
-      if (url.includes("/ref/")) return Promise.resolve({ data: emptyRefs });
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: mockEmployee });
     });
     renderEdit();
@@ -147,7 +151,7 @@ describe("EmployeeForm — rendu édition", () => {
 
   test("pré-remplit le matricule en mode édition", async () => {
     api.get.mockImplementation((url) => {
-      if (url.includes("/ref/")) return Promise.resolve({ data: emptyRefs });
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: mockEmployee });
     });
     renderEdit();
@@ -159,7 +163,7 @@ describe("EmployeeForm — rendu édition", () => {
 
   test("pré-remplit le nom en mode édition", async () => {
     api.get.mockImplementation((url) => {
-      if (url.includes("/ref/")) return Promise.resolve({ data: emptyRefs });
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: mockEmployee });
     });
     renderEdit();
@@ -171,10 +175,7 @@ describe("EmployeeForm — rendu édition", () => {
 
 describe("EmployeeForm — référentiels", () => {
   test("charge et affiche les directions dans le select", async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes("/ref/")) return Promise.resolve({ data: mockRefs });
-      return Promise.resolve({ data: {} });
-    });
+    // beforeEach already sets up per-endpoint mocks with mockRefs data
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText("Direction Générale")).toBeInTheDocument();
@@ -182,10 +183,6 @@ describe("EmployeeForm — référentiels", () => {
   });
 
   test("charge et affiche les postes", async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes("/ref/")) return Promise.resolve({ data: mockRefs });
-      return Promise.resolve({ data: {} });
-    });
     renderCreate();
     await waitFor(() => {
       expect(screen.getByText("Ingénieur")).toBeInTheDocument();
@@ -195,30 +192,30 @@ describe("EmployeeForm — référentiels", () => {
 
 describe("EmployeeForm — navigation", () => {
   test("clic Annuler navigue en arrière", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     renderCreate();
     await waitFor(() => screen.getByText("Annuler"));
     fireEvent.click(screen.getByText("Annuler"));
-    expect(mockNavigate).toHaveBeenCalledWith(-1);
+    expect(mockNavigate).toHaveBeenCalledWith("/employees");
   });
 });
 
 describe("EmployeeForm — soumission création", () => {
   test("soumission réussie navigue vers le détail de l'employé", async () => {
-    api.get.mockResolvedValue({ data: emptyRefs });
+    api.get.mockResolvedValue({ data: [] });
     api.post.mockResolvedValue({ data: { id: "new-emp-uuid" } });
     renderCreate();
     await waitFor(() => screen.getByText(/Créer l'employé/));
 
     // Remplir les champs obligatoires
-    fireEvent.change(screen.getByPlaceholderText(/EMP-/i), {
-      target: { value: "EMP-999" },
+    fireEvent.change(screen.getByPlaceholderText("024141"), {
+      target: { name: "matricule", value: "EMP-999" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/DUPONT/i), {
-      target: { value: "Martin" },
+    fireEvent.change(screen.getByPlaceholderText("FILALI"), {
+      target: { name: "nom", value: "Martin" },
     });
-    fireEvent.change(screen.getByPlaceholderText(/Ahmed/i), {
-      target: { value: "Paul" },
+    fireEvent.change(screen.getByPlaceholderText("Ahmed"), {
+      target: { name: "prenom", value: "Paul" },
     });
 
     fireEvent.click(screen.getByText(/Créer l'employé/));

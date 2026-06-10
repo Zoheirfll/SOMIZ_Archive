@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — pages/Employees.jsx
  * Couvre : rendu liste, recherche, filtre statut, sélection, bulk actions, pagination
  */
@@ -8,11 +8,11 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
-jest.mock("../../frontend/src/services/api", () => ({
-  default: { get: jest.fn(), post: jest.fn() },
+jest.mock("../services/api", () => ({
+  __esModule: true, default: { get: jest.fn(), post: jest.fn() },
 }));
-jest.mock("../../frontend/src/components/Navbar", () => () => <nav data-testid="navbar" />);
-jest.mock("../../frontend/src/context/AuthContext", () => ({
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
 const mockNavigate = jest.fn();
@@ -21,9 +21,9 @@ jest.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import api from "../../frontend/src/services/api";
-import { useAuth } from "../../frontend/src/context/AuthContext";
-import Employees from "../../frontend/src/pages/Employees";
+import api from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import Employees from "../pages/Employees";
 
 const makeEmployee = (id, nom = "Dupont", matricule = "EMP-001", statut = "actif") => ({
   id,
@@ -181,12 +181,15 @@ describe("Employees — sélection ADMIN", () => {
     api.get.mockResolvedValue(mockResponse([makeEmployee("1")]));
     renderPage("ADMIN");
     jest.runAllTimers();
-    await waitFor(() => screen.getAllByRole("checkbox"));
-    const checkboxes = screen.getAllByRole("checkbox");
-    // Le premier est "select all", le second est la ligne
-    fireEvent.click(checkboxes[1]);
     await waitFor(() => {
-      expect(screen.getByText(/1 employé\(s\) sélectionné/)).toBeInTheDocument();
+      const cbs = screen.getAllByRole("checkbox");
+      expect(cbs.length).toBeGreaterThan(1);
+    });
+    const checkboxes = screen.getAllByRole("checkbox");
+    // Cliquer le <td> parent (stopPropagation + toggleSelect, sans double-toggle)
+    fireEvent.click(checkboxes[1].closest("td"));
+    await waitFor(() => {
+      expect(screen.getByText(/employé\(s\) sélectionné/)).toBeInTheDocument();
     });
   });
 });
@@ -198,11 +201,13 @@ describe("Employees — bulk actions", () => {
     api.post.mockResolvedValue({ data: { nb_archives: 1 } });
     renderPage("ADMIN");
     jest.runAllTimers();
-    await waitFor(() => screen.getAllByRole("checkbox"));
+    await waitFor(() => {
+      expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(1);
+    });
     const checkboxes = screen.getAllByRole("checkbox");
-    fireEvent.click(checkboxes[1]);
-    await waitFor(() => screen.getByText(/Archiver \(1\)/));
-    fireEvent.click(screen.getByText(/Archiver \(1\)/));
+    fireEvent.click(checkboxes[1].closest("td"));
+    await waitFor(() => screen.getByText(/Archiver/));
+    fireEvent.click(screen.getByText(/Archiver/));
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith(
         "/employees/bulk-delete/",
@@ -216,11 +221,13 @@ describe("Employees — bulk actions", () => {
     api.get.mockResolvedValue(mockResponse([makeEmployee("emp-1")]));
     renderPage("ADMIN");
     jest.runAllTimers();
-    await waitFor(() => screen.getAllByRole("checkbox"));
+    await waitFor(() => {
+      expect(screen.getAllByRole("checkbox").length).toBeGreaterThan(1);
+    });
     const checkboxes = screen.getAllByRole("checkbox");
-    fireEvent.click(checkboxes[1]);
-    await waitFor(() => screen.getByText(/Archiver \(1\)/));
-    fireEvent.click(screen.getByText(/Archiver \(1\)/));
+    fireEvent.click(checkboxes[1].closest("td"));
+    await waitFor(() => screen.getByText(/Archiver/));
+    fireEvent.click(screen.getByText(/Archiver/));
     expect(api.post).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — context/AuthContext.js
  * Couvre : AuthProvider, useAuth(), loginSuccess(), logoutSuccess()
  */
@@ -7,13 +7,13 @@ import React from "react";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-jest.mock("../../frontend/src/services/auth", () => ({
+jest.mock("../services/auth", () => ({
   getUser: jest.fn(() => null),
   isAuthenticated: jest.fn(() => false),
 }));
 
-import { getUser, isAuthenticated } from "../../frontend/src/services/auth";
-import { AuthProvider, useAuth } from "../../frontend/src/context/AuthContext";
+import { getUser, isAuthenticated } from "../services/auth";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 
 const TestConsumer = ({ onLogin, onLogout }) => {
   const { user, authenticated, loginSuccess, logoutSuccess } = useAuth();

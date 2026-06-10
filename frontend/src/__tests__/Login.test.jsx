@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Tests — pages/Login.jsx
  * Couvre : rendu, soumission, remember-me, erreurs, toggle password
  */
@@ -9,10 +9,10 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 // Mocks
-jest.mock("../../frontend/src/services/auth", () => ({
+jest.mock("../services/auth", () => ({
   login: jest.fn(),
 }));
-jest.mock("../../frontend/src/context/AuthContext", () => ({
+jest.mock("../context/AuthContext", () => ({
   useAuth: () => ({ loginSuccess: jest.fn() }),
 }));
 const mockNavigate = jest.fn();
@@ -21,8 +21,8 @@ jest.mock("react-router-dom", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import { login } from "../../frontend/src/services/auth";
-import Login from "../../frontend/src/pages/Login";
+import { login } from "../services/auth";
+import Login from "../pages/Login";
 
 const renderLogin = () =>
   render(
