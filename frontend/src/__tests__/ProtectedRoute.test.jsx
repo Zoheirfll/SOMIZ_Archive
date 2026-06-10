@@ -1,6 +1,6 @@
-﻿/**
+/**
  * Tests — components/ProtectedRoute.jsx
- * Couvre : redirection si non-authentifié, rendu des enfants si authentifié
+ * authChecked=true requis pour déclencher la redirection.
  */
 
 import React from "react";
@@ -14,8 +14,8 @@ jest.mock("../context/AuthContext", () => ({
 import { useAuth } from "../context/AuthContext";
 import ProtectedRoute from "../components/ProtectedRoute";
 
-const renderWithRouter = (authenticated) => {
-  useAuth.mockReturnValue({ authenticated });
+const renderWithRouter = (authenticated, authChecked = true) => {
+  useAuth.mockReturnValue({ authenticated, authChecked });
   return render(
     <MemoryRouter initialEntries={["/protected"]}>
       <Routes>
@@ -39,10 +39,16 @@ describe("ProtectedRoute", () => {
     expect(screen.getByText("Contenu protégé")).toBeInTheDocument();
   });
 
-  test("redirige vers /login si non-authentifié", () => {
-    renderWithRouter(false);
+  test("redirige vers /login si non-authentifié et authChecked", () => {
+    renderWithRouter(false, true);
     expect(screen.queryByText("Contenu protégé")).not.toBeInTheDocument();
     expect(screen.getByText("Page Login")).toBeInTheDocument();
+  });
+
+  test("n'affiche rien pendant la vérification (authChecked=false)", () => {
+    renderWithRouter(false, false);
+    expect(screen.queryByText("Contenu protégé")).not.toBeInTheDocument();
+    expect(screen.queryByText("Page Login")).not.toBeInTheDocument();
   });
 
   test("n'affiche pas la page login si authentifié", () => {

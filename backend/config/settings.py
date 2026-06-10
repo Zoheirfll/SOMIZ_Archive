@@ -109,10 +109,14 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
+# Cookies JWT httpOnly — SameSite=Lax compatible HTTP (intranet)
+JWT_COOKIE_SECURE = config('JWT_COOKIE_SECURE', default=False, cast=bool)  # True en HTTPS
+JWT_COOKIE_SAMESITE = 'Lax'
+
 # ─── DJANGO REST FRAMEWORK ────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.cookie_auth.JWTCookieAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -133,16 +137,10 @@ REST_FRAMEWORK = {
 }
 
 # ─── CORS — Intranet uniquement ───────────────────────────────────────────────
-CORS_ALLOWED_ORIGINS = config(
-    'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://localhost:5173',
-    cast=lambda v: [s.strip() for s in v.split(',')]
-)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:5173',
-    'https://sciential-nonvolatilizable-kendra.ngrok-free.dev',  # 🔴 AJOUT DE VOTRE ADRESSE NGROK
     config('INTRANET_URL', default='http://192.168.1.100'),
 ]
 # ─── FICHIERS MEDIA (Documents scannés) ──────────────────────────────────────

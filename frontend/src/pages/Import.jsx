@@ -145,7 +145,7 @@ const Import = () => {
                   obligatoires
                 </span>
               </div>
-              {["matricule", "nom", "prenom"].map((c) => (
+              {["matricule", "numero_contrat", "nom", "prenom"].map((c) => (
                 <div
                   key={c}
                   style={{

@@ -7,9 +7,9 @@ import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
 
 const STATUT_COLORS = {
-  actif: { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary },
-  termine: { bg: "#F5F5F5", border: "#BDBDBD", color: "#616161" },
-  suspendu: { bg: theme.dangerBg, border: theme.dangerBorder, color: theme.danger },
+  actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
+  archive:    { bg: "#F5F5F5",       border: "#BDBDBD",           color: "#616161",      label: "Archivé" },
+  demobilise: { bg: theme.dangerBg,  border: theme.dangerBorder,  color: theme.danger,   label: "Démobilisé" },
 };
 
 const ContratDetail = () => {
@@ -28,12 +28,57 @@ const ContratDetail = () => {
   const [message, setMessage] = useState(null);
   const [typesDocuments, setTypesDocuments] = useState({});
   const [typesDocumentsList, setTypesDocumentsList] = useState([]);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [typesContrat, setTypesContrat] = useState([]);
   const [quickUploadingCode, setQuickUploadingCode] = useState(null);
 
   useEffect(() => {
     fetchTypesDocuments();
     fetchContrat();
+    fetchTypesContrat();
   }, [id]);
+
+  const fetchTypesContrat = async () => {
+    try {
+      const res = await api.get("/ref/types-contrat/");
+      setTypesContrat(res.data.results || res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleEditOpen = () => {
+    setEditForm({
+      numero_contrat: contrat.numero_contrat,
+      type_contrat: contrat.type_contrat || "",
+      date_debut: contrat.date_debut || "",
+      date_fin: contrat.date_fin || "",
+      statut: contrat.statut,
+      notes: contrat.notes || "",
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = { ...editForm };
+      if (!payload.type_contrat) delete payload.type_contrat;
+      if (!payload.date_debut) delete payload.date_debut;
+      if (!payload.date_fin) delete payload.date_fin;
+      await api.patch(`/contrats/${id}/`, payload);
+      setMessage({ type: "success", text: "Contrat modifié avec succès." });
+      setEditing(false);
+      fetchContrat();
+    } catch (err) {
+      const detail = err.response?.data?.numero_contrat?.[0] || "Erreur lors de la modification.";
+      setMessage({ type: "error", text: detail });
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -172,7 +217,7 @@ const ContratDetail = () => {
         {/* Fil d'ariane */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
           <button
-            onClick={() => navigate("/employees")}
+            onClick={() => navigate(-1)}
             style={{
               background: "transparent", border: `1px solid ${theme.primaryBorder}`,
               color: theme.textSecondary, padding: "6px 14px", borderRadius: 6,
@@ -196,6 +241,26 @@ const ContratDetail = () => {
           <span style={{ color: theme.primary, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>
             {contrat.numero_contrat}
           </span>
+          {user?.role === "ADMIN" && (
+            <>
+              <span style={{ flex: 1 }} />
+              <button
+                onClick={() => navigate(`/employees/${contrat.employee_id}?tab=contrats`)}
+                style={{
+                  background: theme.primaryBg,
+                  border: `1px solid ${theme.primaryBorder}`,
+                  color: theme.primary,
+                  padding: "6px 14px",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                + Ajouter un contrat
+              </button>
+            </>
+          )}
         </div>
 
         {message && (
@@ -242,45 +307,116 @@ const ContratDetail = () => {
                 color: statutStyle.color, borderRadius: 6, padding: "4px 12px",
                 fontSize: 12, fontWeight: 600,
               }}>
-                {contrat.statut}
+                {statutStyle.label}
               </span>
+              {user?.role === "ADMIN" && !editing && (
+                <button
+                  onClick={handleEditOpen}
+                  style={{
+                    background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`,
+                    color: theme.primary, borderRadius: 6, padding: "5px 14px",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  ✏️ Modifier
+                </button>
+              )}
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 20 }}>
-            {[
-              { label: "N° Contrat", value: contrat.numero_contrat, mono: true },
-              { label: "Type de contrat", value: contrat.type_contrat_nom || "—" },
-              { label: "Date début", value: contrat.date_debut || "—" },
-              { label: "Date fin", value: contrat.date_fin || "—" },
-              { label: "Documents", value: `${contrat.nb_documents} fichier(s)` },
-            ].map((item) => (
-              <div key={item.label}>
-                <div style={{
-                  color: theme.textMuted, fontSize: 11, textTransform: "uppercase",
-                  letterSpacing: "0.05em", marginBottom: 4,
-                }}>
-                  {item.label}
+          {/* Formulaire d'édition inline */}
+          {editing ? (
+            <form onSubmit={handleSave}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", marginBottom: 16 }}>
+                <div>
+                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>N° Contrat</label>
+                  <input
+                    value={editForm.numero_contrat}
+                    onChange={(e) => setEditForm({ ...editForm, numero_contrat: e.target.value })}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
+                  />
                 </div>
-                <div style={{
-                  color: item.mono ? theme.primary : theme.text,
-                  fontFamily: item.mono ? "monospace" : "inherit",
-                  fontWeight: item.mono ? 700 : 400,
-                  fontSize: item.mono ? 15 : 13,
-                }}>
-                  {item.value}
+                <div>
+                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Statut</label>
+                  <select
+                    value={editForm.statut}
+                    onChange={(e) => setEditForm({ ...editForm, statut: e.target.value })}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
+                  >
+                    <option value="actif">Actif</option>
+                    <option value="archive">Archivé</option>
+                    <option value="demobilise">Démobilisé</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Type de contrat</label>
+                  <select
+                    value={editForm.type_contrat}
+                    onChange={(e) => setEditForm({ ...editForm, type_contrat: e.target.value })}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
+                  >
+                    <option value="">— Aucun —</option>
+                    {typesContrat.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Date début</label>
+                  <input type="date" value={editForm.date_debut} onChange={(e) => setEditForm({ ...editForm, date_debut: e.target.value })}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Date fin</label>
+                  <input type="date" value={editForm.date_fin} onChange={(e) => setEditForm({ ...editForm, date_fin: e.target.value })}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes</label>
+                  <input value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
                 </div>
               </div>
-            ))}
-          </div>
-
-          {contrat.notes && (
-            <div style={{ marginTop: 16, padding: "12px 16px", background: theme.bg, borderRadius: 8 }}>
-              <div style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>
-                Notes
+              <div style={{ display: "flex", gap: 10 }}>
+                <button type="submit" disabled={saving} style={{
+                  background: theme.primary, color: "#fff", border: "none", borderRadius: 7,
+                  padding: "8px 20px", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer",
+                }}>
+                  {saving ? "Enregistrement…" : "✓ Enregistrer"}
+                </button>
+                <button type="button" onClick={() => setEditing(false)} style={{
+                  background: "transparent", border: `1px solid ${theme.primaryBorder}`,
+                  color: theme.textSecondary, borderRadius: 7, padding: "8px 16px", fontSize: 13, cursor: "pointer",
+                }}>
+                  Annuler
+                </button>
               </div>
-              <div style={{ color: theme.text, fontSize: 13 }}>{contrat.notes}</div>
-            </div>
+            </form>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 20 }}>
+                {[
+                  { label: "N° Contrat", value: contrat.numero_contrat, mono: true },
+                  { label: "Type de contrat", value: contrat.type_contrat_nom || "—" },
+                  { label: "Date début", value: contrat.date_debut || "—" },
+                  { label: "Date fin", value: contrat.date_fin || "—" },
+                  { label: "Documents", value: `${contrat.nb_documents} fichier(s)` },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <div style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+                      {item.label}
+                    </div>
+                    <div style={{ color: item.mono ? theme.primary : theme.text, fontFamily: item.mono ? "monospace" : "inherit", fontWeight: item.mono ? 700 : 400, fontSize: item.mono ? 15 : 13 }}>
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {contrat.notes && (
+                <div style={{ marginTop: 16, padding: "12px 16px", background: theme.bg, borderRadius: 8 }}>
+                  <div style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Notes</div>
+                  <div style={{ color: theme.text, fontSize: 13 }}>{contrat.notes}</div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -451,7 +587,7 @@ const ContratDetail = () => {
                       {typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document}
                     </span>
                     <span style={{ color: theme.textSecondary, fontSize: 12, marginLeft: 8 }}>
-                      — {selectedFile.file_name}
+                      {selectedFile.file_size_kb} Ko
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

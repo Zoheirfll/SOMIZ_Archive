@@ -11,7 +11,7 @@ from rest_framework import status
 from accounts.permissions import IsAdmin
 from employees.models import (
     Employee, Direction, Departement,
-    Service, Poste, TypeContrat, Categorie
+    Service, Poste, TypeContrat, Categorie, Contrat
 )
 
 
@@ -23,7 +23,7 @@ class EmployeeImportView(APIView):
     permission_classes = [IsAdmin]
 
     # Colonnes obligatoires
-    REQUIRED_COLS = {'matricule', 'nom', 'prenom'}
+    REQUIRED_COLS = {'matricule', 'numero_contrat', 'nom', 'prenom'}
 
     # Colonnes optionnelles
     OPTIONAL_COLS = {
@@ -145,21 +145,40 @@ class EmployeeImportView(APIView):
             # Ajouter au matricule cache pour éviter doublons dans le même CSV
             matricules_existants.add(matricule)
 
-            a_creer.append(Employee(
-                matricule=matricule,
-                nom=nom,
-                prenom=prenom,
-                date_naissance=date_naissance or None,
-                date_embauche=date_embauche or None,
-                statut=statut,
-                direction=direction,
-                departement=departement,
-                service=service,
-                poste=poste,
-                type_contrat=type_contrat,
-                categorie=categorie,
-                created_by=request.user,
-            ))
+            numero_contrat = row.get('numero_contrat', '').strip()
+            if not numero_contrat:
+                ligne_erreurs.append("N° contrat obligatoire")
+            elif not numero_contrat.isdigit():
+                ligne_erreurs.append("N° contrat invalide : chiffres uniquement (ex : 024141)")
+
+            if ligne_erreurs:
+                erreurs.append({
+                    'ligne': num_ligne,
+                    'matricule': matricule or '—',
+                    'erreurs': ligne_erreurs,
+                })
+                continue
+
+            a_creer.append({
+                'employee': Employee(
+                    matricule=matricule,
+                    nom=nom,
+                    prenom=prenom,
+                    date_naissance=date_naissance or None,
+                    date_embauche=date_embauche or None,
+                    statut=statut,
+                    direction=direction,
+                    departement=departement,
+                    service=service,
+                    poste=poste,
+                    type_contrat=type_contrat,
+                    categorie=categorie,
+                    created_by=request.user,
+                ),
+                'numero_contrat': numero_contrat,
+                'type_contrat_obj': type_contrat,
+                'date_debut': date_embauche or None,
+            })
 
             resultats.append({
                 'ligne': num_ligne,
@@ -173,8 +192,27 @@ class EmployeeImportView(APIView):
         if a_creer:
             try:
                 with transaction.atomic():
-                    Employee.objects.bulk_create(a_creer, batch_size=500)
-                    nb_crees = len(a_creer)
+                    employees_objs = [item['employee'] for item in a_creer]
+                    created = Employee.objects.bulk_create(employees_objs, batch_size=500)
+                    nb_crees = len(created)
+                    # Recharger les employés créés pour avoir les IDs (bulk_create ne retourne pas les IDs en PG < 10)
+                    matricules = [e.matricule for e in created]
+                    emp_map = {e.matricule: e for e in Employee.objects.filter(matricule__in=matricules)}
+                    contrats_a_creer = []
+                    for item in a_creer:
+                        if item['numero_contrat']:
+                            emp = emp_map.get(item['employee'].matricule)
+                            if emp:
+                                contrats_a_creer.append(Contrat(
+                                    employee=emp,
+                                    numero_contrat=item['numero_contrat'],
+                                    type_contrat=item['type_contrat_obj'],
+                                    date_debut=item['date_debut'],
+                                    statut='actif',
+                                    created_by=request.user,
+                                ))
+                    if contrats_a_creer:
+                        Contrat.objects.bulk_create(contrats_a_creer, batch_size=500)
             except Exception as e:
                 return Response(
                     {'error': f'Erreur lors de l\'import : {str(e)}'},
@@ -208,14 +246,14 @@ class EmployeeImportTemplateView(APIView):
 
         writer = csv.writer(response, delimiter=';')
         writer.writerow([
-            'matricule', 'nom', 'prenom',
+            'matricule', 'numero_contrat', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut',
             'direction', 'departement', 'service',
             'poste', 'type_contrat', 'categorie'
         ])
         # Exemple
         writer.writerow([
-            '024141', 'FILALI', 'Zoheir',
+            '024141', '024141', 'FILALI', 'Zoheir',
             '2002-03-22', '2026-01-20', 'actif',
             'Direction Générale', 'DAP', 'Service Paie',
             'Cadre', 'CDI', ''

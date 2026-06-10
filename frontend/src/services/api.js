@@ -4,37 +4,51 @@ const API_URL = "/api";
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
+  withCredentials: true, // envoie les cookies httpOnly automatiquement
 });
 
-// Ajoute automatiquement le token à chaque requête
-api.interceptors.request.use((config) => {
-  // 🔴 LA CORRECTION EST ICI : On lit le local ET la session
-  const token =
-    localStorage.getItem("access_token") ||
-    sessionStorage.getItem("access_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+let isRefreshing = false;
+let failedQueue = [];
 
-// Si token expiré ou accès refusé — redirige vers login
+const processQueue = (error) => {
+  failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve()));
+  failedQueue = [];
+};
+
+// Renouvelle l'access token silencieusement via le cookie refresh
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Empêche la boucle infinie si c'est juste un mauvais mot de passe
-    const isLoginRequest = error.config.url.includes("/auth/login");
+  async (error) => {
+    const originalRequest = error.config;
+    const isLoginRequest = originalRequest.url.includes("/auth/login");
+    const isRefreshRequest = originalRequest.url.includes("/auth/refresh");
 
-    if (error.response?.status === 401 && !isLoginRequest) {
-      localStorage.clear();
-      sessionStorage.clear();
-      window.location.href = "/login";
+    if (error.response?.status === 401 && !isLoginRequest && !isRefreshRequest && !originalRequest._retry) {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(() => api(originalRequest)).catch((e) => Promise.reject(e));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        await api.post("/auth/refresh/");
+        processQueue(null);
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError);
+        window.location.href = "/login";
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
     }
+
     return Promise.reject(error);
-  },
+  }
 );
 
 export default api;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
@@ -7,23 +7,29 @@ import { useAuth } from "../context/AuthContext";
 
 const Employees = () => {
   const [employees, setEmployees] = useState([]);
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [statut, setStatut] = useState("");
-  const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState(null);
-  const [ordering, setOrdering] = useState("nom");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const search = searchParams.get("q") || "";
+  const statut = searchParams.get("statut") || "";
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const ordering = searchParams.get("ordering") || "nom";
+
+  const setSearch = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); if (val) n.set("q", val); else n.delete("q"); n.set("page", "1"); return n; }, { replace: true });
+  const setStatut = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); if (val) n.set("statut", val); else n.delete("statut"); n.set("page", "1"); return n; }, { replace: true });
+  const setPage = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); n.set("page", String(typeof val === "function" ? val(page) : val)); return n; }, { replace: true });
+  const setOrdering = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); n.set("ordering", typeof val === "function" ? val(ordering) : val); n.set("page", "1"); return n; }, { replace: true });
 
   const PAGE_SIZE = 25;
 
   useEffect(() => {
-    setPage(1);
     setSelected(new Set());
   }, [search, statut, ordering]);
 
@@ -376,6 +382,7 @@ const Employees = () => {
                     )}
                     {[
                       { label: "Matricule", key: "matricule" },
+                      { label: "N° Contrat", key: null },
                       { label: "Nom & Prénom", key: "nom" },
                       { label: "Direction", key: "direction__nom" },
                       { label: "Département", key: "departement__nom" },
@@ -476,6 +483,31 @@ const Employees = () => {
                         }}
                       >
                         {emp.matricule}
+                      </td>
+                      <td
+                        onClick={() => navigate(`/employees/${emp.id}`)}
+                        style={{
+                          padding: "12px 16px",
+                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {emp.numero_contrat_actif ? (
+                          <span style={{
+                            fontFamily: "monospace",
+                            fontWeight: 700,
+                            fontSize: 13,
+                            color: theme.primary,
+                            background: theme.primaryBg,
+                            border: `1px solid ${theme.primaryBorder}`,
+                            borderRadius: 5,
+                            padding: "2px 8px",
+                          }}>
+                            {emp.numero_contrat_actif}
+                          </span>
+                        ) : (
+                          <span style={{ color: theme.textMuted, fontSize: 12 }}>—</span>
+                        )}
                       </td>
                       <td
                         onClick={() => navigate(`/employees/${emp.id}`)}

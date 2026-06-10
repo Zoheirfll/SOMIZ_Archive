@@ -220,7 +220,7 @@ Contrat
 ├── type_contrat      FK(TypeContrat, nullable)
 ├── date_debut        DateField (nullable)
 ├── date_fin          DateField (nullable)
-├── statut            actif | termine | suspendu
+├── statut            actif | archive | demobilise
 ├── notes             TextField
 └── created_by        FK(User)
 
@@ -282,9 +282,9 @@ AuditLog (BIGSERIAL — pas UUID, plus rapide pour les logs)
 #### Authentification (`/api/auth/`)
 | Méthode | URL | Description | Accès |
 |---|---|---|---|
-| POST | `/api/auth/login/` | Connexion, retourne access+refresh JWT | Public |
-| POST | `/api/auth/logout/` | Blackliste le refresh token | Authentifié |
-| POST | `/api/auth/refresh/` | Renouvelle le token d'accès | Public |
+| POST | `/api/auth/login/` | Connexion, pose les cookies httpOnly access + refresh | Public |
+| POST | `/api/auth/logout/` | Blackliste le refresh token, supprime les cookies | Authentifié |
+| POST | `/api/auth/refresh/` | Renouvelle le cookie access à partir du cookie refresh | Public |
 | GET | `/api/auth/me/` | Informations de l'utilisateur connecté | Authentifié |
 | POST | `/api/auth/change-password/` | Changer son propre mot de passe | Authentifié |
 
@@ -357,11 +357,14 @@ AuditLog (BIGSERIAL — pas UUID, plus rapide pour les logs)
 
 ### 3.4 Sécurité backend
 
-#### Authentification JWT
-- Tokens d'accès valides **2 heures**
-- Tokens de rafraîchissement valides **24 heures**
+#### Authentification JWT via cookies httpOnly
+- Les tokens sont stockés dans des **cookies httpOnly** (inaccessibles depuis JavaScript) — résistant aux attaques XSS
+- Tokens d'accès valides **2 heures**, cookies de rafraîchissement valides **24 heures**
+- Classe `JWTCookieAuthentication` (`accounts/cookie_auth.py`) lit le token depuis le cookie, avec fallback sur l'en-tête `Authorization`
+- `CookieTokenRefreshView` : refresh silencieux via le cookie (aucun token exposé au JS)
 - Rotation automatique des refresh tokens
 - Blacklisting des tokens lors de la déconnexion
+- `SameSite=Lax`, `HttpOnly=True` — `Secure=True` à activer en HTTPS
 
 #### Protection anti-brute-force
 - **5 tentatives** échouées → verrouillage du compte **30 minutes**
@@ -399,7 +402,7 @@ AuditLog (BIGSERIAL — pas UUID, plus rapide pour les logs)
 - Redis recommandé en production
 
 #### CORS
-Origines autorisées : `localhost:3000`, `localhost:5173`, domaines ngrok (pour les tests)
+Origines autorisées : `localhost:3000`, `localhost:5173`, `INTRANET_URL` (configurable via `.env`)
 
 #### Logs
 - Fichier rotatif : `backend/logs/somiz.log`
@@ -447,15 +450,17 @@ frontend/src/
 #### `Login.jsx` — Connexion
 - Formulaire identifiant / mot de passe
 - Bouton toggle afficher/masquer le mot de passe
-- Case "Se rappeler de moi" → stockage `localStorage` (persistant) ou `sessionStorage` (session)
+- Case "Se rappeler de moi" (UX uniquement)
+- Après connexion : les tokens sont dans les **cookies httpOnly** posés par le serveur, seul l'objet `user` est stocké en `sessionStorage`
 - Affichage des messages d'erreur du serveur
 - Désactivation du bouton pendant le chargement
 - Redirection vers `/employees` après succès
 
 #### `Employees.jsx` — Liste des employés
 - Tableau paginé (25 employés par page)
-- Recherche en temps réel (debounce 300ms) par nom, prénom ou matricule
+- Recherche en temps réel (debounce 300ms) par nom, prénom, matricule ou N° contrat
 - Filtre par statut (Actif / Inactif / Archivé)
+- **État encodé dans l'URL** (`?page=2&q=filali&statut=actif&ordering=nom`) — le bouton Retour restaure exactement la page et la recherche
 - Tri par colonne (clic sur l'en-tête, inversion avec double-clic)
 - Sélection multiple avec checkboxes (ADMIN uniquement)
 - Barre d'actions contextuelle lors d'une sélection :
@@ -479,14 +484,18 @@ frontend/src/
 
 #### `ContratDetail.jsx` — Dossier d'un contrat
 - Fil d'ariane : Employés › Fiche employé › N° Contrat
-- Carte récapitulative : N° contrat, type, dates, statut, nb documents
+- Carte récapitulative : N° contrat, type, dates, **statut lisible** (Actif / Archivé / Démobilisé), nb documents
+- Bouton **✏️ Modifier** (ADMIN uniquement) → formulaire inline d'édition du contrat
+- Statuts disponibles : **actif**, **archive** (Archivé), **demobilise** (Démobilisé)
 - Sidebar : liste des documents propres au contrat (versioning indépendant)
 - Visionneuse sécurisée inline identique à `EmployeeDetail`
 - Upload de fichiers dans le dossier du contrat (ADMIN) → stocké sous `employees/{id}/contrats/{numero}/`
 - Suppression de fichiers / documents (ADMIN)
+- Bouton Retour → `navigate(-1)` (retour à la page précédente dans l'historique)
 
 #### `EmployeeForm.jsx` — Création / Modification d'employé
 - Formulaire complet avec tous les champs employé
+- **Matricule éditable** aussi bien en création qu'en modification
 - Chargement automatique des référentiels (directions, postes, types de contrat, etc.)
 - Filtrage en cascade : sélectionner une Direction filtre les Départements, sélectionner un Département filtre les Services
 - Mode **création** (POST) et mode **édition** (PATCH) détectés via `useParams`
@@ -545,44 +554,46 @@ frontend/src/
 
 #### `services/api.js` — Client HTTP Axios
 ```
-Instance axios créée avec baseURL="/api"
+Instance axios créée avec baseURL="/api" et withCredentials: true
+(les cookies httpOnly sont envoyés automatiquement à chaque requête)
 
-Intercepteur REQUEST :
-  → Lit le token depuis localStorage ou sessionStorage
-  → Ajoute l'en-tête Authorization: Bearer {token}
+Pas d'intercepteur REQUEST manuel — aucun token à lire depuis le storage.
 
 Intercepteur RESPONSE :
-  → Sur erreur 401 (sauf sur /auth/login) :
-     - Vide localStorage et sessionStorage
-     - Redirige window.location vers /login
+  → Sur erreur 401 (sauf sur /auth/login et /auth/refresh) :
+     - Tente un refresh silencieux : POST /auth/refresh/ (cookie refresh envoyé auto)
+     - Si succès : relance la requête originale (nouveau cookie access posé)
+     - Si échec (session expirée) : redirige window.location vers /login
+     - File d'attente pour les requêtes concurrentes pendant le refresh
 ```
 
 #### `services/auth.js` — Fonctions d'authentification
 ```
 login(username, password)
   → POST /api/auth/login/
-  → Retourne { access, refresh, user }
+  → Retourne { user } (les tokens sont dans les cookies httpOnly posés par le serveur)
 
 logout()
-  → POST /api/auth/logout/ avec le refresh token
-  → Supprime access_token, refresh_token, user de localStorage ET sessionStorage
+  → POST /api/auth/logout/ (le cookie refresh est envoyé automatiquement)
+  → Supprime sessionStorage
 
 getUser()
-  → Lit l'objet user JSON depuis localStorage ou sessionStorage
+  → Lit l'objet user JSON depuis sessionStorage
   → Retourne null si absent
 
 isAuthenticated()
-  → Retourne true si access_token présent dans localStorage ou sessionStorage
+  → Retourne true si user présent en sessionStorage
 ```
 
 #### `context/AuthContext.js` — État global
 ```
 AuthProvider
-  → État: user (objet user) + authenticated (boolean)
-  → Initialisé depuis getUser() et isAuthenticated()
+  → Au démarrage : appelle GET /auth/me/ pour vérifier la session via cookie
+  → État: user + authenticated (boolean) + authChecked (boolean)
+  → authChecked devient true après la vérification initiale (évite le flash /login)
 
 loginSuccess(userData)   → met à jour user et authenticated=true
-logoutSuccess()          → remet user=null et authenticated=false
+logoutSuccess()          → remet user=null, authenticated=false, vide sessionStorage
 
 useAuth()                → hook pour consommer le contexte
 ```
@@ -592,8 +603,9 @@ useAuth()                → hook pour consommer le contexte
 ### 4.4 Composants réutilisables
 
 #### `ProtectedRoute.jsx`
-- Vérifie `authenticated` via `useAuth()`
-- Si non authentifié → redirige vers `/login` avec `<Navigate replace />`
+- Vérifie `authenticated` et `authChecked` via `useAuth()`
+- Pendant la vérification initiale (`authChecked=false`) → affiche `null` (pas de flash redirect)
+- Si non authentifié après vérification → redirige vers `/login` avec `<Navigate replace />`
 - Si authentifié → affiche les enfants
 
 #### `Navbar.jsx`
@@ -636,11 +648,11 @@ Outils : **Jest** + **React Testing Library** + **@testing-library/user-event**
 
 | Fichier | Page / Module testé | Ce qui est couvert |
 |---|---|---|
-| `api.test.js` | `services/api.js` | Ajout du token Bearer, redirection 401, cas localStorage/sessionStorage |
-| `auth.test.js` | `services/auth.js` | `login()`, `logout()` (vidage storage), `getUser()`, `isAuthenticated()` |
-| `AuthContext.test.jsx` | `context/AuthContext.js` | État initial, `loginSuccess()`, `logoutSuccess()` |
-| `ProtectedRoute.test.jsx` | `components/ProtectedRoute.jsx` | Redirection si non-authentifié, affichage si authentifié |
-| `Login.test.jsx` | `pages/Login.jsx` | Rendu, toggle password, remember-me, succès/erreur, bouton disabled |
+| `api.test.js` | `services/api.js` | `withCredentials: true`, intercepteur refresh silencieux 401 |
+| `auth.test.js` | `services/auth.js` | `login()` (retourne user, pas de tokens), `logout()`, `getUser()`, `isAuthenticated()` |
+| `AuthContext.test.jsx` | `context/AuthContext.js` | Vérification /auth/me/ au démarrage, `authChecked`, `loginSuccess()`, `logoutSuccess()` |
+| `ProtectedRoute.test.jsx` | `components/ProtectedRoute.jsx` | Redirection si non-authentifié + authChecked, null pendant vérification, affichage si authentifié |
+| `Login.test.jsx` | `pages/Login.jsx` | Rendu, toggle password, user en sessionStorage (pas de token storage), succès/erreur |
 | `Employees.test.jsx` | `pages/Employees.jsx` | Liste, recherche, filtre, checkboxes ADMIN/CONSULTANT, bulk actions |
 | `EmployeeDetail.test.jsx` | `pages/EmployeeDetail.jsx` | Infos employé, onglets Dossier/Contrats, liste contrats, creation contrat, upload, suppression, navigation |
 | `ContratDetail.test.jsx` | `pages/ContratDetail.jsx` | Rendu, fil d'ariane, documents du contrat, upload, suppression, permissions ADMIN/CONSULTANT |
@@ -652,7 +664,7 @@ Outils : **Jest** + **React Testing Library** + **@testing-library/user-event**
 | `Profil.test.jsx` | `pages/Profil.jsx` | Infos user, changement MDP, toggle password, messages succès/erreur |
 | `Import.test.jsx` | `pages/Import.jsx` | Drag & drop, sélection CSV, import POST, erreurs, téléchargement template |
 
-**Total : ~145 cas de test frontend**
+**Total : 206 cas de test frontend**
 
 ---
 
@@ -713,7 +725,7 @@ npx react-scripts test --watchAll=false --coverage
    - Compte actif ?
    - Mot de passe correct ?
 4. Si OK : génère access + refresh JWT, log LOGIN, retourne user
-5. Frontend stocke les tokens (localStorage ou sessionStorage selon "remember me")
+5. Frontend : les cookies httpOnly sont posés par le serveur — seul l'objet user est stocké en sessionStorage
 6. AuthContext.loginSuccess(user) met à jour l'état global
 7. navigate("/employees")
 ```
@@ -750,9 +762,9 @@ npx react-scripts test --watchAll=false --coverage
 ### Flux de déconnexion
 ```
 1. Utilisateur clique sur Déconnexion dans la Navbar
-2. logout() appelle POST /api/auth/logout/ avec le refresh token
-3. Backend blackliste le refresh token (SimpleJWT), log LOGOUT
-4. Frontend vide localStorage ET sessionStorage (access_token, refresh_token, user)
+2. logout() appelle POST /api/auth/logout/ (le cookie refresh est envoyé automatiquement)
+3. Backend blackliste le refresh token, supprime les cookies httpOnly, log LOGOUT
+4. Frontend vide sessionStorage (user)
 5. AuthContext.logoutSuccess() → authenticated=false, user=null
 6. ProtectedRoute redirige automatiquement vers /login
 ```
@@ -783,7 +795,8 @@ SOMIZ/
 │   │
 │   ├── accounts/
 │   │   ├── models.py                   ← User custom
-│   │   ├── views.py                    ← Auth views (Login, Logout, Me, ChangePassword, AdminReset)
+│   │   ├── views.py                    ← Auth views (Login, Logout, Me, ChangePassword, AdminReset, CookieTokenRefreshView)
+│   │   ├── cookie_auth.py              ← JWTCookieAuthentication (lit le token depuis cookie httpOnly)
 │   │   ├── permissions.py              ← IsAdmin, IsAdminOrConsultant
 │   │   ├── urls.py                     ← /api/auth/
 │   │   ├── admin_views.py              ← CRUD users
@@ -997,4 +1010,4 @@ SOMIZ/
 
 ---
 
-*Document mis à jour le 10/06/2026 — SOMIZ v1.1 — feature/us2 : gestion des contrats par N° contrat*
+*Document mis à jour le 10/06/2026 — SOMIZ v1.2 — feature/us2 : sécurité cookies httpOnly, pagination URL, contrats*

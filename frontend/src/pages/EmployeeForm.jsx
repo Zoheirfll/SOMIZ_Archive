@@ -69,6 +69,7 @@ const EmployeeForm = () => {
 
   const [form, setForm] = useState({
     matricule: "",
+    numero_contrat: "",
     nom: "",
     prenom: "",
     date_naissance: "",
@@ -202,6 +203,10 @@ const EmployeeForm = () => {
       errs.matricule = "Le matricule est obligatoire.";
     if (!form.nom.trim()) errs.nom = "Le nom est obligatoire.";
     if (!form.prenom.trim()) errs.prenom = "Le prénom est obligatoire.";
+    if (!isEdit && form.numero_contrat.trim()) {
+      if (!/^\d+$/.test(form.numero_contrat.trim()))
+        errs.numero_contrat = "Le N° contrat doit contenir uniquement des chiffres.";
+    }
     return errs;
   };
 
@@ -213,9 +218,10 @@ const EmployeeForm = () => {
       return;
     }
 
-    // Nettoyer les champs vides pour éviter d'envoyer ""
+    // Nettoyer les champs vides — exclure numero_contrat du payload employé
+    const { numero_contrat, ...formWithoutContrat } = form;
     const payload = {};
-    Object.entries(form).forEach(([k, v]) => {
+    Object.entries(formWithoutContrat).forEach(([k, v]) => {
       payload[k] = v === "" ? null : v;
     });
 
@@ -227,8 +233,17 @@ const EmployeeForm = () => {
         setTimeout(() => navigate(`/employees/${id}`), 1500);
       } else {
         const response = await api.post("/employees/", payload);
+        const newId = response.data.id;
+        // Créer le contrat si un N° est fourni
+        if (numero_contrat.trim()) {
+          await api.post(`/employees/${newId}/contrats/`, {
+            numero_contrat: numero_contrat.trim(),
+            statut: "actif",
+            ...(form.date_embauche ? { date_debut: form.date_embauche } : {}),
+          });
+        }
         setMessage({ type: "success", text: "Employé créé avec succès." });
-        setTimeout(() => navigate(`/employees/${response.data.id}`), 1500);
+        setTimeout(() => navigate(`/employees/${newId}`), 1500);
       }
     } catch (err) {
       const data = err.response?.data;
@@ -343,18 +358,32 @@ const EmployeeForm = () => {
                   name="matricule"
                   value={form.matricule}
                   onChange={handleChange}
-                  placeholder="024141"
-                  disabled={isEdit}
-                  style={{ background: isEdit ? "#F5F5F5" : theme.bg }}
+                  placeholder="EMP-001"
+                  disabled={false}
+                  style={{ background: theme.bg }}
                 />
                 {errors.matricule && (
-                  <div
-                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
-                  >
+                  <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
                     {errors.matricule}
                   </div>
                 )}
               </Field>
+
+              {!isEdit && (
+                <Field label="N° Contrat">
+                  <Input
+                    name="numero_contrat"
+                    value={form.numero_contrat}
+                    onChange={handleChange}
+                    placeholder="024141"
+                  />
+                  {errors.numero_contrat && (
+                    <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
+                      {errors.numero_contrat}
+                    </div>
+                  )}
+                </Field>
+              )}
 
               <Field label="Statut" required>
                 <Select

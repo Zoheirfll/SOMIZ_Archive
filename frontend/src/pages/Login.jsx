@@ -21,19 +21,8 @@ const Login = () => {
     setError("");
     try {
       const data = await login(username, password);
-      // Dans votre handleSubmit de Login.jsx, remplacez les lignes de stockage par :
-      const accessToken = data.access || data.access_token || data.token;
-      const refreshToken = data.refresh || data.refresh_token;
-
-      if (rememberMe) {
-        localStorage.setItem("access_token", accessToken);
-        localStorage.setItem("refresh_token", refreshToken);
-        localStorage.setItem("user", JSON.stringify(data.user));
-      } else {
-        sessionStorage.setItem("access_token", accessToken);
-        sessionStorage.setItem("refresh_token", refreshToken);
-        sessionStorage.setItem("user", JSON.stringify(data.user));
-      }
+      // Les tokens JWT sont dans les cookies httpOnly — on stocke uniquement les infos user
+      sessionStorage.setItem("user", JSON.stringify(data.user));
       loginSuccess(data.user);
       navigate("/employees");
     } catch (err) {

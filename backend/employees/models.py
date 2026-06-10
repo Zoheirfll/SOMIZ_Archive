@@ -229,8 +229,8 @@ class Contrat(models.Model):
 
     class Statut(models.TextChoices):
         ACTIF = 'actif', 'Actif'
-        TERMINE = 'termine', 'Terminé'
-        SUSPENDU = 'suspendu', 'Suspendu'
+        ARCHIVE = 'archive', 'Archivé'
+        DEMOBILISE = 'demobilise', 'Démobilisé'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     numero_contrat = models.CharField(

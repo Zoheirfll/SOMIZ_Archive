@@ -132,7 +132,7 @@ describe("ContratDetail — rendu initial", () => {
   test("affiche le statut actif", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getAllByText("actif").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Actif").length).toBeGreaterThan(0);
     });
   });
 
@@ -145,11 +145,11 @@ describe("ContratDetail — rendu initial", () => {
 });
 
 describe("ContratDetail — fil d'ariane", () => {
-  test("bouton ← Employés navigue vers la liste", async () => {
+  test("bouton ← navigue en arrière", async () => {
     renderPage();
     await waitFor(() => screen.getByText("← Employés"));
     fireEvent.click(screen.getByText("← Employés"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees");
+    expect(mockNavigate).toHaveBeenCalledWith(-1);
   });
 
   test("bouton employé navigue vers sa fiche", async () => {
@@ -169,10 +169,10 @@ describe("ContratDetail — documents", () => {
     });
   });
 
-  test("affiche le nom du fichier", async () => {
+  test("affiche la taille du fichier dans le viewer", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/contrat_v1\.pdf/)).toBeInTheDocument();
+      expect(screen.getAllByText(/200 Ko/).length).toBeGreaterThan(0);
     });
   });
 

@@ -5,6 +5,7 @@ Authentification JWT sécurisée avec blocage anti-brute-force
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.conf import settings
 
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -15,6 +16,27 @@ from rest_framework_simplejwt.exceptions import TokenError
 from django.http import Http404
 from accounts.permissions import IsAdmin
 from audit.models import AuditLog
+
+
+def _set_auth_cookies(response, access_token, refresh_token):
+    """Pose les deux tokens JWT en cookies httpOnly."""
+    secure = getattr(settings, 'JWT_COOKIE_SECURE', False)
+    samesite = getattr(settings, 'JWT_COOKIE_SAMESITE', 'Lax')
+    response.set_cookie(
+        'access_token', str(access_token),
+        max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
+        httponly=True, secure=secure, samesite=samesite, path='/',
+    )
+    response.set_cookie(
+        'refresh_token', str(refresh_token),
+        max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
+        httponly=True, secure=secure, samesite=samesite, path='/api/auth/refresh/',
+    )
+
+
+def _clear_auth_cookies(response):
+    response.delete_cookie('access_token', path='/')
+    response.delete_cookie('refresh_token', path='/api/auth/refresh/')
 
 User = get_user_model()
 
@@ -109,9 +131,7 @@ class LoginView(APIView):
 
         AuditLog.log(request, AuditLog.Action.LOGIN, target=user)
 
-        return Response({
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
+        response = Response({
             'user': {
                 'id': str(user.id),
                 'username': user.username,
@@ -120,29 +140,26 @@ class LoginView(APIView):
                 'role': user.role,
             }
         })
+        _set_auth_cookies(response, refresh.access_token, refresh)
+        return response
 
 
 class LogoutView(APIView):
-    """POST /api/auth/logout/ — Blackliste le refresh token."""
+    """POST /api/auth/logout/ — Blackliste le refresh token et efface les cookies."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        refresh_token = request.data.get('refresh')
-        if not refresh_token:
-            return Response(
-                {'error': 'Refresh token requis.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        refresh_token = request.COOKIES.get('refresh_token') or request.data.get('refresh')
         try:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            AuditLog.log(request, AuditLog.Action.LOGOUT)
-            return Response({'message': 'Déconnexion réussie.'})
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
         except TokenError:
-            return Response(
-                {'error': 'Token invalide.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            pass
+        AuditLog.log(request, AuditLog.Action.LOGOUT)
+        response = Response({'message': 'Déconnexion réussie.'})
+        _clear_auth_cookies(response)
+        return response
 
 
 class UserMeView(APIView):
@@ -251,3 +268,25 @@ class AdminResetPasswordView(APIView):
         )
 
         return Response({'message': f'Mot de passe de {user.username} réinitialisé.'})
+
+
+class CookieTokenRefreshView(APIView):
+    """
+    POST /api/auth/refresh/
+    Renouvelle l'access token depuis le cookie refresh_token httpOnly.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = request.COOKIES.get('refresh_token')
+        if not refresh_token:
+            return Response({'error': 'Session expirée.'}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            token = RefreshToken(refresh_token)
+            response = Response({'detail': 'Token renouvelé.'})
+            _set_auth_cookies(response, token.access_token, token)
+            return response
+        except TokenError:
+            response = Response({'error': 'Session invalide.'}, status=status.HTTP_401_UNAUTHORIZED)
+            _clear_auth_cookies(response)
+            return response

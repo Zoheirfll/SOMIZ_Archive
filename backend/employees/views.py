@@ -67,8 +67,9 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(
                 Q(nom__icontains=q) |
                 Q(prenom__icontains=q) |
-                Q(matricule__icontains=q)
-            )
+                Q(matricule__icontains=q) |
+                Q(contrats__numero_contrat__icontains=q)
+            ).distinct()
         if dept:
             qs = qs.filter(departement__icontains=dept)
         if statut:
@@ -410,8 +411,12 @@ class ContratListCreateView(APIView):
         return [IsAdminOrConsultant()]
 
     def get(self, request, emp_id):
+        from django.db.models.functions import Cast
+        from django.db.models import IntegerField
         employee = get_object_or_404(Employee, pk=emp_id)
-        contrats = employee.contrats.select_related('type_contrat').all()
+        contrats = employee.contrats.select_related('type_contrat').annotate(
+            num_int=Cast('numero_contrat', IntegerField())
+        ).order_by('-num_int')
         serializer = ContratListSerializer(contrats, many=True)
         return Response(serializer.data)
 
