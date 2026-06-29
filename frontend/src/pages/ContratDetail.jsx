@@ -32,7 +32,6 @@ const ContratDetail = () => {
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [typesContrat, setTypesContrat] = useState([]);
-  const [quickUploadingCode, setQuickUploadingCode] = useState(null);
 
   useEffect(() => {
     fetchTypesDocuments();
