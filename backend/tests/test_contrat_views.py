@@ -115,12 +115,12 @@ class TestContratDetailView:
         client = auth_client(admin_user)
         resp = client.patch(
             contrat_detail_url(contrat.pk),
-            {"statut": "termine"},
+            {"statut": "archive"},
             format="json",
         )
         assert resp.status_code == 200
         contrat.refresh_from_db()
-        assert contrat.statut == "termine"
+        assert contrat.statut == "archive"
 
     def test_consultant_cannot_patch(self, consultant_user, contrat):
         client = auth_client(consultant_user)

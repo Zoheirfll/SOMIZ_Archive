@@ -100,11 +100,9 @@ class ContratCreateUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_numero_contrat(self, value):
-        v = value.strip()
-        if not v.isdigit():
-            raise serializers.ValidationError(
-                "Le N° contrat doit contenir uniquement des chiffres (ex : 024141)."
-            )
+        v = value.strip().upper()
+        if not v:
+            raise serializers.ValidationError("Le N° contrat ne peut pas être vide.")
         return v
 
 
@@ -168,11 +166,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         return obj.documents.filter(is_active=True).count()
 
     def get_numero_contrat_actif(self, obj):
-        from django.db.models.functions import Cast
-        from django.db.models import IntegerField
-        contrat = obj.contrats.annotate(
-            num_int=Cast('numero_contrat', IntegerField())
-        ).order_by('-num_int').first()
+        contrat = obj.contrats.order_by('-date_debut', '-id').first()
         return contrat.numero_contrat if contrat else None
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):

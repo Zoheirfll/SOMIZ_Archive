@@ -414,12 +414,8 @@ class ContratListCreateView(APIView):
         return [IsAdminOrConsultant()]
 
     def get(self, request, emp_id):
-        from django.db.models.functions import Cast
-        from django.db.models import IntegerField
         employee = get_object_or_404(Employee, pk=emp_id)
-        contrats = employee.contrats.select_related('type_contrat').annotate(
-            num_int=Cast('numero_contrat', IntegerField())
-        ).order_by('-num_int')
+        contrats = employee.contrats.select_related('type_contrat').order_by('-date_debut', '-id')
         serializer = ContratListSerializer(contrats, many=True)
         return Response(serializer.data)
 

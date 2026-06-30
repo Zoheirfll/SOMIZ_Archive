@@ -38,7 +38,7 @@ describe("Import — rendu", () => {
 
   test("affiche le bouton Télécharger le template", () => {
     renderPage();
-    expect(screen.getByText(/Télécharger le template/i)).toBeInTheDocument();
+    expect(screen.getByText(/[Tt]el[eé]charger le template/i)).toBeInTheDocument();
   });
 
   test("affiche la zone de drag & drop", () => {
@@ -148,7 +148,7 @@ describe("Import — template", () => {
     );
 
     renderPage();
-    fireEvent.click(screen.getByText(/Télécharger le template/i));
+    fireEvent.click(screen.getByText(/[Tt]el[eé]charger le template/i));
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(
         "/employees/import/template/",

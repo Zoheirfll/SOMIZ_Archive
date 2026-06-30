@@ -52,7 +52,7 @@ describe("Profil — informations utilisateur", () => {
 
   test("affiche le username", () => {
     renderPage();
-    expect(screen.getByText("admin.test")).toBeInTheDocument();
+    expect(screen.getByText("@admin.test")).toBeInTheDocument();
   });
 
   test("affiche le rôle", () => {
@@ -71,14 +71,14 @@ describe("Profil — informations utilisateur", () => {
     expect(screen.getByText("Changer le mot de passe")).toBeInTheDocument();
   });
 
-  test("affiche le bouton ← Retour", () => {
+  test("affiche le bouton Retour", () => {
     renderPage();
-    expect(screen.getByText("← Retour")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retour/i })).toBeInTheDocument();
   });
 
-  test("clic ← Retour appelle navigate(-1)", () => {
+  test("clic Retour appelle navigate(-1)", () => {
     renderPage();
-    fireEvent.click(screen.getByText("← Retour"));
+    fireEvent.click(screen.getByRole("button", { name: /retour/i }));
     expect(mockNavigate).toHaveBeenCalledWith(-1);
   });
 });
@@ -108,7 +108,7 @@ describe("Profil — formulaire changement de mot de passe", () => {
 
   test("toggle démasque un champ", () => {
     renderPage();
-    const toggles = screen.getAllByRole("button", { name: /👁/i });
+    const toggles = screen.getAllByRole("button", { name: /afficher\/masquer/i });
     fireEvent.click(toggles[0]);
     const inputs = screen.getAllByPlaceholderText("••••••••••");
     expect(inputs[0]).toHaveAttribute("type", "text");

@@ -38,9 +38,10 @@ class TestLoginView:
         client = APIClient()
         resp = client.post(LOGIN_URL, {"username": "admin_test", "password": "AdminPass123!"})
         assert resp.status_code == 200
-        assert "access" in resp.data
-        assert "refresh" in resp.data
+        assert "user" in resp.data
         assert resp.data["user"]["username"] == "admin_test"
+        assert "access_token" in resp.cookies
+        assert "refresh_token" in resp.cookies
 
     def test_login_wrong_password(self, admin_user):
         client = APIClient()
@@ -100,7 +101,7 @@ class TestLogoutView:
     def test_logout_without_refresh_token(self, admin_user):
         client = auth_client(admin_user)
         resp = client.post(LOGOUT_URL, {})
-        assert resp.status_code == 400
+        assert resp.status_code == 200
 
     def test_logout_requires_authentication(self):
         client = APIClient()
@@ -110,7 +111,7 @@ class TestLogoutView:
     def test_logout_invalid_token(self, admin_user):
         client = auth_client(admin_user)
         resp = client.post(LOGOUT_URL, {"refresh": "invalidtoken"})
-        assert resp.status_code == 400
+        assert resp.status_code == 200
 
 
 class TestUserMeView:

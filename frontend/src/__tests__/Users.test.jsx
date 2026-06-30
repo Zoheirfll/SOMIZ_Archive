@@ -39,13 +39,13 @@ describe("Users — rendu initial", () => {
   test("affiche le titre Utilisateurs", async () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     renderPage();
-    expect(screen.getByText("Utilisateurs")).toBeInTheDocument();
+    expect(screen.getByText("Gestion des utilisateurs")).toBeInTheDocument();
   });
 
   test("affiche le bouton + Nouvel utilisateur", async () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     renderPage();
-    expect(screen.getByText("+ Nouvel utilisateur")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /nouvel utilisateur/i })).toBeInTheDocument();
   });
 
   test("charge la liste des utilisateurs au montage", async () => {
@@ -106,23 +106,23 @@ describe("Users — formulaire création", () => {
   test("cliquer sur + Nouvel utilisateur affiche le formulaire", async () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     renderPage();
-    fireEvent.click(screen.getByText("+ Nouvel utilisateur"));
-    expect(screen.getByText("Créer un compte")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /nouvel utilisateur/i }));
+    expect(screen.getByText("Créer un compte utilisateur")).toBeInTheDocument();
   });
 
   test("cliquer sur Annuler ferme le formulaire", async () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     renderPage();
-    fireEvent.click(screen.getByText("+ Nouvel utilisateur"));
+    fireEvent.click(screen.getByRole("button", { name: /nouvel utilisateur/i }));
     fireEvent.click(screen.getByText("Annuler"));
-    expect(screen.queryByText("Créer un compte")).not.toBeInTheDocument();
+    expect(screen.queryByText("Créer un compte utilisateur")).not.toBeInTheDocument();
   });
 
   test("validation : champs vides affichent les erreurs", async () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     renderPage();
-    fireEvent.click(screen.getByText("+ Nouvel utilisateur"));
-    fireEvent.click(screen.getByText("Créer"));
+    fireEvent.click(screen.getByRole("button", { name: /nouvel utilisateur/i }));
+    fireEvent.click(screen.getByText("Créer le compte"));
     await waitFor(() => {
       expect(screen.getByText("Identifiant obligatoire.")).toBeInTheDocument();
     });
@@ -131,7 +131,7 @@ describe("Users — formulaire création", () => {
   test("validation : mot de passe trop court", async () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     renderPage();
-    fireEvent.click(screen.getByText("+ Nouvel utilisateur"));
+    fireEvent.click(screen.getByRole("button", { name: /nouvel utilisateur/i }));
 
     fireEvent.change(screen.getByPlaceholderText("prenom.nom"), {
       target: { name: "username", value: "test" },
@@ -148,7 +148,7 @@ describe("Users — formulaire création", () => {
       target: { name: "password", value: "court" },
     });
 
-    fireEvent.click(screen.getByText("Créer"));
+    fireEvent.click(screen.getByText("Créer le compte"));
     await waitFor(() => {
       expect(screen.getByText("Minimum 10 caractères.")).toBeInTheDocument();
     });
@@ -157,7 +157,7 @@ describe("Users — formulaire création", () => {
   test("validation : mots de passe différents", async () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     renderPage();
-    fireEvent.click(screen.getByText("+ Nouvel utilisateur"));
+    fireEvent.click(screen.getByRole("button", { name: /nouvel utilisateur/i }));
 
     fireEvent.change(screen.getByPlaceholderText("prenom.nom"), {
       target: { name: "username", value: "test" },
@@ -176,7 +176,7 @@ describe("Users — formulaire création", () => {
       target: { name: "password2", value: "AutrePassword!" },
     });
 
-    fireEvent.click(screen.getByText("Créer"));
+    fireEvent.click(screen.getByText("Créer le compte"));
     await waitFor(() => {
       expect(
         screen.getByText("Les mots de passe ne correspondent pas.")
@@ -188,7 +188,7 @@ describe("Users — formulaire création", () => {
     api.get.mockResolvedValue({ data: { results: [] } });
     api.post.mockResolvedValue({});
     renderPage();
-    fireEvent.click(screen.getByText("+ Nouvel utilisateur"));
+    fireEvent.click(screen.getByRole("button", { name: /nouvel utilisateur/i }));
 
     fireEvent.change(screen.getByPlaceholderText("prenom.nom"), {
       target: { name: "username", value: "nouveau.user" },
@@ -207,7 +207,7 @@ describe("Users — formulaire création", () => {
       target: { name: "password2", value: "SecurePass123!" },
     });
 
-    fireEvent.click(screen.getByText("Créer"));
+    fireEvent.click(screen.getByText("Créer le compte"));
     await waitFor(() => {
       expect(
         screen.getByText("Utilisateur créé avec succès.")
@@ -240,8 +240,8 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1", "target_user")] },
     });
     renderPage();
-    await waitFor(() => screen.getByText("🔑 Reset MDP"));
-    fireEvent.click(screen.getByText("🔑 Reset MDP"));
+    await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
     expect(
       screen.getByText("Réinitialiser le mot de passe")
     ).toBeInTheDocument();
@@ -252,8 +252,8 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1", "jean.dupont")] },
     });
     renderPage();
-    await waitFor(() => screen.getByText("🔑 Reset MDP"));
-    fireEvent.click(screen.getByText("🔑 Reset MDP"));
+    await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
     expect(screen.getAllByText("jean.dupont").length).toBeGreaterThan(0);
   });
 
@@ -262,8 +262,8 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1")] },
     });
     renderPage();
-    await waitFor(() => screen.getByText("🔑 Reset MDP"));
-    fireEvent.click(screen.getByText("🔑 Reset MDP"));
+    await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
     fireEvent.click(screen.getByText("Annuler"));
     expect(
       screen.queryByText("Réinitialiser le mot de passe")
@@ -275,13 +275,13 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1", "user")] },
     });
     renderPage();
-    await waitFor(() => screen.getByText("🔑 Reset MDP"));
-    fireEvent.click(screen.getByText("🔑 Reset MDP"));
+    await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
 
     const inputs = screen.getAllByPlaceholderText("••••••••••");
     fireEvent.change(inputs[0], { target: { value: "court" } });
     fireEvent.change(inputs[1], { target: { value: "court" } });
-    fireEvent.click(screen.getByText("🔑 Réinitialiser"));
+    fireEvent.click(screen.getByText("Réinitialiser"));
 
     await waitFor(() => {
       expect(screen.getByText("Minimum 10 caractères.")).toBeInTheDocument();

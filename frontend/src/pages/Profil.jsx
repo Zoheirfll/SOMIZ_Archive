@@ -101,6 +101,7 @@ const Profil = () => {
         />
         <button
           type="button"
+          aria-label="Afficher/masquer le mot de passe"
           onClick={onToggle}
           style={{
             position: "absolute",

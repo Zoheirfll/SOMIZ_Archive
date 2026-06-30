@@ -73,7 +73,7 @@ describe("Dashboard — chargement", () => {
     api.get.mockResolvedValue({ data: mockStats });
     renderPage("ADMIN");
     await waitFor(() => {
-      expect(screen.getByText("Dashboard Admin")).toBeInTheDocument();
+      expect(screen.getByText("Tableau de bord")).toBeInTheDocument();
     });
     expect(screen.getByText("50")).toBeInTheDocument(); // employes_actifs
     expect(screen.getByText("40")).toBeInTheDocument(); // dossiers_complets

@@ -149,7 +149,7 @@ describe("ContratDetail — fil d'ariane", () => {
     renderPage();
     await waitFor(() => screen.getByText("← Employés"));
     fireEvent.click(screen.getByText("← Employés"));
-    expect(mockNavigate).toHaveBeenCalledWith(-1);
+    expect(mockNavigate).toHaveBeenCalledWith("/employees");
   });
 
   test("bouton employé navigue vers sa fiche", async () => {

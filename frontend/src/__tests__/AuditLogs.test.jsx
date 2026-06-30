@@ -43,7 +43,7 @@ describe("AuditLogs — rendu initial", () => {
     api.get.mockResolvedValue(mockResponse([]));
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("Journal d'Audit")).toBeInTheDocument();
+      expect(screen.getByText("Journal d'audit")).toBeInTheDocument();
     });
   });
 
@@ -154,8 +154,8 @@ describe("AuditLogs — pagination", () => {
     api.get.mockResolvedValue(mockResponse([makeLog(1)], 100, 3));
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("← Précédent")).toBeInTheDocument();
-      expect(screen.getByText("Suivant →")).toBeInTheDocument();
+      expect(screen.getByText("Précédent")).toBeInTheDocument();
+      expect(screen.getByText("Suivant")).toBeInTheDocument();
     });
   });
 
@@ -163,14 +163,14 @@ describe("AuditLogs — pagination", () => {
     api.get.mockResolvedValue(mockResponse([makeLog(1)], 1, 1));
     renderPage();
     await waitFor(() => screen.getByText("VIEW"));
-    expect(screen.queryByText("← Précédent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Précédent")).not.toBeInTheDocument();
   });
 
   test("clic Suivant → passe à la page 2", async () => {
     api.get.mockResolvedValue(mockResponse([makeLog(1)], 100, 3));
     renderPage();
-    await waitFor(() => screen.getByText("Suivant →"));
-    fireEvent.click(screen.getByText("Suivant →"));
+    await waitFor(() => screen.getByText("Suivant"));
+    fireEvent.click(screen.getByText("Suivant"));
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith(
         "/reporting/audit-logs/",
@@ -182,7 +182,7 @@ describe("AuditLogs — pagination", () => {
   test("bouton Précédent est désactivé sur la page 1", async () => {
     api.get.mockResolvedValue(mockResponse([makeLog(1)], 100, 3));
     renderPage();
-    await waitFor(() => screen.getByText("← Précédent"));
-    expect(screen.getByText("← Précédent")).toBeDisabled();
+    await waitFor(() => screen.getByText("Précédent"));
+    expect(screen.getByText("Précédent")).toBeDisabled();
   });
 });
