@@ -26,15 +26,16 @@ const Input = ({ ...props }) => (
     {...props}
     style={{
       width: "100%",
-      border: `1px solid ${theme.primaryBorder}`,
-      borderRadius: 8,
-      padding: "10px 14px",
+      border: `1px solid ${theme.border}`,
+      borderRadius: 10,
+      padding: "12px 14px",
       color: theme.text,
       fontSize: 14,
       outline: "none",
-      background: theme.bg,
+      background: theme.surface,
       boxSizing: "border-box",
-      transition: "border 0.15s",
+      fontFamily: theme.fontFamily,
+      transition: "border-color 0.15s",
       ...props.style,
     }}
   />
@@ -45,21 +46,54 @@ const Select = ({ children, ...props }) => (
     {...props}
     style={{
       width: "100%",
-      border: `1px solid ${theme.primaryBorder}`,
-      borderRadius: 8,
-      padding: "10px 14px",
+      border: `1px solid ${theme.border}`,
+      borderRadius: 10,
+      padding: "12px 14px",
       color: theme.text,
       fontSize: 14,
       outline: "none",
-      background: theme.bg,
+      background: theme.surface,
       boxSizing: "border-box",
       cursor: "pointer",
+      fontFamily: theme.fontFamily,
       opacity: props.disabled ? 0.5 : 1,
       ...props.style,
     }}
   >
     {children}
   </select>
+);
+
+const SectionHeader = ({ label }) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 20,
+    }}
+  >
+    <div
+      style={{
+        width: 4,
+        height: 18,
+        background: theme.primary,
+        borderRadius: 2,
+        flexShrink: 0,
+      }}
+    />
+    <div
+      style={{
+        color: theme.text,
+        fontSize: 13,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+      }}
+    >
+      {label}
+    </div>
+  </div>
 );
 
 const EmployeeForm = () => {
@@ -254,15 +288,25 @@ const EmployeeForm = () => {
     }
   };
 
+  const sectionCardStyle = {
+    background: theme.surface,
+    border: `1px solid ${theme.border}`,
+    borderRadius: 16,
+    padding: 28,
+    boxShadow: theme.shadowMd,
+    marginBottom: 20,
+  };
+
   if (fetching)
     return (
-      <div style={{ background: theme.bg, minHeight: "100vh" }}>
+      <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
         <Navbar />
         <div
           style={{
             color: theme.textSecondary,
             textAlign: "center",
             padding: 80,
+            fontSize: 14,
           }}
         >
           Chargement...
@@ -271,81 +315,82 @@ const EmployeeForm = () => {
     );
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh" }}>
+    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
       <Navbar />
+
+      {/* Hero header */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
+          padding: "32px 32px 36px",
+        }}
+      >
+        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+          <h1
+            style={{
+              color: "#FFFFFF",
+              margin: 0,
+              fontSize: 24,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {isEdit ? "Modifier l'employé" : "Nouvel employé"}
+          </h1>
+          <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
+            {isEdit
+              ? "Mettez à jour les informations de l'employé"
+              : "Créer un nouveau dossier employé dans le système"}
+          </div>
+        </div>
+      </div>
+
       <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}>
+
+        {/* Back button */}
         <button
           onClick={() => navigate(isEdit ? `/employees/${id}` : "/employees")}
           style={{
             background: "transparent",
-            border: `1px solid ${theme.primaryBorder}`,
+            border: `1px solid ${theme.border}`,
             color: theme.textSecondary,
-            padding: "6px 14px",
-            borderRadius: 6,
+            padding: "7px 16px",
+            borderRadius: 8,
             cursor: "pointer",
             fontSize: 13,
-            marginBottom: 20,
+            fontWeight: 500,
+            fontFamily: theme.fontFamily,
+            marginBottom: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
           ← Retour
         </button>
 
-        <div
-          style={{
-            background: theme.surface,
-            border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 12,
-            padding: 32,
-            boxShadow: theme.shadow,
-          }}
-        >
-          <h1
+        {/* Message banner */}
+        {message && (
+          <div
             style={{
-              color: theme.text,
-              margin: "0 0 28px",
-              fontSize: 20,
-              fontWeight: 800,
+              background: message.type === "success" ? theme.primaryBg : theme.dangerBg,
+              border: `1px solid ${message.type === "success" ? theme.primaryBorder : theme.dangerBorder}`,
+              color: message.type === "success" ? theme.primary : theme.danger,
+              borderRadius: 12,
+              padding: "12px 18px",
+              marginBottom: 20,
+              fontSize: 13,
+              fontWeight: 600,
             }}
           >
-            {isEdit ? "Modifier l'employé" : "Nouvel employé"}
-          </h1>
+            {message.text}
+          </div>
+        )}
 
-          {message && (
-            <div
-              style={{
-                background:
-                  message.type === "success" ? theme.primaryBg : theme.dangerBg,
-                border: `1px solid ${message.type === "success" ? theme.primaryBorder : theme.dangerBorder}`,
-                color:
-                  message.type === "success" ? theme.primary : theme.danger,
-                borderRadius: 8,
-                padding: "10px 16px",
-                marginBottom: 20,
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              {message.text}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            {/* Section identité */}
-            <div
-              style={{
-                color: theme.primary,
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                marginBottom: 16,
-                paddingBottom: 8,
-                borderBottom: `1px solid ${theme.primaryBorder}`,
-              }}
-            >
-              Identité
-            </div>
-
+        <form onSubmit={handleSubmit}>
+          {/* Section Identité */}
+          <div style={sectionCardStyle}>
+            <SectionHeader label="Identité" />
             <div
               style={{
                 display: "grid",
@@ -359,8 +404,6 @@ const EmployeeForm = () => {
                   value={form.matricule}
                   onChange={handleChange}
                   placeholder="EMP-001"
-                  disabled={false}
-                  style={{ background: theme.bg }}
                 />
                 {errors.matricule && (
                   <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
@@ -405,9 +448,7 @@ const EmployeeForm = () => {
                   placeholder="FILALI"
                 />
                 {errors.nom && (
-                  <div
-                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
-                  >
+                  <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
                     {errors.nom}
                   </div>
                 )}
@@ -421,9 +462,7 @@ const EmployeeForm = () => {
                   placeholder="Ahmed"
                 />
                 {errors.prenom && (
-                  <div
-                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
-                  >
+                  <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
                     {errors.prenom}
                   </div>
                 )}
@@ -447,23 +486,11 @@ const EmployeeForm = () => {
                 />
               </Field>
             </div>
+          </div>
 
-            {/* Section organisation */}
-            <div
-              style={{
-                color: theme.primary,
-                fontSize: 11,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-                margin: "24px 0 16px",
-                paddingBottom: 8,
-                borderBottom: `1px solid ${theme.primaryBorder}`,
-              }}
-            >
-              Organisation
-            </div>
-
+          {/* Section Organisation */}
+          <div style={sectionCardStyle}>
+            <SectionHeader label="Organisation" />
             <div
               style={{
                 display: "grid",
@@ -575,59 +602,61 @@ const EmployeeForm = () => {
                 </Select>
               </Field>
             </div>
+          </div>
 
-            {/* Boutons */}
-            <div
+          {/* Action buttons */}
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              justifyContent: "flex-end",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                navigate(isEdit ? `/employees/${id}` : "/employees")
+              }
               style={{
-                display: "flex",
-                gap: 12,
-                justifyContent: "flex-end",
-                marginTop: 28,
-                paddingTop: 20,
-                borderTop: `1px solid ${theme.primaryBorder}`,
+                background: "transparent",
+                border: `1px solid ${theme.border}`,
+                color: theme.textSecondary,
+                borderRadius: 10,
+                padding: "12px 24px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+                fontFamily: theme.fontFamily,
               }}
             >
-              <button
-                type="button"
-                onClick={() =>
-                  navigate(isEdit ? `/employees/${id}` : "/employees")
-                }
-                style={{
-                  background: "transparent",
-                  border: `1px solid ${theme.primaryBorder}`,
-                  color: theme.textSecondary,
-                  borderRadius: 8,
-                  padding: "10px 24px",
-                  fontSize: 14,
-                  cursor: "pointer",
-                }}
-              >
-                Annuler
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  background: loading ? `${theme.primary}88` : theme.primary,
-                  border: "none",
-                  color: "#fff",
-                  borderRadius: 8,
-                  padding: "10px 28px",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: loading ? "not-allowed" : "pointer",
-                  boxShadow: `0 2px 8px ${theme.primary}44`,
-                }}
-              >
-                {loading
-                  ? "Enregistrement..."
-                  : isEdit
-                    ? "Enregistrer"
-                    : "Créer l'employé"}
-              </button>
-            </div>
-          </form>
-        </div>
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                background: loading ? `${theme.primary}88` : theme.primary,
+                border: "none",
+                color: "#fff",
+                borderRadius: 10,
+                padding: "12px 28px",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: theme.fontFamily,
+                letterSpacing: "-0.01em",
+                boxShadow: loading ? "none" : `0 2px 8px ${theme.primary}33`,
+                transition: "background 0.15s",
+              }}
+            >
+              {loading
+                ? "Enregistrement..."
+                : isEdit
+                  ? "Enregistrer les modifications"
+                  : "Créer l'employé"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -73,3 +73,28 @@
   background: #E8F5EE !important;
   color: #1A7A3C !important;
 }
+
+/* ─── Cartes hiérarchiques — lift plus prononcé ──────────────────────── */
+@keyframes somizPop {
+  0%   { transform: scale(0.82); opacity: 0; }
+  70%  { transform: scale(1.04); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+.anim-pop { animation: somizPop 0.3s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 32px rgba(26, 122, 60, 0.2) !important;
+}
+.hover-lift:active {
+  transform: translateY(-1px) !important;
+}
+
+/* Délais supplémentaires pour grandes grilles */
+.delay-5 { animation-delay: 300ms; }
+.delay-6 { animation-delay: 360ms; }
+.delay-7 { animation-delay: 420ms; }
+.delay-8 { animation-delay: 480ms; }

@@ -209,65 +209,68 @@ const ContratDetail = () => {
   const statutStyle = STATUT_COLORS[contrat.statut] || STATUT_COLORS.actif;
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh" }}>
+    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
       <Navbar />
-      <div style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
 
-        {/* Fil d'ariane */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-          <button
-            onClick={() => navigate(-1)}
-            style={{
-              background: "transparent", border: `1px solid ${theme.primaryBorder}`,
-              color: theme.textSecondary, padding: "6px 14px", borderRadius: 6,
-              cursor: "pointer", fontSize: 13,
-            }}
-          >
-            ← Employés
-          </button>
-          <span style={{ color: theme.textMuted, fontSize: 13 }}>›</span>
-          <button
-            onClick={() => navigate(`/employees/${contrat.employee_id}`)}
-            style={{
-              background: "transparent", border: `1px solid ${theme.primaryBorder}`,
-              color: theme.textSecondary, padding: "6px 14px", borderRadius: 6,
-              cursor: "pointer", fontSize: 13,
-            }}
-          >
-            {contrat.employee_matricule} — {contrat.employee_nom}
-          </button>
-          <span style={{ color: theme.textMuted, fontSize: 13 }}>›</span>
-          <span style={{ color: theme.primary, fontWeight: 700, fontSize: 13, fontFamily: "monospace" }}>
-            {contrat.numero_contrat}
-          </span>
-          {user?.role === "ADMIN" && (
-            <>
-              <span style={{ flex: 1 }} />
-              <button
-                onClick={() => navigate(`/employees/${contrat.employee_id}?tab=contrats`)}
-                style={{
-                  background: theme.primaryBg,
-                  border: `1px solid ${theme.primaryBorder}`,
-                  color: theme.primary,
-                  padding: "6px 14px",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >
-                + Ajouter un contrat
-              </button>
-            </>
-          )}
+      {/* Hero Header */}
+      <div style={{
+        background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
+        padding: "40px 32px 32px",
+      }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          {/* Breadcrumb */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
+            <button onClick={() => navigate("/employees")} style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "rgba(255,255,255,0.8)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
+              ← Employés
+            </button>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>›</span>
+            <button onClick={() => navigate(`/employees/${contrat.employee_id}`)} style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "rgba(255,255,255,0.8)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
+              {contrat.employee_matricule} — {contrat.employee_nom}
+            </button>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>›</span>
+            <span style={{ color: "rgba(255,255,255,0.9)", fontWeight: 700, fontSize: 12, fontFamily: "monospace" }}>{contrat.numero_contrat}</span>
+          </div>
+
+          {/* Hero content */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <div style={{ width: 64, height: 64, borderRadius: 16, background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>
+                📋
+              </div>
+              <div>
+                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Contrat</div>
+                <div style={{ color: "#fff", fontWeight: 800, fontSize: 28, letterSpacing: "-0.02em", fontFamily: "monospace" }}>{contrat.numero_contrat}</div>
+                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 4 }}>{contrat.employee_prenom || ""} {contrat.employee_nom} · {contrat.employee_matricule}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ background: statutStyle.bg, border: `1px solid ${statutStyle.border}`, color: statutStyle.color, borderRadius: 20, padding: "6px 16px", fontSize: 13, fontWeight: 700 }}>
+                {statutStyle.label}
+              </span>
+              {user?.role === "ADMIN" && !editing && (
+                <button onClick={handleEditOpen} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                  ✏️ Modifier
+                </button>
+              )}
+              {user?.role === "ADMIN" && (
+                <button onClick={() => navigate(`/employees/${contrat.employee_id}?tab=contrats`)} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                  + Nouveau contrat
+                </button>
+              )}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {message && (
           <div className="notif-banner" style={{
             background: message.type === "success" ? theme.primaryBg : theme.dangerBg,
             border: `1px solid ${message.type === "success" ? theme.primaryBorder : theme.dangerBorder}`,
             color: message.type === "success" ? theme.primary : theme.danger,
-            borderRadius: 8, padding: "10px 16px", marginBottom: 16, fontSize: 13, fontWeight: 600,
+            borderRadius: 10, padding: "12px 18px", marginBottom: 20, fontSize: 13, fontWeight: 600,
           }}>
             {message.text}
           </div>
@@ -275,52 +278,12 @@ const ContratDetail = () => {
 
         {/* Infos contrat */}
         <div className="anim-slide-up delay-1" style={{
-          background: theme.surface, border: `1px solid ${theme.primaryBorder}`,
-          borderRadius: 12, padding: 24, marginBottom: 24, boxShadow: theme.shadow,
+          background: theme.surface, border: `1px solid ${theme.border}`,
+          borderRadius: 16, padding: 28, marginBottom: 24, boxShadow: theme.shadowMd,
         }}>
-          <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.primaryBorder}`,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: "50%",
-                background: theme.primaryBg, border: `2px solid ${theme.primaryBorder}`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                color: theme.primary, fontWeight: 800, fontSize: 18,
-              }}>
-                📋
-              </div>
-              <div>
-                <div style={{ color: theme.text, fontWeight: 800, fontSize: 18 }}>
-                  Contrat {contrat.numero_contrat}
-                </div>
-                <div style={{ color: theme.textSecondary, fontSize: 13, marginTop: 2 }}>
-                  {contrat.employee_matricule} — {contrat.employee_nom}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{
-                background: statutStyle.bg, border: `1px solid ${statutStyle.border}`,
-                color: statutStyle.color, borderRadius: 6, padding: "4px 12px",
-                fontSize: 12, fontWeight: 600,
-              }}>
-                {statutStyle.label}
-              </span>
-              {user?.role === "ADMIN" && !editing && (
-                <button
-                  onClick={handleEditOpen}
-                  style={{
-                    background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`,
-                    color: theme.primary, borderRadius: 6, padding: "5px 14px",
-                    fontSize: 13, fontWeight: 600, cursor: "pointer",
-                  }}
-                >
-                  ✏️ Modifier
-                </button>
-              )}
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.border}` }}>
+            <div style={{ width: 4, height: 20, background: theme.primary, borderRadius: 2 }} />
+            <span style={{ color: theme.textSecondary, fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Informations du contrat</span>
           </div>
 
           {/* Formulaire d'édition inline */}
@@ -332,7 +295,7 @@ const ContratDetail = () => {
                   <input
                     value={editForm.numero_contrat}
                     onChange={(e) => setEditForm({ ...editForm, numero_contrat: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
                   />
                 </div>
                 <div>
@@ -340,7 +303,7 @@ const ContratDetail = () => {
                   <select
                     value={editForm.statut}
                     onChange={(e) => setEditForm({ ...editForm, statut: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
                   >
                     <option value="actif">Actif</option>
                     <option value="archive">Archivé</option>
@@ -352,7 +315,7 @@ const ContratDetail = () => {
                   <select
                     value={editForm.type_contrat}
                     onChange={(e) => setEditForm({ ...editForm, type_contrat: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
                   >
                     <option value="">— Aucun —</option>
                     {typesContrat.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
@@ -361,17 +324,17 @@ const ContratDetail = () => {
                 <div>
                   <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Date début</label>
                   <input type="date" value={editForm.date_debut} onChange={(e) => setEditForm({ ...editForm, date_debut: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
                 </div>
                 <div>
                   <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Date fin</label>
                   <input type="date" value={editForm.date_fin} onChange={(e) => setEditForm({ ...editForm, date_fin: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
                 </div>
                 <div>
                   <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes</label>
                   <input value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.primaryBorder}`, borderRadius: 7, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
+                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
@@ -382,8 +345,8 @@ const ContratDetail = () => {
                   {saving ? "Enregistrement…" : "✓ Enregistrer"}
                 </button>
                 <button type="button" onClick={() => setEditing(false)} style={{
-                  background: "transparent", border: `1px solid ${theme.primaryBorder}`,
-                  color: theme.textSecondary, borderRadius: 7, padding: "8px 16px", fontSize: 13, cursor: "pointer",
+                  background: "transparent", border: `1px solid ${theme.border}`,
+                  color: theme.textSecondary, borderRadius: 10, padding: "8px 16px", fontSize: 13, cursor: "pointer",
                 }}>
                   Annuler
                 </button>
@@ -423,11 +386,11 @@ const ContratDetail = () => {
         <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}>
           {/* Sidebar documents */}
           <div style={{
-            background: theme.surface, border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 12, overflow: "hidden", boxShadow: theme.shadow,
+            background: theme.surface, border: `1px solid ${theme.border}`,
+            borderRadius: 16, overflow: "hidden", boxShadow: theme.shadowMd,
           }}>
             <div style={{
-              padding: "14px 16px", borderBottom: `1px solid ${theme.primaryBorder}`,
+              padding: "14px 16px", borderBottom: `1px solid ${theme.border}`,
               color: theme.primary, fontWeight: 700, fontSize: 12,
               textTransform: "uppercase", letterSpacing: "0.05em", background: theme.primaryBg,
             }}>
@@ -436,7 +399,7 @@ const ContratDetail = () => {
 
             {contrat.documents?.map((doc) => (
               <div key={doc.id} style={{
-                borderBottom: `1px solid ${theme.primaryBorder}`,
+                borderBottom: `1px solid ${theme.border}`,
                 background: selectedDoc?.id === doc.id ? theme.primaryBg : "transparent",
                 borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : "transparent"}`,
               }}>
@@ -473,7 +436,7 @@ const ContratDetail = () => {
                 </div>
 
                 {selectedDoc?.id === doc.id && doc.fichiers?.length > 0 && (
-                  <div style={{ borderTop: `1px dashed ${theme.primaryBorder}`, background: theme.bg }}>
+                  <div style={{ borderTop: `1px dashed ${theme.border}`, background: theme.bg }}>
                     {doc.fichiers.map((file, index) => (
                       <div
                         key={file.id}
@@ -526,7 +489,7 @@ const ContratDetail = () => {
             {/* Upload ADMIN */}
             {user?.role === "ADMIN" && (
               <div style={{
-                padding: 16, borderTop: `2px solid ${theme.primaryBorder}`, background: theme.bg,
+                padding: 16, borderTop: `1px solid ${theme.border}`, background: theme.bg,
               }}>
                 <div style={{ color: theme.text, fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
                   Ajouter un document
@@ -535,7 +498,7 @@ const ContratDetail = () => {
                   value={uploadType}
                   onChange={(e) => setUploadType(e.target.value)}
                   style={{
-                    width: "100%", border: `1px solid ${theme.primaryBorder}`, borderRadius: 6,
+                    width: "100%", border: `1px solid ${theme.border}`, borderRadius: 8,
                     padding: "7px 10px", fontSize: 12, color: theme.text,
                     background: theme.surface, marginBottom: 8, outline: "none",
                   }}
@@ -570,14 +533,14 @@ const ContratDetail = () => {
 
           {/* Viewer */}
           <div style={{
-            background: theme.surface, border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 12, overflow: "hidden", boxShadow: theme.shadow,
+            background: theme.surface, border: `1px solid ${theme.border}`,
+            borderRadius: 16, overflow: "hidden", boxShadow: theme.shadowMd,
             minHeight: 600, display: "flex", flexDirection: "column",
           }}>
             {selectedFile ? (
               <>
                 <div style={{
-                  padding: "14px 20px", borderBottom: `1px solid ${theme.primaryBorder}`,
+                  padding: "14px 20px", borderBottom: `1px solid ${theme.border}`,
                   background: theme.primaryBg, display: "flex",
                   justifyContent: "space-between", alignItems: "center",
                 }}>
@@ -598,7 +561,7 @@ const ContratDetail = () => {
                             onClick={() => loadFile(file)}
                             style={{
                               background: selectedFile.id === file.id ? theme.primary : theme.primaryBg,
-                              border: `1px solid ${theme.primaryBorder}`,
+                              border: `1px solid ${theme.border}`,
                               color: selectedFile.id === file.id ? "#fff" : theme.primary,
                               borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer",
                             }}

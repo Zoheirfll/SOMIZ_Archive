@@ -1,28 +1,59 @@
 export const theme = {
-  // Couleurs principales
-  primary: "#1A7A3C",
-  primaryLight: "#2ECC71",
-  primaryBg: "#E8F5EE",
-  primaryBorder: "#D4E8DA",
+  // ─── Police ──────────────────────────────────────────────────────────────
+  fontFamily: "'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif",
 
-  // Fonds
-  bg: "#F5F7F5",
+  // ─── Palette principale (vert SOMIZ — brand identity) ────────────────────
+  primary: "#166534",          // green-800
+  primaryLight: "#16a34a",     // green-600
+  primaryBg: "#f0fdf4",        // green-50
+  primaryBorder: "#bbf7d0",    // green-200
+
+  // ─── Couleurs de page ─────────────────────────────────────────────────────
+  bg: "#F1F5F9",               // slate-100 — fond général
   surface: "#FFFFFF",
-  surfaceHover: "#F0F7F3",
+  surfaceHover: "#F8FAFC",
+  surfaceElevated: "#FFFFFF",
 
-  // Textes
-  text: "#1A2E1F",
-  textSecondary: "#6B8F71",
-  textMuted: "#9DB8A4",
+  // ─── Textes ───────────────────────────────────────────────────────────────
+  text: "#0F172A",             // slate-900
+  textSecondary: "#475569",    // slate-600
+  textMuted: "#94A3B8",        // slate-400
 
-  // États
-  success: "#1A7A3C",
-  warning: "#D4A843",
-  danger: "#E53935",
-  dangerBg: "#FFEBEE",
-  dangerBorder: "#FFCDD2",
+  // ─── Bordures ─────────────────────────────────────────────────────────────
+  border: "#E2E8F0",           // slate-200
+  borderLight: "#F1F5F9",      // slate-100
 
-  // Ombres
-  shadow: "0 1px 4px rgba(26,122,60,0.08)",
-  shadowMd: "0 4px 16px rgba(26,122,60,0.12)",
+  // ─── États ────────────────────────────────────────────────────────────────
+  success: "#166534",
+  warning: "#B45309",
+  danger: "#DC2626",
+  dangerBg: "#FEF2F2",
+  dangerBorder: "#FECACA",
+
+  // ─── Ombres (élévation) ───────────────────────────────────────────────────
+  shadow:    "0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)",
+  shadowMd:  "0 4px 12px rgba(15,23,42,0.08), 0 2px 4px rgba(15,23,42,0.04)",
+  shadowLg:  "0 12px 32px rgba(15,23,42,0.12), 0 4px 8px rgba(15,23,42,0.06)",
+  shadowXl:  "0 24px 48px rgba(15,23,42,0.16), 0 8px 16px rgba(15,23,42,0.08)",
+
+  // ─── Cartes hiérarchiques ─────────────────────────────────────────────────
+  cardRadius: 20,
+  cardHover: "#F8FAFC",
+
+  // Couleurs par niveau + dégradés
+  directionColor:   "#166534",
+  directionGrad:    "linear-gradient(135deg, #052e16 0%, #166534 60%, #15803d 100%)",
+  directionAccent:  "#f0fdf4",
+
+  departementColor:  "#1e40af",
+  departementGrad:   "linear-gradient(135deg, #1e1b4b 0%, #1e40af 60%, #2563eb 100%)",
+  departementAccent: "#eff6ff",
+
+  serviceColor:  "#6d28d9",
+  serviceGrad:   "linear-gradient(135deg, #2e1065 0%, #6d28d9 60%, #7c3aed 100%)",
+  serviceAccent: "#f5f3ff",
+
+  // Badges
+  badgeBg:    "rgba(22,101,52,0.08)",
+  badgeColor: "#166534",
 };

@@ -60,6 +60,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         # Filtres via query params
         q = self.request.query_params.get('q')
         dept = self.request.query_params.get('departement')
+        service = self.request.query_params.get('service')
         statut = self.request.query_params.get('statut')
         complet = self.request.query_params.get('dossier_complet')
 
@@ -70,8 +71,10 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
                 Q(matricule__icontains=q) |
                 Q(contrats__numero_contrat__icontains=q)
             ).distinct()
+        if service:
+            qs = qs.filter(service=service)
         if dept:
-            qs = qs.filter(departement__icontains=dept)
+            qs = qs.filter(departement=dept)
         if statut:
             qs = qs.filter(statut=statut)
 

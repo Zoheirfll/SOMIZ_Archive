@@ -285,197 +285,68 @@ const EmployeeDetail = () => {
   ];
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh" }}>
+    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
       <Navbar />
-      <div style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            background: "transparent",
-            border: `1px solid ${theme.primaryBorder}`,
-            color: theme.textSecondary,
-            padding: "6px 14px",
-            borderRadius: 6,
-            cursor: "pointer",
-            fontSize: 13,
-            marginBottom: 20,
-          }}
-        >
-          ← Retour
-        </button>
+
+      {/* Hero header */}
+      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "28px 32px 32px" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+          <button onClick={() => navigate(-1)} style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer", marginBottom: 16, fontFamily: "inherit" }}>
+            ← Retour
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 20, flexShrink: 0 }}>
+              {employee.prenom?.[0]}{employee.nom?.[0]}
+            </div>
+            <div>
+              <h1 style={{ color: "#fff", fontWeight: 800, fontSize: 22, margin: 0, letterSpacing: "-0.02em" }}>
+                {employee.prenom} {employee.nom}
+              </h1>
+              <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, marginTop: 4, display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{employee.matricule}</span>
+                {contrats.length > 0 && (
+                  <><span style={{ opacity: 0.5 }}>·</span>
+                  <span style={{ cursor: "pointer", textDecoration: "underline", textDecorationColor: "rgba(255,255,255,0.4)" }} onClick={() => navigate(`/contrats/${contrats[0].id}`)}>
+                    {contrats[0].numero_contrat}
+                  </span></>
+                )}
+                <span style={{ opacity: 0.5 }}>·</span>
+                <span style={{ background: employee.statut === "actif" ? "rgba(74,222,128,0.25)" : "rgba(239,68,68,0.25)", border: `1px solid ${employee.statut === "actif" ? "rgba(74,222,128,0.4)" : "rgba(239,68,68,0.4)"}`, color: "#fff", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
+                  {employee.statut}
+                </span>
+              </div>
+            </div>
+            <div style={{ marginLeft: "auto", textAlign: "right" }}>
+              <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, marginBottom: 4 }}>Complétude dossier</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 120, background: "rgba(255,255,255,0.15)", borderRadius: 4, height: 6 }}>
+                  <div style={{ height: "100%", width: `${employee.taux_completude}%`, background: employee.taux_completude === 100 ? "#4ade80" : employee.taux_completude >= 50 ? "#fbbf24" : "#f87171", borderRadius: 4, transition: "width 0.5s ease" }} />
+                </div>
+                <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{employee.taux_completude}%</span>
+              </div>
+              {user?.role === "ADMIN" && (
+                <button onClick={() => navigate(`/employees/${id}/modifier`)} className="btn-lift" style={{ marginTop: 10, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  Modifier
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {message && (
-          <div
-            className="notif-banner"
-            style={{
-              background:
-                message.type === "success" ? theme.primaryBg : theme.dangerBg,
-              border: `1px solid ${message.type === "success" ? theme.primaryBorder : theme.dangerBorder}`,
-              color: message.type === "success" ? theme.primary : theme.danger,
-              borderRadius: 8,
-              padding: "10px 16px",
-              marginBottom: 16,
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
+          <div className="notif-banner" style={{ background: message.type === "success" ? theme.primaryBg : theme.dangerBg, border: `1px solid ${message.type === "success" ? theme.border : theme.dangerBorder}`, color: message.type === "success" ? theme.primary : theme.danger, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, fontWeight: 600 }}>
             {message.text}
           </div>
         )}
 
         {/* Infos employé */}
-        <div
-          className="anim-slide-up"
-          style={{
-            background: theme.surface,
-            border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 12,
-            padding: 24,
-            marginBottom: 24,
-            boxShadow: theme.shadow,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 20,
-              paddingBottom: 16,
-              borderBottom: `1px solid ${theme.primaryBorder}`,
-            }}
-          >
+        <div className="anim-slide-up" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: theme.shadowMd }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.border}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: "50%",
-                  background: theme.primaryBg,
-                  border: `2px solid ${theme.primaryBorder}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: theme.primary,
-                  fontWeight: 800,
-                  fontSize: 18,
-                }}
-              >
-                {employee.prenom?.[0]}
-                {employee.nom?.[0]}
-              </div>
-              <div>
-                <div
-                  style={{ color: theme.text, fontWeight: 800, fontSize: 18 }}
-                >
-                  {employee.prenom} {employee.nom}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginTop: 4,
-                  }}
-                >
-                  <span
-                    style={{
-                      color: theme.primary,
-                      fontFamily: "monospace",
-                      fontSize: 13,
-                    }}
-                  >
-                    {employee.matricule}
-                  </span>
-                  {contrats.length > 0 && (
-                    <>
-                      <span style={{ color: theme.textMuted, fontSize: 12 }}>
-                        •
-                      </span>
-                      <span
-                        onClick={() => navigate(`/contrats/${contrats[0].id}`)}
-                        style={{
-                          fontFamily: "monospace",
-                          fontWeight: 700,
-                          fontSize: 13,
-                          color: theme.primary,
-                          background: theme.primaryBg,
-                          border: `1px solid ${theme.primaryBorder}`,
-                          borderRadius: 5,
-                          padding: "1px 8px",
-                          cursor: "pointer",
-                          letterSpacing: "0.06em",
-                        }}
-                        title="Contrat le plus récent — cliquer pour ouvrir"
-                      >
-                        {contrats[0].numero_contrat}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{
-                    color: theme.textMuted,
-                    fontSize: 11,
-                    marginBottom: 4,
-                  }}
-                >
-                  Complétude dossier
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div
-                    style={{
-                      width: 120,
-                      background: theme.bg,
-                      borderRadius: 4,
-                      height: 8,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${employee.taux_completude}%`,
-                        background:
-                          employee.taux_completude === 100
-                            ? theme.primary
-                            : employee.taux_completude >= 50
-                              ? theme.warning
-                              : theme.danger,
-                        borderRadius: 4,
-                        transition: "width 0.5s ease",
-                      }}
-                    />
-                  </div>
-                  <span
-                    style={{ color: theme.text, fontWeight: 700, fontSize: 13 }}
-                  >
-                    {employee.taux_completude}%
-                  </span>
-                </div>
-              </div>
-              {user?.role === "ADMIN" && (
-                <button
-                  onClick={() => navigate(`/employees/${id}/modifier`)}
-                  style={{
-                    background: theme.primaryBg,
-                    border: `1px solid ${theme.primaryBorder}`,
-                    color: theme.primary,
-                    borderRadius: 8,
-                    padding: "8px 16px",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  ✏️ Modifier
-                </button>
-              )}
+              <span style={{ color: theme.textSecondary, fontSize: 13, fontWeight: 500 }}>Informations</span>
             </div>
           </div>
 
@@ -510,7 +381,7 @@ const EmployeeDetail = () => {
                         employee.statut === "actif"
                           ? theme.primary
                           : theme.danger,
-                      border: `1px solid ${employee.statut === "actif" ? theme.primaryBorder : theme.dangerBorder}`,
+                      border: `1px solid ${employee.statut === "actif" ? theme.border : theme.dangerBorder}`,
                       borderRadius: 6,
                       padding: "3px 10px",
                       fontSize: 12,
@@ -551,7 +422,7 @@ const EmployeeDetail = () => {
               style={{
                 background:
                   activeTab === tab.key ? theme.primary : theme.surface,
-                border: `1px solid ${activeTab === tab.key ? theme.primary : theme.primaryBorder}`,
+                border: `1px solid ${activeTab === tab.key ? theme.primary : theme.border}`,
                 color: activeTab === tab.key ? "#fff" : theme.text,
                 borderRadius: 8,
                 padding: "8px 20px",
@@ -571,7 +442,7 @@ const EmployeeDetail = () => {
             className="tab-content"
             style={{
               background: theme.surface,
-              border: `1px solid ${theme.primaryBorder}`,
+              border: `1px solid ${theme.border}`,
               borderRadius: 12,
               overflow: "hidden",
               boxShadow: theme.shadow,
@@ -580,7 +451,7 @@ const EmployeeDetail = () => {
             <div
               style={{
                 padding: "14px 20px",
-                borderBottom: `1px solid ${theme.primaryBorder}`,
+                borderBottom: `1px solid ${theme.border}`,
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
@@ -635,7 +506,7 @@ const EmployeeDetail = () => {
                 onSubmit={handleCreateContrat}
                 style={{
                   padding: 20,
-                  borderBottom: `1px solid ${theme.primaryBorder}`,
+                  borderBottom: `1px solid ${theme.border}`,
                   background: "#FAFFFE",
                 }}
               >
@@ -671,7 +542,7 @@ const EmployeeDetail = () => {
                       placeholder=""
                       style={{
                         width: "100%",
-                        border: `1px solid ${theme.primaryBorder}`,
+                        border: `1px solid ${theme.border}`,
                         borderRadius: 6,
                         padding: "8px 10px",
                         fontSize: 13,
@@ -705,7 +576,7 @@ const EmployeeDetail = () => {
                       }
                       style={{
                         width: "100%",
-                        border: `1px solid ${theme.primaryBorder}`,
+                        border: `1px solid ${theme.border}`,
                         borderRadius: 6,
                         padding: "8px 10px",
                         fontSize: 13,
@@ -742,7 +613,7 @@ const EmployeeDetail = () => {
                       }
                       style={{
                         width: "100%",
-                        border: `1px solid ${theme.primaryBorder}`,
+                        border: `1px solid ${theme.border}`,
                         borderRadius: 6,
                         padding: "8px 10px",
                         fontSize: 13,
@@ -780,7 +651,7 @@ const EmployeeDetail = () => {
                       }
                       style={{
                         width: "100%",
-                        border: `1px solid ${theme.primaryBorder}`,
+                        border: `1px solid ${theme.border}`,
                         borderRadius: 6,
                         padding: "8px 10px",
                         fontSize: 13,
@@ -814,7 +685,7 @@ const EmployeeDetail = () => {
                       }
                       style={{
                         width: "100%",
-                        border: `1px solid ${theme.primaryBorder}`,
+                        border: `1px solid ${theme.border}`,
                         borderRadius: 6,
                         padding: "8px 10px",
                         fontSize: 13,
@@ -846,7 +717,7 @@ const EmployeeDetail = () => {
                     rows={2}
                     style={{
                       width: "100%",
-                      border: `1px solid ${theme.primaryBorder}`,
+                      border: `1px solid ${theme.border}`,
                       borderRadius: 6,
                       padding: "8px 10px",
                       fontSize: 13,
@@ -882,7 +753,7 @@ const EmployeeDetail = () => {
                     onClick={() => setShowNewContratForm(false)}
                     style={{
                       background: "transparent",
-                      border: `1px solid ${theme.primaryBorder}`,
+                      border: `1px solid ${theme.border}`,
                       color: theme.textSecondary,
                       borderRadius: 6,
                       padding: "8px 16px",
@@ -931,7 +802,7 @@ const EmployeeDetail = () => {
                           textTransform: "uppercase",
                           letterSpacing: "0.05em",
                           fontWeight: 600,
-                          borderBottom: `1px solid ${theme.primaryBorder}`,
+                          borderBottom: `1px solid ${theme.border}`,
                         }}
                       >
                         {h}
@@ -942,7 +813,7 @@ const EmployeeDetail = () => {
                 <tbody>
                   {contrats.map((c) => {
                     const statutColors = {
-                      actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
+                      actif:      { bg: theme.primaryBg, border: theme.border, color: theme.primary,  label: "Actif" },
                       archive:    { bg: "#F5F5F5",       border: "#BDBDBD",           color: "#616161",      label: "Archivé" },
                       demobilise: { bg: theme.dangerBg,  border: theme.dangerBorder,  color: theme.danger,   label: "Démobilisé" },
                     };
@@ -953,7 +824,7 @@ const EmployeeDetail = () => {
                         onClick={() => navigate(`/contrats/${c.id}`)}
                         style={{
                           cursor: "pointer",
-                          borderBottom: `1px solid ${theme.primaryBorder}`,
+                          borderBottom: `1px solid ${theme.border}`,
                         }}
                         onMouseEnter={(e) =>
                           (e.currentTarget.style.background = theme.primaryBg)
@@ -1052,7 +923,7 @@ const EmployeeDetail = () => {
             <div
               style={{
                 background: theme.surface,
-                border: `1px solid ${theme.primaryBorder}`,
+                border: `1px solid ${theme.border}`,
                 borderRadius: 12,
                 overflow: "hidden",
                 boxShadow: theme.shadow,
@@ -1061,7 +932,7 @@ const EmployeeDetail = () => {
               <div
                 style={{
                   padding: "14px 16px",
-                  borderBottom: `1px solid ${theme.primaryBorder}`,
+                  borderBottom: `1px solid ${theme.border}`,
                   color: theme.primary,
                   fontWeight: 700,
                   fontSize: 12,
@@ -1078,7 +949,7 @@ const EmployeeDetail = () => {
                 <div
                   key={doc.id}
                   style={{
-                    borderBottom: `1px solid ${theme.primaryBorder}`,
+                    borderBottom: `1px solid ${theme.border}`,
                     background:
                       selectedDoc?.id === doc.id
                         ? theme.primaryBg
@@ -1112,7 +983,7 @@ const EmployeeDetail = () => {
                           const c = contrats.find((c) => c.id === doc.contrat);
                           return c ? (
                             <span style={{
-                              background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`,
+                              background: theme.primaryBg, border: `1px solid ${theme.border}`,
                               color: theme.primary, borderRadius: 4, padding: "1px 7px",
                               fontSize: 10, fontWeight: 700, fontFamily: "monospace",
                             }}>
@@ -1152,7 +1023,7 @@ const EmployeeDetail = () => {
                           (e.currentTarget.style.opacity = 0.5)
                         }
                       >
-                        🗑️
+                        🗑
                       </button>
                     )}
                   </div>
@@ -1161,7 +1032,7 @@ const EmployeeDetail = () => {
                   {selectedDoc?.id === doc.id && doc.fichiers?.length > 0 && (
                     <div
                       style={{
-                        borderTop: `1px dashed ${theme.primaryBorder}`,
+                        borderTop: `1px dashed ${theme.border}`,
                         background: theme.bg,
                       }}
                     >
@@ -1193,7 +1064,7 @@ const EmployeeDetail = () => {
                             <span
                               style={{ color: theme.textMuted, fontSize: 11 }}
                             >
-                              {file.mime_type?.includes("pdf") ? "📄" : "🖼️"}
+                              {file.mime_type?.includes("pdf") ? "📄" : "🖼"}
                             </span>
                             <div>
                               <div
@@ -1231,7 +1102,7 @@ const EmployeeDetail = () => {
                                 (e.currentTarget.style.opacity = 0.5)
                               }
                             >
-                              🗑️
+                              🗑
                             </button>
                           )}
                         </div>
@@ -1247,7 +1118,7 @@ const EmployeeDetail = () => {
                   key={doc.code}
                   style={{
                     padding: "10px 16px",
-                    borderBottom: `1px solid ${theme.primaryBorder}`,
+                    borderBottom: `1px solid ${theme.border}`,
                     background: "#FAFAFA",
                     display: "flex",
                     justifyContent: "space-between",
@@ -1282,7 +1153,7 @@ const EmployeeDetail = () => {
                           quickUploadingCode === doc.code
                             ? `${theme.primary}88`
                             : theme.primaryBg,
-                        border: `1px solid ${theme.primaryBorder}`,
+                        border: `1px solid ${theme.border}`,
                         color: theme.primary,
                         borderRadius: 6,
                         padding: "4px 8px",
@@ -1350,7 +1221,7 @@ const EmployeeDetail = () => {
                 <div
                   style={{
                     padding: 16,
-                    borderTop: `2px solid ${theme.primaryBorder}`,
+                    borderTop: `2px solid ${theme.border}`,
                     background: theme.bg,
                   }}
                 >
@@ -1369,7 +1240,7 @@ const EmployeeDetail = () => {
                     onChange={(e) => setUploadType(e.target.value)}
                     style={{
                       width: "100%",
-                      border: `1px solid ${theme.primaryBorder}`,
+                      border: `1px solid ${theme.border}`,
                       borderRadius: 6,
                       padding: "7px 10px",
                       fontSize: 12,
@@ -1409,7 +1280,7 @@ const EmployeeDetail = () => {
                       onChange={handleUpload}
                       style={{ display: "none" }}
                       disabled={uploading}
-                      multiple /* ← permet sélection multiple */
+                      multiple
                     />
                   </label>
                   <div
@@ -1430,7 +1301,7 @@ const EmployeeDetail = () => {
             <div
               style={{
                 background: theme.surface,
-                border: `1px solid ${theme.primaryBorder}`,
+                border: `1px solid ${theme.border}`,
                 borderRadius: 12,
                 overflow: "hidden",
                 boxShadow: theme.shadow,
@@ -1444,7 +1315,7 @@ const EmployeeDetail = () => {
                   <div
                     style={{
                       padding: "14px 20px",
-                      borderBottom: `1px solid ${theme.primaryBorder}`,
+                      borderBottom: `1px solid ${theme.border}`,
                       background: theme.primaryBg,
                       display: "flex",
                       justifyContent: "space-between",
@@ -1487,7 +1358,7 @@ const EmployeeDetail = () => {
                                   selectedFile.id === file.id
                                     ? theme.primary
                                     : theme.primaryBg,
-                                border: `1px solid ${theme.primaryBorder}`,
+                                border: `1px solid ${theme.border}`,
                                 color:
                                   selectedFile.id === file.id
                                     ? "#fff"

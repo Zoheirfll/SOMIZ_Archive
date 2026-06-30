@@ -5,10 +5,12 @@
 }
 
 body {
-  font-family: "Segoe UI", Arial, sans-serif;
-  background: #f5f7f5;
-  color: #1a2e1f;
+  font-family: "Plus Jakarta Sans", "Segoe UI", Arial, sans-serif;
+  background: #F1F5F9;
+  color: #0F172A;
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 input,
@@ -27,10 +29,10 @@ textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d4e8da;
+  background: #CBD5E1;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2ecc71;
+  background: #94A3B8;
 }

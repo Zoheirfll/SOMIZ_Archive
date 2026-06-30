@@ -31,232 +31,293 @@ const Login = () => {
     }
   };
 
+  const inputStyle = {
+    width: "100%",
+    border: `1px solid ${theme.border}`,
+    borderRadius: 10,
+    padding: "12px 14px",
+    color: theme.text,
+    fontSize: 14,
+    outline: "none",
+    boxSizing: "border-box",
+    background: theme.surface,
+    fontFamily: theme.fontFamily,
+    transition: "border-color 0.15s",
+  };
+
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: theme.bg,
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        fontFamily: theme.fontFamily,
       }}
     >
-      {/* Décoration fond */}
+      {/* Left panel — brand */}
       <div
         style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 4,
-          background: `linear-gradient(90deg, ${theme.primary}, ${theme.primaryLight})`,
-        }}
-      />
-
-      <div
-        className="anim-scale-in"
-        style={{
-          background: theme.surface,
-          border: `1px solid ${theme.primaryBorder}`,
-          borderRadius: 16,
-          padding: "48px 48px",
-          width: 420,
-          boxShadow: theme.shadowMd,
+          width: "45%",
+          background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 48,
+          position: "relative",
+          overflow: "hidden",
         }}
       >
-        {/* Logo */}
-        <div style={{ textAlign: "center", marginBottom: 36 }}>
-          <div
-            style={{
-              background: theme.primary,
-              borderRadius: 16,
-              width: 64,
-              height: 64,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 32,
-              fontWeight: 900,
-              color: "#fff",
-              margin: "0 auto 16px",
-              boxShadow: `0 4px 16px ${theme.primary}44`,
-            }}
-          >
-            S
-          </div>
-          <div style={{ color: theme.text, fontWeight: 800, fontSize: 22 }}>
-            SOMIZ
-          </div>
-          <div
-            style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4 }}
-          >
-            Système d'Archivage des Dossiers RH
-          </div>
+        {/* Decorative circles */}
+        <div
+          style={{
+            position: "absolute",
+            top: -80,
+            right: -80,
+            width: 300,
+            height: 300,
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.04)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: -60,
+            left: -60,
+            width: 240,
+            height: 240,
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.04)",
+          }}
+        />
+
+        {/* Logo mark */}
+        <div
+          style={{
+            width: 80,
+            height: 80,
+            background: "rgba(255,255,255,0.12)",
+            border: "2px solid rgba(255,255,255,0.25)",
+            borderRadius: 24,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 24,
+          }}
+        >
+          <span style={{ fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em" }}>S</span>
         </div>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 16 }}>
-            <label
-              style={{
-                color: theme.text,
-                fontSize: 13,
-                fontWeight: 600,
-                display: "block",
-                marginBottom: 6,
-              }}
-            >
-              Identifiant
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="input-focus"
-              style={{
-                width: "100%",
-                border: `1px solid ${theme.primaryBorder}`,
-                borderRadius: 8,
-                padding: "10px 14px",
-                color: theme.text,
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-                background: theme.bg,
-              }}
-              placeholder="votre.identifiant"
-            />
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <label
-              style={{
-                color: theme.text,
-                fontSize: 13,
-                fontWeight: 600,
-                display: "block",
-                marginBottom: 6,
-              }}
-            >
-              Mot de passe
-            </label>
-            <div style={{ position: "relative" }}>
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-focus"
-                style={{
-                  width: "100%",
-                  border: `1px solid ${theme.primaryBorder}`,
-                  borderRadius: 8,
-                  padding: "10px 40px 10px 14px",
-                  color: theme.text,
-                  fontSize: 14,
-                  outline: "none",
-                  background: theme.bg,
-                  boxSizing: "border-box",
-                }}
-                placeholder="••••••••••"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{
-                  position: "absolute",
-                  right: 12,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 16,
-                  color: theme.textSecondary,
-                  padding: 0,
-                }}
-              >
-                {showPassword ? "🙈" : "👁️"}
-              </button>
-            </div>
-          </div>
-
-          {error && (
-            <div
-              style={{
-                background: theme.dangerBg,
-                border: `1px solid ${theme.dangerBorder}`,
-                borderRadius: 8,
-                padding: "10px 14px",
-                color: theme.danger,
-                fontSize: 13,
-                marginBottom: 16,
-              }}
-            >
-              {error}
-            </div>
-          )}
-          {/* AJOUTEZ LA CASE À COCHER ICI 👇 */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 16,
-            }}
-          >
-            <input
-              type="checkbox"
-              id="rememberMe"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              style={{
-                width: 15,
-                height: 15,
-                cursor: "pointer",
-                accentColor: theme.primary,
-              }}
-            />
-            <label
-              htmlFor="rememberMe"
-              style={{
-                color: theme.textSecondary,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              Se rappeler de moi
-            </label>
-          </div>
-          {/* FIN DE L'AJOUT 👆 */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-lift"
-            style={{
-              width: "100%",
-              background: loading ? `${theme.primary}88` : theme.primary,
-              border: "none",
-              borderRadius: 8,
-              padding: "12px",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 15,
-              cursor: loading ? "not-allowed" : "pointer",
-              boxShadow: `0 2px 8px ${theme.primary}44`,
-            }}
-          >
-            {loading ? "Connexion..." : "Se connecter"}
-          </button>
-        </form>
 
         <div
           style={{
+            color: "#ffffff",
+            fontWeight: 800,
+            fontSize: 28,
+            letterSpacing: "-0.03em",
+            marginBottom: 12,
             textAlign: "center",
-            marginTop: 24,
-            color: theme.textMuted,
-            fontSize: 12,
           }}
         >
-          Accès intranet SOMIZ uniquement
+          SOMIZ
+        </div>
+        <div
+          style={{
+            color: "rgba(255,255,255,0.6)",
+            fontSize: 14,
+            textAlign: "center",
+            lineHeight: 1.6,
+            maxWidth: 260,
+          }}
+        >
+          Système d'Archivage des Dossiers des Ressources Humaines
+        </div>
+
+      </div>
+
+      {/* Right panel — form */}
+      <div
+        style={{
+          flex: 1,
+          background: theme.bg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 48,
+        }}
+      >
+        <div
+          className="anim-scale-in"
+          style={{
+            background: theme.surface,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 20,
+            padding: "44px 40px",
+            width: "100%",
+            maxWidth: 400,
+            boxShadow: theme.shadowMd,
+          }}
+        >
+          <div style={{ marginBottom: 32 }}>
+            <h1
+              style={{
+                color: theme.text,
+                fontWeight: 800,
+                fontSize: 22,
+                margin: "0 0 6px",
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Connexion
+            </h1>
+            <div style={{ color: theme.textSecondary, fontSize: 14 }}>
+              Accès intranet SOMIZ uniquement
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            {/* Identifiant */}
+            <div style={{ marginBottom: 18 }}>
+              <label
+                style={{
+                  color: theme.text,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: "block",
+                  marginBottom: 6,
+                }}
+              >
+                Identifiant
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                style={inputStyle}
+                placeholder="votre.identifiant"
+                onFocus={(e) => (e.currentTarget.style.borderColor = theme.primary)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = theme.border)}
+              />
+            </div>
+
+            {/* Mot de passe */}
+            <div style={{ marginBottom: 20 }}>
+              <label
+                style={{
+                  color: theme.text,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  display: "block",
+                  marginBottom: 6,
+                }}
+              >
+                Mot de passe
+              </label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  style={{ ...inputStyle, paddingRight: 44 }}
+                  placeholder="••••••••••"
+                  onFocus={(e) => (e.currentTarget.style.borderColor = theme.primary)}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = theme.border)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 16,
+                    color: theme.textSecondary,
+                    padding: 0,
+                    lineHeight: 1,
+                  }}
+                >
+                  {showPassword ? "🙈" : "👁️"}
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {error && (
+              <div
+                style={{
+                  background: theme.dangerBg,
+                  border: `1px solid ${theme.dangerBorder}`,
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  color: theme.danger,
+                  fontSize: 13,
+                  marginBottom: 16,
+                  fontWeight: 500,
+                }}
+              >
+                {error}
+              </div>
+            )}
+
+            {/* Remember me */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 20,
+              }}
+            >
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                style={{
+                  width: 15,
+                  height: 15,
+                  cursor: "pointer",
+                  accentColor: theme.primary,
+                }}
+              />
+              <label
+                htmlFor="rememberMe"
+                style={{
+                  color: theme.textSecondary,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Se rappeler de moi
+              </label>
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: "100%",
+                background: loading ? `${theme.primary}88` : theme.primary,
+                border: "none",
+                borderRadius: 10,
+                padding: "13px",
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: 15,
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: theme.fontFamily,
+                letterSpacing: "-0.01em",
+                boxShadow: loading ? "none" : `0 2px 8px ${theme.primary}33`,
+                transition: "background 0.15s, box-shadow 0.15s",
+              }}
+            >
+              {loading ? "Connexion en cours..." : "Se connecter"}
+            </button>
+          </form>
         </div>
       </div>
     </div>
