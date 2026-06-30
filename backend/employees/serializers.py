@@ -143,10 +143,16 @@ class DocumentUploadSerializer(serializers.Serializer):
 # ─── EMPLOYEE ─────────────────────────────────────────────────────────────────
 
 class EmployeeListSerializer(serializers.ModelSerializer):
-    dossier_complet = serializers.BooleanField(read_only=True)
-    taux_completude = serializers.IntegerField(read_only=True)
-    nb_documents = serializers.SerializerMethodField()
-    numero_contrat_actif = serializers.SerializerMethodField()
+    """
+    Champs calculés (nb_documents, numero_contrat_actif, dossier_complet,
+    taux_completude) reposent sur des annotations SQL faites dans
+    EmployeeListCreateView.get_queryset() — évite le N+1 (une requête par
+    ligne) qu'auraient causé des SerializerMethodField/properties par employé.
+    """
+    dossier_complet = serializers.SerializerMethodField()
+    taux_completude = serializers.SerializerMethodField()
+    nb_documents = serializers.IntegerField(read_only=True)
+    numero_contrat_actif = serializers.CharField(read_only=True)
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     service_nom = serializers.CharField(source='service.nom', read_only=True)
@@ -162,12 +168,17 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             'statut', 'dossier_complet', 'taux_completude', 'nb_documents',
         ]
 
-    def get_nb_documents(self, obj):
-        return obj.documents.filter(is_active=True).count()
+    def get_dossier_complet(self, obj):
+        total_obligatoires = self.context.get('types_obligatoires_total', 0)
+        if total_obligatoires == 0:
+            return True
+        return obj.nb_types_obligatoires_presents >= total_obligatoires
 
-    def get_numero_contrat_actif(self, obj):
-        contrat = obj.contrats.order_by('-date_debut', '-id').first()
-        return contrat.numero_contrat if contrat else None
+    def get_taux_completude(self, obj):
+        total = self.context.get('types_total', 0)
+        if total == 0:
+            return 0
+        return round(obj.nb_types_presents / total * 100)
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     documents = EmployeeDocumentSerializer(
@@ -230,7 +241,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
             'direction', 'departement', 'service',
             'poste', 'type_contrat', 'categorie',
         ]
-    read_only_fields = ['id']  # ← Et ça
+        read_only_fields = ['id']
     def validate_matricule(self, value):
         return value.strip().upper()
 

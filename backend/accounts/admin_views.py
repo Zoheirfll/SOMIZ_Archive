@@ -38,3 +38,18 @@ class UserUpdateView(generics.UpdateAPIView):
     permission_classes = [IsAdmin]
     queryset = User.objects.all()
     serializer_class = UserSerializer
+
+    def perform_update(self, serializer):
+        target = self.get_object()
+        data = serializer.validated_data
+        # Empêche de désactiver ou de rétrograder le dernier ADMIN actif
+        is_demoting = (
+            target.role == 'ADMIN' and
+            (data.get('role', target.role) != 'ADMIN' or data.get('is_active', True) is False)
+        )
+        if is_demoting:
+            remaining_admins = User.objects.filter(role='ADMIN', is_active=True).exclude(pk=target.pk).count()
+            if remaining_admins == 0:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("Impossible : c'est le dernier compte ADMIN actif.")
+        serializer.save()

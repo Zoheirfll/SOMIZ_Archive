@@ -6,7 +6,8 @@ API Views — CRUD Employés + Upload + Viewer inline sécurisé
 import mimetypes
 import os
 import magic
-from django.db.models import Q
+from django.conf import settings
+from django.db.models import Q, Count, OuterRef, Subquery
 from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
 from rest_framework import generics, status, filters
@@ -55,7 +56,31 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
     ordering = ['nom']
 
     def get_queryset(self):
-        qs = Employee.objects.prefetch_related('documents')
+        latest_contrat = Contrat.objects.filter(
+            employee=OuterRef('pk')
+        ).order_by('-date_debut', '-id')
+
+        qs = Employee.objects.select_related(
+            'direction', 'departement', 'service', 'poste', 'type_contrat'
+        ).annotate(
+            nb_documents=Count(
+                'documents', filter=Q(documents__is_active=True), distinct=True
+            ),
+            nb_types_presents=Count(
+                'documents__type_doc',
+                filter=Q(documents__is_active=True),
+                distinct=True,
+            ),
+            nb_types_obligatoires_presents=Count(
+                'documents__type_doc',
+                filter=Q(
+                    documents__is_active=True,
+                    documents__type_doc__obligatoire=True,
+                ),
+                distinct=True,
+            ),
+            numero_contrat_actif=Subquery(latest_contrat.values('numero_contrat')[:1]),
+        )
 
         # Filtres via query params
         q = self.request.query_params.get('q')
@@ -84,6 +109,15 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return EmployeeCreateUpdateSerializer
         return EmployeeListSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        if self.request.method == 'GET':
+            context['types_total'] = TypeDocument.objects.filter(is_active=True).count()
+            context['types_obligatoires_total'] = TypeDocument.objects.filter(
+                obligatoire=True, is_active=True
+            ).count()
+        return context
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -568,14 +602,30 @@ def employee_search(request):
     if len(q) < 2:
         return Response([])
 
-    employees = Employee.objects.filter(
+    latest_contrat = Contrat.objects.filter(employee=OuterRef('pk')).order_by('-date_debut', '-id')
+    employees = Employee.objects.select_related(
+        'direction', 'departement', 'service', 'poste', 'type_contrat'
+    ).annotate(
+        nb_documents=Count('documents', filter=Q(documents__is_active=True), distinct=True),
+        nb_types_presents=Count('documents__type_doc', filter=Q(documents__is_active=True), distinct=True),
+        nb_types_obligatoires_presents=Count(
+            'documents__type_doc',
+            filter=Q(documents__is_active=True, documents__type_doc__obligatoire=True),
+            distinct=True,
+        ),
+        numero_contrat_actif=Subquery(latest_contrat.values('numero_contrat')[:1]),
+    ).filter(
         Q(nom__icontains=q) |
         Q(prenom__icontains=q) |
         Q(matricule__icontains=q),
         statut=Employee.Statut.ACTIF
     )[:10]
 
-    return Response(EmployeeListSerializer(employees, many=True).data)
+    context = {
+        'types_total': TypeDocument.objects.filter(is_active=True).count(),
+        'types_obligatoires_total': TypeDocument.objects.filter(obligatoire=True, is_active=True).count(),
+    }
+    return Response(EmployeeListSerializer(employees, many=True, context=context).data)
 
 class EmployeeBulkDeleteView(APIView):
     """
@@ -611,8 +661,21 @@ class EmployeeBulkDeleteView(APIView):
             )
 
         if action == 'delete':
-            # Suppression définitive
+            # Supprimer les fichiers physiques avant cascade DB pour éviter des orphelins
+            file_paths = list(
+                EmployeeDocumentFile.objects.filter(
+                    document__employee__in=employees
+                ).values_list('file', flat=True)
+            )
             employees.delete()
+            for path in file_paths:
+                if path:
+                    full_path = os.path.join(settings.MEDIA_ROOT, path)
+                    if os.path.isfile(full_path):
+                        try:
+                            os.remove(full_path)
+                        except OSError:
+                            pass
             AuditLog.objects.create(
                 user=request.user,
                 username_snapshot=request.user.username,
