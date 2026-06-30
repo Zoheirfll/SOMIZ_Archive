@@ -29,6 +29,8 @@ import Dashboard from "../pages/Dashboard";
 import Users from "../pages/Users";
 import Import from "../pages/Import";
 import AuditLogs from "../pages/AuditLogs";
+import Parametres from "../pages/Parametres";
+import EmployeeForm from "../pages/EmployeeForm";
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -37,7 +39,7 @@ beforeEach(() => {
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
-const renderWithAuth = (Component, { role, authenticated = true, authChecked = true } = {}) => {
+const renderWithAuth = (Component, { role, authenticated = true, authChecked = true, adminOnly = false } = {}) => {
   useAuth.mockReturnValue({ user: { role, username: "test" }, authenticated, authChecked });
   return render(
     <MemoryRouter initialEntries={["/protected"]}>
@@ -45,7 +47,7 @@ const renderWithAuth = (Component, { role, authenticated = true, authChecked = t
         <Route
           path="/protected"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute adminOnly={adminOnly}>
               <Component />
             </ProtectedRoute>
           }
@@ -86,6 +88,17 @@ describe("Sécurité — ProtectedRoute", () => {
       </MemoryRouter>
     );
     expect(screen.getByText("Contenu protégé")).toBeInTheDocument();
+  });
+
+  test("adminOnly redirige un CONSULTANT vers /employees (au niveau route)", () => {
+    renderWithAuth(() => <div>Contenu admin</div>, { role: "CONSULTANT", adminOnly: true });
+    expect(screen.getByText("Page Employees")).toBeInTheDocument();
+    expect(screen.queryByText("Contenu admin")).not.toBeInTheDocument();
+  });
+
+  test("adminOnly laisse passer un ADMIN", () => {
+    renderWithAuth(() => <div>Contenu admin</div>, { role: "ADMIN", adminOnly: true });
+    expect(screen.getByText("Contenu admin")).toBeInTheDocument();
   });
 });
 
@@ -187,5 +200,76 @@ describe("Sécurité — AuditLogs", () => {
     expect(localStorage.getItem("refresh_token")).toBeNull();
     expect(sessionStorage.getItem("access_token")).toBeNull();
     expect(sessionStorage.getItem("refresh_token")).toBeNull();
+  });
+});
+
+// ─── Parametres — actions ADMIN masquées pour CONSULTANT ────────────────────
+
+describe("Sécurité — Parametres", () => {
+  test("CONSULTANT ne voit pas le bouton + Ajouter", async () => {
+    useAuth.mockReturnValue({ user: { role: "CONSULTANT" }, authenticated: true, authChecked: true });
+    render(<MemoryRouter><Parametres /></MemoryRouter>);
+    await waitFor(() => screen.getByText(/Paramètres/i));
+    expect(screen.queryByText(/\+ Ajouter/i)).not.toBeInTheDocument();
+  });
+
+  test("CONSULTANT ne voit pas les boutons Template / Import CSV", async () => {
+    useAuth.mockReturnValue({ user: { role: "CONSULTANT" }, authenticated: true, authChecked: true });
+    render(<MemoryRouter><Parametres /></MemoryRouter>);
+    await waitFor(() => screen.getByText(/Paramètres/i));
+    expect(screen.queryByText(/Template/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Import CSV/i)).not.toBeInTheDocument();
+  });
+
+  test("CONSULTANT ne voit pas les boutons d'édition/suppression", async () => {
+    api.get.mockResolvedValue({ data: { results: [{ id: "dir-1", nom: "Direction Générale", code: "DG", is_active: true }] } });
+    useAuth.mockReturnValue({ user: { role: "CONSULTANT" }, authenticated: true, authChecked: true });
+    render(<MemoryRouter><Parametres /></MemoryRouter>);
+    await waitFor(() => screen.getByText("Direction Générale"));
+    expect(screen.queryByText("✏️")).not.toBeInTheDocument();
+    expect(screen.queryByText("🗑️")).not.toBeInTheDocument();
+  });
+
+  test("ADMIN voit tous les boutons d'action", async () => {
+    api.get.mockResolvedValue({ data: { results: [{ id: "dir-1", nom: "Direction Générale", code: "DG", is_active: true }] } });
+    useAuth.mockReturnValue({ user: { role: "ADMIN" }, authenticated: true, authChecked: true });
+    render(<MemoryRouter><Parametres /></MemoryRouter>);
+    await waitFor(() => screen.getByText("Direction Générale"));
+    expect(screen.getByText(/\+ Ajouter/i)).toBeInTheDocument();
+    expect(screen.getAllByText("✏️").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("🗑️").length).toBeGreaterThan(0);
+  });
+});
+
+// ─── EmployeeForm — inaccessible pour CONSULTANT ────────────────────────────
+
+describe("Sécurité — EmployeeForm", () => {
+  test("CONSULTANT est redirigé vers /employees", async () => {
+    api.get.mockResolvedValue({ data: [] });
+    useAuth.mockReturnValue({ user: { role: "CONSULTANT" }, authenticated: true, authChecked: true });
+    render(
+      <MemoryRouter initialEntries={["/employees/nouveau"]}>
+        <Routes>
+          <Route path="/employees/nouveau" element={<EmployeeForm />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/employees");
+    });
+  });
+
+  test("ADMIN n'est pas redirigé", async () => {
+    api.get.mockResolvedValue({ data: [] });
+    useAuth.mockReturnValue({ user: { role: "ADMIN" }, authenticated: true, authChecked: true });
+    render(
+      <MemoryRouter initialEntries={["/employees/nouveau"]}>
+        <Routes>
+          <Route path="/employees/nouveau" element={<EmployeeForm />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    await waitFor(() => screen.getByText(/Nouvel employé/));
+    expect(mockNavigate).not.toHaveBeenCalledWith("/employees");
   });
 });

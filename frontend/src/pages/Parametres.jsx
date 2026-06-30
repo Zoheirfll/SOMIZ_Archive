@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
+import { useAuth } from "../context/AuthContext";
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
 
@@ -124,7 +125,7 @@ const labelStyle = {
 
 // ─── TABLEAU GÉNÉRIQUE ────────────────────────────────────────────────────────
 
-const RefTable = ({ items, columns, onEdit, onDelete, loading }) => (
+const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
   <div
     style={{
       background: theme.surface,
@@ -167,19 +168,21 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading }) => (
                 {c.label}
               </th>
             ))}
-            <th
-              style={{
-                padding: "11px 16px",
-                borderBottom: `2px solid ${theme.primaryBorder}`,
-                color: theme.primary,
-                fontSize: 12,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                width: 120,
-              }}
-            >
-              Actions
-            </th>
+            {isAdmin && (
+              <th
+                style={{
+                  padding: "11px 16px",
+                  borderBottom: `2px solid ${theme.primaryBorder}`,
+                  color: theme.primary,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  width: 120,
+                }}
+              >
+                Actions
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -202,40 +205,42 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading }) => (
                   {c.render ? c.render(item) : item[c.key] || "—"}
                 </td>
               ))}
-              <td style={{ padding: "11px 16px" }}>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    onClick={() => onEdit(item)}
-                    style={{
-                      background: theme.primaryBg,
-                      border: `1px solid ${theme.primaryBorder}`,
-                      color: theme.primary,
-                      borderRadius: 6,
-                      padding: "4px 10px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => onDelete(item)}
-                    style={{
-                      background: theme.dangerBg,
-                      border: `1px solid ${theme.dangerBorder}`,
-                      color: theme.danger,
-                      borderRadius: 6,
-                      padding: "4px 10px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </td>
+              {isAdmin && (
+                <td style={{ padding: "11px 16px" }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => onEdit(item)}
+                      style={{
+                        background: theme.primaryBg,
+                        border: `1px solid ${theme.primaryBorder}`,
+                        color: theme.primary,
+                        borderRadius: 6,
+                        padding: "4px 10px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={() => onDelete(item)}
+                      style={{
+                        background: theme.dangerBg,
+                        border: `1px solid ${theme.dangerBorder}`,
+                        color: theme.danger,
+                        borderRadius: 6,
+                        padding: "4px 10px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -259,6 +264,8 @@ const TABS = [
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 
 const Parametres = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [activeTab, setActiveTab] = useState("directions");
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -1054,58 +1061,60 @@ const Parametres = () => {
               <div style={{ color: theme.textSecondary, fontSize: 13 }}>
                 {items.length} élément(s)
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => handleDownloadRefTemplate(activeTab)}
-                  style={{
-                    background: theme.primaryBg,
-                    border: `1px solid ${theme.primaryBorder}`,
-                    color: theme.primary,
-                    borderRadius: 8,
-                    padding: "8px 14px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  📥 Template
-                </button>
-                <button
-                  onClick={() => {
-                    setImportModal({ tab: activeTab });
-                    setImportFile(null);
-                    setImportResult(null);
-                  }}
-                  style={{
-                    background: theme.primaryBg,
-                    border: `1px solid ${theme.primaryBorder}`,
-                    color: theme.primary,
-                    borderRadius: 8,
-                    padding: "8px 14px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  📤 Import CSV
-                </button>
-                <button
-                  onClick={openAdd}
-                  style={{
-                    background: theme.primary,
-                    border: "none",
-                    color: "#fff",
-                    borderRadius: 8,
-                    padding: "8px 16px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    boxShadow: `0 2px 8px ${theme.primary}44`,
-                  }}
-                >
-                  + Ajouter
-                </button>
-              </div>
+              {isAdmin && (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => handleDownloadRefTemplate(activeTab)}
+                    style={{
+                      background: theme.primaryBg,
+                      border: `1px solid ${theme.primaryBorder}`,
+                      color: theme.primary,
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📥 Template
+                  </button>
+                  <button
+                    onClick={() => {
+                      setImportModal({ tab: activeTab });
+                      setImportFile(null);
+                      setImportResult(null);
+                    }}
+                    style={{
+                      background: theme.primaryBg,
+                      border: `1px solid ${theme.primaryBorder}`,
+                      color: theme.primary,
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📤 Import CSV
+                  </button>
+                  <button
+                    onClick={openAdd}
+                    style={{
+                      background: theme.primary,
+                      border: "none",
+                      color: "#fff",
+                      borderRadius: 8,
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      boxShadow: `0 2px 8px ${theme.primary}44`,
+                    }}
+                  >
+                    + Ajouter
+                  </button>
+                </div>
+              )}
             </div>
 
             <RefTable
@@ -1114,6 +1123,7 @@ const Parametres = () => {
               onEdit={openEdit}
               onDelete={handleDelete}
               loading={loading}
+              isAdmin={isAdmin}
             />
           </div>
         </div>

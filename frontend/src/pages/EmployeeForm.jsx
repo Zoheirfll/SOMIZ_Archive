@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
+import { useAuth } from "../context/AuthContext";
 
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 18 }}>
@@ -97,9 +98,14 @@ const SectionHeader = ({ label }) => (
 );
 
 const EmployeeForm = () => {
+  const { user } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = !!id;
+
+  useEffect(() => {
+    if (user && user.role !== "ADMIN") navigate("/employees");
+  }, [user, navigate]);
 
   const [form, setForm] = useState({
     matricule: "",

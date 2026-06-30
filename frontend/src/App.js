@@ -30,7 +30,7 @@ function App() {
           <Route
             path="/employees/nouveau"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <EmployeeForm />
               </ProtectedRoute>
             }
@@ -46,7 +46,7 @@ function App() {
           <Route
             path="/employees/:id/modifier"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <EmployeeForm />
               </ProtectedRoute>
             }
@@ -54,7 +54,7 @@ function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <Dashboard />
               </ProtectedRoute>
             }
@@ -62,7 +62,7 @@ function App() {
           <Route
             path="/users"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <Users />
               </ProtectedRoute>
             }
@@ -70,7 +70,7 @@ function App() {
           <Route
             path="/audit"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <AuditLogs />
               </ProtectedRoute>
             }
@@ -79,7 +79,7 @@ function App() {
           <Route
             path="/parametres"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <Parametres />
               </ProtectedRoute>
             }
@@ -87,7 +87,7 @@ function App() {
           <Route
             path="/import"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute adminOnly>
                 <Import />
               </ProtectedRoute>
             }
