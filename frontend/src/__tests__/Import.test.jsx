@@ -12,6 +12,9 @@ jest.mock("../services/api", () => ({
   default: { post: jest.fn(), get: jest.fn() },
 }));
 jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ user: { role: "ADMIN", username: "admin" } }),
+}));
 const mockNavigate = jest.fn();
 jest.mock("react-router-dom", () => ({
   ...jest.requireActual("react-router-dom"),

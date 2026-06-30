@@ -12,6 +12,9 @@ jest.mock("../services/api", () => ({
   __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },
 }));
 jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ user: { role: "ADMIN", username: "admin" } }),
+}));
 
 import api from "../services/api";
 import Users from "../pages/Users";

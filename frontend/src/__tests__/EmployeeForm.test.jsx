@@ -207,7 +207,6 @@ describe("EmployeeForm — soumission création", () => {
     renderCreate();
     await waitFor(() => screen.getByText(/Créer l'employé/));
 
-    // Remplir les champs obligatoires
     fireEvent.change(screen.getByPlaceholderText("EMP-001"), {
       target: { name: "matricule", value: "EMP-999" },
     });
@@ -225,5 +224,121 @@ describe("EmployeeForm — soumission création", () => {
         expect.objectContaining({ matricule: "EMP-999" })
       );
     });
+  });
+
+  test("erreur réseau affiche le message générique", async () => {
+    api.get.mockResolvedValue({ data: [] });
+    api.post.mockRejectedValue(new Error("Network Error"));
+    renderCreate();
+    await waitFor(() => screen.getByText(/Créer l'employé/));
+
+    fireEvent.change(screen.getByPlaceholderText("EMP-001"), {
+      target: { name: "matricule", value: "EMP-999" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("FILALI"), {
+      target: { name: "nom", value: "Martin" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Ahmed"), {
+      target: { name: "prenom", value: "Paul" },
+    });
+
+    fireEvent.click(screen.getByText(/Créer l'employé/));
+    await waitFor(() => {
+      expect(screen.getByText("Une erreur est survenue.")).toBeInTheDocument();
+    });
+  });
+
+  test("erreur API 400 avec détails affiche les erreurs de champ", async () => {
+    api.get.mockResolvedValue({ data: [] });
+    api.post.mockRejectedValue({
+      response: { data: { matricule: ["Ce matricule est déjà utilisé."] } },
+    });
+    renderCreate();
+    await waitFor(() => screen.getByText(/Créer l'employé/));
+
+    fireEvent.change(screen.getByPlaceholderText("EMP-001"), {
+      target: { name: "matricule", value: "EMP-001" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("FILALI"), {
+      target: { name: "nom", value: "Dupont" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Ahmed"), {
+      target: { name: "prenom", value: "Jean" },
+    });
+
+    fireEvent.click(screen.getByText(/Créer l'employé/));
+    await waitFor(() => {
+      expect(screen.getByText("Ce matricule est déjà utilisé.")).toBeInTheDocument();
+    });
+  });
+
+  test("le bouton est désactivé pendant la soumission", async () => {
+    api.get.mockResolvedValue({ data: [] });
+    let resolveFn;
+    api.post.mockReturnValue(new Promise((res) => { resolveFn = res; }));
+    renderCreate();
+    await waitFor(() => screen.getByText(/Créer l'employé/));
+
+    fireEvent.change(screen.getByPlaceholderText("EMP-001"), {
+      target: { name: "matricule", value: "EMP-999" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("FILALI"), {
+      target: { name: "nom", value: "Martin" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Ahmed"), {
+      target: { name: "prenom", value: "Paul" },
+    });
+
+    fireEvent.click(screen.getByText(/Créer l'employé/));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Enregistrement|Création/i })).toBeDisabled();
+    });
+    resolveFn({ data: { id: "new-emp-uuid" } });
+  });
+});
+
+describe("EmployeeForm — soumission édition", () => {
+  test("PATCH réussie affiche le message de succès", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
+    api.patch.mockResolvedValue({ data: { ...mockEmployee, nom: "Martin" } });
+    renderEdit();
+    await screen.findByDisplayValue("Dupont");
+
+    fireEvent.change(screen.getByDisplayValue("Dupont"), {
+      target: { name: "nom", value: "Martin" },
+    });
+    fireEvent.click(screen.getByText(/Enregistrer les modifications/));
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith(
+        "/employees/emp-uuid/",
+        expect.objectContaining({ nom: "Martin" })
+      );
+    });
+  });
+
+  test("erreur réseau en édition affiche le message générique", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
+    api.patch.mockRejectedValue(new Error("Network Error"));
+    renderEdit();
+    fireEvent.click(await screen.findByText(/Enregistrer les modifications/));
+    await waitFor(() => {
+      expect(screen.getByText("Une erreur est survenue.")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("EmployeeForm — validation champs", () => {
+  test("affiche les erreurs si matricule et nom vides (validation client)", async () => {
+    api.get.mockResolvedValue({ data: [] });
+    renderCreate();
+    fireEvent.click(await screen.findByText(/Créer l'employé/));
+    expect(await screen.findByText("Le matricule est obligatoire.")).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
   });
 });

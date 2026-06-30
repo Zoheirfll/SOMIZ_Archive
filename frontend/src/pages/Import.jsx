@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
+import { useAuth } from "../context/AuthContext";
 
 const Import = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -337,28 +340,30 @@ const Import = () => {
         </div>
 
         {/* Import button */}
-        <button
-          onClick={handleImport}
-          disabled={!file || loading}
-          style={{
-            width: "100%",
-            background: !file || loading ? `${theme.primary}66` : theme.primary,
-            border: "none",
-            color: "#fff",
-            borderRadius: 12,
-            padding: "15px",
-            fontSize: 15,
-            fontWeight: 700,
-            cursor: !file || loading ? "not-allowed" : "pointer",
-            fontFamily: theme.fontFamily,
-            letterSpacing: "-0.01em",
-            boxShadow: !file || loading ? "none" : `0 2px 8px ${theme.primary}33`,
-            marginBottom: 28,
-            transition: "background 0.15s",
-          }}
-        >
-          {loading ? "Import en cours..." : "Lancer l'import"}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleImport}
+            disabled={!file || loading}
+            style={{
+              width: "100%",
+              background: !file || loading ? `${theme.primary}66` : theme.primary,
+              border: "none",
+              color: "#fff",
+              borderRadius: 12,
+              padding: "15px",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: !file || loading ? "not-allowed" : "pointer",
+              fontFamily: theme.fontFamily,
+              letterSpacing: "-0.01em",
+              boxShadow: !file || loading ? "none" : `0 2px 8px ${theme.primary}33`,
+              marginBottom: 28,
+              transition: "background 0.15s",
+            }}
+          >
+            {loading ? "Import en cours..." : "Lancer l'import"}
+          </button>
+        )}
 
         {/* Results */}
         {result && (

@@ -212,4 +212,56 @@ describe("Parametres — suppression", () => {
     fireEvent.click(delBtns[0]);
     expect(api.delete).not.toHaveBeenCalled();
   });
+
+  test("erreur API lors de la suppression affiche un message d'erreur", async () => {
+    window.confirm = jest.fn(() => true);
+    api.get.mockResolvedValue(dirResponse);
+    api.delete = jest.fn().mockRejectedValue({
+      response: { data: { error: "Impossible de supprimer : cet élément est utilisé." } },
+    });
+    renderPage();
+    await waitFor(() => screen.getAllByText("🗑️"));
+    fireEvent.click(screen.getAllByText("🗑️")[0]);
+    await waitFor(() => {
+      expect(screen.getByText("Impossible de supprimer : cet élément est utilisé.")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("Parametres — erreurs réseau", () => {
+  test("erreur lors du chargement affiche un message d'erreur", async () => {
+    api.get.mockRejectedValue(new Error("Network Error"));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText(/erreur|impossible/i)).toBeInTheDocument();
+    });
+  });
+
+  test("erreur API lors de l'ajout affiche le message d'erreur serveur", async () => {
+    api.get.mockResolvedValue(emptyResponse);
+    api.post.mockRejectedValue({
+      response: { data: { nom: ["Ce nom existe déjà."] } },
+    });
+    renderPage();
+    await waitFor(() => screen.getByText(/\+ Ajouter/i));
+    fireEvent.click(screen.getByText(/\+ Ajouter/i));
+    await waitFor(() => screen.getByText("Enregistrer"));
+    fireEvent.click(screen.getByText("Enregistrer"));
+    await waitFor(() => {
+      expect(screen.getByText("Ce nom existe déjà.")).toBeInTheDocument();
+    });
+  });
+
+  test("erreur réseau lors de l'ajout affiche le message générique", async () => {
+    api.get.mockResolvedValue(emptyResponse);
+    api.post.mockRejectedValue(new Error("Network Error"));
+    renderPage();
+    await waitFor(() => screen.getByText(/\+ Ajouter/i));
+    fireEvent.click(screen.getByText(/\+ Ajouter/i));
+    await waitFor(() => screen.getByText("Enregistrer"));
+    fireEvent.click(screen.getByText("Enregistrer"));
+    await waitFor(() => {
+      expect(screen.getByText("Une erreur est survenue.")).toBeInTheDocument();
+    });
+  });
 });

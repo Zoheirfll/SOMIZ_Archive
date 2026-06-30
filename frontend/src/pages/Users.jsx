@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
+import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
 
 // SVG icons
@@ -30,6 +31,8 @@ const EyeIcon = ({ open }) => open ? (
 );
 
 const Users = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -186,26 +189,28 @@ const Users = () => {
               Gérer les accès à SOMIZ
             </div>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            style={{
-              background: "rgba(255,255,255,0.15)",
-              border: "1.5px solid rgba(255,255,255,0.3)",
-              color: "#fff",
-              borderRadius: 10,
-              padding: "10px 20px",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontFamily: "inherit",
-              backdropFilter: "blur(4px)",
-            }}
-          >
-            <IconPlus /> Nouvel utilisateur
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              style={{
+                background: "rgba(255,255,255,0.15)",
+                border: "1.5px solid rgba(255,255,255,0.3)",
+                color: "#fff",
+                borderRadius: 10,
+                padding: "10px 20px",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontFamily: "inherit",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              <IconPlus /> Nouvel utilisateur
+            </button>
+          )}
         </div>
       </div>
 
@@ -423,48 +428,50 @@ const Users = () => {
                       </span>
                     </td>
                     <td style={{ padding: "13px 16px" }}>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          onClick={() => toggleActive(u)}
-                          style={{
-                            background: u.is_active ? theme.dangerBg : theme.primaryBg,
-                            border: `1px solid ${u.is_active ? theme.dangerBorder : theme.primaryBorder}`,
-                            color: u.is_active ? theme.danger : theme.primary,
-                            borderRadius: 8,
-                            padding: "5px 12px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                          }}
-                        >
-                          {u.is_active ? "Désactiver" : "Activer"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setResetModal(u);
-                            setResetForm({ nouveau_mot_de_passe: "", confirmation: "" });
-                            setShowResetMdp(false);
-                            setShowResetConfirm(false);
-                          }}
-                          style={{
-                            background: "#FFF8E1",
-                            border: "1px solid #FFE082",
-                            color: theme.warning,
-                            borderRadius: 8,
-                            padding: "5px 12px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 5,
-                            fontFamily: "inherit",
-                          }}
-                        >
-                          <IconKey /> Reset MDP
-                        </button>
-                      </div>
+                      {isAdmin && (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => toggleActive(u)}
+                            style={{
+                              background: u.is_active ? theme.dangerBg : theme.primaryBg,
+                              border: `1px solid ${u.is_active ? theme.dangerBorder : theme.primaryBorder}`,
+                              color: u.is_active ? theme.danger : theme.primary,
+                              borderRadius: 8,
+                              padding: "5px 12px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            {u.is_active ? "Désactiver" : "Activer"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setResetModal(u);
+                              setResetForm({ nouveau_mot_de_passe: "", confirmation: "" });
+                              setShowResetMdp(false);
+                              setShowResetConfirm(false);
+                            }}
+                            style={{
+                              background: "#FFF8E1",
+                              border: "1px solid #FFE082",
+                              color: theme.warning,
+                              borderRadius: 8,
+                              padding: "5px 12px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 5,
+                              fontFamily: "inherit",
+                            }}
+                          >
+                            <IconKey /> Reset MDP
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

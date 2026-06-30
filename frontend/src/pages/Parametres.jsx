@@ -305,7 +305,7 @@ const Parametres = () => {
         [tab]: response.data.results || response.data,
       }));
     } catch (err) {
-      console.error(err);
+      showMessage("error", "Impossible de charger les données.");
     } finally {
       setLoading(false);
     }
@@ -328,9 +328,10 @@ const Parametres = () => {
       showMessage("success", "Supprimé avec succès.");
       fetchTab(activeTab);
     } catch (err) {
+      const serverError = err.response?.data?.error;
       showMessage(
         "error",
-        "Impossible de supprimer — des employés y sont peut-être rattachés.",
+        serverError || "Impossible de supprimer — des employés y sont peut-être rattachés.",
       );
     }
   };
