@@ -30,6 +30,12 @@ export const theme = {
   dangerBg: "#FEF2F2",
   dangerBorder: "#FECACA",
 
+  // ─── Accent chaleureux (identité "vivante") ──────────────────────────────
+  accent: "#F59E0B",        // amber-500
+  accentLight: "#FBBF24",   // amber-400
+  accentBg: "#FFFBEB",      // amber-50
+  accentBorder: "#FDE68A",  // amber-200
+
   // ─── Ombres (élévation) ───────────────────────────────────────────────────
   shadow:    "0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04)",
   shadowMd:  "0 4px 12px rgba(15,23,42,0.08), 0 2px 4px rgba(15,23,42,0.04)",
