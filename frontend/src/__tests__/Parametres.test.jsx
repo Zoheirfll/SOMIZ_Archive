@@ -176,11 +176,11 @@ describe("Parametres — modal ajout", () => {
 });
 
 describe("Parametres — édition", () => {
-  test("clic ✏️ ouvre le modal en mode édition avec les données pré-remplies", async () => {
+  test("clic Modifier ouvre le modal en mode édition avec les données pré-remplies", async () => {
     api.get.mockResolvedValue(dirResponse);
     renderPage();
     await waitFor(() => screen.getByText("Direction Générale"));
-    const editBtns = screen.getAllByText("✏️");
+    const editBtns = screen.getAllByTitle("Modifier");
     fireEvent.click(editBtns[0]);
     await waitFor(() => {
       const input = screen.getByDisplayValue("Direction Générale");
@@ -190,13 +190,13 @@ describe("Parametres — édition", () => {
 });
 
 describe("Parametres — suppression", () => {
-  test("clic 🗑️ avec confirmation appelle DELETE", async () => {
+  test("clic Supprimer avec confirmation appelle DELETE", async () => {
     window.confirm = jest.fn(() => true);
     api.get.mockResolvedValue(dirResponse);
     api.delete = jest.fn().mockResolvedValue({});
     renderPage();
     await waitFor(() => screen.getByText("Direction Générale"));
-    const delBtns = screen.getAllByText("🗑️");
+    const delBtns = screen.getAllByTitle("Supprimer");
     fireEvent.click(delBtns[0]);
     await waitFor(() => {
       expect(api.delete).toHaveBeenCalledWith(
@@ -210,8 +210,8 @@ describe("Parametres — suppression", () => {
     api.get.mockResolvedValue(dirResponse);
     api.delete = jest.fn();
     renderPage();
-    await waitFor(() => screen.getAllByText("🗑️"));
-    const delBtns = screen.getAllByText("🗑️");
+    await waitFor(() => screen.getAllByTitle("Supprimer"));
+    const delBtns = screen.getAllByTitle("Supprimer");
     fireEvent.click(delBtns[0]);
     expect(api.delete).not.toHaveBeenCalled();
   });
@@ -223,8 +223,8 @@ describe("Parametres — suppression", () => {
       response: { data: { error: "Impossible de supprimer : cet élément est utilisé." } },
     });
     renderPage();
-    await waitFor(() => screen.getAllByText("🗑️"));
-    fireEvent.click(screen.getAllByText("🗑️")[0]);
+    await waitFor(() => screen.getAllByTitle("Supprimer"));
+    fireEvent.click(screen.getAllByTitle("Supprimer")[0]);
     await waitFor(() => {
       expect(screen.getByText("Impossible de supprimer : cet élément est utilisé.")).toBeInTheDocument();
     });

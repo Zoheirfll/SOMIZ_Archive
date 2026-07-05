@@ -3,6 +3,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/esm/Page/AnnotationLayer.css";
 import "react-pdf/dist/esm/Page/TextLayer.css";
 import { theme } from "../styles/theme";
+import { PaperclipIcon } from "./icons";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.js`;
 
@@ -165,7 +166,7 @@ const SecureDocViewer = ({ url, mimeType, fileName }) => {
       }}
     >
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>📎</div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><PaperclipIcon size={36} /></div>
         <div>Format non prévisualisable</div>
         <div style={{ fontSize: 12, marginTop: 4 }}>{fileName}</div>
       </div>

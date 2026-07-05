@@ -3,6 +3,7 @@ import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
+import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon, XIcon, RocketIcon } from "../components/icons";
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
 
@@ -210,33 +211,35 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
                       onClick={() => onEdit(item)}
+                      title="Modifier"
+                      aria-label="Modifier"
                       style={{
                         background: theme.primaryBg,
                         border: `1px solid ${theme.primaryBorder}`,
                         color: theme.primary,
                         borderRadius: 6,
                         padding: "4px 10px",
-                        fontSize: 12,
-                        fontWeight: 600,
+                        display: "flex",
                         cursor: "pointer",
                       }}
                     >
-                      ✏️
+                      <PencilIcon size={13} />
                     </button>
                     <button
                       onClick={() => onDelete(item)}
+                      title="Supprimer"
+                      aria-label="Supprimer"
                       style={{
                         background: theme.dangerBg,
                         border: `1px solid ${theme.dangerBorder}`,
                         color: theme.danger,
                         borderRadius: 6,
                         padding: "4px 10px",
-                        fontSize: 12,
-                        fontWeight: 600,
+                        display: "flex",
                         cursor: "pointer",
                       }}
                     >
-                      🗑️
+                      <TrashIcon size={13} />
                     </button>
                   </div>
                 </td>
@@ -646,7 +649,7 @@ const Parametres = () => {
               name="nom"
               value={form.nom || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="Direction Générale"
             />
             <label style={labelStyle}>Code</label>
@@ -654,7 +657,7 @@ const Parametres = () => {
               name="code"
               value={form.code || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="DG"
             />
             <label style={labelStyle}>Description</label>
@@ -662,7 +665,7 @@ const Parametres = () => {
               name="description"
               value={form.description || ""}
               onChange={handleChange}
-              style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
               placeholder="Description optionnelle"
             />
             <label style={labelStyle}>Statut</label>
@@ -672,7 +675,7 @@ const Parametres = () => {
               onChange={(e) =>
                 setForm({ ...form, is_active: e.target.value === "true" })
               }
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="true">Actif</option>
               <option value="false">Inactif</option>
@@ -690,7 +693,7 @@ const Parametres = () => {
               name="direction"
               value={form.direction || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="">-- Sélectionner --</option>
               {directions.map((d) => (
@@ -706,7 +709,7 @@ const Parametres = () => {
               name="nom"
               value={form.nom || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="Département Ressources Humaines"
             />
             <label style={labelStyle}>Code</label>
@@ -714,7 +717,7 @@ const Parametres = () => {
               name="code"
               value={form.code || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="DRH"
             />
             <label style={labelStyle}>Description</label>
@@ -722,7 +725,7 @@ const Parametres = () => {
               name="description"
               value={form.description || ""}
               onChange={handleChange}
-              style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
             <label style={labelStyle}>Statut</label>
             <select
@@ -731,7 +734,7 @@ const Parametres = () => {
               onChange={(e) =>
                 setForm({ ...form, is_active: e.target.value === "true" })
               }
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="true">Actif</option>
               <option value="false">Inactif</option>
@@ -749,7 +752,7 @@ const Parametres = () => {
               name="departement"
               value={form.departement || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="">-- Sélectionner --</option>
               {departements.map((d) => (
@@ -765,7 +768,7 @@ const Parametres = () => {
               name="nom"
               value={form.nom || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="Service Paie"
             />
             <label style={labelStyle}>Code</label>
@@ -773,7 +776,7 @@ const Parametres = () => {
               name="code"
               value={form.code || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="SP"
             />
             <label style={labelStyle}>Description</label>
@@ -781,7 +784,7 @@ const Parametres = () => {
               name="description"
               value={form.description || ""}
               onChange={handleChange}
-              style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
             <label style={labelStyle}>Statut</label>
             <select
@@ -790,7 +793,7 @@ const Parametres = () => {
               onChange={(e) =>
                 setForm({ ...form, is_active: e.target.value === "true" })
               }
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="true">Actif</option>
               <option value="false">Inactif</option>
@@ -808,7 +811,7 @@ const Parametres = () => {
               name="nom"
               value={form.nom || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="Ingénieur principal"
             />
             <label style={labelStyle}>Code</label>
@@ -816,7 +819,7 @@ const Parametres = () => {
               name="code"
               value={form.code || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="ING-P"
             />
             <label style={labelStyle}>Description</label>
@@ -824,7 +827,7 @@ const Parametres = () => {
               name="description"
               value={form.description || ""}
               onChange={handleChange}
-              style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
             <label style={labelStyle}>Statut</label>
             <select
@@ -833,7 +836,7 @@ const Parametres = () => {
               onChange={(e) =>
                 setForm({ ...form, is_active: e.target.value === "true" })
               }
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="true">Actif</option>
               <option value="false">Inactif</option>
@@ -852,7 +855,7 @@ const Parametres = () => {
               name="nom"
               value={form.nom || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder={
                 activeTab === "types-contrat"
                   ? "CDI, CDD, Titulaire..."
@@ -864,7 +867,7 @@ const Parametres = () => {
               name="description"
               value={form.description || ""}
               onChange={handleChange}
-              style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
             <label style={labelStyle}>Statut</label>
             <select
@@ -873,7 +876,7 @@ const Parametres = () => {
               onChange={(e) =>
                 setForm({ ...form, is_active: e.target.value === "true" })
               }
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="true">Actif</option>
               <option value="false">Inactif</option>
@@ -890,7 +893,7 @@ const Parametres = () => {
               name="nom"
               value={form.nom || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="Attestation de travail"
             />
 
@@ -901,7 +904,7 @@ const Parametres = () => {
               name="code"
               value={form.code || ""}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               placeholder="ATTESTATION"
               disabled={modal?.mode === "edit"}
             />
@@ -924,7 +927,7 @@ const Parametres = () => {
               name="ordre"
               value={form.ordre ?? 0}
               onChange={handleChange}
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
               min="0"
             />
 
@@ -935,7 +938,7 @@ const Parametres = () => {
               onChange={(e) =>
                 setForm({ ...form, obligatoire: e.target.value === "true" })
               }
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="false">Optionnel</option>
               <option value="true">Obligatoire</option>
@@ -948,7 +951,7 @@ const Parametres = () => {
               onChange={(e) =>
                 setForm({ ...form, is_active: e.target.value === "true" })
               }
-              style={inputStyle}
+              className="input-focus" style={inputStyle}
             >
               <option value="true">Actif</option>
               <option value="false">Inactif</option>
@@ -1066,6 +1069,7 @@ const Parametres = () => {
                   <button
                     onClick={() => handleDownloadRefTemplate(activeTab)}
                     style={{
+                      display: "flex", alignItems: "center", gap: 6,
                       background: theme.primaryBg,
                       border: `1px solid ${theme.primaryBorder}`,
                       color: theme.primary,
@@ -1076,7 +1080,7 @@ const Parametres = () => {
                       cursor: "pointer",
                     }}
                   >
-                    📥 Template
+                    <DownloadIcon size={13} /> Template
                   </button>
                   <button
                     onClick={() => {
@@ -1085,6 +1089,7 @@ const Parametres = () => {
                       setImportResult(null);
                     }}
                     style={{
+                      display: "flex", alignItems: "center", gap: 6,
                       background: theme.primaryBg,
                       border: `1px solid ${theme.primaryBorder}`,
                       color: theme.primary,
@@ -1095,7 +1100,7 @@ const Parametres = () => {
                       cursor: "pointer",
                     }}
                   >
-                    📤 Import CSV
+                    <UploadIcon size={13} /> Import CSV
                   </button>
                   <button
                     onClick={openAdd}
@@ -1193,8 +1198,8 @@ const Parametres = () => {
             >
               {importFile ? (
                 <div>
-                  <div style={{ color: theme.primary, fontWeight: 700 }}>
-                    ✓ {importFile.name}
+                  <div style={{ color: theme.primary, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <CheckIcon size={14} /> {importFile.name}
                   </div>
                   <div
                     style={{
@@ -1209,7 +1214,7 @@ const Parametres = () => {
                 </div>
               ) : (
                 <div>
-                  <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
+                  <div style={{ marginBottom: 8, display: "flex", justifyContent: "center", color: theme.textMuted }}><FolderIcon size={28} /></div>
                   <div style={{ color: theme.text, fontSize: 14 }}>
                     Cliquez pour choisir un fichier CSV
                   </div>
@@ -1236,9 +1241,12 @@ const Parametres = () => {
                       padding: 12,
                       color: theme.danger,
                       fontSize: 13,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
                     }}
                   >
-                    ❌ {importResult.error}
+                    <XIcon size={13} /> {importResult.error}
                   </div>
                 ) : (
                   <div>
@@ -1336,6 +1344,9 @@ const Parametres = () => {
                 onClick={handleImportFile}
                 disabled={!importFile || importing}
                 style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                   background:
                     !importFile || importing
                       ? `${theme.primary}88`
@@ -1349,7 +1360,7 @@ const Parametres = () => {
                   cursor: !importFile || importing ? "not-allowed" : "pointer",
                 }}
               >
-                {importing ? "Import..." : "🚀 Importer"}
+                {importing ? "Import..." : <><RocketIcon size={13} /> Importer</>}
               </button>
             </div>
           </div>

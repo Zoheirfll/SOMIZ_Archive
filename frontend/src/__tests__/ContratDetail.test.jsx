@@ -225,7 +225,7 @@ describe("ContratDetail — suppression document (ADMIN)", () => {
     renderPage("ADMIN");
     await waitFor(() => screen.getAllByText("Contrat de travail"));
 
-    const deleteBtns = screen.getAllByText("🗑️");
+    const deleteBtns = screen.getAllByTitle(/Supprimer/i);
     if (deleteBtns.length > 0) {
       fireEvent.click(deleteBtns[0]);
       await waitFor(() => {

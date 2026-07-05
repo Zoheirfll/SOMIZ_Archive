@@ -648,6 +648,7 @@ const Employees = () => {
         <select
           value={statut}
           onChange={(e) => setStatut(e.target.value)}
+          className="input-focus"
           style={{
             border: `1.5px solid ${theme.border}`,
             borderRadius: 10,
@@ -846,7 +847,7 @@ const Employees = () => {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ color: theme.textSecondary, fontSize: 13 }}>Aller à</span>
-              <input type="number" min="1" max={totalPages} defaultValue={page} onKeyDown={(e) => { if (e.key === "Enter") { const v = parseInt(e.target.value); if (v >= 1 && v <= totalPages) setPage(v); } }} style={{ width: 56, border: `1.5px solid ${theme.border}`, borderRadius: 8, padding: "6px 8px", fontSize: 13, color: theme.text, background: theme.surface, outline: "none", textAlign: "center", fontFamily: theme.fontFamily }} />
+              <input type="number" min="1" max={totalPages} defaultValue={page} onKeyDown={(e) => { if (e.key === "Enter") { const v = parseInt(e.target.value); if (v >= 1 && v <= totalPages) setPage(v); } }} className="input-focus" style={{ width: 56, border: `1.5px solid ${theme.border}`, borderRadius: 8, padding: "6px 8px", fontSize: 13, color: theme.text, background: theme.surface, outline: "none", textAlign: "center", fontFamily: theme.fontFamily }} />
             </div>
           </div>
         )}
@@ -894,6 +895,7 @@ const Employees = () => {
                     value={globalInput}
                     onChange={(e) => setGlobalInput(e.target.value)}
                     placeholder="Matricule, N° contrat, nom, prénom..."
+                    className="input-focus"
                     style={{
                       background: "rgba(255,255,255,0.12)",
                       border: "1px solid rgba(255,255,255,0.25)",

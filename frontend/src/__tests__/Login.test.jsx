@@ -65,14 +65,14 @@ describe("Login — toggle mot de passe", () => {
   test("le bouton toggle affiche le mot de passe", async () => {
     renderLogin();
     const input = screen.getByPlaceholderText("••••••••••");
-    await userEvent.click(screen.getByRole("button", { name: /👁/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Afficher le mot de passe/i }));
     expect(input).toHaveAttribute("type", "text");
   });
 
   test("cliquer deux fois remasque le mot de passe", async () => {
     renderLogin();
     const input = screen.getByPlaceholderText("••••••••••");
-    const toggle = screen.getByRole("button", { name: /👁/i });
+    const toggle = screen.getByRole("button", { name: /Afficher le mot de passe/i });
     await userEvent.click(toggle);
     await userEvent.click(toggle);
     expect(input).toHaveAttribute("type", "password");

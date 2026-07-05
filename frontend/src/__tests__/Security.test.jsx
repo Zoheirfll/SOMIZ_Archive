@@ -226,8 +226,8 @@ describe("Sécurité — Parametres", () => {
     useAuth.mockReturnValue({ user: { role: "CONSULTANT" }, authenticated: true, authChecked: true });
     render(<MemoryRouter><Parametres /></MemoryRouter>);
     await waitFor(() => screen.getByText("Direction Générale"));
-    expect(screen.queryByText("✏️")).not.toBeInTheDocument();
-    expect(screen.queryByText("🗑️")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Modifier")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Supprimer")).not.toBeInTheDocument();
   });
 
   test("ADMIN voit tous les boutons d'action", async () => {
@@ -236,8 +236,8 @@ describe("Sécurité — Parametres", () => {
     render(<MemoryRouter><Parametres /></MemoryRouter>);
     await waitFor(() => screen.getByText("Direction Générale"));
     expect(screen.getByText(/\+ Ajouter/i)).toBeInTheDocument();
-    expect(screen.getAllByText("✏️").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("🗑️").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("Modifier").length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle("Supprimer").length).toBeGreaterThan(0);
   });
 });
 

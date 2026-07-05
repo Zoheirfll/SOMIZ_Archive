@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
+import { TrashIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
 
 const EmployeeDetail = () => {
   const { id } = useParams();
@@ -566,6 +567,7 @@ const EmployeeDetail = () => {
                         })
                       }
                       placeholder=""
+                      className="input-focus"
                       style={{
                         width: "100%",
                         border: `1px solid ${theme.border}`,
@@ -600,6 +602,7 @@ const EmployeeDetail = () => {
                           type_contrat: e.target.value,
                         })
                       }
+                      className="input-focus"
                       style={{
                         width: "100%",
                         border: `1px solid ${theme.border}`,
@@ -637,6 +640,7 @@ const EmployeeDetail = () => {
                       onChange={(e) =>
                         setNewContrat({ ...newContrat, statut: e.target.value })
                       }
+                      className="input-focus"
                       style={{
                         width: "100%",
                         border: `1px solid ${theme.border}`,
@@ -675,6 +679,7 @@ const EmployeeDetail = () => {
                           date_debut: e.target.value,
                         })
                       }
+                      className="input-focus"
                       style={{
                         width: "100%",
                         border: `1px solid ${theme.border}`,
@@ -709,6 +714,7 @@ const EmployeeDetail = () => {
                           date_fin: e.target.value,
                         })
                       }
+                      className="input-focus"
                       style={{
                         width: "100%",
                         border: `1px solid ${theme.border}`,
@@ -741,6 +747,7 @@ const EmployeeDetail = () => {
                       setNewContrat({ ...newContrat, notes: e.target.value })
                     }
                     rows={2}
+                    className="input-focus"
                     style={{
                       width: "100%",
                       border: `1px solid ${theme.border}`,
@@ -1068,12 +1075,13 @@ const EmployeeDetail = () => {
                       <button
                         onClick={(e) => handleDeleteDoc(doc, e)}
                         title="Supprimer ce document"
+                        aria-label="Supprimer ce document"
                         style={{
                           background: "transparent",
                           border: "none",
                           color: theme.danger,
                           cursor: "pointer",
-                          fontSize: 13,
+                          display: "flex",
                           padding: "2px 4px",
                           opacity: 0.5,
                         }}
@@ -1084,7 +1092,7 @@ const EmployeeDetail = () => {
                           (e.currentTarget.style.opacity = 0.5)
                         }
                       >
-                        🗑
+                        <TrashIcon />
                       </button>
                     )}
                   </div>
@@ -1123,9 +1131,9 @@ const EmployeeDetail = () => {
                             }}
                           >
                             <span
-                              style={{ color: theme.textMuted, fontSize: 11 }}
+                              style={{ color: theme.textMuted, fontSize: 11, display: "flex" }}
                             >
-                              {file.mime_type?.includes("pdf") ? "📄" : "🖼"}
+                              {file.mime_type?.includes("pdf") ? <FileTextIcon size={13} /> : <ImageIcon size={13} />}
                             </span>
                             <div>
                               <div
@@ -1148,12 +1156,14 @@ const EmployeeDetail = () => {
                           {user?.role === "ADMIN" && (
                             <button
                               onClick={(e) => handleDeleteFile(file, e)}
+                              title="Supprimer ce fichier"
+                              aria-label="Supprimer ce fichier"
                               style={{
                                 background: "transparent",
                                 border: "none",
                                 color: theme.danger,
                                 cursor: "pointer",
-                                fontSize: 11,
+                                display: "flex",
                                 opacity: 0.5,
                               }}
                               onMouseEnter={(e) =>
@@ -1163,7 +1173,7 @@ const EmployeeDetail = () => {
                                 (e.currentTarget.style.opacity = 0.5)
                               }
                             >
-                              🗑
+                              <TrashIcon size={12} />
                             </button>
                           )}
                         </div>
@@ -1209,6 +1219,7 @@ const EmployeeDetail = () => {
                   {user?.role === "ADMIN" && (
                     <label
                       title={`Uploader ${doc.label}`}
+                      aria-label={`Uploader ${doc.label}`}
                       style={{
                         background:
                           quickUploadingCode === doc.code
@@ -1218,7 +1229,8 @@ const EmployeeDetail = () => {
                         color: theme.primary,
                         borderRadius: 6,
                         padding: "4px 8px",
-                        fontSize: 13,
+                        display: "flex",
+                        alignItems: "center",
                         cursor:
                           quickUploadingCode === doc.code
                             ? "not-allowed"
@@ -1226,7 +1238,7 @@ const EmployeeDetail = () => {
                         flexShrink: 0,
                       }}
                     >
-                      {quickUploadingCode === doc.code ? "⏳" : "📎"}
+                      {quickUploadingCode === doc.code ? <Spinner size={13} /> : <PaperclipIcon size={13} />}
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png,.tiff"
@@ -1299,6 +1311,7 @@ const EmployeeDetail = () => {
                   <select
                     value={uploadType}
                     onChange={(e) => setUploadType(e.target.value)}
+                    className="input-focus"
                     style={{
                       width: "100%",
                       border: `1px solid ${theme.border}`,
@@ -1319,7 +1332,10 @@ const EmployeeDetail = () => {
                   </select>
                   <label
                     style={{
-                      display: "block",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
                       width: "100%",
                       background: uploading
                         ? `${theme.primary}88`
@@ -1334,7 +1350,7 @@ const EmployeeDetail = () => {
                       boxSizing: "border-box",
                     }}
                   >
-                    {uploading ? "Upload en cours..." : "📎 Choisir fichier(s)"}
+                    {uploading ? "Upload en cours..." : <><PaperclipIcon size={13} /> Choisir fichier(s)</>}
                     <input
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png,.tiff"
@@ -1487,7 +1503,7 @@ const EmployeeDetail = () => {
                     color: theme.textMuted,
                   }}
                 >
-                  <div style={{ fontSize: 48, marginBottom: 16 }}>📄</div>
+                  <div style={{ marginBottom: 16 }}><FileTextIcon size={48} /></div>
                   <div style={{ fontSize: 14 }}>
                     Sélectionnez un document pour le visualiser
                   </div>

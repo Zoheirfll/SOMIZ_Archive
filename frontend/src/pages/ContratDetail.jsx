@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
+import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, ClipboardIcon, CheckIcon } from "../components/icons";
 
 const STATUT_COLORS = {
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -234,8 +235,8 @@ const ContratDetail = () => {
           {/* Hero content */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-              <div style={{ width: 64, height: 64, borderRadius: 16, background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>
-                📋
+              <div style={{ width: 64, height: 64, borderRadius: 16, background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                <ClipboardIcon size={28} />
               </div>
               <div>
                 <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Contrat</div>
@@ -248,8 +249,8 @@ const ContratDetail = () => {
                 {statutStyle.label}
               </span>
               {user?.role === "ADMIN" && !editing && (
-                <button onClick={handleEditOpen} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-                  ✏️ Modifier
+                <button onClick={handleEditOpen} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                  <PencilIcon size={13} /> Modifier
                 </button>
               )}
               {user?.role === "ADMIN" && (
@@ -339,10 +340,11 @@ const ContratDetail = () => {
               </div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button type="submit" disabled={saving} style={{
+                  display: "flex", alignItems: "center", gap: 6, justifyContent: "center",
                   background: theme.primary, color: "#fff", border: "none", borderRadius: 7,
                   padding: "8px 20px", fontSize: 13, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer",
                 }}>
-                  {saving ? "Enregistrement…" : "✓ Enregistrer"}
+                  {saving ? "Enregistrement…" : <><CheckIcon size={13} /> Enregistrer</>}
                 </button>
                 <button type="button" onClick={() => setEditing(false)} style={{
                   background: "transparent", border: `1px solid ${theme.border}`,
@@ -422,15 +424,16 @@ const ContratDetail = () => {
                     <button
                       onClick={(e) => handleDeleteDoc(doc, e)}
                       title="Supprimer ce document"
+                      aria-label="Supprimer ce document"
                       style={{
                         background: "transparent", border: "none",
-                        color: theme.danger, cursor: "pointer", fontSize: 13,
+                        color: theme.danger, cursor: "pointer", display: "flex",
                         padding: "2px 4px", opacity: 0.5,
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                       onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
                     >
-                      🗑️
+                      <TrashIcon />
                     </button>
                   )}
                 </div>
@@ -450,8 +453,8 @@ const ContratDetail = () => {
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ color: theme.textMuted, fontSize: 11 }}>
-                            {file.mime_type?.includes("pdf") ? "📄" : "🖼️"}
+                          <span style={{ color: theme.textMuted, fontSize: 11, display: "flex" }}>
+                            {file.mime_type?.includes("pdf") ? <FileTextIcon size={13} /> : <ImageIcon size={13} />}
                           </span>
                           <div>
                             <div style={{ color: theme.text, fontSize: 12, fontWeight: selectedFile?.id === file.id ? 600 : 400 }}>
@@ -463,14 +466,16 @@ const ContratDetail = () => {
                         {user?.role === "ADMIN" && (
                           <button
                             onClick={(e) => handleDeleteFile(file, e)}
+                            title="Supprimer ce fichier"
+                            aria-label="Supprimer ce fichier"
                             style={{
                               background: "transparent", border: "none",
-                              color: theme.danger, cursor: "pointer", fontSize: 11, opacity: 0.5,
+                              color: theme.danger, cursor: "pointer", display: "flex", opacity: 0.5,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
                           >
-                            🗑️
+                            <TrashIcon size={12} />
                           </button>
                         )}
                       </div>
@@ -497,6 +502,7 @@ const ContratDetail = () => {
                 <select
                   value={uploadType}
                   onChange={(e) => setUploadType(e.target.value)}
+                  className="input-focus"
                   style={{
                     width: "100%", border: `1px solid ${theme.border}`, borderRadius: 8,
                     padding: "7px 10px", fontSize: 12, color: theme.text,
@@ -508,13 +514,13 @@ const ContratDetail = () => {
                   ))}
                 </select>
                 <label style={{
-                  display: "block", width: "100%",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%",
                   background: uploading ? `${theme.primary}88` : theme.primary,
                   color: "#fff", borderRadius: 6, padding: "8px", textAlign: "center",
                   fontSize: 12, fontWeight: 700,
                   cursor: uploading ? "not-allowed" : "pointer", boxSizing: "border-box",
                 }}>
-                  {uploading ? "Upload en cours..." : "📎 Choisir fichier(s)"}
+                  {uploading ? "Upload en cours..." : <><PaperclipIcon size={13} /> Choisir fichier(s)</>}
                   <input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,.tiff"
@@ -604,7 +610,7 @@ const ContratDetail = () => {
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", color: theme.textMuted,
               }}>
-                <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
+                <div style={{ marginBottom: 16 }}><ClipboardIcon size={48} /></div>
                 <div style={{ fontSize: 14 }}>
                   Sélectionnez un document pour le visualiser
                 </div>

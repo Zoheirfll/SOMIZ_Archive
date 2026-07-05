@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { login } from "../services/auth";
 import { useAuth } from "../context/AuthContext";
 import { theme } from "../styles/theme";
+import { EyeIcon } from "../components/icons";
 
 const Login = () => {
   const [username, setUsername] = useState("");
@@ -192,10 +193,9 @@ const Login = () => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                className="input-focus"
                 style={inputStyle}
                 placeholder="votre.identifiant"
-                onFocus={(e) => (e.currentTarget.style.borderColor = theme.primary)}
-                onBlur={(e) => (e.currentTarget.style.borderColor = theme.border)}
               />
             </div>
 
@@ -217,14 +217,14 @@ const Login = () => {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  className="input-focus"
                   style={{ ...inputStyle, paddingRight: 44 }}
                   placeholder="••••••••••"
-                  onFocus={(e) => (e.currentTarget.style.borderColor = theme.primary)}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = theme.border)}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
                   style={{
                     position: "absolute",
                     right: 12,
@@ -233,13 +233,13 @@ const Login = () => {
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
-                    fontSize: 16,
+                    display: "flex",
                     color: theme.textSecondary,
                     padding: 0,
                     lineHeight: 1,
                   }}
                 >
-                  {showPassword ? "🙈" : "👁️"}
+                  <EyeIcon open={!showPassword} />
                 </button>
               </div>
             </div>

@@ -4,6 +4,7 @@ import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
+import { CheckIcon, FolderIcon } from "../components/icons";
 
 const Import = () => {
   const { user } = useAuth();
@@ -277,12 +278,12 @@ const Import = () => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 28,
+              color: file ? theme.primary : theme.textMuted,
               margin: "0 auto 16px",
               transition: "all 0.2s",
             }}
           >
-            {file ? "✓" : "📂"}
+            {file ? <CheckIcon size={26} /> : <FolderIcon size={26} />}
           </div>
 
           {file ? (

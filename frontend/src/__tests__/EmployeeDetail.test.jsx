@@ -451,7 +451,7 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
 });
 
 describe("EmployeeDetail — quick upload (document manquant)", () => {
-  test("affiche le bouton 📎 à côté de chaque document manquant (ADMIN)", async () => {
+  test("affiche le bouton d'upload rapide à côté de chaque document manquant (ADMIN)", async () => {
     renderPage("ADMIN");
     await waitFor(() => screen.getByText("Diplôme"));
     const quickBtns = screen.getAllByTitle(/Uploader/i);

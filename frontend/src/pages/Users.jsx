@@ -258,7 +258,7 @@ const Users = () => {
                       value={form[f.name]}
                       onChange={handleChange}
                       placeholder={f.placeholder}
-                      style={inputStyle}
+                      className="input-focus" style={inputStyle}
                     />
                     {errors[f.name] && (
                       <div style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>
@@ -270,7 +270,7 @@ const Users = () => {
 
                 <div>
                   <label style={labelStyle}>Rôle</label>
-                  <select name="role" value={form.role} onChange={handleChange} style={inputStyle}>
+                  <select name="role" value={form.role} onChange={handleChange} className="input-focus" style={inputStyle}>
                     <option value="CONSULTANT">Consultant (lecture seule)</option>
                     <option value="ADMIN">Administrateur</option>
                   </select>
@@ -284,7 +284,7 @@ const Users = () => {
                     value={form.password}
                     onChange={handleChange}
                     placeholder="Min. 10 caractères"
-                    style={inputStyle}
+                    className="input-focus" style={inputStyle}
                   />
                   {errors.password && (
                     <div style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>{errors.password}</div>
@@ -299,7 +299,7 @@ const Users = () => {
                     value={form.password2}
                     onChange={handleChange}
                     placeholder="Répétez le mot de passe"
-                    style={inputStyle}
+                    className="input-focus" style={inputStyle}
                   />
                   {errors.password2 && (
                     <div style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>{errors.password2}</div>
@@ -535,6 +535,7 @@ const Users = () => {
                   type={showResetMdp ? "text" : "password"}
                   value={resetForm.nouveau_mot_de_passe}
                   onChange={(e) => setResetForm({ ...resetForm, nouveau_mot_de_passe: e.target.value })}
+                  className="input-focus"
                   style={{
                     width: "100%",
                     border: `1px solid ${theme.border}`,
@@ -576,6 +577,7 @@ const Users = () => {
                   type={showResetConfirm ? "text" : "password"}
                   value={resetForm.confirmation}
                   onChange={(e) => setResetForm({ ...resetForm, confirmation: e.target.value })}
+                  className="input-focus"
                   style={{
                     width: "100%",
                     border: `1px solid ${theme.border}`,

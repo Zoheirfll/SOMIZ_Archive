@@ -22,9 +22,10 @@ const Field = ({ label, required, children }) => (
   </div>
 );
 
-const Input = ({ ...props }) => (
+const Input = ({ className, ...props }) => (
   <input
     {...props}
+    className={["input-focus", className].filter(Boolean).join(" ")}
     style={{
       width: "100%",
       border: `1px solid ${theme.border}`,
@@ -42,9 +43,10 @@ const Input = ({ ...props }) => (
   />
 );
 
-const Select = ({ children, ...props }) => (
+const Select = ({ children, className, ...props }) => (
   <select
     {...props}
+    className={["input-focus", className].filter(Boolean).join(" ")}
     style={{
       width: "100%",
       border: `1px solid ${theme.border}`,
