@@ -91,6 +91,18 @@ const Login = () => {
             background: "rgba(255,255,255,0.04)",
           }}
         />
+        <div
+          data-testid="hero-decor"
+          style={{
+            position: "absolute",
+            top: -40,
+            right: 40,
+            width: 160,
+            height: 160,
+            borderRadius: "50%",
+            background: "rgba(251,191,36,0.12)",
+          }}
+        />
 
         {/* Logo mark */}
         <div

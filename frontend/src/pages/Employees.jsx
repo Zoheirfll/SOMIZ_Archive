@@ -873,7 +873,10 @@ const Employees = () => {
       <div style={{
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
         padding: "36px 32px 40px",
+        position: "relative",
+        overflow: "hidden",
       }}>
+        <div data-testid="hero-decor" style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(251,191,36,0.18)", pointerEvents: "none" }} />
         <div style={{ maxWidth: 1300, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20 }}>
             <div>

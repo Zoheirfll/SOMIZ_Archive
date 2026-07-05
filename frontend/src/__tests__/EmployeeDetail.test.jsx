@@ -130,6 +130,15 @@ describe("EmployeeDetail — rendu initial", () => {
     });
   });
 
+  test("le hero header a le cercle décoratif ambre en overlay", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByText("EMP-001").length).toBeGreaterThan(0);
+    });
+    const decor = document.querySelector('[data-testid="hero-decor"]');
+    expect(decor).toBeInTheDocument();
+  });
+
   test("affiche le statut", async () => {
     renderPage();
     await waitFor(() => {

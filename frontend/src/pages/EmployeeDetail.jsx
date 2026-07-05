@@ -312,7 +312,8 @@ const EmployeeDetail = () => {
       <Navbar />
 
       {/* Hero header */}
-      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "28px 32px 32px" }}>
+      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "28px 32px 32px", position: "relative", overflow: "hidden" }}>
+        <div data-testid="hero-decor" style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(251,191,36,0.18)", pointerEvents: "none" }} />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <button onClick={() => navigate(-1)} style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer", marginBottom: 16, fontFamily: "inherit" }}>
             ← Retour
