@@ -29,10 +29,11 @@ const mockFile = { id: "file-1", file_name: "cin_recto.pdf", mime_type: "applica
 const mockDoc = {
   id: "doc-1",
   type_document: "CIN",
-  type_document_label: "Carte Nationale",
   is_active: true,
   fichiers: [mockFile],
   nb_fichiers: 1,
+  version: 1,
+  file_size_kb: 100,
 };
 const mockEmployee = {
   id: "emp-uuid",
@@ -177,10 +178,11 @@ describe("EmployeeDetail — onglets contrat (dossier)", () => {
   const mockDocContrat = {
     id: "doc-2",
     type_document: "BULLETIN",
-    type_document_label: "Bulletin de salaire",
     is_active: true,
     fichiers: [],
     nb_fichiers: 0,
+    version: 1,
+    file_size_kb: 0,
     contrat: "contrat-1",
   };
 
@@ -190,9 +192,13 @@ describe("EmployeeDetail — onglets contrat (dossier)", () => {
   };
 
   beforeEach(() => {
+    const typesDocumentsAvecBulletin = [
+      ...mockTypes,
+      { id: "type-3", code: "BULLETIN", nom: "Bulletin de salaire", obligatoire: false },
+    ];
     api.get.mockImplementation((url) => {
       if (url.includes("types-documents")) {
-        return Promise.resolve({ data: { results: mockTypes } });
+        return Promise.resolve({ data: { results: typesDocumentsAvecBulletin } });
       }
       if (url.includes("types-contrat")) {
         return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
@@ -220,7 +226,92 @@ describe("EmployeeDetail — onglets contrat (dossier)", () => {
     // Les documents visibles incluent le document sans contrat (général) et ceux du contrat sélectionné
     await waitFor(() => {
       expect(screen.getAllByText("Carte Nationale").length).toBeGreaterThan(0);
+      // Doit aussi afficher le document lié au contrat sélectionné (contrat-1 par défaut)
+      expect(screen.getAllByText("Bulletin de salaire").length).toBeGreaterThan(0);
     });
+  });
+
+  test("filtre correctement les documents par contrat — exclut les docs d'autres contrats", async () => {
+    // Variante avec 2 contrats et 2 docs liés à des contrats différents
+    const mockDocAttestation = {
+      id: "doc-3",
+      type_document: "ATTESTATION",
+      is_active: true,
+      fichiers: [],
+      nb_fichiers: 0,
+      version: 1,
+      file_size_kb: 0,
+      contrat: "contrat-0", // Contrat plus ancien
+    };
+
+    const mockContratsAvecDeux = [
+      {
+        id: "contrat-0",
+        numero_contrat: "CTR-2019-000",
+        type_contrat_nom: "CDI",
+        date_debut: "2019-01-01",
+        date_fin: "2020-01-01",
+        statut: "inactif",
+        nb_documents: 1,
+      },
+      {
+        id: "contrat-1",
+        numero_contrat: "CTR-2020-001",
+        type_contrat_nom: "CDI",
+        date_debut: "2020-01-01",
+        date_fin: null,
+        statut: "actif",
+        nb_documents: 2,
+      },
+    ];
+
+    const typesDocumentsComplets = [
+      ...mockTypes,
+      { id: "type-3", code: "BULLETIN", nom: "Bulletin de salaire", obligatoire: false },
+      { id: "type-4", code: "ATTESTATION", nom: "Attestation de travail", obligatoire: false },
+    ];
+
+    const employeeAvecTroisDocs = {
+      ...mockEmployee,
+      documents: [mockDoc, mockDocContrat, mockDocAttestation],
+    };
+
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) {
+        return Promise.resolve({ data: { results: typesDocumentsComplets } });
+      }
+      if (url.includes("types-contrat")) {
+        return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
+      }
+      if (url.includes("/contrats/")) {
+        return Promise.resolve({ data: mockContratsAvecDeux });
+      }
+      if (url.includes("files/")) {
+        return Promise.resolve({ data: new Blob(["pdf"], { type: "application/pdf" }) });
+      }
+      return Promise.resolve({ data: employeeAvecTroisDocs });
+    });
+
+    renderPage("ADMIN");
+    await waitFor(() => {
+      // Le contrat le plus récent (contrat-1) doit être sélectionné par défaut
+      const onglet = screen.getByRole("button", { name: "CTR-2020-001" });
+      expect(onglet).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Docs visibles : doc général + doc du contrat sélectionné
+    await waitFor(() => {
+      expect(screen.getAllByText("Carte Nationale").length).toBeGreaterThan(0); // général
+      expect(screen.getAllByText("Bulletin de salaire").length).toBeGreaterThan(0); // contrat-1
+    });
+
+    // Doc du AUTRE contrat doit être caché dans le sidebar documents
+    // Le texte peut apparaître dans le dropdown d'upload, on cherche donc dans la list
+    const documentSidebar = screen.getByText("Documents (2)").closest("div");
+    expect(documentSidebar).toBeInTheDocument();
+    // Vérifier que "Attestation" n'est pas dans le sidebar (mais peut être dans le dropdown)
+    const sidebarText = documentSidebar.textContent;
+    expect(sidebarText).not.toContain("Attestation de travail");
   });
 
   test("aucun onglet affiché si l'employé n'a aucun contrat", async () => {
