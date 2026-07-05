@@ -182,11 +182,14 @@ const EmployeeDetail = () => {
     );
     const formData = new FormData();
     formData.append("type_doc", typeSelectionne?.id || uploadType);
-    // Ajouter chaque fichier sous la clé "files"
     files.forEach((file) => formData.append("files", file));
 
+    const url = selectedContratId
+      ? `/contrats/${selectedContratId}/documents/`
+      : `/employees/${id}/documents/`;
+
     try {
-      await api.post(`/employees/${id}/documents/`, formData, {
+      await api.post(url, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setMessage({
@@ -194,6 +197,7 @@ const EmployeeDetail = () => {
         text: `${files.length} fichier(s) uploadé(s) avec succès.`,
       });
       fetchEmployee();
+      fetchContrats();
     } catch (err) {
       setMessage({
         type: "error",
@@ -201,7 +205,6 @@ const EmployeeDetail = () => {
       });
     } finally {
       setUploading(false);
-      // Reset input fichier
       e.target.value = "";
       setTimeout(() => setMessage(null), 4000);
     }

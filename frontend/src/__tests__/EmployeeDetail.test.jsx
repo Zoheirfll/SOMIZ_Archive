@@ -376,12 +376,64 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("upload réussi appelle api.post avec FormData", async () => {
+  test("upload réussi appelle api.post sur l'endpoint du contrat sélectionné", async () => {
+    api.post.mockResolvedValue({});
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) {
+        return Promise.resolve({ data: { results: mockTypes } });
+      }
+      if (url.includes("types-contrat")) {
+        return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
+      }
+      if (url.includes("/contrats/")) {
+        return Promise.resolve({ data: mockContrats });
+      }
+      if (url.includes("files/")) {
+        return Promise.resolve({ data: new Blob(["pdf"], { type: "application/pdf" }) });
+      }
+      return Promise.resolve({ data: mockEmployee });
+    });
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+    // Attendre que les contrats soient chargés
+    await waitFor(() => {
+      const tabBtn = screen.getByRole("button", { name: "CTR-2020-001" });
+      expect(tabBtn).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Obtenir l'input du formulaire principal "Choisir fichier(s)" (dernier input, pas les quick-uploads)
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    const mainInput = fileInputs[fileInputs.length - 1];
+    if (mainInput) {
+      const file = new File(["pdf"], "test.pdf", { type: "application/pdf" });
+      fireEvent.change(mainInput, { target: { files: [file] } });
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith(
+          "/contrats/contrat-1/documents/",
+          expect.any(FormData),
+          expect.any(Object)
+        );
+      });
+    }
+  });
+
+  test("upload réussi cible le dossier général si l'employé n'a aucun contrat", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) {
+        return Promise.resolve({ data: { results: mockTypes } });
+      }
+      if (url.includes("types-contrat")) {
+        return Promise.resolve({ data: { results: [] } });
+      }
+      if (url.includes("/contrats/")) {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({ data: mockEmployee });
+    });
     api.post.mockResolvedValue({});
     renderPage("ADMIN");
     await waitFor(() => screen.getAllByText("EMP-001").length > 0);
 
-    // Cibler le premier input file du formulaire principal (pas les quick upload)
     const fileInputs = document.querySelectorAll('input[type="file"]');
     const mainInput = fileInputs[0];
     if (mainInput) {
