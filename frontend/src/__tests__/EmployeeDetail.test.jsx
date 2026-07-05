@@ -559,3 +559,89 @@ describe("EmployeeDetail — suppression fichier", () => {
     }
   });
 });
+
+describe("EmployeeDetail — préservation sélection contrat après upload", () => {
+  test("après upload, le contrat sélectionné (non-défaut) reste sélectionné", async () => {
+    // Deux contrats : un ancien (contrat-0), un récent (contrat-1)
+    const mockContratsAvecDeux = [
+      {
+        id: "contrat-0",
+        numero_contrat: "CTR-2019-000",
+        type_contrat_nom: "CDI",
+        date_debut: "2019-01-01",
+        date_fin: "2020-01-01",
+        statut: "inactif",
+        nb_documents: 1,
+      },
+      {
+        id: "contrat-1",
+        numero_contrat: "CTR-2020-001",
+        type_contrat_nom: "CDI",
+        date_debut: "2020-01-01",
+        date_fin: null,
+        statut: "actif",
+        nb_documents: 2,
+      },
+    ];
+
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) {
+        return Promise.resolve({ data: { results: mockTypes } });
+      }
+      if (url.includes("types-contrat")) {
+        return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
+      }
+      if (url.includes("/contrats/")) {
+        return Promise.resolve({ data: mockContratsAvecDeux });
+      }
+      if (url.includes("files/")) {
+        return Promise.resolve({ data: new Blob(["pdf"], { type: "application/pdf" }) });
+      }
+      return Promise.resolve({ data: mockEmployee });
+    });
+
+    api.post.mockResolvedValue({});
+
+    renderPage("ADMIN");
+
+    // Attendre le chargement initial — par défaut le contrat récent (contrat-1) est sélectionné
+    await waitFor(() => {
+      const tabBtn = screen.getByRole("button", { name: "CTR-2020-001" });
+      expect(tabBtn).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Cliquer sur l'onglet du contrat ANCIEN (contrat-0)
+    const olderContractTab = screen.getByRole("button", { name: "CTR-2019-000" });
+    fireEvent.click(olderContractTab);
+
+    // Vérifier que le contrat ancien est maintenant sélectionné
+    await waitFor(() => {
+      const tabBtn = screen.getByRole("button", { name: "CTR-2019-000" });
+      expect(tabBtn).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Récupérer le file input principal et déclencher un upload
+    const fileInputs = document.querySelectorAll('input[type="file"]');
+    const mainInput = fileInputs[fileInputs.length - 1];
+    if (mainInput) {
+      const file = new File(["pdf"], "test.pdf", { type: "application/pdf" });
+      fireEvent.change(mainInput, { target: { files: [file] } });
+
+      // Attendre que l'upload soit fait (api.post) et que fetchContrats soit rappelé
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalled();
+      });
+    }
+
+    // Point crucial : après l'upload qui déclenche fetchContrats(),
+    // le contrat ancien doit RESTER sélectionné (pas réinitialisé au contrat récent)
+    await waitFor(() => {
+      const tabBtn = screen.getByRole("button", { name: "CTR-2019-000" });
+      expect(tabBtn).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Vérifier aussi que le contrat récent n'est plus sélectionné
+    const recentTab = screen.getByRole("button", { name: "CTR-2020-001" });
+    expect(recentTab).toHaveAttribute("aria-pressed", "false");
+  });
+});

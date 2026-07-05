@@ -75,10 +75,9 @@ const EmployeeDetail = () => {
       const response = await api.get(`/employees/${id}/contrats/`);
       setContrats(response.data);
       if (response.data.length > 0) {
-        const dernierContrat = [...response.data].sort(
-          (a, b) => new Date(a.date_debut || 0) - new Date(b.date_debut || 0),
-        ).at(-1);
-        setSelectedContratId(dernierContrat.id);
+        const dernierContrat = sortContratsByDate(response.data).at(-1);
+        // Ne seed selectedContratId que s'il n'est pas déjà défini (première charge)
+        setSelectedContratId((prev) => prev ?? dernierContrat.id);
       }
     } catch (err) {
       console.error(err);
@@ -92,6 +91,19 @@ const EmployeeDetail = () => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // Trier les contrats par date_debut (croissant) puis par id (tie-break)
+  const sortContratsByDate = (contractsList) => {
+    return [...contractsList].sort((a, b) => {
+      const dateA = new Date(a.date_debut || 0);
+      const dateB = new Date(b.date_debut || 0);
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateA - dateB;
+      }
+      // Tie-break: compare by id (string comparison)
+      return String(a.id).localeCompare(String(b.id));
+    });
   };
 
   const handleCreateContrat = async (e) => {
@@ -969,9 +981,7 @@ const EmployeeDetail = () => {
                     background: theme.bg,
                   }}
                 >
-                  {[...contrats]
-                    .sort((a, b) => new Date(a.date_debut || 0) - new Date(b.date_debut || 0))
-                    .map((c) => (
+                  {sortContratsByDate(contrats).map((c) => (
                       <button
                         key={c.id}
                         type="button"
