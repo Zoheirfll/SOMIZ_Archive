@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 jest.mock("../services/api", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), delete: jest.fn() } }));
@@ -305,13 +305,17 @@ describe("EmployeeDetail — onglets contrat (dossier)", () => {
       expect(screen.getAllByText("Bulletin de salaire").length).toBeGreaterThan(0); // contrat-1
     });
 
-    // Doc du AUTRE contrat doit être caché dans le sidebar documents
-    // Le texte peut apparaître dans le dropdown d'upload, on cherche donc dans la list
-    const documentSidebar = screen.getByText("Documents (2)").closest("div");
-    expect(documentSidebar).toBeInTheDocument();
-    // Vérifier que "Attestation" n'est pas dans le sidebar (mais peut être dans le dropdown)
-    const sidebarText = documentSidebar.textContent;
-    expect(sidebarText).not.toContain("Attestation de travail");
+    // Doc du AUTRE contrat doit être caché — vérifier que seuls les docs du contrat sélectionné sont visibles
+    // Les labels des documents sont dans des <span> avec fontWeight: 600
+    const sidebarHeader = screen.getByText("Documents (2)");
+    const sidebar = sidebarHeader.closest("div").parentElement;
+    const documentTypeSpans = sidebar.querySelectorAll('span');
+    const documentLabels = Array.from(documentTypeSpans)
+      .filter((span) => span.style.fontWeight === "600")
+      .map((span) => span.textContent);
+
+    expect(documentLabels).toContain("Bulletin de salaire"); // du contrat sélectionné
+    expect(documentLabels).not.toContain("Attestation de travail"); // du contrat non-sélectionné
   });
 
   test("aucun onglet affiché si l'employé n'a aucun contrat", async () => {
