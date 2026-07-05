@@ -3,6 +3,7 @@ import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
+import Skeleton from "../components/Skeleton";
 import "../styles/animations.css";
 
 // SVG icons
@@ -356,8 +357,13 @@ const Users = () => {
           boxShadow: theme.shadowMd,
         }}>
           {loading ? (
-            <div style={{ color: theme.textSecondary, textAlign: "center", padding: 60 }}>
-              Chargement...
+            <div style={{ padding: 24 }}>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 0" }}>
+                  <Skeleton width={32} height={32} radius={16} />
+                  <Skeleton width="35%" height={14} />
+                </div>
+              ))}
             </div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

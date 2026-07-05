@@ -4,6 +4,7 @@ import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
+import Skeleton from "../components/Skeleton";
 
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 18 }}>
@@ -309,15 +310,11 @@ const EmployeeForm = () => {
     return (
       <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
         <Navbar />
-        <div
-          style={{
-            color: theme.textSecondary,
-            textAlign: "center",
-            padding: 80,
-            fontSize: 14,
-          }}
-        >
-          Chargement...
+        <div style={{ padding: 32, maxWidth: 800, margin: "0 auto" }}>
+          <Skeleton height={40} style={{ marginBottom: 16 }} />
+          <Skeleton height={40} style={{ marginBottom: 16 }} />
+          <Skeleton height={40} style={{ marginBottom: 16 }} />
+          <Skeleton height={120} radius={12} />
         </div>
       </div>
     );
