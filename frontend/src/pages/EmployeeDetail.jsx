@@ -14,6 +14,7 @@ const EmployeeDetail = () => {
 
   const [employee, setEmployee] = useState(null);
   const [contrats, setContrats] = useState([]);
+  const [selectedContratId, setSelectedContratId] = useState(null);
   const [activeTab, setActiveTab] = useState(
     searchParams.get("tab") || "dossier",
   );
@@ -73,6 +74,12 @@ const EmployeeDetail = () => {
     try {
       const response = await api.get(`/employees/${id}/contrats/`);
       setContrats(response.data);
+      if (response.data.length > 0) {
+        const dernierContrat = [...response.data].sort(
+          (a, b) => new Date(a.date_debut || 0) - new Date(b.date_debut || 0),
+        ).at(-1);
+        setSelectedContratId(dernierContrat.id);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -283,6 +290,10 @@ const EmployeeDetail = () => {
     { label: "Type de contrat", value: employee.type_contrat_nom || "—" },
     { label: "Catégorie", value: employee.categorie_nom || "—" },
   ];
+
+  const documentsAffiches = (employee.documents || []).filter(
+    (doc) => !doc.contrat || doc.contrat === selectedContratId,
+  );
 
   return (
     <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
@@ -941,11 +952,48 @@ const EmployeeDetail = () => {
                   background: theme.primaryBg,
                 }}
               >
-                Documents ({employee.documents?.length || 0})
+                Documents ({documentsAffiches.length})
               </div>
 
+              {contrats.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    padding: "10px 16px",
+                    borderBottom: `1px solid ${theme.border}`,
+                    background: theme.bg,
+                  }}
+                >
+                  {[...contrats]
+                    .sort((a, b) => new Date(a.date_debut || 0) - new Date(b.date_debut || 0))
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        aria-pressed={selectedContratId === c.id}
+                        onClick={() => setSelectedContratId(c.id)}
+                        style={{
+                          background: selectedContratId === c.id ? theme.primary : theme.surface,
+                          border: `1px solid ${selectedContratId === c.id ? theme.primary : theme.border}`,
+                          color: selectedContratId === c.id ? "#fff" : theme.text,
+                          borderRadius: 6,
+                          padding: "4px 10px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          fontFamily: "monospace",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {c.numero_contrat}
+                      </button>
+                    ))}
+                </div>
+              )}
+
               {/* Documents présents */}
-              {employee.documents?.map((doc) => (
+              {documentsAffiches.map((doc) => (
                 <div
                   key={doc.id}
                   style={{

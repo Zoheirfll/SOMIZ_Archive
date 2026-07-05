@@ -173,6 +173,75 @@ describe("EmployeeDetail — documents", () => {
   });
 });
 
+describe("EmployeeDetail — onglets contrat (dossier)", () => {
+  const mockDocContrat = {
+    id: "doc-2",
+    type_document: "BULLETIN",
+    type_document_label: "Bulletin de salaire",
+    is_active: true,
+    fichiers: [],
+    nb_fichiers: 0,
+    contrat: "contrat-1",
+  };
+
+  const employeeAvecDeuxDocs = {
+    ...mockEmployee,
+    documents: [mockDoc, mockDocContrat],
+  };
+
+  beforeEach(() => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) {
+        return Promise.resolve({ data: { results: mockTypes } });
+      }
+      if (url.includes("types-contrat")) {
+        return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
+      }
+      if (url.includes("/contrats/")) {
+        return Promise.resolve({ data: mockContrats });
+      }
+      if (url.includes("files/")) {
+        return Promise.resolve({ data: new Blob(["pdf"], { type: "application/pdf" }) });
+      }
+      return Promise.resolve({ data: employeeAvecDeuxDocs });
+    });
+  });
+
+  test("affiche un onglet par contrat avec le dernier sélectionné par défaut", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => {
+      const onglet = screen.getByRole("button", { name: "CTR-2020-001" });
+      expect(onglet).toHaveAttribute("aria-pressed", "true");
+    });
+  });
+
+  test("le dossier général et les documents du contrat sélectionné sont visibles", async () => {
+    renderPage("ADMIN");
+    // Les documents visibles incluent le document sans contrat (général) et ceux du contrat sélectionné
+    await waitFor(() => {
+      expect(screen.getAllByText("Carte Nationale").length).toBeGreaterThan(0);
+    });
+  });
+
+  test("aucun onglet affiché si l'employé n'a aucun contrat", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) {
+        return Promise.resolve({ data: { results: mockTypes } });
+      }
+      if (url.includes("types-contrat")) {
+        return Promise.resolve({ data: { results: [] } });
+      }
+      if (url.includes("/contrats/")) {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({ data: mockEmployee });
+    });
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+    expect(screen.queryByRole("button", { name: "CTR-2020-001" })).not.toBeInTheDocument();
+  });
+});
+
 describe("EmployeeDetail — navigation", () => {
   test("bouton ← Retour navigue en arrière", async () => {
     renderPage();
