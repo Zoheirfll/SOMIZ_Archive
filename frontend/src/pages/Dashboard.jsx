@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
+import Skeleton from "../components/Skeleton";
 
 // SVG icons
 const IconUsers = () => (
@@ -118,8 +119,13 @@ const Dashboard = () => {
     return (
       <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
         <Navbar />
-        <div style={{ color: theme.textSecondary, textAlign: "center", padding: 80 }}>
-          Chargement...
+        <div style={{ padding: 32, maxWidth: 1200, margin: "0 auto" }}>
+          <Skeleton height={80} radius={16} style={{ marginBottom: 24 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} height={100} radius={16} />
+            ))}
+          </div>
         </div>
       </div>
     );

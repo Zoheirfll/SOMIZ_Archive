@@ -3,6 +3,7 @@ import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import "../styles/animations.css";
+import Skeleton from "../components/Skeleton";
 
 const ACTION_COLORS = {
   VIEW: theme.primary,
@@ -146,8 +147,13 @@ const AuditLogs = () => {
           boxShadow: theme.shadowMd,
         }}>
           {loading ? (
-            <div style={{ color: theme.textSecondary, textAlign: "center", padding: 60 }}>
-              Chargement...
+            <div style={{ padding: 24 }}>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} style={{ padding: "10px 0" }}>
+                  <Skeleton width="70%" height={14} style={{ marginBottom: 6 }} />
+                  <Skeleton width="40%" height={11} />
+                </div>
+              ))}
             </div>
           ) : logs.length === 0 ? (
             <div style={{ color: theme.textSecondary, textAlign: "center", padding: 60 }}>

@@ -63,10 +63,11 @@ describe("Dashboard — accès CONSULTANT", () => {
 });
 
 describe("Dashboard — chargement", () => {
-  test("affiche Chargement... pendant le fetch", () => {
+  test("affiche un skeleton pendant le fetch", () => {
     api.get.mockReturnValue(new Promise(() => {})); // never resolves
     renderPage("ADMIN");
-    expect(screen.getByText("Chargement...")).toBeInTheDocument();
+    expect(screen.queryByText("Chargement...")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("skeleton").length).toBeGreaterThan(0);
   });
 
   test("affiche les stats après chargement", async () => {

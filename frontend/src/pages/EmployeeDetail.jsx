@@ -6,6 +6,7 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
 import { TrashIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
+import Skeleton from "../components/Skeleton";
 
 const EmployeeDetail = () => {
   const { id } = useParams();
@@ -270,14 +271,9 @@ const EmployeeDetail = () => {
     return (
       <div style={{ background: theme.bg, minHeight: "100vh" }}>
         <Navbar />
-        <div
-          style={{
-            color: theme.textSecondary,
-            textAlign: "center",
-            padding: 80,
-          }}
-        >
-          Chargement...
+        <div style={{ padding: 32, maxWidth: 1200, margin: "0 auto" }}>
+          <Skeleton height={120} radius={16} style={{ marginBottom: 24 }} />
+          <Skeleton height={300} radius={16} />
         </div>
       </div>
     );

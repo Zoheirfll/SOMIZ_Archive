@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon, XIcon, RocketIcon } from "../components/icons";
+import Skeleton from "../components/Skeleton";
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
 
@@ -137,10 +138,13 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
     }}
   >
     {loading ? (
-      <div
-        style={{ color: theme.textSecondary, textAlign: "center", padding: 40 }}
-      >
-        Chargement...
+      <div style={{ padding: 24 }}>
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 0" }}>
+            <Skeleton width={32} height={32} radius={16} />
+            <Skeleton width="40%" height={14} />
+          </div>
+        ))}
       </div>
     ) : items.length === 0 ? (
       <div

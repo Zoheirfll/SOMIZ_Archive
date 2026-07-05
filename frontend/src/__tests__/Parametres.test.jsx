@@ -100,10 +100,11 @@ describe("Parametres — chargement des données", () => {
     });
   });
 
-  test("affiche Chargement... pendant le fetch", () => {
+  test("affiche un skeleton pendant le fetch", () => {
     api.get.mockReturnValue(new Promise(() => {}));
     renderPage();
-    expect(screen.getByText("Chargement...")).toBeInTheDocument();
+    expect(screen.queryByText("Chargement...")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("skeleton").length).toBeGreaterThan(0);
   });
 });
 

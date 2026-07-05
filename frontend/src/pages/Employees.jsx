@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
+import Skeleton from "../components/Skeleton";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -683,9 +684,16 @@ const Employees = () => {
       {/* Table */}
       <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, overflow: "hidden", boxShadow: theme.shadowMd }}>
         {loading ? (
-          <div style={{ padding: 80, textAlign: "center", color: theme.textMuted }}>
-            <div style={{ marginBottom: 16, opacity: 0.4 }}><IconUsers size={48} color={theme.textMuted} /></div>
-            <div style={{ fontFamily: theme.fontFamily, fontWeight: 600 }}>Chargement des employés...</div>
+          <div style={{ padding: 24 }}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 0" }}>
+                <Skeleton width={36} height={36} radius={18} />
+                <div style={{ flex: 1 }}>
+                  <Skeleton width="30%" height={13} style={{ marginBottom: 6 }} />
+                  <Skeleton width="50%" height={11} />
+                </div>
+              </div>
+            ))}
           </div>
         ) : employees.length === 0 ? (
           <div style={{ padding: 80, textAlign: "center", color: theme.textMuted }}>
