@@ -931,7 +931,7 @@ const Employees = () => {
                     <IconImport size={15} />
                     Import CSV
                   </button>
-                  <button onClick={() => navigate("/employees/nouveau")} className="btn-lift" style={{ background: "#FFFFFF", border: "none", borderRadius: 10, padding: "10px 20px", color: theme.primary, fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.2)" }}>
+                  <button onClick={() => navigate("/employees/nouveau")} className="btn-lift" style={{ background: theme.accent, border: "none", borderRadius: 10, padding: "10px 20px", color: theme.text, fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.2)" }}>
                     <IconPlus size={15} />
                     Nouvel employé
                   </button>

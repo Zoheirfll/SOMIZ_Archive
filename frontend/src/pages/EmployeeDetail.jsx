@@ -509,9 +509,9 @@ const EmployeeDetail = () => {
                     setShowNewContratForm(!showNewContratForm);
                   }}
                   style={{
-                    background: theme.primary,
+                    background: theme.accent,
                     border: "none",
-                    color: "#fff",
+                    color: theme.text,
                     borderRadius: 6,
                     padding: "6px 14px",
                     fontSize: 12,

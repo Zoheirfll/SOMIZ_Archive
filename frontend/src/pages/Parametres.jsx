@@ -1109,15 +1109,15 @@ const Parametres = () => {
                   <button
                     onClick={openAdd}
                     style={{
-                      background: theme.primary,
+                      background: theme.accent,
                       border: "none",
-                      color: "#fff",
+                      color: theme.text,
                       borderRadius: 8,
                       padding: "8px 16px",
                       fontSize: 13,
                       fontWeight: 700,
                       cursor: "pointer",
-                      boxShadow: `0 2px 8px ${theme.primary}44`,
+                      boxShadow: `0 2px 8px ${theme.accent}44`,
                     }}
                   >
                     + Ajouter
