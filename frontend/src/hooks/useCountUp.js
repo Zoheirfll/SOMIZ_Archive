@@ -10,11 +10,13 @@ import { useState, useEffect, useRef } from "react";
  * @returns {number|null}
  */
 const useCountUp = (target, duration = 800) => {
-  if (process.env.NODE_ENV === "test") return target ?? null;
+  const isTest = process.env.NODE_ENV === "test";
   const [current, setCurrent] = useState(target == null ? null : 0);
   const timerRef = useRef(null);
 
   useEffect(() => {
+    if (isTest) return;
+
     if (target == null) {
       setCurrent(null);
       return;
@@ -56,9 +58,9 @@ const useCountUp = (target, duration = 800) => {
         clearTimeout(timerRef.current);
       }
     };
-  }, [target, duration]);
+  }, [target, duration, isTest]);
 
-  return current;
+  return isTest ? (target ?? null) : current;
 };
 
 export default useCountUp;
