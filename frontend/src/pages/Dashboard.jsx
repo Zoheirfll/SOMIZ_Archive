@@ -106,6 +106,12 @@ const Dashboard = () => {
     fetchStats();
   }, []);
 
+  const countEmployes = useCountUp(stats?.employes_actifs ?? null);
+  const countDossiers = useCountUp(stats?.dossiers_complets ?? null);
+  const countTaux = useCountUp(stats?.taux_completude_global ?? null);
+  const countDocs = useCountUp(stats?.total_documents ?? null);
+  const total = countEmployes ?? 0;
+
   const fetchStats = async () => {
     setLoading(true);
     setError("");
@@ -141,12 +147,6 @@ const Dashboard = () => {
         <div style={{ color: theme.danger, textAlign: "center", padding: 80 }}>{error}</div>
       </PageBackground>
     );
-
-  const countEmployes = useCountUp(stats?.employes_actifs ?? null);
-  const countDossiers = useCountUp(stats?.dossiers_complets ?? null);
-  const countTaux = useCountUp(stats?.taux_completude_global ?? null);
-  const countDocs = useCountUp(stats?.total_documents ?? null);
-  const total = countEmployes ?? 0;
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
