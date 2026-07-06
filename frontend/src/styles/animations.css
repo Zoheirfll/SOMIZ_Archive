@@ -108,3 +108,44 @@
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ─── Fond de page — halos radiaux ──────────────────────────────────────── */
+.page-root {
+  position: relative;
+  background: #F1F5F9;
+  min-height: 100vh;
+}
+.page-root::before {
+  content: "";
+  position: fixed;
+  top: -120px;
+  left: -120px;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(22,101,52,0.055) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+.page-root::after {
+  content: "";
+  position: fixed;
+  bottom: -100px;
+  right: -100px;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245,158,11,0.05) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Tables — survol de ligne ───────────────────────────────────────────── */
+.table-row-hover {
+  transition: background 0.13s ease, border-left-color 0.13s ease;
+  border-left: 3px solid transparent;
+}
+.table-row-hover:hover {
+  background: #F0FDF4 !important;
+  border-left-color: #166534;
+}

@@ -62,4 +62,9 @@ export const theme = {
   // Badges
   badgeBg:    "rgba(22,101,52,0.08)",
   badgeColor: "#166534",
+
+  // ─── Fond de page vivant ──────────────────────────────────────────────────
+  pageBg: "#F1F5F9",             // base — identique à bg, les halos sont en CSS
+  // ─── Cartes — liseré supérieur dégradé ───────────────────────────────────
+  cardBorderTopGrad: "linear-gradient(90deg, #166534 0%, #F59E0B 100%)",
 };
