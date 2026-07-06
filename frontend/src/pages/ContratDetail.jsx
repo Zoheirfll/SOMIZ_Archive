@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
 import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, ClipboardIcon, CheckIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
+import HeroDecor from "../components/HeroDecor";
 
 const STATUT_COLORS = {
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -222,7 +223,7 @@ const ContratDetail = () => {
         position: "relative",
         overflow: "hidden",
       }}>
-        <div data-testid="hero-decor" style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(251,191,36,0.18)", pointerEvents: "none" }} />
+        <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           {/* Breadcrumb */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>

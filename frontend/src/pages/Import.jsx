@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import { CheckIcon, FolderIcon } from "../components/icons";
+import HeroDecor from "../components/HeroDecor";
 
 const Import = () => {
   const { user } = useAuth();
@@ -82,8 +83,11 @@ const Import = () => {
         style={{
           background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
           padding: "32px 32px 36px",
+          position: "relative",
+          overflow: "hidden",
         }}
       >
+        <HeroDecor />
         <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <h1

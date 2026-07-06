@@ -6,6 +6,7 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
+import HeroDecor from "../components/HeroDecor";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -876,7 +877,7 @@ const Employees = () => {
         position: "relative",
         overflow: "hidden",
       }}>
-        <div data-testid="hero-decor" style={{ position: "absolute", top: -30, right: -30, width: 140, height: 140, borderRadius: "50%", background: "rgba(251,191,36,0.18)", pointerEvents: "none" }} />
+        <HeroDecor />
         <div style={{ maxWidth: 1300, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 20 }}>
             <div>

@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
+import HeroDecor from "../components/HeroDecor";
 
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 18 }}>
@@ -328,8 +329,11 @@ const EmployeeForm = () => {
         style={{
           background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
           padding: "32px 32px 36px",
+          position: "relative",
+          overflow: "hidden",
         }}
       >
+        <HeroDecor />
         <div style={{ maxWidth: 900, margin: "0 auto" }}>
           <h1
             style={{
