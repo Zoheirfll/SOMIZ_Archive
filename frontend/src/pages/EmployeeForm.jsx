@@ -6,6 +6,7 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
+import PageBackground from "../components/PageBackground";
 
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 18 }}>
@@ -309,7 +310,7 @@ const EmployeeForm = () => {
 
   if (fetching)
     return (
-      <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+      <PageBackground style={{ fontFamily: theme.fontFamily }}>
         <Navbar />
         <div style={{ padding: 32, maxWidth: 800, margin: "0 auto" }}>
           <Skeleton height={40} style={{ marginBottom: 16 }} />
@@ -317,11 +318,11 @@ const EmployeeForm = () => {
           <Skeleton height={40} style={{ marginBottom: 16 }} />
           <Skeleton height={120} radius={12} />
         </div>
-      </div>
+      </PageBackground>
     );
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero header */}
@@ -667,7 +668,7 @@ const EmployeeForm = () => {
           </div>
         </form>
       </div>
-    </div>
+    </PageBackground>
   );
 };
 

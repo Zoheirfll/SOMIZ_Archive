@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import HeroDecor from "../components/HeroDecor";
+import PageBackground from "../components/PageBackground";
 import "../styles/animations.css";
 
 // SVG icons
@@ -126,7 +127,7 @@ const Profil = () => {
   );
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero header */}
@@ -305,7 +306,7 @@ const Profil = () => {
           </form>
         </div>
       </div>
-    </div>
+    </PageBackground>
   );
 };
 

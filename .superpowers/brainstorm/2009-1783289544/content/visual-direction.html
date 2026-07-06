@@ -1,0 +1,72 @@
+<h2>Quelle direction visuelle vous semble la plus "vivante" ?</h2>
+<p class="subtitle">Même contenu (carte stat + carte employé + bouton), trois traitements différents du vert SOMIZ. Survolez les cartes/boutons pour voir le mouvement.</p>
+
+<style>
+  .demo-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
+  .demo-box { border-radius: 16px; padding: 18px; }
+  .demo-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; opacity: 0.7; }
+
+  /* A — Vert + Ambre chaleureux */
+  .a-box { background: #F1F5F9; }
+  .a-stat { background: linear-gradient(135deg, #052e16 0%, #166534 60%, #15803d 100%); border-radius: 14px; padding: 16px; color: #fff; margin-bottom: 12px; position: relative; overflow: hidden; }
+  .a-stat::after { content: ""; position: absolute; top: -30px; right: -30px; width: 90px; height: 90px; border-radius: 50%; background: rgba(251,191,36,0.25); }
+  .a-num { font-size: 26px; font-weight: 800; }
+  .a-card { background: #fff; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 12px; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .a-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(180,131,7,0.18); }
+  .a-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg,#F59E0B,#166534); flex-shrink: 0; }
+  .a-btn { background: #F59E0B; color: #052e16; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 700; font-size: 13px; cursor: pointer; transition: transform 0.15s ease; }
+  .a-btn:hover { transform: translateY(-2px); }
+
+  /* B — Vert + Teal vif, cartes plus "pop" */
+  .b-box { background: #F1F5F9; }
+  .b-stat { background: linear-gradient(135deg, #0f2e1e 0%, #0d9488 60%, #14b8a6 100%); border-radius: 14px; padding: 16px; color: #fff; margin-bottom: 12px; }
+  .b-num { font-size: 26px; font-weight: 800; }
+  .b-card { background: #fff; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 12px; border: 1px solid #ccfbf1; transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s; }
+  .b-card:hover { transform: translateY(-4px) scale(1.01); box-shadow: 0 12px 28px rgba(13,148,136,0.22); border-color: #14b8a6; }
+  .b-avatar { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg,#14b8a6,#166534); flex-shrink: 0; }
+  .b-btn { background: linear-gradient(135deg,#166534,#0d9488); color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 700; font-size: 13px; cursor: pointer; transition: transform 0.15s ease, box-shadow 0.15s; }
+  .b-btn:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 6px 16px rgba(13,148,136,0.35); }
+
+  /* C — Vert + touches pastel multicolores douces */
+  .c-box { background: #F1F5F9; }
+  .c-stat { background: #fff; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px; margin-bottom: 12px; position: relative; }
+  .c-stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 4px 0 0 4px; background: linear-gradient(180deg,#166534,#8b5cf6,#f59e0b); }
+  .c-num { font-size: 26px; font-weight: 800; color: #166534; padding-left: 10px; }
+  .c-card { background: #fff; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 12px; transition: transform 0.2s ease; }
+  .c-card:hover { transform: translateY(-3px) rotate(-0.3deg); }
+  .c-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg,#8b5cf6,#166534); flex-shrink: 0; }
+  .c-chip { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: #f5f3ff; color: #6d28d9; margin-left: auto; }
+  .c-btn { background: #166534; color: #fff; border: none; border-radius: 20px; padding: 9px 18px; font-weight: 700; font-size: 13px; cursor: pointer; transition: transform 0.15s ease; }
+  .c-btn:hover { transform: scale(1.05); }
+</style>
+
+<div class="options" data-choice-group>
+  <div class="option" data-choice="a" onclick="toggleSelect(this)" style="display:block; padding:0; border:none;">
+    <div class="demo-box a-box">
+      <div class="demo-label" style="color:#052e16">A — Vert + accent ambre chaleureux</div>
+      <div class="a-stat"><div style="font-size:11px;opacity:0.8">Employés actifs</div><div class="a-num">248</div></div>
+      <div class="a-card"><div class="a-avatar"></div><div><div style="font-weight:700;font-size:13px">Amine K.</div><div style="font-size:11px;color:#64748b">Dossier complet</div></div></div>
+      <button class="a-btn">+ Nouveau</button>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)" style="display:block; padding:0; border:none;">
+    <div class="demo-box b-box">
+      <div class="demo-label" style="color:#0f2e1e">B — Vert + teal vif, cartes "pop"</div>
+      <div class="b-stat"><div style="font-size:11px;opacity:0.8">Employés actifs</div><div class="b-num">248</div></div>
+      <div class="b-card"><div class="b-avatar"></div><div><div style="font-weight:700;font-size:13px">Amine K.</div><div style="font-size:11px;color:#64748b">Dossier complet</div></div></div>
+      <button class="b-btn">+ Nouveau</button>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)" style="display:block; padding:0; border:none;">
+    <div class="demo-box c-box">
+      <div class="demo-label" style="color:#166534">C — Vert + touches pastel multicolores</div>
+      <div class="c-stat"><div style="font-size:11px;color:#64748b;padding-left:10px">Employés actifs</div><div class="c-num">248</div></div>
+      <div class="c-card"><div class="c-avatar"></div><div><div style="font-weight:700;font-size:13px">Amine K.</div><div style="font-size:11px;color:#64748b">Dossier complet</div></div><span class="c-chip">RH</span></div>
+      <button class="c-btn">+ Nouveau</button>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle">Cliquez sur la direction qui vous parle le plus (ou dites-le en texte si aucune ne convient telle quelle).</p>

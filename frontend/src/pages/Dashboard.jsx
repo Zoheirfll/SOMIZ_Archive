@@ -7,6 +7,8 @@ import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
+import PageBackground from "../components/PageBackground";
+import useCountUp from "../hooks/useCountUp";
 
 // SVG icons
 const IconUsers = () => (
@@ -58,7 +60,8 @@ const StatCard = ({ label, value, sub, color, icon, className }) => (
       borderRadius: 16,
       padding: "20px 24px",
       boxShadow: theme.shadowMd,
-      borderTop: `3px solid ${color}`,
+      borderTop: "3px solid transparent",
+      borderImage: `${theme.cardBorderTopGrad} 1`,
       fontFamily: theme.fontFamily,
     }}
   >
@@ -118,7 +121,7 @@ const Dashboard = () => {
 
   if (loading)
     return (
-      <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+      <PageBackground style={{ fontFamily: theme.fontFamily }}>
         <Navbar />
         <div style={{ padding: 32, maxWidth: 1200, margin: "0 auto" }}>
           <Skeleton height={80} radius={16} style={{ marginBottom: 24 }} />
@@ -128,21 +131,25 @@ const Dashboard = () => {
             ))}
           </div>
         </div>
-      </div>
+      </PageBackground>
     );
 
   if (error)
     return (
-      <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+      <PageBackground style={{ fontFamily: theme.fontFamily }}>
         <Navbar />
         <div style={{ color: theme.danger, textAlign: "center", padding: 80 }}>{error}</div>
-      </div>
+      </PageBackground>
     );
 
-  const total = stats?.employes_actifs || 0;
+  const countEmployes = useCountUp(stats?.employes_actifs ?? null);
+  const countDossiers = useCountUp(stats?.dossiers_complets ?? null);
+  const countTaux = useCountUp(stats?.taux_completude_global ?? null);
+  const countDocs = useCountUp(stats?.total_documents ?? null);
+  const total = countEmployes ?? 0;
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero header */}
@@ -170,14 +177,14 @@ const Dashboard = () => {
         }}>
           <StatCard
             label="Employés actifs"
-            value={total}
+            value={countEmployes ?? 0}
             color={theme.primary}
             icon={<IconUsers />}
             className="anim-slide-up delay-1"
           />
           <StatCard
             label="Dossiers complets"
-            value={stats?.dossiers_complets ?? 0}
+            value={countDossiers ?? 0}
             sub={`sur ${total} employés`}
             color={theme.primary}
             icon={<IconCheckCircle />}
@@ -185,14 +192,14 @@ const Dashboard = () => {
           />
           <StatCard
             label="Taux de complétude"
-            value={total > 0 ? `${stats?.taux_completude_global}%` : "N/A"}
+            value={total > 0 ? `${countTaux ?? stats?.taux_completude_global}%` : "N/A"}
             color={stats?.taux_completude_global >= 80 ? theme.primary : theme.warning}
             icon={<IconBarChart />}
             className="anim-slide-up delay-3"
           />
           <StatCard
             label="Total documents"
-            value={stats?.total_documents ?? 0}
+            value={countDocs ?? 0}
             color={theme.textSecondary}
             icon={<IconFile />}
             className="anim-slide-up delay-4"
@@ -323,7 +330,7 @@ const Dashboard = () => {
           </div>
         )}
       </div>
-    </div>
+    </PageBackground>
   );
 };
 

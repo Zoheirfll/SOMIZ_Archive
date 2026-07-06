@@ -8,6 +8,7 @@ import SecureDocViewer from "../components/SecureDocViewer";
 import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, ClipboardIcon, CheckIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
+import PageBackground from "../components/PageBackground";
 
 const STATUT_COLORS = {
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -199,13 +200,13 @@ const ContratDetail = () => {
 
   if (loading)
     return (
-      <div style={{ background: theme.bg, minHeight: "100vh" }}>
+      <PageBackground style={{ fontFamily: theme.fontFamily }}>
         <Navbar />
         <div style={{ padding: 32, maxWidth: 1200, margin: "0 auto" }}>
           <Skeleton height={120} radius={16} style={{ marginBottom: 24 }} />
           <Skeleton height={300} radius={16} />
         </div>
-      </div>
+      </PageBackground>
     );
 
   if (!contrat) return null;
@@ -213,7 +214,7 @@ const ContratDetail = () => {
   const statutStyle = STATUT_COLORS[contrat.statut] || STATUT_COLORS.actif;
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero Header */}
@@ -625,7 +626,7 @@ const ContratDetail = () => {
           </div>
         </div>
       </div>
-    </div>
+    </PageBackground>
   );
 };
 

@@ -5,6 +5,8 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon, XIcon, RocketIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
+import PageBackground from "../components/PageBackground";
+import "../styles/animations.css";
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
 
@@ -191,10 +193,11 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
+          {items.map((item, idx) => (
             <tr
               key={item.id}
-              style={{ borderBottom: `1px solid ${theme.primaryBorder}` }}
+              className="table-row-hover"
+              style={{ borderBottom: `1px solid ${theme.primaryBorder}`, background: idx % 2 === 0 ? theme.surface : "#FAFBFC" }}
             >
               {columns.map((c) => (
                 <td
@@ -969,7 +972,7 @@ const Parametres = () => {
   };
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh" }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
       <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 28 }}>
@@ -1370,7 +1373,7 @@ const Parametres = () => {
           </div>
         </div>
       )}
-    </div>
+    </PageBackground>
   );
 };
 

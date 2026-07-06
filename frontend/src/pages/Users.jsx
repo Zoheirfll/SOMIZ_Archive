@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import "../styles/animations.css";
+import PageBackground from "../components/PageBackground";
 
 // SVG icons
 const IconPlus = () => (
@@ -177,7 +178,7 @@ const Users = () => {
   };
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero header */}
@@ -393,9 +394,10 @@ const Users = () => {
                 {users.map((u, idx) => (
                   <tr
                     key={u.id}
+                    className="table-row-hover"
                     style={{
                       borderBottom: `1px solid ${theme.border}`,
-                      background: idx % 2 === 0 ? theme.surface : "#fafbfc",
+                      background: idx % 2 === 0 ? theme.surface : "#FAFBFC",
                     }}
                   >
                     <td style={{ padding: "13px 16px", color: theme.primary, fontFamily: "monospace", fontWeight: 700, fontSize: 13 }}>
@@ -652,7 +654,7 @@ const Users = () => {
           </div>
         </div>
       )}
-    </div>
+    </PageBackground>
   );
 };
 

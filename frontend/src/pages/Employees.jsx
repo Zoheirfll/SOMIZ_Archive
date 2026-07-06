@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
+import PageBackground from "../components/PageBackground";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 
@@ -752,16 +753,14 @@ const Employees = () => {
                 </tr>
               </thead>
               <tbody>
-                {employees.map((emp) => (
+                {employees.map((emp, idx) => (
                   <tr
                     key={emp.id}
+                    className="table-row-hover"
                     style={{
                       borderBottom: `1px solid ${theme.borderLight}`,
-                      transition: "background 0.12s",
-                      background: selected.has(emp.id) ? theme.primaryBg : "transparent",
+                      background: selected.has(emp.id) ? theme.primaryBg : idx % 2 === 0 ? theme.surface : "#FAFBFC",
                     }}
-                    onMouseEnter={(e) => { if (!selected.has(emp.id)) e.currentTarget.style.background = theme.bg; }}
-                    onMouseLeave={(e) => { if (!selected.has(emp.id)) e.currentTarget.style.background = "transparent"; }}
                   >
                     {user?.role === "ADMIN" && (
                       <td style={{ padding: "13px 16px" }} onClick={(e) => { e.stopPropagation(); toggleSelect(emp.id); }}>
@@ -867,7 +866,7 @@ const Employees = () => {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero header */}
@@ -967,7 +966,7 @@ const Employees = () => {
 
         {view === "employees" ? renderEmployeesTable() : renderHierarchy()}
       </div>
-    </div>
+    </PageBackground>
   );
 };
 

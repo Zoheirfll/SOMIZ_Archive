@@ -6,6 +6,7 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import { CheckIcon, FolderIcon } from "../components/icons";
 import HeroDecor from "../components/HeroDecor";
+import PageBackground from "../components/PageBackground";
 
 const Import = () => {
   const { user } = useAuth();
@@ -75,7 +76,7 @@ const Import = () => {
   };
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero header */}
@@ -680,7 +681,7 @@ const Import = () => {
           </div>
         )}
       </div>
-    </div>
+    </PageBackground>
   );
 };
 

@@ -5,6 +5,7 @@ import { theme } from "../styles/theme";
 import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
+import PageBackground from "../components/PageBackground";
 
 const ACTION_COLORS = {
   VIEW: theme.primary,
@@ -72,7 +73,7 @@ const AuditLogs = () => {
   };
 
   return (
-    <div style={{ background: theme.bg, minHeight: "100vh", fontFamily: theme.fontFamily }}>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
 
       {/* Hero header */}
@@ -187,9 +188,10 @@ const AuditLogs = () => {
                 {logs.map((log, idx) => (
                   <tr
                     key={log.id}
+                    className="table-row-hover"
                     style={{
                       borderBottom: `1px solid ${theme.border}`,
-                      background: idx % 2 === 0 ? theme.surface : "#fafbfc",
+                      background: idx % 2 === 0 ? theme.surface : "#FAFBFC",
                     }}
                   >
                     <td style={{ padding: "11px 16px", color: theme.textSecondary, fontSize: 12, fontFamily: "monospace" }}>
@@ -278,7 +280,7 @@ const AuditLogs = () => {
           )}
         </div>
       </div>
-    </div>
+    </PageBackground>
   );
 };
 

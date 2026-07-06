@@ -4,6 +4,7 @@ import { login } from "../services/auth";
 import { useAuth } from "../context/AuthContext";
 import { theme } from "../styles/theme";
 import { EyeIcon } from "../components/icons";
+import "../styles/animations.css";
 
 const Login = () => {
   const [username, setUsername] = useState("");
@@ -48,6 +49,7 @@ const Login = () => {
 
   return (
     <div
+      className="anim-fade-in"
       style={{
         minHeight: "100vh",
         display: "flex",
