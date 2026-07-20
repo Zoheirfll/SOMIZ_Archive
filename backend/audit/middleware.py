@@ -6,6 +6,7 @@ Le log détaillé se fait dans les views, pas ici.
 
 import logging
 from django.core.cache import cache
+from django.core.mail import mail_admins
 from django.conf import settings
 
 logger = logging.getLogger('audit')
@@ -44,11 +45,21 @@ class AuditMiddleware:
         cache.set(cache_key, count, timeout=3600)  # reset toutes les heures
 
         if count == threshold:
-            logger.warning(
+            message = (
                 f"[ALERTE AUDIT] {user.username} a consulté {count} documents en 1h. "
                 f"IP: {self._get_ip_from_request(user)}"
             )
-            # TODO Phase 4 : envoyer un email à l'admin ici
+            logger.warning(message)
+            if settings.ADMINS:
+                try:
+                    mail_admins(
+                        subject="SOMIZ — Volume de consultation anormal",
+                        message=message,
+                        fail_silently=True,
+                    )
+                except Exception:
+                    # Une panne d'envoi d'email ne doit jamais casser la requête HTTP.
+                    logger.exception("Échec de l'envoi de l'alerte email d'audit.")
 
     @staticmethod
     def _get_ip_from_request(user):

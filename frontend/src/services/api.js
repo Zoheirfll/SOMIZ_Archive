@@ -6,6 +6,10 @@ const api = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
   withCredentials: true, // envoie les cookies httpOnly automatiquement
+  // Noms de cookie/header CSRF côté Django (différents des défauts axios) :
+  // le token lu dans le cookie "csrftoken" est renvoyé dans le header X-CSRFToken.
+  xsrfCookieName: "csrftoken",
+  xsrfHeaderName: "X-CSRFToken",
 });
 
 let isRefreshing = false;

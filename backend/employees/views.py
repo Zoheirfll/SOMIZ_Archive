@@ -13,6 +13,7 @@ from django.utils.encoding import smart_str
 from rest_framework import generics, status, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser
 
@@ -153,9 +154,7 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-            # Log uniquement si ce n'est pas un appel interne
-        if not request.query_params.get('no_log'):
-            AuditLog.log(
+        AuditLog.log(
             request, AuditLog.Action.VIEW,
             target=instance,
             details={'action': 'view_employee_file'}
@@ -280,6 +279,8 @@ class FileViewerView(APIView):
     Sert un fichier individuel en inline.
     """
     permission_classes = [IsAdminOrConsultant]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'consultation'
 
     def get(self, request, file_id):
         try:
@@ -356,6 +357,8 @@ class DocumentViewerView(APIView):
     C'est la pièce centrale de la sécurité anti-téléchargement.
     """
     permission_classes = [IsAdminOrConsultant]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'consultation'
 
     def get(self, request, doc_id):
         try:
@@ -487,12 +490,11 @@ class ContratDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        if not request.query_params.get('no_log'):
-            AuditLog.log(
-                request, AuditLog.Action.VIEW,
-                target=instance.employee,
-                details={'action': 'view_contrat', 'numero_contrat': instance.numero_contrat}
-            )
+        AuditLog.log(
+            request, AuditLog.Action.VIEW,
+            target=instance.employee,
+            details={'action': 'view_contrat', 'numero_contrat': instance.numero_contrat}
+        )
         return super().retrieve(request, *args, **kwargs)
 
     def perform_update(self, serializer):

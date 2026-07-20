@@ -1,7 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import generics, serializers
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsAdmin
+from audit.models import AuditLog
 
 User = get_user_model()
 
@@ -18,6 +21,21 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = ['username', 'nom', 'prenom', 'role', 'password']
 
+    def validate_password(self, value):
+        # min_length=10 ci-dessus déjà couvert par MinimumLengthValidator, mais
+        # on passe aussi par validate_password() pour appliquer les autres
+        # règles configurées (UserAttributeSimilarityValidator, CommonPassword...).
+        temp_user = User(
+            username=self.initial_data.get('username', ''),
+            nom=self.initial_data.get('nom', ''),
+            prenom=self.initial_data.get('prenom', ''),
+        )
+        try:
+            validate_password(value, user=temp_user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(e.messages)
+        return value
+
     def create(self, validated_data):
         password = validated_data.pop('password')
         user = User(**validated_data)
@@ -33,6 +51,13 @@ class UserListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'POST':
             return UserCreateSerializer
         return UserSerializer
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        AuditLog.log(
+            self.request, AuditLog.Action.CREATE_USER, target=user,
+            details={'username': user.username, 'role': user.role},
+        )
 
 class UserUpdateView(generics.UpdateAPIView):
     permission_classes = [IsAdmin]
@@ -52,4 +77,12 @@ class UserUpdateView(generics.UpdateAPIView):
             if remaining_admins == 0:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError("Impossible : c'est le dernier compte ADMIN actif.")
-        serializer.save()
+
+        before = {'role': target.role, 'is_active': target.is_active}
+        updated = serializer.save()
+        after = {'role': updated.role, 'is_active': updated.is_active}
+        if before != after:
+            AuditLog.log(
+                self.request, AuditLog.Action.MODIFY_USER, target=updated,
+                details={'before': before, 'after': after},
+            )

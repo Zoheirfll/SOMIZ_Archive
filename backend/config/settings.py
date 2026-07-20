@@ -13,10 +13,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-# Intranet uniquement — adapter selon l'IP du serveur SOMIZ
+# Intranet uniquement — adapter selon l'IP/le nom d'hôte du serveur SOMIZ.
+# ALLOWED_HOSTS ne supporte PAS la notation CIDR (ex: 192.168.1.0/24) : Django
+# ne fait que des correspondances exactes ou par sous-domaine (préfixe ".").
+# Lister l'IP ou le hostname réel du serveur via la variable d'env ALLOWED_HOSTS.
 ALLOWED_HOSTS = config(
     'ALLOWED_HOSTS',
-    default='localhost,127.0.0.1,192.168.1.0/24',
+    default='localhost,127.0.0.1',
     cast=lambda v: [s.strip() for s in v.split(',')]
 )
 
@@ -56,6 +59,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'config.middleware.PermissionsPolicyMiddleware',
     # Middleware custom : log chaque requête authentifiée
     'audit.middleware.AuditMiddleware',
 ]
@@ -80,14 +84,33 @@ DATABASES = {
 }
 
 # ─── CACHE REDIS ──────────────────────────────────────────────────────────────
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+# Requis en prod (multi-worker) : LocMemCache est par-processus, donc le
+# rate-limiting DRF et l'alerte de consultation en masse (audit.middleware)
+# seraient comptés indépendamment par worker et perdraient toute efficacité.
+REDIS_URL = config('REDIS_URL', default=None)
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            },
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 
 # ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
 AUTH_USER_MODEL = 'accounts.User'
+
+# Réutilise le verrouillage anti-brute-force (accounts.models.User) pour tout
+# login passant par django.contrib.auth.authenticate() — /django-admin/ inclus.
+AUTHENTICATION_BACKENDS = ['accounts.backends.LockoutModelBackend']
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -98,9 +121,16 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # ─── JWT CONFIGURATION ────────────────────────────────────────────────────────
+# Note : CookieTokenRefreshView (accounts/views.py) ne fait PAS de rotation —
+# elle réutilise le même refresh token (exp figé à la création) pour émettre
+# de nouveaux access tokens. REFRESH_TOKEN_LIFETIME est donc déjà un plafond
+# de session ABSOLU (pas glissant) : 10h couvre une journée de travail avec
+# marge, sans laisser une session active indéfiniment sur un poste oublié.
+# ROTATE_REFRESH_TOKENS/BLACKLIST_AFTER_ROTATION ne sont pas utilisés par ce
+# flux custom (settings conservés pour un usage futur de TokenRefreshView).
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=2),
-    'REFRESH_TOKEN_LIFETIME': timedelta(hours=24),
+    'REFRESH_TOKEN_LIFETIME': timedelta(hours=10),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
@@ -128,8 +158,9 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '10/min',       # Login attempts limités
-        'user': '200/min',      # Usage normal
+        'anon': '10/min',        # Login attempts limités
+        'user': '200/min',       # Usage normal
+        'consultation': '30/min', # Vues de documents — ralentit l'exfiltration en masse
     },
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
@@ -143,6 +174,11 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     config('INTRANET_URL', default='http://192.168.1.100'),
 ]
+# Django exige que l'origine du front soit explicitement de confiance pour
+# accepter les requêtes POST/PATCH/DELETE cross-origin protégées par CSRF.
+CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_HTTPONLY = False  # doit être lisible en JS pour le double-submit
 # ─── FICHIERS MEDIA (Documents scannés) ──────────────────────────────────────
 MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media-internal/'  # Pas accessible directement — via API uniquement
@@ -175,6 +211,37 @@ CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=False, cast=bool)
 # Mettre à 31536000 (1 an) en production HTTPS ; 0 = désactivé en HTTP intranet
 SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=0, cast=int)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False, cast=bool)
+
+# Garde-fou : en dehors de DEBUG (donc "prod"), les cookies JWT/session/CSRF ne
+# doivent circuler en clair (non-Secure) que sur un intranet HTTP délibéré —
+# jamais par oubli. Si ces flags sont à False sans confirmation explicite,
+# on refuse de démarrer plutôt que de laisser une session voler en clair sur
+# un réseau qu'on croyait fermé.
+if not DEBUG and not (JWT_COOKIE_SECURE and SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE):
+    if not config('INTRANET_HTTP_CONFIRMED', default=False, cast=bool):
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            "Cookies non-Secure (JWT_COOKIE_SECURE/SESSION_COOKIE_SECURE/"
+            "CSRF_COOKIE_SECURE) avec DEBUG=False. Si c'est un intranet HTTP "
+            "voulu, positionner INTRANET_HTTP_CONFIRMED=True dans .env. "
+            "Sinon, activer HTTPS et mettre ces 3 flags à True."
+        )
+
+# ─── EMAIL (alertes admin) ────────────────────────────────────────────────────
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend'
+)
+EMAIL_HOST = config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = config('EMAIL_PORT', default=25, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=False, cast=bool)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='somiz@localhost')
+ADMINS = [
+    tuple(pair.split(':', 1))
+    for pair in config('ADMINS', default='').split(',')
+    if ':' in pair
+]
 
 # ─── AUDIT / LOGGING ─────────────────────────────────────────────────────────
 LOGGING = {

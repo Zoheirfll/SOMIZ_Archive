@@ -4,6 +4,9 @@ Authentification JWT sécurisée avec blocage anti-brute-force
 """
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.middleware.csrf import get_token
 from django.utils import timezone
 from django.conf import settings
 
@@ -18,8 +21,8 @@ from accounts.permissions import IsAdmin
 from audit.models import AuditLog
 
 
-def _set_auth_cookies(response, access_token, refresh_token):
-    """Pose les deux tokens JWT en cookies httpOnly."""
+def _set_auth_cookies(request, response, access_token, refresh_token):
+    """Pose les deux tokens JWT en cookies httpOnly + le cookie CSRF (double soumission)."""
     secure = getattr(settings, 'JWT_COOKIE_SECURE', False)
     samesite = getattr(settings, 'JWT_COOKIE_SAMESITE', 'Lax')
     response.set_cookie(
@@ -32,6 +35,9 @@ def _set_auth_cookies(response, access_token, refresh_token):
         max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
         httponly=True, secure=secure, samesite=samesite, path='/api/auth/refresh/',
     )
+    # Cookie CSRF lisible par le JS (pas httpOnly) : le frontend doit le renvoyer
+    # dans le header X-CSRFToken sur les requêtes mutantes. Voir accounts/cookie_auth.py.
+    get_token(request)
 
 
 def _clear_auth_cookies(response):
@@ -66,6 +72,11 @@ class LoginView(APIView):
         try:
             user = User.objects.get(username=username)
         except User.DoesNotExist:
+            # Exécute quand même un hashage de mot de passe "factice" pour que
+            # le temps de réponse soit le même que pour un mauvais mot de passe
+            # (sinon un attaquant peut deviner les usernames valides en
+            # chronométrant les réponses — cf. Django #20760).
+            User().set_password(password)
             # Log tentative avec user inconnu
             AuditLog.objects.create(
                 username_snapshot=username,
@@ -140,7 +151,7 @@ class LoginView(APIView):
                 'role': user.role,
             }
         })
-        _set_auth_cookies(response, refresh.access_token, refresh)
+        _set_auth_cookies(request, response, refresh.access_token, refresh)
         return response
 
 
@@ -206,11 +217,10 @@ class ChangePasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if len(nouveau) < 10:
-            return Response(
-                {'error': 'Le mot de passe doit contenir au moins 10 caractères.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        try:
+            validate_password(nouveau, user=request.user)
+        except DjangoValidationError as e:
+            return Response({'error': ' '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
         request.user.set_password(nouveau)
         request.user.save()
@@ -251,11 +261,10 @@ class AdminResetPasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if len(nouveau) < 10:
-            return Response(
-                {'error': 'Minimum 10 caractères.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        try:
+            validate_password(nouveau, user=user)
+        except DjangoValidationError as e:
+            return Response({'error': ' '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
         user.set_password(nouveau)
         user.failed_login_attempts = 0
@@ -284,7 +293,7 @@ class CookieTokenRefreshView(APIView):
         try:
             token = RefreshToken(refresh_token)
             response = Response({'detail': 'Token renouvelé.'})
-            _set_auth_cookies(response, token.access_token, token)
+            _set_auth_cookies(request, response, token.access_token, token)
             return response
         except TokenError:
             response = Response({'error': 'Session invalide.'}, status=status.HTTP_401_UNAUTHORIZED)

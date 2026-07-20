@@ -27,6 +27,9 @@ class AuditLog(models.Model):
         LOGOUT = 'LOGOUT', 'Déconnexion'
         LOGIN_FAIL = 'LOGIN_FAIL', 'Tentative de connexion échouée'
         EXPORT = 'EXPORT', 'Export / Rapport'
+        CREATE_USER = 'CREATE_USER', 'Création utilisateur'
+        MODIFY_USER = 'MODIFY_USER', 'Modification utilisateur (rôle/statut)'
+        DELETE_USER = 'DELETE_USER', 'Suppression utilisateur'
 
     # Pas de UUIDField ici — BIGSERIAL plus rapide pour les logs
     # (table peut atteindre des millions de lignes)

@@ -4,6 +4,8 @@ Import CSV des employés en masse
 """
 import csv
 import io
+import logging
+from django.conf import settings
 from django.db import transaction
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -13,6 +15,20 @@ from employees.models import (
     Employee, Direction, Departement,
     Service, Poste, TypeContrat, Categorie, Contrat
 )
+
+logger = logging.getLogger('audit')
+
+
+def _check_csv_size(file):
+    """Même limite que les uploads de documents — empêche un CSV énorme
+    d'être chargé intégralement en mémoire (DoS)."""
+    max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if file.size > max_size:
+        return Response(
+            {'error': f'Fichier trop volumineux. Maximum {settings.MAX_UPLOAD_SIZE_MB} Mo.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    return None
 
 
 class EmployeeImportView(APIView):
@@ -46,6 +62,10 @@ class EmployeeImportView(APIView):
                 {'error': 'Le fichier doit être au format CSV.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        size_error = _check_csv_size(file)
+        if size_error:
+            return size_error
 
         # Lire le fichier
         try:
@@ -99,7 +119,7 @@ class EmployeeImportView(APIView):
 
         for num_ligne, row in enumerate(reader, start=2):
             # Nettoyer les clés et valeurs
-            row = {k.strip().lower(): v.strip() for k, v in row.items() if k}
+            row = {k.strip().lower(): (v or '').strip() for k, v in row.items() if k}
             ligne_erreurs = []
 
             matricule = row.get('matricule', '').upper()
@@ -213,9 +233,10 @@ class EmployeeImportView(APIView):
                                 ))
                     if contrats_a_creer:
                         Contrat.objects.bulk_create(contrats_a_creer, batch_size=500)
-            except Exception as e:
+            except Exception:
+                logger.exception("Échec de l'import CSV employés.")
                 return Response(
-                    {'error': f'Erreur lors de l\'import : {str(e)}'},
+                    {'error': "Erreur lors de l'import. Vérifiez le format du fichier ou contactez un administrateur."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
@@ -324,6 +345,10 @@ class ReferentielImportView(APIView):
         if not file.name.endswith('.csv'):
             return Response({'error': 'Format CSV requis.'}, status=400)
 
+        size_error = _check_csv_size(file)
+        if size_error:
+            return size_error
+
         try:
             content = file.read().decode('utf-8-sig')
         except UnicodeDecodeError:
@@ -360,7 +385,7 @@ class ReferentielImportView(APIView):
         resultats = []
 
         for num_ligne, row in enumerate(reader, start=2):
-            row = {k.strip().lower(): v.strip() for k, v in row.items() if k}
+            row = {k.strip().lower(): (v or '').strip() for k, v in row.items() if k}
             ligne_erreurs = []
 
             nom = row.get('nom', '').strip()
@@ -420,9 +445,10 @@ class ReferentielImportView(APIView):
                 with transaction.atomic():
                     ModelClass.objects.bulk_create(a_creer, batch_size=500)
                     nb_crees = len(a_creer)
-            except Exception as e:
+            except Exception:
+                logger.exception("Échec de l'import CSV référentiel (%s).", model)
                 return Response(
-                    {'error': f'Erreur import : {str(e)}'},
+                    {'error': "Erreur lors de l'import. Vérifiez le format du fichier ou contactez un administrateur."},
                     status=500
                 )
 

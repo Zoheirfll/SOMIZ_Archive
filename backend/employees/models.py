@@ -3,11 +3,22 @@ employees/models.py
 Modèles principaux : Référentiels + Employé + Documents
 """
 
+import re
 import uuid
 import os
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
+
+
+def _safe_path_segment(value):
+    """
+    Neutralise un composant de chemin de fichier dérivé d'une donnée saisie
+    en base (numero_contrat, code type_doc) : ne garde que lettres/chiffres/
+    tiret/underscore, pour empêcher tout path traversal (ex. "../../etc")
+    quand ces valeurs sont insérées via os.path.join() dans document_upload_path.
+    """
+    return re.sub(r'[^A-Za-z0-9_-]', '_', str(value)) or '_'
 
 
 # ─── RÉFÉRENTIELS ─────────────────────────────────────────────────────────────
@@ -277,20 +288,21 @@ class Contrat(models.Model):
 
 def document_upload_path(instance, filename):
     ext = filename.split('.')[-1].lower()
-    safe_name = f"{instance.document.type_doc.code}_{uuid.uuid4().hex[:8]}.{ext}"
+    type_doc_code = _safe_path_segment(instance.document.type_doc.code)
+    safe_name = f"{type_doc_code}_{uuid.uuid4().hex[:8]}.{ext}"
     if instance.document.contrat_id:
         return os.path.join(
             'employees',
             str(instance.document.employee.id),
             'contrats',
-            str(instance.document.contrat.numero_contrat),
-            instance.document.type_doc.code,
+            _safe_path_segment(instance.document.contrat.numero_contrat),
+            type_doc_code,
             safe_name
         )
     return os.path.join(
         'employees',
         str(instance.document.employee.id),
-        instance.document.type_doc.code,
+        type_doc_code,
         safe_name
     )
 
@@ -354,21 +366,29 @@ class EmployeeDocument(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.pk:
-            existing = EmployeeDocument.objects.filter(
-                employee=self.employee,
-                contrat=self.contrat,
-                type_doc=self.type_doc,
-                is_active=True
-            ).order_by('-version').first()
-            if existing:
-                self.version = existing.version + 1
-                EmployeeDocument.objects.filter(
+            # transaction.atomic + select_for_update : sans ça, deux uploads
+            # concurrents du même type de document pour le même employé
+            # peuvent tous les deux lire "aucun actif" et créer deux documents
+            # actifs en parallèle (race condition sur l'invariant "un seul
+            # document actif par type").
+            with transaction.atomic():
+                existing = EmployeeDocument.objects.select_for_update().filter(
                     employee=self.employee,
                     contrat=self.contrat,
                     type_doc=self.type_doc,
                     is_active=True
-                ).update(is_active=False)
-        super().save(*args, **kwargs)
+                ).order_by('-version').first()
+                if existing:
+                    self.version = existing.version + 1
+                    EmployeeDocument.objects.filter(
+                        employee=self.employee,
+                        contrat=self.contrat,
+                        type_doc=self.type_doc,
+                        is_active=True
+                    ).update(is_active=False)
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
 
 class EmployeeDocumentFile(models.Model):
     """
