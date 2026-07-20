@@ -63,7 +63,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
 
         qs = Employee.objects.select_related(
             'direction', 'departement', 'service', 'poste', 'type_contrat'
-        ).annotate(
+        ).filter(self.request.user.employee_scope_q()).annotate(
             nb_documents=Count(
                 'documents', filter=Q(documents__is_active=True), distinct=True
             ),
@@ -142,6 +142,11 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = Employee.objects.prefetch_related('documents')
 
+    def get_queryset(self):
+        # 404 (pas 403) pour un employé hors périmètre — ne pas confirmer
+        # son existence à un CONSULTANT qui n'y a pas accès.
+        return self.queryset.filter(self.request.user.employee_scope_q())
+
     def get_serializer_class(self):
         if self.request.method in ('PATCH', 'PUT'):
             return EmployeeCreateUpdateSerializer
@@ -207,6 +212,8 @@ class DocumentListUploadView(APIView):
 
     def get(self, request, emp_id):
         employee = self._get_employee(emp_id)
+        if not request.user.can_access_employee(employee):
+            raise Http404("Employé introuvable.")
         docs = EmployeeDocument.objects.filter(
             employee=employee, is_active=True
         ).select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
@@ -290,6 +297,9 @@ class FileViewerView(APIView):
         except EmployeeDocumentFile.DoesNotExist:
             raise Http404
 
+        if not request.user.can_access_employee(file_obj.document.employee):
+            raise Http404
+
         if not file_obj.file or not os.path.exists(file_obj.file.path):
             return Response(
                 {'error': 'Fichier introuvable.'},
@@ -368,8 +378,13 @@ class DocumentViewerView(APIView):
         except EmployeeDocument.DoesNotExist:
             raise Http404("Document introuvable.")
 
-        # Vérifier que le fichier existe physiquement
-        if not doc.file or not os.path.exists(doc.file.path):
+        if not request.user.can_access_employee(doc.employee):
+            raise Http404("Document introuvable.")
+
+        # Le fichier physique vit sur EmployeeDocumentFile (un document peut
+        # avoir plusieurs fichiers, ex. recto/verso) — on sert le premier actif.
+        file_obj = doc.fichiers.filter(is_active=True).order_by('ordre').first()
+        if not file_obj or not file_obj.file or not os.path.exists(file_obj.file.path):
             return Response(
                 {'error': 'Fichier physique introuvable sur le serveur.'},
                 status=status.HTTP_404_NOT_FOUND
@@ -387,7 +402,7 @@ class DocumentViewerView(APIView):
         )
 
         # ─── Streaming sécurisé ───────────────────────────────────────────────
-        mime = doc.mime_type or mimetypes.guess_type(doc.file.name)[0] or 'application/octet-stream'
+        mime = file_obj.mime_type or mimetypes.guess_type(file_obj.file.name)[0] or 'application/octet-stream'
 
         def file_iterator(path, chunk_size=8192):
             with open(path, 'rb') as f:
@@ -395,13 +410,13 @@ class DocumentViewerView(APIView):
                     yield chunk
 
         response = StreamingHttpResponse(
-            file_iterator(doc.file.path),
+            file_iterator(file_obj.file.path),
             content_type=mime,
         )
 
         # CRITIQUE : inline, JAMAIS attachment
-        response['Content-Disposition'] = f'inline; filename="{smart_str(doc.type_document)}.{doc.file.name.split(".")[-1]}"'
-        response['Content-Length'] = doc.file_size or os.path.getsize(doc.file.path)
+        response['Content-Disposition'] = f'inline; filename="{smart_str(file_obj.file_name)}"'
+        response['Content-Length'] = file_obj.file_size or os.path.getsize(file_obj.file.path)
 
         # Headers anti-cache et anti-fuite
         response['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
@@ -452,6 +467,8 @@ class ContratListCreateView(APIView):
 
     def get(self, request, emp_id):
         employee = get_object_or_404(Employee, pk=emp_id)
+        if not request.user.can_access_employee(employee):
+            raise Http404
         contrats = employee.contrats.select_related('type_contrat').order_by('-date_debut', '-id')
         serializer = ContratListSerializer(contrats, many=True)
         return Response(serializer.data)
@@ -477,6 +494,9 @@ class ContratDetailView(generics.RetrieveUpdateDestroyAPIView):
     DELETE /api/contrats/{id}/  → Supprimer (ADMIN only)
     """
     queryset = Contrat.objects.select_related('employee', 'type_contrat')
+
+    def get_queryset(self):
+        return self.queryset.filter(self.request.user.employee_scope_q(prefix='employee__'))
 
     def get_serializer_class(self):
         if self.request.method in ('PATCH', 'PUT'):
@@ -527,7 +547,9 @@ class ContratDocumentListUploadView(APIView):
         return [IsAdminOrConsultant()]
 
     def get(self, request, contrat_id):
-        contrat = get_object_or_404(Contrat, pk=contrat_id)
+        contrat = get_object_or_404(Contrat.objects.select_related('employee'), pk=contrat_id)
+        if not request.user.can_access_employee(contrat.employee):
+            raise Http404
         docs = EmployeeDocument.objects.filter(
             contrat=contrat, is_active=True
         ).select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
@@ -621,7 +643,7 @@ def employee_search(request):
         Q(prenom__icontains=q) |
         Q(matricule__icontains=q),
         statut=Employee.Statut.ACTIF
-    )[:10]
+    ).filter(request.user.employee_scope_q())[:10]
 
     context = {
         'types_total': TypeDocument.objects.filter(is_active=True).count(),

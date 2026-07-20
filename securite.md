@@ -414,6 +414,36 @@ Les migrations en production seraient alors lancées avec un compte séparé (ou
 
 ---
 
+## 24. Scoping organisation-wide (accès CONSULTANT non restreint) — ✅ Implémenté complet
+
+**Contexte** : depuis le review initial, un CONSULTANT pouvait consulter n'importe quel employé/document/contrat de l'organisation entière — choix de conception assumé, mais un vrai gap de minimisation des données au sens RGPD/loi 18-07. Chantier complet demandé (pas un pansement), implémenté de bout en bout.
+
+**Modèle de données** ([`accounts/models.py`](backend/accounts/models.py)) :
+- 3 nouveaux champs nullable sur `User` : `scope_direction`, `scope_departement`, `scope_service` (FK vers `employees.Direction/Departement/Service`). Aucun des trois renseigné = accès non restreint (comportement historique préservé pour tous les comptes CONSULTANT existants — pas de migration de données nécessaire, juste de schéma).
+- `employee_scope_q(prefix='')` : Q object filtrant un queryset Employee (ou un modèle relié via `prefix`, ex. `Contrat` via `employee__`) selon le périmètre — le niveau le plus précis (service) prime sur le plus large (direction).
+- `can_access_employee(employee)` : équivalent objet-par-objet pour les vues `get_object()`.
+- ADMIN toujours non restreint, quel que soit ce qui est renseigné sur son compte.
+
+**Vues corrigées** ([`employees/views.py`](backend/employees/views.py)) :
+- `EmployeeListCreateView.get_queryset()` — filtre par périmètre.
+- `EmployeeDetailView.get_queryset()` — 404 (pas 403) pour un employé hors périmètre, ne confirme pas son existence.
+- `FileViewerView`, `DocumentViewerView` — vérifient le périmètre de l'employé propriétaire du document avant de servir le fichier.
+- `DocumentListUploadView.get()`, `ContratListCreateView.get()`, `ContratDetailView.get_queryset()`, `ContratDocumentListUploadView.get()` — même vérification via l'employé lié.
+- `employee_search` — résultats filtrés par périmètre.
+- Toutes les vues ADMIN-only (create/update/delete) restent inchangées — l'ADMIN garde l'accès complet par construction.
+
+**API admin** ([`accounts/admin_views.py`](backend/accounts/admin_views.py)) : `UserSerializer` expose et accepte en écriture `scope_direction/departement/service` (+ noms lisibles `*_nom` en lecture seule) ; `UserUpdateView.perform_update` trace les changements de périmètre dans `AuditLog` (`MODIFY_USER`) au même titre que les changements de rôle.
+
+**UI** ([`frontend/src/pages/Users.jsx`](frontend/src/pages/Users.jsx)) : nouvelle colonne "Périmètre" dans le tableau, bouton "Périmètre" (visible pour les comptes CONSULTANT) ouvrant un modal avec sélection en cascade Direction → Département → Service, "Aucun" à chaque niveau pour un accès non restreint.
+
+**Tests** : nouveau fichier [`tests/test_employee_scoping.py`](backend/tests/test_employee_scoping.py) — 18 tests couvrant `employee_scope_q()`/`can_access_employee()` unitairement, le filtrage de liste, le 404 objet-par-objet (employé/document/contrat), et l'API admin d'assignation. **177/177 tests backend et 438/438 tests frontend passent** (aucune régression sur l'existant, `Users.test.jsx` inclus).
+
+**Bug préexistant découvert en testant (hors périmètre, non corrigé)** : `DocumentViewerView` (`/api/documents/{id}/view/`) référence `doc.file`, un attribut qui n'existe pas sur `EmployeeDocument` (le fichier réel vit sur `EmployeeDocumentFile`, exposé via `FileViewerView`/`/api/files/{id}/view/`). Cet endpoint était déjà cassé avant ce chantier — confirmé que le frontend ne l'utilise jamais (seul `/files/{id}/view/` est appelé), donc aucun risque de sécurité actif, juste du code mort. Signalé, pas corrigé (hors sujet du scoping).
+
+**Verdict : gap de conception résolu — le scoping organisation-wide est maintenant une vraie fonctionnalité opérationnelle, optionnelle par compte, rétrocompatible par défaut.**
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

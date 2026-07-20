@@ -6,8 +6,8 @@ Application intranet pour centraliser et gérer les documents administratifs RH 
 Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 
 **Rôles utilisateurs :**
-- `ADMIN` — droits complets (lecture, écriture, suppression, import, configuration)
-- `CONSULTANT` — lecture seule (pas de boutons d'action visibles)
+- `ADMIN` — droits complets (lecture, écriture, suppression, import, configuration), toujours accès organisation-wide
+- `CONSULTANT` — lecture seule (pas de boutons d'action visibles), peut être restreint à un **périmètre organisationnel** (voir section Scoping ci-dessous) ou laissé sans restriction (comportement historique)
 
 ---
 
@@ -24,13 +24,17 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 ## Stack technique
 
 ### Backend
-- Python 3, Django 4.2, Django REST Framework
-- Authentification JWT via **httpOnly cookies** (résistant au XSS)
+- Python 3, Django 4.2.30, Django REST Framework 3.15.2
+- Authentification JWT via **httpOnly cookies** (résistant au XSS), CSRF en double-soumission (`accounts/cookie_auth.py`)
 - Base de données : PostgreSQL
-- Anti-brute-force : 5 tentatives → blocage 30 min
-- Validation MIME : python-magic (20 Mo max par fichier)
+- Cache : Redis (`django-redis`) — rate-limiting DRF fiable en multi-worker, repli sur cache mémoire local si `REDIS_URL` absent (dev/CI)
+- Anti-brute-force unifié : 5 tentatives → blocage 30 min, appliqué à `/api/auth/login/` **et** `/django-admin/login/` (`accounts/backends.py`)
+- Session JWT : access 2h / refresh 10h (plafond absolu, pas de rotation glissante — voir `CookieTokenRefreshView`)
+- Validation MIME : python-magic (20 Mo max par fichier), noms de fichiers régénérés en UUID (pas de path traversal)
 - Soft-delete partout (`is_active` flag)
-- Audit logging (11 types d'actions)
+- Audit logging complet (13 types d'actions incl. `CREATE_USER`/`MODIFY_USER`/`DELETE_USER`), y compris les mutations faites via `/django-admin/`
+- Rate-limiting dédié (`consultation`, 30/min) sur la visualisation de documents, en plus du throttle global (`anon` 10/min, `user` 200/min)
+- `Permissions-Policy` globale (`config/middleware.py`) désactivant caméra/micro/géoloc/paiement
 
 ### Frontend
 - React 19, React Router 7, Axios
@@ -52,6 +56,24 @@ Direction
                     └── Contrat (N par Employé)
                           └── Documents (dossier contrat)
 ```
+
+---
+
+## Scoping organisation-wide (périmètre CONSULTANT)
+
+Un CONSULTANT peut être restreint à un périmètre : `User.scope_directions`,
+`scope_departements`, `scope_services` (ManyToMany, sélection multiple à
+chaque niveau — union : un employé est visible dès qu'il correspond à AU
+MOINS un élément choisi, peu importe le niveau). **Aucune sélection nulle
+part = accès non restreint** (comportement historique préservé pour tous
+les comptes existants).
+
+- `User.employee_scope_q(prefix='')` — Q object à utiliser dans `.filter()` (ex. `prefix='employee__'` pour un queryset `Contrat`).
+- `User.can_access_employee(employee)` — équivalent objet-par-objet pour `get_object()`.
+- `User.accessible_directions_qs()` / `accessible_departements_qs()` / `accessible_services_qs()` — pour restreindre les listes référentiels (`/ref/*`) au périmètre (utilisé par le filtre cascade de `/employees`).
+- ADMIN toujours non restreint, quel que soit ce qui est renseigné sur son compte.
+- UI d'assignation : page `/users`, bouton "Périmètre" (visible pour les comptes CONSULTANT) — cases à cocher en cascade (cocher une Direction filtre les Départements affichés à ceux qu'elle contient, etc.), boutons "Tout"/"Aucun" par niveau.
+- Toute vue qui liste/retrouve des employés, documents ou contrats doit appliquer ce scoping (voir `employees/views.py` : `EmployeeListCreateView`, `EmployeeDetailView`, `FileViewerView`, `DocumentViewerView`, `ContratListCreateView`, `ContratDetailView`, `ContratDocumentListUploadView`, `employee_search`).
 
 ---
 
@@ -186,12 +208,16 @@ PATCH /api/contrats/<uuid>/
 - **Pas de deep links vers des documents** — utiliser `SecureDocViewer` qui passe par l'API
 - **CORS configuré côté Django** — ne pas modifier sans consulter le backend
 - **Les uploads sont validés côté backend** — le frontend n'a pas à valider le MIME type
+- **Toute nouvelle vue listant des employés/documents/contrats doit appliquer le scoping** — `request.user.employee_scope_q()` ou `can_access_employee()` (voir section Scoping ci-dessus)
+- **Les mutations de mot de passe passent par `django.contrib.auth.password_validation.validate_password()`**, pas juste un check de longueur
+- **Journal complet d'audit sécurité** : voir [`securite.md`](securite.md) (racine du projet) — 24 points vérifiés/corrigés, à mettre à jour à chaque nouveau point de sécurité traité
 
 ---
 
 ## Tests
 
-- Backend : `pytest` (141+ tests dans `backend/`)
-- Frontend : Jest + React Testing Library (206+ tests dans `frontend/src/__tests__/`)
+- Backend : `pytest` (188 tests dans `backend/tests/`)
+- Frontend : Jest + React Testing Library (261+ tests dans `frontend/src/__tests__/`)
 - Lancer les tests backend : `cd backend && pytest`
 - Lancer les tests frontend : `cd frontend && npm test`
+- **Après toute modification touchant `accounts`/`employees` (permissions, scoping, modèles) : lancer la suite complète avant de commit** — l'app dépend de PostgreSQL + Redis actifs localement (`REDIS_URL` dans `.env`, repli automatique sur cache mémoire si absent)

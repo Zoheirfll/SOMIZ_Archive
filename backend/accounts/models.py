@@ -6,6 +6,7 @@ Modèle utilisateur custom SOMIZ avec rôles et sécurité login
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.conf import settings
 
@@ -67,6 +68,25 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
 
+    # Périmètre d'accès (CONSULTANT uniquement — ADMIN garde toujours l'accès
+    # complet). Plusieurs directions/départements/services peuvent être
+    # sélectionnés simultanément (union — un employé est visible dès qu'il
+    # correspond à AU MOINS un des éléments choisis, à n'importe quel niveau).
+    # Aucun des trois non-vide = accès non restreint (comportement historique
+    # préservé pour les comptes existants).
+    scope_directions = models.ManyToManyField(
+        'employees.Direction', blank=True, related_name='scoped_users',
+        verbose_name="Périmètre — Directions"
+    )
+    scope_departements = models.ManyToManyField(
+        'employees.Departement', blank=True, related_name='scoped_users',
+        verbose_name="Périmètre — Départements"
+    )
+    scope_services = models.ManyToManyField(
+        'employees.Service', blank=True, related_name='scoped_users',
+        verbose_name="Périmètre — Services"
+    )
+
     objects = UserManager()
 
     USERNAME_FIELD = 'username'
@@ -92,6 +112,95 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_consultant(self):
         return self.role == self.Role.CONSULTANT
+
+    def _scope_ids(self):
+        """(direction_ids, departement_ids, service_ids) sélectionnés — sets vides
+        si aucune restriction (ADMIN, ou CONSULTANT sans périmètre assigné)."""
+        if self.is_admin or not self.pk:
+            return set(), set(), set()
+        return (
+            set(self.scope_directions.values_list('id', flat=True)),
+            set(self.scope_departements.values_list('id', flat=True)),
+            set(self.scope_services.values_list('id', flat=True)),
+        )
+
+    @property
+    def has_scope_restriction(self):
+        """True si ce compte est restreint à un périmètre organisationnel."""
+        if self.is_admin or not self.pk:
+            return False
+        d, dep, s = self._scope_ids()
+        return bool(d or dep or s)
+
+    def employee_scope_q(self, prefix=''):
+        """
+        Q object à appliquer sur un queryset Employee (ou tout modèle relié à
+        Employee via `prefix`, ex. prefix='employee__' pour un queryset
+        Contrat) pour restreindre au périmètre de cet utilisateur — union de
+        toutes les directions/départements/services sélectionnés. Q() vide =
+        accès non restreint (ADMIN, ou CONSULTANT sans périmètre assigné —
+        comportement historique préservé).
+        """
+        direction_ids, departement_ids, service_ids = self._scope_ids()
+        if not direction_ids and not departement_ids and not service_ids:
+            return Q()
+        q = Q()
+        if direction_ids:
+            q |= Q(**{f'{prefix}direction_id__in': direction_ids})
+        if departement_ids:
+            q |= Q(**{f'{prefix}departement_id__in': departement_ids})
+        if service_ids:
+            q |= Q(**{f'{prefix}service_id__in': service_ids})
+        return q
+
+    def can_access_employee(self, employee):
+        """Vérification objet-par-objet équivalente à employee_scope_q(),
+        pour les vues qui font un get_object() plutôt qu'un filter()."""
+        direction_ids, departement_ids, service_ids = self._scope_ids()
+        if not direction_ids and not departement_ids and not service_ids:
+            return True
+        return (
+            employee.direction_id in direction_ids
+            or employee.departement_id in departement_ids
+            or employee.service_id in service_ids
+        )
+
+    def accessible_directions_qs(self):
+        """Directions visibles pour ce compte (ex. filtre de la page Employés).
+        Non restreint pour ADMIN ou CONSULTANT sans périmètre."""
+        from employees.models import Direction
+        direction_ids, departement_ids, service_ids = self._scope_ids()
+        if not direction_ids and not departement_ids and not service_ids:
+            return Direction.objects.all()
+        return Direction.objects.filter(
+            Q(id__in=direction_ids)
+            | Q(departements__id__in=departement_ids)
+            | Q(departements__services__id__in=service_ids)
+        ).distinct()
+
+    def accessible_departements_qs(self):
+        """Départements visibles pour ce compte."""
+        from employees.models import Departement
+        direction_ids, departement_ids, service_ids = self._scope_ids()
+        if not direction_ids and not departement_ids and not service_ids:
+            return Departement.objects.all()
+        return Departement.objects.filter(
+            Q(direction_id__in=direction_ids)
+            | Q(id__in=departement_ids)
+            | Q(services__id__in=service_ids)
+        ).distinct()
+
+    def accessible_services_qs(self):
+        """Services visibles pour ce compte."""
+        from employees.models import Service
+        direction_ids, departement_ids, service_ids = self._scope_ids()
+        if not direction_ids and not departement_ids and not service_ids:
+            return Service.objects.all()
+        return Service.objects.filter(
+            Q(departement__direction_id__in=direction_ids)
+            | Q(departement_id__in=departement_ids)
+            | Q(id__in=service_ids)
+        ).distinct()
 
     def is_locked(self):
         """Vérifie si le compte est bloqué suite aux tentatives échouées."""

@@ -74,7 +74,9 @@ class DirectionListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        return Direction.objects.all()
+        # Restreint au périmètre d'un CONSULTANT scopé (ex. filtre page
+        # Employés) — ADMIN et CONSULTANT non scopé voient tout, inchangé.
+        return self.request.user.accessible_directions_qs()
 
 class DirectionDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DirectionSerializer
@@ -87,7 +89,7 @@ class DepartementListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        qs = Departement.objects.select_related('direction')
+        qs = self.request.user.accessible_departements_qs().select_related('direction')
         direction = self.request.query_params.get('direction')
         if direction:
             qs = qs.filter(direction=direction)
@@ -104,7 +106,7 @@ class ServiceListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        qs = Service.objects.select_related('departement__direction')
+        qs = self.request.user.accessible_services_qs().select_related('departement__direction')
         departement = self.request.query_params.get('departement')
         if departement:
             qs = qs.filter(departement=departement)

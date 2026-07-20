@@ -59,9 +59,114 @@ const Users = () => {
   const [showResetMdp, setShowResetMdp] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Périmètre d'accès (scoping organisation-wide — sélection multiple à
+  // chaque niveau, indépendamment : un employé est visible dès qu'il
+  // correspond à au moins une direction/département/service choisi).
+  const [scopeModal, setScopeModal] = useState(null);
+  const [directions, setDirections] = useState([]);
+  const [departements, setDepartements] = useState([]);
+  const [services, setServices] = useState([]);
+  const [scopeForm, setScopeForm] = useState({ directions: [], departements: [], services: [] });
+  const [savingScope, setSavingScope] = useState(false);
+
   useEffect(() => {
     fetchUsers();
+    api.get("/ref/directions/").then((res) => setDirections(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/departements/").then((res) => setDepartements(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/services/").then((res) => setServices(res.data.results || res.data)).catch(() => {});
   }, []);
+
+  const openScopeModal = (u) => {
+    setScopeModal(u);
+    setScopeForm({
+      directions: u.scope_directions || [],
+      departements: u.scope_departements || [],
+      services: u.scope_services || [],
+    });
+  };
+
+  // Listes affichées en cascade : cocher une direction ne laisse apparaître
+  // que ses départements ; cocher un département ne laisse apparaître que
+  // ses services. Sans direction cochée, tous les départements sont visibles
+  // (pour un scoping direct par département sans passer par la direction).
+  const visibleDepartements = scopeForm.directions.length > 0
+    ? departements.filter((d) => scopeForm.directions.includes(d.direction))
+    : departements;
+
+  const visibleServices = scopeForm.departements.length > 0
+    ? services.filter((s) => scopeForm.departements.includes(s.departement))
+    : scopeForm.directions.length > 0
+      ? services.filter((s) => {
+          const dep = departements.find((d) => d.id === s.departement);
+          return dep && scopeForm.directions.includes(dep.direction);
+        })
+      : services;
+
+  const toggleDirection = (id) => {
+    setScopeForm((prev) => {
+      const nextDirections = prev.directions.includes(id)
+        ? prev.directions.filter((x) => x !== id)
+        : [...prev.directions, id];
+      // Retire les départements/services qui ne sont plus dans la cascade visible.
+      const stillVisibleDeps = nextDirections.length > 0
+        ? departements.filter((d) => nextDirections.includes(d.direction)).map((d) => d.id)
+        : departements.map((d) => d.id);
+      const nextDepartements = prev.departements.filter((depId) => stillVisibleDeps.includes(depId));
+      const stillVisibleDepSet = new Set(nextDepartements);
+      const nextServices = prev.services.filter((svcId) => {
+        const svc = services.find((s) => s.id === svcId);
+        return svc && stillVisibleDepSet.has(svc.departement);
+      });
+      return { directions: nextDirections, departements: nextDepartements, services: nextServices };
+    });
+  };
+
+  const toggleDepartement = (id) => {
+    setScopeForm((prev) => {
+      const nextDepartements = prev.departements.includes(id)
+        ? prev.departements.filter((x) => x !== id)
+        : [...prev.departements, id];
+      const nextServices = prev.services.filter((svcId) => {
+        const svc = services.find((s) => s.id === svcId);
+        return svc && nextDepartements.includes(svc.departement);
+      });
+      return { ...prev, departements: nextDepartements, services: nextDepartements.length > 0 ? nextServices : prev.services };
+    });
+  };
+
+  const toggleService = (id) => {
+    setScopeForm((prev) => {
+      const next = prev.services.includes(id) ? prev.services.filter((x) => x !== id) : [...prev.services, id];
+      return { ...prev, services: next };
+    });
+  };
+
+  const selectAllInLevel = (level, items) => {
+    setScopeForm((prev) => ({ ...prev, [level]: items.map((item) => item.id) }));
+  };
+
+  const clearLevel = (level) => {
+    setScopeForm((prev) => ({ ...prev, [level]: [] }));
+  };
+
+  const handleSaveScope = async () => {
+    setSavingScope(true);
+    try {
+      await api.patch(`/admin-users/${scopeModal.id}/`, {
+        scope_directions: scopeForm.directions,
+        scope_departements: scopeForm.departements,
+        scope_services: scopeForm.services,
+      });
+      setMessage({ type: "success", text: "Périmètre mis à jour." });
+      setScopeModal(null);
+      fetchUsers();
+    } catch (err) {
+      setMessage({ type: "error", text: err.response?.data?.error || "Erreur lors de la mise à jour du périmètre." });
+    } finally {
+      setSavingScope(false);
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -369,10 +474,11 @@ const Users = () => {
               ))}
             </div>
           ) : (
+            <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: theme.bg, borderBottom: `2px solid ${theme.border}` }}>
-                  {["Identifiant", "Nom & Prénom", "Rôle", "Dernière connexion", "Statut", "Actions"].map((h) => (
+                  {["Identifiant", "Nom & Prénom", "Rôle", "Périmètre", "Dernière connexion", "Statut", "Actions"].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -418,6 +524,21 @@ const Users = () => {
                       }}>
                         {u.role}
                       </span>
+                    </td>
+                    <td style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, maxWidth: 220 }}>
+                      {(() => {
+                        if (u.role === "ADMIN") {
+                          return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Accès complet</span>;
+                        }
+                        const noms = [
+                          ...(u.scope_directions_nom || []),
+                          ...(u.scope_departements_nom || []),
+                          ...(u.scope_services_nom || []),
+                        ];
+                        return noms.length > 0
+                          ? noms.join(", ")
+                          : <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Aucun (accès complet)</span>;
+                      })()}
                     </td>
                     <td style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13 }}>
                       {u.last_login
@@ -480,6 +601,24 @@ const Users = () => {
                           >
                             <IconKey /> Reset MDP
                           </button>
+                          {u.role === "CONSULTANT" && (
+                            <button
+                              onClick={() => openScopeModal(u)}
+                              style={{
+                                background: theme.primaryBg,
+                                border: `1px solid ${theme.primaryBorder}`,
+                                color: theme.primary,
+                                borderRadius: 8,
+                                padding: "5px 12px",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              Périmètre
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>
@@ -487,6 +626,7 @@ const Users = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
@@ -649,6 +789,139 @@ const Users = () => {
                 }}
               >
                 {resetting ? "Réinitialisation..." : "Réinitialiser"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Périmètre d'accès */}
+      {scopeModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            backdropFilter: "blur(2px)",
+          }}
+          onClick={() => setScopeModal(null)}
+        >
+          <div
+            style={{
+              background: theme.surface,
+              borderRadius: 16,
+              padding: 32,
+              width: 520,
+              maxWidth: "90vw",
+              boxShadow: "0 16px 48px rgba(15,23,42,0.2)",
+              border: `1px solid ${theme.border}`,
+              fontFamily: theme.fontFamily,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ color: theme.text, margin: "0 0 6px", fontSize: 17, fontWeight: 800 }}>
+              Périmètre d'accès
+            </h2>
+            <div style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 20 }}>
+              Compte :{" "}
+              <strong style={{ color: theme.primary }}>{scopeModal.username}</strong>
+              {" "}— {scopeModal.prenom} {scopeModal.nom}
+            </div>
+            <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 20 }}>
+              Cocher une direction filtre les départements affichés à ceux qu'elle contient ; cocher un département filtre les services de la même façon. Aucune case cochée nulle part = accès non restreint (comportement par défaut).
+            </div>
+
+            {[
+              { level: "directions", label: "Directions", items: directions, onToggle: toggleDirection },
+              { level: "departements", label: "Départements", items: visibleDepartements, onToggle: toggleDepartement },
+              { level: "services", label: "Services", items: visibleServices, onToggle: toggleService },
+            ].map(({ level, label, items, onToggle }) => (
+              <div key={level} style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => selectAllInLevel(level, items)}
+                      style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                    >
+                      Tout
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => clearLevel(level)}
+                      style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                    >
+                      Aucun
+                    </button>
+                  </div>
+                </div>
+                <div style={{
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 10,
+                  maxHeight: 140,
+                  overflowY: "auto",
+                  padding: "8px 12px",
+                  background: theme.bg,
+                }}>
+                  {items.length === 0 ? (
+                    <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
+                  ) : (
+                    items.map((item) => (
+                      <label
+                        key={item.id}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={scopeForm[level].includes(item.id)}
+                          onChange={() => onToggle(item.id)}
+                        />
+                        {item.nom}
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setScopeModal(null)}
+                style={{
+                  background: theme.surface,
+                  border: `1.5px solid ${theme.border}`,
+                  color: theme.textSecondary,
+                  borderRadius: 10,
+                  padding: "9px 20px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSaveScope}
+                disabled={savingScope}
+                style={{
+                  background: savingScope ? `${theme.primary}88` : theme.primary,
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 10,
+                  padding: "9px 24px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: savingScope ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {savingScope ? "Enregistrement..." : "Enregistrer"}
               </button>
             </div>
           </div>
