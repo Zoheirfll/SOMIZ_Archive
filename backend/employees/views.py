@@ -194,6 +194,92 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance.save(update_fields=['statut'])
 
 
+class EmployeePhotoView(APIView):
+    """
+    GET    /api/employees/{id}/photo/  → Sert la photo inline (ADMIN + CONSULTANT scopé)
+    POST   /api/employees/{id}/photo/  → Upload/remplace (ADMIN only)
+    DELETE /api/employees/{id}/photo/  → Supprime (ADMIN only)
+    """
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAdminOrConsultant()]
+        return [IsAdmin()]
+
+    def _get_employee(self, request, pk):
+        try:
+            employee = Employee.objects.get(pk=pk)
+        except Employee.DoesNotExist:
+            raise Http404
+        if not request.user.can_access_employee(employee):
+            raise Http404
+        return employee
+
+    def get(self, request, pk):
+        employee = self._get_employee(request, pk)
+        if not employee.photo or not os.path.exists(employee.photo.path):
+            raise Http404
+
+        mime = magic.from_file(employee.photo.path, mime=True)
+        response = StreamingHttpResponse(
+            open(employee.photo.path, 'rb'), content_type=mime
+        )
+        response['Content-Disposition'] = 'inline; filename="photo"'
+        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+        response['X-Frame-Options'] = 'SAMEORIGIN'
+        response['X-Content-Type-Options'] = 'nosniff'
+        return response
+
+    def post(self, request, pk):
+        employee = self._get_employee(request, pk)
+        file = request.FILES.get('photo')
+        if not file:
+            return Response({'error': 'Aucune photo fournie.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        max_size = settings.MAX_PHOTO_SIZE_MB * 1024 * 1024
+        if file.size > max_size:
+            return Response(
+                {'error': f'Photo trop lourde. Maximum {settings.MAX_PHOTO_SIZE_MB} Mo.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        mime = magic.from_buffer(file.read(2048), mime=True)
+        file.seek(0)
+        if mime not in settings.ALLOWED_PHOTO_MIME_TYPES:
+            return Response(
+                {'error': f'Type non autorisé ({mime}). Formats acceptés : JPEG, PNG, WebP.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        old_path = employee.photo.path if employee.photo else None
+        employee.photo = file
+        employee.save(update_fields=['photo'])
+        if old_path and os.path.isfile(old_path):
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_EMP,
+            target=employee,
+            details={'action': 'upload_photo'}
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def delete(self, request, pk):
+        employee = self._get_employee(request, pk)
+        if employee.photo:
+            employee.photo.delete(save=False)
+            employee.save(update_fields=['photo'])
+            AuditLog.log(
+                request, AuditLog.Action.MODIFY_EMP,
+                target=employee,
+                details={'action': 'delete_photo'}
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 # ─── DOCUMENTS ────────────────────────────────────────────────────────────────
 
 class DocumentListUploadView(APIView):
@@ -350,13 +436,19 @@ class FileDeleteView(APIView):
             target=file_obj.document,
             details={'fichier': file_obj.file_name, 'ordre': file_obj.ordre}
         )
-        file_obj.is_active = False
-        file_obj.save(update_fields=['is_active'])
 
-        # Si plus aucun fichier actif → archiver le document aussi
-        if not file_obj.document.fichiers.filter(is_active=True).exists():
-            file_obj.document.is_active = False
-            file_obj.document.save(update_fields=['is_active'])
+        document = file_obj.document
+        file_path = file_obj.file.path if file_obj.file else None
+        file_obj.delete()
+        if file_path and os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+
+        # Si plus aucun fichier ne subsiste → supprimer le document aussi
+        if not document.fichiers.exists():
+            document.delete()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -446,9 +538,14 @@ class DocumentDeleteView(APIView):
             details={'type': doc.type_document, 'version': doc.version}
         )
 
-        # Soft delete — on garde la trace
-        doc.is_active = False
-        doc.save(update_fields=['is_active'])
+        file_paths = [f.file.path for f in doc.fichiers.all() if f.file]
+        doc.delete()
+        for path in file_paths:
+            if os.path.isfile(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

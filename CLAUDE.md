@@ -18,6 +18,7 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 3. **`frontend/src/styles/animations.css`** — classes d'animation disponibles
 4. **`frontend/src/App.js`** — routes et structure de navigation
 5. **`backend/employees/models.py`** — modèles de données (Direction, Departement, Service, Employé, Contrat, Document)
+6. **`securite.md`** (racine) — journal des correctifs de sécurité, à jour à chaque changement touchant l'auth, les permissions ou la suppression de données
 
 ---
 
@@ -31,7 +32,7 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 - Anti-brute-force unifié : 5 tentatives → blocage 30 min, appliqué à `/api/auth/login/` **et** `/django-admin/login/` (`accounts/backends.py`)
 - Session JWT : access 2h / refresh 10h (plafond absolu, pas de rotation glissante — voir `CookieTokenRefreshView`)
 - Validation MIME : python-magic (20 Mo max par fichier), noms de fichiers régénérés en UUID (pas de path traversal)
-- Soft-delete partout (`is_active` flag)
+- Soft-delete partout (`is_active` flag) — **sauf `EmployeeDocument`/`EmployeeDocumentFile`** (voir section Documents ci-dessous, suppression définitive depuis 2026-07-22)
 - Audit logging complet (13 types d'actions incl. `CREATE_USER`/`MODIFY_USER`/`DELETE_USER`), y compris les mutations faites via `/django-admin/`
 - Rate-limiting dédié (`consultation`, 30/min) sur la visualisation de documents, en plus du throttle global (`anon` 10/min, `user` 200/min)
 - `Permissions-Policy` globale (`config/middleware.py`) désactivant caméra/micro/géoloc/paiement
@@ -74,6 +75,33 @@ les comptes existants).
 - ADMIN toujours non restreint, quel que soit ce qui est renseigné sur son compte.
 - UI d'assignation : page `/users`, bouton "Périmètre" (visible pour les comptes CONSULTANT) — cases à cocher en cascade (cocher une Direction filtre les Départements affichés à ceux qu'elle contient, etc.), boutons "Tout"/"Aucun" par niveau.
 - Toute vue qui liste/retrouve des employés, documents ou contrats doit appliquer ce scoping (voir `employees/views.py` : `EmployeeListCreateView`, `EmployeeDetailView`, `FileViewerView`, `DocumentViewerView`, `ContratListCreateView`, `ContratDetailView`, `ContratDocumentListUploadView`, `employee_search`).
+
+---
+
+## Fiche employé — champs additionnels (2026-07-22)
+
+En plus des champs historiques, `Employee` porte désormais :
+- `rib` (RIP/RIB), `numero_secu_sociale`, `groupe_sanguin`, `nin` — tous `CharField` optionnels, exposés tels quels par l'API (`rib`, `numero_secu_sociale`, `groupe_sanguin`, `nin`)
+- Renommage d'affichage uniquement (le nom technique du champ/API ne change pas, pour ne rien casser côté intégrations) :
+  - `date_embauche` → libellé **"Date de recrutement"**
+  - `poste` → libellé **"Fonction"**
+
+---
+
+## Documents employés — suppression définitive (2026-07-22)
+
+**Changement de politique** (demande explicite utilisateur, dérogation au soft-delete standard) : la suppression d'un fichier (`FileDeleteView`) ou d'un document (`DocumentDeleteView`) est désormais un **hard delete** — ligne DB + fichier physique supprimés immédiatement, irréversible. Avant ce changement, `EmployeeDocument`/`EmployeeDocumentFile` étaient soft-deleted (`is_active=False`), y compris les anciennes versions remplacées par un ré-upload (mécanisme de versioning dans `EmployeeDocument.save()`) — cet historique de versions a été purgé en même temps (voir incident ci-dessous).
+
+Chaque suppression reste tracée dans l'audit log (`AuditLog.Action.DELETE_DOC`), mais celui-ci ne conserve qu'un **snapshot texte** (nom fichier, type, version) — le contenu du document n'est plus récupérable une fois supprimé.
+
+### Suppression de `TypeDocument` (`/parametres`, onglet "Types de documents")
+- Le champ **Code** est modifiable en édition (n'est plus verrouillé après création).
+- `TypeDocumentDetailView.destroy` (`employees/referentiel_views.py`) : bloque la suppression avec un message clair (400, pas de 500) s'il reste des documents **actifs** de ce type ; si seuls des documents déjà supprimés/archivés existent, ils sont purgés automatiquement (fichiers + lignes) avant de supprimer le type.
+
+### ⚠️ Incident du 2026-07-22 — script de purge des orphelins media/
+Un script one-off pour purger les fichiers orphelins de `backend/media/employees/` (fichiers sans ligne DB correspondante, ~184 fichiers) a mal comparé les chemins (bug de normalisation) et a supprimé **aussi les 7 fichiers activement référencés**. Les fichiers physiques n'ont pas pu être récupérés (pas de git, pas de corbeille — `os.remove()` est définitif) ; 3 d'entre eux (uploadés dans la même session) ont pu être ré-associés car les fichiers physiques n'avaient en fait pas été touchés par une suppression DB séparée juste avant.
+- **Leçon** : ne jamais exécuter de script de suppression en masse sur `media/` sans (1) lister précisément les chemins concernés et les faire valider un par un ou par échantillon par l'utilisateur, (2) vérifier la normalisation de chemin (relatif vs absolu) avant tout `os.remove()`, (3) faire une copie de sauvegarde du dossier avant toute purge.
+- `media/` est gitignored → aucune récupération possible via git en cas d'erreur.
 
 ---
 

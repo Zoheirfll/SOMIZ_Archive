@@ -158,15 +158,19 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     service_nom = serializers.CharField(source='service.nom', read_only=True)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
+    has_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
         fields = [
             'id', 'matricule', 'numero_contrat_actif', 'nom', 'prenom',
             'direction_nom', 'departement_nom', 'service_nom',
-            'poste_nom', 'type_contrat_nom',
+            'poste_nom', 'type_contrat_nom', 'has_photo',
             'statut', 'dossier_complet', 'taux_completude', 'nb_documents',
         ]
+
+    def get_has_photo(self, obj):
+        return bool(obj.photo)
 
     def get_dossier_complet(self, obj):
         total_obligatoires = self.context.get('types_obligatoires_total', 0)
@@ -198,12 +202,14 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
+    has_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
         fields = [
             'id', 'matricule', 'nom', 'prenom',
-            'date_naissance', 'date_embauche', 'statut',
+            'date_naissance', 'date_embauche', 'statut', 'has_photo',
+            'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
             'direction', 'direction_nom',
             'departement', 'departement_nom',
             'service', 'service_nom',
@@ -232,12 +238,16 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         for t in manquants
     ]
 
+    def get_has_photo(self, obj):
+        return bool(obj.photo)
+
 class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut',
+            'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
             'direction', 'departement', 'service',
             'poste', 'type_contrat', 'categorie',
         ]

@@ -3,6 +3,7 @@ from django.urls import path
 from employees.views import (
     EmployeeListCreateView,
     EmployeeDetailView,
+    EmployeePhotoView,
     DocumentListUploadView,
     DocumentViewerView,
     FileViewerView,
@@ -24,6 +25,7 @@ urlpatterns = [
     path('employees/import/template/', EmployeeImportTemplateView.as_view(), name='employee-import-template'),
     path('employees/bulk-delete/', EmployeeBulkDeleteView.as_view(), name='employee-bulk-delete'),
     path('employees/<uuid:pk>/', EmployeeDetailView.as_view(), name='employee-detail'),
+    path('employees/<uuid:pk>/photo/', EmployeePhotoView.as_view(), name='employee-photo'),
 
     # Documents (sous-ressource d'un employé)
     path('employees/<uuid:emp_id>/documents/', DocumentListUploadView.as_view(), name='doc-list-upload'),

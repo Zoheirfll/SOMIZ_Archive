@@ -8,6 +8,7 @@ import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
+import EmployeeAvatar from "../components/EmployeeAvatar";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -714,6 +715,7 @@ const Employees = () => {
                     </th>
                   )}
                   {[
+                    { label: "", key: null },
                     { label: "Matricule", key: "matricule" },
                     { label: "N° Contrat", key: null },
                     { label: "Nom & Prénom", key: "nom" },
@@ -721,7 +723,6 @@ const Employees = () => {
                     { label: "Département", key: "departement__nom" },
                     { label: "Service", key: "service__nom" },
                     { label: "Poste", key: "poste__nom" },
-                    { label: "Type contrat", key: "type_contrat__nom" },
                     { label: "Statut", key: "statut" },
                     { label: "Dossier", key: null },
                     { label: "", key: null },
@@ -768,6 +769,9 @@ const Employees = () => {
                       </td>
                     )}
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
+                      <EmployeeAvatar employee={emp} size={48} fontSize={16} shape="square" />
+                    </td>
+                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 13, color: theme.primary, background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`, borderRadius: 6, padding: "3px 8px" }}>
                         {emp.matricule}
                       </span>
@@ -784,7 +788,6 @@ const Employees = () => {
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.departement_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.poste_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.type_contrat_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <span style={{
                         background: emp.statut === "actif" ? theme.primaryBg : emp.statut === "archive" ? "#F8FAFC" : theme.dangerBg,

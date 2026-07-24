@@ -21,6 +21,11 @@ def _safe_path_segment(value):
     return re.sub(r'[^A-Za-z0-9_-]', '_', str(value)) or '_'
 
 
+def employee_photo_upload_path(instance, filename):
+    ext = filename.split('.')[-1].lower()
+    return os.path.join('employees', str(instance.id), 'photo', f'{uuid.uuid4().hex}.{ext}')
+
+
 # ─── RÉFÉRENTIELS ─────────────────────────────────────────────────────────────
 
 class Direction(models.Model):
@@ -161,8 +166,15 @@ class Employee(models.Model):
     nom = models.CharField(max_length=100, db_index=True)
     prenom = models.CharField(max_length=100)
     date_naissance = models.DateField(null=True, blank=True)
-    date_embauche = models.DateField(null=True, blank=True)
+    date_embauche = models.DateField(null=True, blank=True, verbose_name="Date de recrutement")
     statut = models.CharField(max_length=20, choices=Statut.choices, default=Statut.ACTIF)
+
+    photo = models.ImageField(upload_to=employee_photo_upload_path, null=True, blank=True, verbose_name="Photo")
+
+    rib = models.CharField(max_length=50, blank=True, verbose_name="RIP/RIB")
+    numero_secu_sociale = models.CharField(max_length=30, blank=True, verbose_name="N° Sécurité Sociale")
+    groupe_sanguin = models.CharField(max_length=5, blank=True, verbose_name="Groupe sanguin")
+    nin = models.CharField(max_length=30, blank=True, verbose_name="NIN")
 
     # Référentiels liés
     direction = models.ForeignKey(
@@ -179,7 +191,8 @@ class Employee(models.Model):
     )
     poste = models.ForeignKey(
         Poste, null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='employees'
+        on_delete=models.SET_NULL, related_name='employees',
+        verbose_name="Fonction"
     )
     type_contrat = models.ForeignKey(
         TypeContrat, null=True, blank=True,

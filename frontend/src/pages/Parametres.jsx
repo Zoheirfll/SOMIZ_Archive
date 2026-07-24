@@ -913,20 +913,7 @@ const Parametres = () => {
               onChange={handleChange}
               className="input-focus" style={inputStyle}
               placeholder="ATTESTATION"
-              disabled={modal?.mode === "edit"}
             />
-            {modal?.mode === "edit" && (
-              <div
-                style={{
-                  color: theme.textMuted,
-                  fontSize: 11,
-                  marginTop: -8,
-                  marginBottom: 12,
-                }}
-              >
-                Le code ne peut pas être modifié après création.
-              </div>
-            )}
 
             <label style={labelStyle}>Ordre d'affichage</label>
             <input

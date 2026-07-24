@@ -120,6 +120,10 @@ const EmployeeForm = () => {
     date_naissance: "",
     date_embauche: "",
     statut: "actif",
+    rib: "",
+    numero_secu_sociale: "",
+    groupe_sanguin: "",
+    nin: "",
     direction: "",
     departement: "",
     service: "",
@@ -183,6 +187,10 @@ const EmployeeForm = () => {
         date_naissance: emp.date_naissance || "",
         date_embauche: emp.date_embauche || "",
         statut: emp.statut || "actif",
+        rib: emp.rib || "",
+        numero_secu_sociale: emp.numero_secu_sociale || "",
+        groupe_sanguin: emp.groupe_sanguin || "",
+        nin: emp.nin || "",
         direction: emp.direction || "",
         departement: emp.departement || "",
         service: emp.service || "",
@@ -250,7 +258,8 @@ const EmployeeForm = () => {
     if (!form.prenom.trim()) errs.prenom = "Le prénom est obligatoire.";
     if (!isEdit && form.numero_contrat.trim()) {
       if (!/^\d+$/.test(form.numero_contrat.trim()))
-        errs.numero_contrat = "Le N° contrat doit contenir uniquement des chiffres.";
+        errs.numero_contrat =
+          "Le N° contrat doit contenir uniquement des chiffres.";
     }
     return errs;
   };
@@ -328,7 +337,8 @@ const EmployeeForm = () => {
       {/* Hero header */}
       <div
         style={{
-          background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
+          background:
+            "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
           padding: "32px 32px 36px",
           position: "relative",
           overflow: "hidden",
@@ -347,7 +357,13 @@ const EmployeeForm = () => {
           >
             {isEdit ? "Modifier l'employé" : "Nouvel employé"}
           </h1>
-          <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
+          <div
+            style={{
+              color: "rgba(255,255,255,0.6)",
+              fontSize: 13,
+              marginTop: 6,
+            }}
+          >
             {isEdit
               ? "Mettez à jour les informations de l'employé"
               : "Créer un nouveau dossier employé dans le système"}
@@ -355,8 +371,10 @@ const EmployeeForm = () => {
         </div>
       </div>
 
-      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}>
-
+      <div
+        className="anim-fade-in"
+        style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}
+      >
         {/* Back button */}
         <button
           onClick={() => navigate(isEdit ? `/employees/${id}` : "/employees")}
@@ -383,7 +401,8 @@ const EmployeeForm = () => {
         {message && (
           <div
             style={{
-              background: message.type === "success" ? theme.primaryBg : theme.dangerBg,
+              background:
+                message.type === "success" ? theme.primaryBg : theme.dangerBg,
               border: `1px solid ${message.type === "success" ? theme.primaryBorder : theme.dangerBorder}`,
               color: message.type === "success" ? theme.primary : theme.danger,
               borderRadius: 12,
@@ -416,7 +435,9 @@ const EmployeeForm = () => {
                   placeholder="EMP-001"
                 />
                 {errors.matricule && (
-                  <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
+                  <div
+                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
+                  >
                     {errors.matricule}
                   </div>
                 )}
@@ -431,7 +452,13 @@ const EmployeeForm = () => {
                     placeholder="024141"
                   />
                   {errors.numero_contrat && (
-                    <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
+                    <div
+                      style={{
+                        color: theme.danger,
+                        fontSize: 12,
+                        marginTop: 4,
+                      }}
+                    >
                       {errors.numero_contrat}
                     </div>
                   )}
@@ -458,7 +485,9 @@ const EmployeeForm = () => {
                   placeholder="FILALI"
                 />
                 {errors.nom && (
-                  <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
+                  <div
+                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
+                  >
                     {errors.nom}
                   </div>
                 )}
@@ -472,7 +501,9 @@ const EmployeeForm = () => {
                   placeholder="Ahmed"
                 />
                 {errors.prenom && (
-                  <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
+                  <div
+                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
+                  >
                     {errors.prenom}
                   </div>
                 )}
@@ -487,13 +518,46 @@ const EmployeeForm = () => {
                 />
               </Field>
 
-              <Field label="Date d'embauche">
+              <Field label="Date de recrutement">
                 <Input
                   type="date"
                   name="date_embauche"
                   value={form.date_embauche}
                   onChange={handleChange}
                 />
+              </Field>
+
+              <Field label="RIP/RIB">
+                <Input name="rib" value={form.rib} onChange={handleChange} />
+              </Field>
+
+              <Field label="N° Sécurité Sociale">
+                <Input
+                  name="numero_secu_sociale"
+                  value={form.numero_secu_sociale}
+                  onChange={handleChange}
+                />
+              </Field>
+
+              <Field label="Groupe sanguin">
+                <Select
+                  name="groupe_sanguin"
+                  value={form.groupe_sanguin}
+                  onChange={handleChange}
+                >
+                  <option value="">-- Sélectionner --</option>
+                  {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
+                    (g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ),
+                  )}
+                </Select>
+              </Field>
+
+              <Field label="NIN">
+                <Input name="nin" value={form.nin} onChange={handleChange} />
               </Field>
             </div>
           </div>
@@ -561,7 +625,7 @@ const EmployeeForm = () => {
                 </Select>
               </Field>
 
-              <Field label="Poste">
+              <Field label="Fonction">
                 <Select
                   name="poste"
                   value={form.poste || ""}

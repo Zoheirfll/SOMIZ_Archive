@@ -445,7 +445,7 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
     await waitFor(() => screen.getAllByText("EMP-001").length > 0);
 
     const fileInputs = document.querySelectorAll('input[type="file"]');
-    const mainInput = fileInputs[0];
+    const mainInput = fileInputs[fileInputs.length - 1];
     if (mainInput) {
       const file = new File(["pdf"], "test.pdf", { type: "application/pdf" });
       fireEvent.change(mainInput, { target: { files: [file] } });

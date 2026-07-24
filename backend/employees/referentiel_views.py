@@ -3,12 +3,64 @@ employees/referentiel_views.py
 CRUD pour les référentiels : Direction, Département, Service, Poste, TypeContrat, Catégorie
 """
 
-from rest_framework import generics, serializers
+import os
+from django.conf import settings
+from django.db import transaction
+from rest_framework import generics, serializers, status
+from rest_framework.response import Response
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
+from audit.models import AuditLog
 from employees.models import (
     Direction, Departement, Service, Poste,
-    TypeContrat, Categorie, TypeDocument
+    TypeContrat, Categorie, TypeDocument,
+    EmployeeDocument, EmployeeDocumentFile
 )
+
+
+class TypeDocumentDestroyMixin:
+    """Un TypeDocument reste bloqué (PROTECT) tant que des EmployeeDocument le
+    référencent, même ceux déjà archivés (is_active=False) par un admin. On ne
+    bloque réellement que s'il reste des documents ACTIFS ; les archivés sont
+    purgés définitivement (fichiers + lignes) avant la suppression, avec trace
+    d'audit — ils sont déjà hors du dossier employé, donc sans valeur légale
+    à conserver une fois le type lui-même supprimé."""
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        actifs = instance.documents.filter(is_active=True).count()
+        if actifs > 0:
+            return Response(
+                {"error": "Impossible de supprimer — des documents actifs utilisent encore ce type."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        archives = EmployeeDocument.objects.filter(type_doc=instance, is_active=False)
+        nb_archives = archives.count()
+        if nb_archives:
+            file_paths = list(
+                EmployeeDocumentFile.objects.filter(document__in=archives)
+                .values_list('file', flat=True)
+            )
+            with transaction.atomic():
+                archives.delete()
+                AuditLog.log(
+                    request, AuditLog.Action.DELETE_DOC,
+                    target=instance,
+                    details={'purge_documents_archives': nb_archives},
+                )
+                instance.delete()
+            for path in file_paths:
+                if path:
+                    full_path = os.path.join(settings.MEDIA_ROOT, path)
+                    if os.path.isfile(full_path):
+                        try:
+                            os.remove(full_path)
+                        except OSError:
+                            pass
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ─── SERIALIZERS ──────────────────────────────────────────────────────────────
@@ -167,7 +219,7 @@ class TypeDocumentListCreateView(generics.ListCreateAPIView):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     queryset = TypeDocument.objects.all()
 
-class TypeDocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
+class TypeDocumentDetailView(TypeDocumentDestroyMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TypeDocumentSerializer
     permission_classes = [IsAdmin]
     queryset = TypeDocument.objects.all()

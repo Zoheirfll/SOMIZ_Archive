@@ -194,6 +194,14 @@ ALLOWED_MIME_TYPES = [
     'image/tiff',   # Courant pour les scanners
 ]
 
+# Photo de profil employé — plus restrictif qu'un document (pas de PDF/TIFF)
+MAX_PHOTO_SIZE_MB = 5
+ALLOWED_PHOTO_MIME_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+]
+
 # ─── FICHIERS STATIQUES ───────────────────────────────────────────────────────
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'

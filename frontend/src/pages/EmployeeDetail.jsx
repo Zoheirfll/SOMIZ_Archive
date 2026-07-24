@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
+import EmployeeAvatar from "../components/EmployeeAvatar";
 import { TrashIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
@@ -161,6 +162,30 @@ const EmployeeDetail = () => {
     }
   };
 
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      await api.post(`/employees/${id}/photo/`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      await fetchEmployee();
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Impossible d'uploader la photo.",
+      });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const loadFile = async (file) => {
     setSelectedFile(file);
     setDocLoading(true);
@@ -295,14 +320,18 @@ const EmployeeDetail = () => {
       bold: true,
     },
     { label: "Date de naissance", value: employee.date_naissance || "—" },
-    { label: "Date d'embauche", value: employee.date_embauche || "—" },
+    { label: "Date de recrutement", value: employee.date_embauche || "—" },
     { label: "Statut", value: employee.statut, badge: true },
     { label: "Direction", value: employee.direction_nom || "—" },
     { label: "Département", value: employee.departement_nom || "—" },
     { label: "Service", value: employee.service_nom || "—" },
-    { label: "Poste", value: employee.poste_nom || "—" },
+    { label: "Fonction", value: employee.poste_nom || "—" },
     { label: "Type de contrat", value: employee.type_contrat_nom || "—" },
     { label: "Catégorie", value: employee.categorie_nom || "—" },
+    { label: "RIP/RIB", value: employee.rib || "—", mono: true },
+    { label: "N° Sécurité Sociale", value: employee.numero_secu_sociale || "—", mono: true },
+    { label: "Groupe sanguin", value: employee.groupe_sanguin || "—" },
+    { label: "NIN", value: employee.nin || "—", mono: true },
   ];
 
   const documentsAffiches = (employee.documents || []).filter(
@@ -321,8 +350,37 @@ const EmployeeDetail = () => {
             ← Retour
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 20, flexShrink: 0 }}>
-              {employee.prenom?.[0]}{employee.nom?.[0]}
+            <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
+              <EmployeeAvatar employee={employee} size={96} fontSize={32} light shape="square" />
+              {user?.role === "ADMIN" && (
+                <label
+                  aria-label="Changer la photo"
+                  style={{
+                    position: "absolute",
+                    bottom: -6,
+                    right: -6,
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    background: theme.primary,
+                    border: "2px solid #0d3b1f",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: uploadingPhoto ? "wait" : "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  {uploadingPhoto ? "…" : "✎"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handlePhotoChange}
+                    disabled={uploadingPhoto}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              )}
             </div>
             <div>
               <h1 style={{ color: "#fff", fontWeight: 800, fontSize: 22, margin: 0, letterSpacing: "-0.02em" }}>
