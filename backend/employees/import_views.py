@@ -45,7 +45,8 @@ class EmployeeImportView(APIView):
     OPTIONAL_COLS = {
         'date_naissance', 'date_embauche', 'statut',
         'direction', 'departement', 'service',
-        'poste', 'type_contrat', 'categorie'
+        'poste', 'type_contrat', 'categorie',
+        'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
     }
 
     def post(self, request):
@@ -193,6 +194,10 @@ class EmployeeImportView(APIView):
                     poste=poste,
                     type_contrat=type_contrat,
                     categorie=categorie,
+                    rib=row.get('rib', '').strip(),
+                    numero_secu_sociale=row.get('numero_secu_sociale', '').strip(),
+                    groupe_sanguin=row.get('groupe_sanguin', '').strip(),
+                    nin=row.get('nin', '').strip(),
                     created_by=request.user,
                 ),
                 'numero_contrat': numero_contrat,
@@ -270,14 +275,16 @@ class EmployeeImportTemplateView(APIView):
             'matricule', 'numero_contrat', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut',
             'direction', 'departement', 'service',
-            'poste', 'type_contrat', 'categorie'
+            'poste', 'type_contrat', 'categorie',
+            'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
         ])
         # Exemple
         writer.writerow([
             '024141', '024141', 'FILALI', 'Zoheir',
             '2002-03-22', '2026-01-20', 'actif',
             'Direction Générale', 'DAP', 'Service Paie',
-            'Cadre', 'CDI', ''
+            'Cadre', 'CDI', '',
+            '00799999000123456789', '123456789012345', 'O+', '1234567890123456789',
         ])
 
         return response

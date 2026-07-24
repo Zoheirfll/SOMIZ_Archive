@@ -555,7 +555,6 @@ describe("EmployeeDetail — onglet Contrats", () => {
 
 describe("EmployeeDetail — suppression fichier", () => {
   test("bouton supprimer fichier appelle DELETE (ADMIN)", async () => {
-    window.confirm = jest.fn(() => true);
     api.delete.mockResolvedValue({});
     renderPage("ADMIN");
     await waitFor(() => screen.getAllByText("Carte Nationale").length > 0);
@@ -563,6 +562,8 @@ describe("EmployeeDetail — suppression fichier", () => {
     const deleteBtns = screen.queryAllByTitle(/Supprimer/i);
     if (deleteBtns.length > 0) {
       fireEvent.click(deleteBtns[0]);
+      await waitFor(() => screen.getByText("Confirmer"));
+      fireEvent.click(screen.getByText("Confirmer"));
       await waitFor(() => {
         expect(api.delete).toHaveBeenCalled();
       });
@@ -653,5 +654,102 @@ describe("EmployeeDetail — préservation sélection contrat après upload", ()
     // Vérifier aussi que le contrat récent n'est plus sélectionné
     const recentTab = screen.getByRole("button", { name: "CTR-2020-001" });
     expect(recentTab).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("EmployeeDetail — sélection par défaut cohérente avec le contrat affiché", () => {
+  test("le fichier chargé par défaut appartient au contrat récent, pas à un contrat plus ancien", async () => {
+    const oldFile = { id: "file-old", file_name: "diplome_ancien.pdf", mime_type: "application/pdf" };
+    const oldDoc = {
+      id: "doc-old", type_document: "DIPLOME", is_active: true,
+      contrat: "contrat-0", fichiers: [oldFile], nb_fichiers: 1, version: 1, file_size_kb: 100,
+    };
+    const recentFile = { id: "file-recent", file_name: "diplome_recent.pdf", mime_type: "application/pdf" };
+    const recentDoc = {
+      id: "doc-recent", type_document: "DIPLOME", is_active: true,
+      contrat: "contrat-1", fichiers: [recentFile], nb_fichiers: 1, version: 1, file_size_kb: 100,
+    };
+    const employeeDeuxContrats = {
+      ...mockEmployee,
+      // Le document de l'ANCIEN contrat apparaît en premier dans la liste
+      documents: [oldDoc, recentDoc],
+    };
+    const contratsAvecDeux = [
+      { id: "contrat-0", numero_contrat: "CTR-2019-000", type_contrat_nom: "CDI", date_debut: "2019-01-01", date_fin: "2020-01-01", statut: "inactif", nb_documents: 1 },
+      { id: "contrat-1", numero_contrat: "CTR-2020-001", type_contrat_nom: "CDI", date_debut: "2020-01-01", date_fin: null, statut: "actif", nb_documents: 1 },
+    ];
+
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) return Promise.resolve({ data: { results: mockTypes } });
+      if (url.includes("types-contrat")) return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
+      if (url.includes("/contrats/")) return Promise.resolve({ data: contratsAvecDeux });
+      if (url.includes(`files/${recentFile.id}`)) return Promise.resolve({ data: new Blob(["pdf-recent"], { type: "application/pdf" }) });
+      if (url.includes(`files/${oldFile.id}`)) return Promise.resolve({ data: new Blob(["pdf-old"], { type: "application/pdf" }) });
+      return Promise.resolve({ data: employeeDeuxContrats });
+    });
+
+    renderPage("ADMIN");
+
+    // Le contrat récent doit être sélectionné par défaut
+    await waitFor(() => {
+      const tabBtn = screen.getByRole("button", { name: "CTR-2020-001" });
+      expect(tabBtn).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Le fichier chargé (appelé via /files/{id}/view/) doit être celui du contrat récent
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        expect.stringContaining(`files/${recentFile.id}`),
+        expect.any(Object),
+      );
+    });
+    expect(api.get).not.toHaveBeenCalledWith(
+      expect.stringContaining(`files/${oldFile.id}`),
+      expect.any(Object),
+    );
+  });
+});
+
+describe("EmployeeDetail — position stable des documents (pas de saut au ré-upload)", () => {
+  test("l'ordre visuel (CSS order) suit le champ ordre du type, pas la présence/absence", async () => {
+    const docHaut = { ...mockDoc, id: "doc-haut", type_document: "CONTRAT", ordre: 1, type_ordre: 1 };
+    const docBas = { ...mockDoc, id: "doc-bas", type_document: "DIPLOME", ordre: 5, type_ordre: 5 };
+    const employeeCustom = {
+      ...mockEmployee,
+      // "doc-bas" (ordre=5) apparaît AVANT "doc-haut" (ordre=1) dans le
+      // tableau brut — l'affichage doit quand même respecter ordre=1 < 5.
+      documents: [docBas, docHaut],
+      documents_manquants: [{ code: "CV", label: "CV", ordre: 3, type_ordre: 3 }],
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) return Promise.resolve({ data: { results: mockTypes } });
+      if (url.includes("types-contrat")) return Promise.resolve({ data: { results: [] } });
+      if (url.includes("/contrats/")) return Promise.resolve({ data: [] });
+      if (url.includes("files/")) return Promise.resolve({ data: new Blob(["pdf"], { type: "application/pdf" }) });
+      return Promise.resolve({ data: employeeCustom });
+    });
+
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+
+    const getOrder = (el) => parseInt(el.style.order, 10);
+
+    const contratLabel = (await screen.findAllByText("CONTRAT"))[0];
+    const diplomeLabel = (await screen.findAllByText("DIPLOME"))[0];
+    const cvLabel = (await screen.findAllByText("CV"))[0];
+
+    // Remonter jusqu'au conteneur de ligne qui porte le style `order`
+    const findOrderedAncestor = (el) => {
+      let node = el;
+      while (node && node.style.order === "") node = node.parentElement;
+      return node;
+    };
+
+    const orderContrat = getOrder(findOrderedAncestor(contratLabel));
+    const orderDiplome = getOrder(findOrderedAncestor(diplomeLabel));
+    const orderCv = getOrder(findOrderedAncestor(cvLabel));
+
+    expect(orderContrat).toBeLessThan(orderCv);
+    expect(orderCv).toBeLessThan(orderDiplome);
   });
 });

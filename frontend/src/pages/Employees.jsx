@@ -9,6 +9,7 @@ import PageBackground from "../components/PageBackground";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import EmployeeAvatar from "../components/EmployeeAvatar";
+import { useConfirm } from "../components/ConfirmDialog";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -304,6 +305,7 @@ const SectionHeader = ({ title, subtitle, color }) => (
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 const Employees = () => {
+  const { confirm, ConfirmDialog } = useConfirm();
   const [view, setView] = useState("directions");
   const [selectedDirection, setSelectedDirection] = useState(null);
   const [selectedDepartement, setSelectedDepartement] = useState(null);
@@ -335,6 +337,12 @@ const Employees = () => {
   const setStatut = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); if (val) n.set("statut", val); else n.delete("statut"); n.set("page", "1"); return n; }, { replace: true });
   const setPage = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); n.set("page", String(typeof val === "function" ? val(page) : val)); return n; }, { replace: true });
   const setOrdering = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); n.set("ordering", typeof val === "function" ? val(ordering) : val); n.set("page", "1"); return n; }, { replace: true });
+
+  // Champ de recherche du tableau : ne déclenche la recherche qu'à la validation
+  // (submit), pas à chaque frappe — même comportement que la barre du haut.
+  const [searchInput, setSearchInput] = useState(search);
+  useEffect(() => { setSearchInput(search); }, [search]);
+  const handleTableSearchSubmit = (e) => { e.preventDefault(); setSearch(searchInput.trim()); };
 
   const PAGE_SIZE = 25;
 
@@ -423,7 +431,7 @@ const Employees = () => {
     const msg = action === "delete"
       ? `Supprimer définitivement ${selected.size} employé(s) ? Cette action est irréversible.`
       : `Archiver ${selected.size} employé(s) ?`;
-    if (!window.confirm(msg)) return;
+    if (!(await confirm(msg))) return;
     setDeleting(true);
     try {
       const response = await api.post("/employees/bulk-delete/", { ids: Array.from(selected), action });
@@ -625,30 +633,50 @@ const Employees = () => {
 
       {/* Filtres */}
       <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, padding: "16px 20px", marginBottom: 16, display: "flex", gap: 12, alignItems: "center", boxShadow: theme.shadow }}>
-        <div style={{ flex: 1, position: "relative" }}>
-          <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: theme.textMuted, pointerEvents: "none", display: "flex" }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <form onSubmit={handleTableSearchSubmit} style={{ flex: 1, display: "flex", gap: 8 }}>
+          <div style={{ flex: 1, position: "relative" }}>
+            <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: theme.textMuted, pointerEvents: "none", display: "flex" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Rechercher par nom, prénom, matricule..."
+              className="input-focus"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                border: `1.5px solid ${theme.border}`,
+                borderRadius: 10,
+                padding: "10px 14px 10px 40px",
+                color: theme.text,
+                fontSize: 14,
+                outline: "none",
+                background: theme.bg,
+                fontFamily: theme.fontFamily,
+              }}
+            />
           </div>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par nom, prénom, matricule..."
-            className="input-focus"
+          <button
+            type="submit"
+            className="btn-lift"
             style={{
-              width: "100%",
-              boxSizing: "border-box",
-              border: `1.5px solid ${theme.border}`,
+              background: theme.primary,
+              border: "none",
               borderRadius: 10,
-              padding: "10px 14px 10px 40px",
-              color: theme.text,
-              fontSize: 14,
-              outline: "none",
-              background: theme.bg,
+              padding: "10px 20px",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
               fontFamily: theme.fontFamily,
+              whiteSpace: "nowrap",
             }}
-          />
-        </div>
+          >
+            Rechercher
+          </button>
+        </form>
         <select
           value={statut}
           onChange={(e) => setStatut(e.target.value)}
@@ -969,6 +997,7 @@ const Employees = () => {
 
         {view === "employees" ? renderEmployeesTable() : renderHierarchy()}
       </div>
+      {ConfirmDialog}
     </PageBackground>
   );
 };

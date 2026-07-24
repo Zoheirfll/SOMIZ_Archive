@@ -64,14 +64,20 @@ class AdminStatsView(APIView):
         
         total_emp = Employee.objects.filter(statut='actif').count()
 
-        # Complétude par type — dynamique depuis la BDD
+        # Complétude par type — dynamique depuis la BDD. Les catégories
+        # (ex. "ETAT CIVIL") ne sont jamais uploadables directement — les
+        # exclure évite une ligne "0/51 (0%)" trompeuse ; seuls les
+        # sous-types réels (feuilles) comptent.
         completude = {}
-        for t in TypeDocument.objects.filter(is_active=True).order_by('ordre', 'nom'):
+        for t in TypeDocument.objects.filter(
+            is_active=True, sous_types__isnull=True
+        ).select_related('parent').order_by('ordre', 'nom'):
             nb = EmployeeDocument.objects.filter(
                 type_doc=t, is_active=True
             ).values('employee').distinct().count()
             completude[t.code] = {
                 'label': t.nom,
+                'parent_nom': t.parent.nom if t.parent_id else None,
                 'nb_employes': nb,
                 'pourcentage': round(nb / total_emp * 100, 1) if total_emp else 0,
                 'required': t.obligatoire,
@@ -79,7 +85,7 @@ class AdminStatsView(APIView):
 
         # Dossiers complets — employés qui ont tous les types obligatoires
         types_obligatoires = TypeDocument.objects.filter(
-            obligatoire=True, is_active=True
+            obligatoire=True, is_active=True, sous_types__isnull=True
         )
         emp_complets = Employee.objects.filter(statut='actif')
         for t in types_obligatoires:

@@ -215,6 +215,10 @@ const Import = () => {
                   "poste",
                   "type_contrat",
                   "categorie",
+                  "rib",
+                  "numero_secu_sociale",
+                  "groupe_sanguin",
+                  "nin",
                 ].map((c) => (
                   <div
                     key={c}

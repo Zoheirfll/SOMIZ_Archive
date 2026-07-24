@@ -86,6 +86,15 @@ class User(AbstractBaseUser, PermissionsMixin):
         'employees.Service', blank=True, related_name='scoped_users',
         verbose_name="Périmètre — Services"
     )
+    # Périmètre indépendant : restreint les TYPES de documents visibles,
+    # combiné en ET avec le périmètre organisationnel ci-dessus (un
+    # CONSULTANT restreint aux deux ne voit que les documents des types
+    # autorisés, pour les employés de son périmètre organisationnel).
+    # Vide = accès non restreint (même règle que les 3 champs ci-dessus).
+    scope_types_documents = models.ManyToManyField(
+        'employees.TypeDocument', blank=True, related_name='scoped_users',
+        verbose_name="Périmètre — Types de documents"
+    )
 
     objects = UserManager()
 
@@ -201,6 +210,45 @@ class User(AbstractBaseUser, PermissionsMixin):
             | Q(departement_id__in=departement_ids)
             | Q(id__in=service_ids)
         ).distinct()
+
+    def _type_doc_scope_ids(self):
+        """IDs des TypeDocument sélectionnés — set vide si aucune restriction."""
+        if self.is_admin or not self.pk:
+            return set()
+        return set(self.scope_types_documents.values_list('id', flat=True))
+
+    @property
+    def has_type_doc_scope_restriction(self):
+        """True si ce compte est restreint à certains types de documents."""
+        return bool(self._type_doc_scope_ids())
+
+    def document_type_scope_q(self, prefix='type_doc_id'):
+        """
+        Q object à appliquer sur un queryset EmployeeDocument (ou
+        EmployeeDocumentFile via prefix='document__type_doc_id') pour
+        restreindre aux types de documents autorisés. Combiné en ET avec
+        employee_scope_q() — ce sont deux périmètres indépendants (qui vs
+        quoi). Q() vide = accès non restreint.
+        """
+        type_ids = self._type_doc_scope_ids()
+        if not type_ids:
+            return Q()
+        return Q(**{f'{prefix}__in': type_ids})
+
+    def can_access_document_type(self, type_doc_id):
+        """Vérification objet-par-objet équivalente à document_type_scope_q()."""
+        type_ids = self._type_doc_scope_ids()
+        if not type_ids:
+            return True
+        return type_doc_id in type_ids
+
+    def accessible_types_documents_qs(self):
+        """Types de documents visibles pour ce compte."""
+        from employees.models import TypeDocument
+        type_ids = self._type_doc_scope_ids()
+        if not type_ids:
+            return TypeDocument.objects.all()
+        return TypeDocument.objects.filter(id__in=type_ids)
 
     def is_locked(self):
         """Vérifie si le compte est bloqué suite aux tentatives échouées."""

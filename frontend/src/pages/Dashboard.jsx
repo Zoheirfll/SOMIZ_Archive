@@ -250,6 +250,11 @@ const Dashboard = () => {
                           <span style={{ color: theme.danger, marginRight: 4 }}>*</span>
                         )}
                         {data.label}
+                        {data.parent_nom && (
+                          <span style={{ color: theme.textMuted, fontSize: 11, marginLeft: 6 }}>
+                            ({data.parent_nom})
+                          </span>
+                        )}
                       </span>
                       <span style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 600 }}>
                         {data.nb_employes}/{total} ({data.pourcentage}%)

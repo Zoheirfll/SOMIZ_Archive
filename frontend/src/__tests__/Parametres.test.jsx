@@ -192,13 +192,14 @@ describe("Parametres — édition", () => {
 
 describe("Parametres — suppression", () => {
   test("clic Supprimer avec confirmation appelle DELETE", async () => {
-    window.confirm = jest.fn(() => true);
     api.get.mockResolvedValue(dirResponse);
     api.delete = jest.fn().mockResolvedValue({});
     renderPage();
     await waitFor(() => screen.getByText("Direction Générale"));
     const delBtns = screen.getAllByTitle("Supprimer");
     fireEvent.click(delBtns[0]);
+    await waitFor(() => screen.getByText("Confirmer"));
+    fireEvent.click(screen.getByText("Confirmer"));
     await waitFor(() => {
       expect(api.delete).toHaveBeenCalledWith(
         expect.stringContaining("dir-1")
@@ -207,18 +208,18 @@ describe("Parametres — suppression", () => {
   });
 
   test("annuler la confirmation ne supprime pas", async () => {
-    window.confirm = jest.fn(() => false);
     api.get.mockResolvedValue(dirResponse);
     api.delete = jest.fn();
     renderPage();
     await waitFor(() => screen.getAllByTitle("Supprimer"));
     const delBtns = screen.getAllByTitle("Supprimer");
     fireEvent.click(delBtns[0]);
+    await waitFor(() => screen.getByText("Annuler"));
+    fireEvent.click(screen.getByText("Annuler"));
     expect(api.delete).not.toHaveBeenCalled();
   });
 
   test("erreur API lors de la suppression affiche un message d'erreur", async () => {
-    window.confirm = jest.fn(() => true);
     api.get.mockResolvedValue(dirResponse);
     api.delete = jest.fn().mockRejectedValue({
       response: { data: { error: "Impossible de supprimer : cet élément est utilisé." } },
@@ -226,6 +227,8 @@ describe("Parametres — suppression", () => {
     renderPage();
     await waitFor(() => screen.getAllByTitle("Supprimer"));
     fireEvent.click(screen.getAllByTitle("Supprimer")[0]);
+    await waitFor(() => screen.getByText("Confirmer"));
+    fireEvent.click(screen.getByText("Confirmer"));
     await waitFor(() => {
       expect(screen.getByText("Impossible de supprimer : cet élément est utilisé.")).toBeInTheDocument();
     });

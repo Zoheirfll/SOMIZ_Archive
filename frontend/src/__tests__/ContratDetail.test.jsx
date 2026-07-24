@@ -221,7 +221,6 @@ describe("ContratDetail — upload (ADMIN)", () => {
 
 describe("ContratDetail — suppression document (ADMIN)", () => {
   test("bouton supprimer appelle DELETE", async () => {
-    window.confirm = jest.fn(() => true);
     api.delete.mockResolvedValue({});
     renderPage("ADMIN");
     await waitFor(() => screen.getAllByText("Contrat de travail"));
@@ -229,6 +228,8 @@ describe("ContratDetail — suppression document (ADMIN)", () => {
     const deleteBtns = screen.getAllByTitle(/Supprimer/i);
     if (deleteBtns.length > 0) {
       fireEvent.click(deleteBtns[0]);
+      await waitFor(() => screen.getByText("Confirmer"));
+      fireEvent.click(screen.getByText("Confirmer"));
       await waitFor(() => {
         expect(api.delete).toHaveBeenCalled();
       });

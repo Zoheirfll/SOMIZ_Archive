@@ -6,16 +6,27 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
 import EmployeeAvatar from "../components/EmployeeAvatar";
-import { TrashIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
+import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+
+// Nom de fichier sans l'extension — l'utilisateur voit "Acte de naissance",
+// pas "Acte de naissance.png" (le type/mime reste géré côté serveur).
+const stripExt = (name) => {
+  if (!name) return name;
+  const dotIndex = name.lastIndexOf(".");
+  return dotIndex > 0 ? name.slice(0, dotIndex) : name;
+};
 
 const EmployeeDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { confirm, ConfirmDialog } = useConfirm();
+  const { prompt, PromptDialog } = usePrompt();
 
   const [employee, setEmployee] = useState(null);
   const [contrats, setContrats] = useState([]);
@@ -68,8 +79,11 @@ const EmployeeDetail = () => {
         map[t.code] = t.nom;
       });
       setTypesDocuments(map);
-      setTypesDocumentsList(types);
-      if (types.length > 0) setUploadType(types[0].code);
+      // Seuls les types "feuilles" sont uploadables — une catégorie
+      // (ex. "État civil") ne sert qu'à regrouper visuellement.
+      const uploadable = types.filter((t) => !t.is_categorie);
+      setTypesDocumentsList(uploadable);
+      if (uploadable.length > 0) setUploadType(uploadable[0].code);
     } catch (err) {
       console.error(err);
     }
@@ -148,13 +162,6 @@ const EmployeeDetail = () => {
     try {
       const response = await api.get(`/employees/${id}/`);
       setEmployee(response.data);
-      if (response.data.documents?.length > 0) {
-        const firstDoc = response.data.documents[0];
-        setSelectedDoc(firstDoc);
-        if (firstDoc.fichiers?.length > 0) {
-          loadFile(firstDoc.fichiers[0]);
-        }
-      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -212,6 +219,101 @@ const EmployeeDetail = () => {
     }
   };
 
+  // Sélectionne par défaut le premier document du contrat/dossier
+  // actuellement affiché (pas juste le tout premier document de
+  // l'employé, tous contrats confondus) — évite d'ouvrir un fichier
+  // d'un ancien contrat alors que l'onglet du contrat récent est actif.
+  useEffect(() => {
+    if (!employee) return;
+    const filtered = (employee.documents || []).filter(
+      (doc) => !doc.contrat || doc.contrat === selectedContratId,
+    );
+    if (filtered.length > 0) {
+      setSelectedDoc(filtered[0]);
+      if (filtered[0].fichiers?.length > 0) {
+        loadFile(filtered[0].fichiers[0]);
+      } else {
+        setSelectedFile(null);
+        setDocUrl(null);
+      }
+    } else {
+      setSelectedDoc(null);
+      setSelectedFile(null);
+      setDocUrl(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee, selectedContratId]);
+
+  // Calcule une position d'affichage STABLE pour les documents présents ET
+  // manquants combinés, basée sur l'ordre configuré du type (Paramètres >
+  // Types de documents) — jamais sur la date d'upload. Un document qui
+  // passe de "manquant" à "présent" garde exactement la même place dans la
+  // liste, il change juste d'apparence (plus de saut visuel en haut).
+  // Chaque catégorie (ex. "État civil") partage l'ordre de sa catégorie
+  // parente, donc tous ses enfants restent groupés ensemble, présents et
+  // manquants confondus. On applique ensuite ce classement via CSS `order`
+  // (flex) plutôt qu'en réordonnant le DOM, pour ne pas toucher au reste du
+  // rendu de chaque ligne.
+  const buildDocOrder = (presentDocs, missingDocs) => {
+    const rows = [
+      ...presentDocs.map((d) => ({
+        key: `p-${d.id}`,
+        parentLabel: d.type_document_parent || null,
+        sortKey: d.ordre ?? 0,
+        subKey: d.type_ordre ?? 0,
+      })),
+      ...missingDocs.map((d) => ({
+        key: `m-${d.code}`,
+        parentLabel: d.parent_nom || null,
+        sortKey: d.ordre ?? 0,
+        subKey: d.type_ordre ?? 0,
+      })),
+    ];
+    rows.sort((a, b) => a.sortKey - b.sortKey || a.subKey - b.subKey);
+
+    const orderMap = new Map();
+    const headerBefore = new Map();
+    const groupEnd = new Set();
+    rows.forEach((row, i) => {
+      orderMap.set(row.key, i);
+      const prev = rows[i - 1];
+      const next = rows[i + 1];
+      if (row.parentLabel && (!prev || prev.parentLabel !== row.parentLabel)) {
+        headerBefore.set(row.key, row.parentLabel);
+      }
+      if (row.parentLabel && (!next || next.parentLabel !== row.parentLabel)) {
+        groupEnd.add(row.key);
+      }
+    });
+    return { orderMap, headerBefore, groupEnd };
+  };
+
+  // "Boîte" de catégorie : fond ambré continu + bordure gauche/droite sur
+  // l'en-tête ET chaque ligne du groupe (via categoryRowStyle ci-dessous),
+  // pour que la catégorie se lise comme un vrai dossier distinct plutôt que
+  // de se fondre avec les éléments non groupés au-dessus/en-dessous.
+  const categoryHeaderStyle = {
+    marginTop: 8,
+    padding: "7px 16px",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    background: "#FFFBEB",
+    border: "1px solid #FDE68A",
+    borderBottom: "none",
+    borderRadius: "8px 8px 0 0",
+    color: theme.warning,
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  };
+
+  const categoryRowExtraStyle = {
+    background: "#FFFDF7",
+    borderRight: "1px solid #FDE68A",
+  };
+
   // Upload multiple fichiers
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -253,7 +355,7 @@ const EmployeeDetail = () => {
 
   const handleDeleteFile = async (file, e) => {
     e.stopPropagation();
-    if (!window.confirm(`Supprimer "${file.file_name}" ?`)) return;
+    if (!(await confirm(`Supprimer "${file.file_name}" ?`))) return;
     try {
       await api.delete(`/files/${file.id}/`);
       setMessage({ type: "success", text: "Fichier supprimé." });
@@ -269,13 +371,35 @@ const EmployeeDetail = () => {
     }
   };
 
+  const handleRenameFile = async (file, e) => {
+    e?.stopPropagation();
+    const dotIndex = (file.file_name || "").lastIndexOf(".");
+    const baseName = dotIndex > 0 ? file.file_name.slice(0, dotIndex) : file.file_name || "";
+    const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
+    const newBaseName = await prompt("Nouveau nom du fichier :", baseName);
+    if (newBaseName === null || !newBaseName || newBaseName === baseName) return;
+    const newName = `${newBaseName}${ext}`;
+    try {
+      await api.patch(`/files/${file.id}/`, { file_name: newName });
+      setMessage({ type: "success", text: "Fichier renommé." });
+      fetchEmployee();
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors du renommage.",
+      });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
   const handleDeleteDoc = async (doc, e) => {
     e.stopPropagation();
     const nomType = typesDocuments[doc.type_document] || doc.type_document;
     if (
-      !window.confirm(
+      !(await confirm(
         `Supprimer tout le dossier "${nomType} v${doc.version}" et ses ${doc.nb_fichiers} fichier(s) ?`,
-      )
+      ))
     )
       return;
     try {
@@ -337,6 +461,9 @@ const EmployeeDetail = () => {
   const documentsAffiches = (employee.documents || []).filter(
     (doc) => !doc.contrat || doc.contrat === selectedContratId,
   );
+
+  const { orderMap: docOrderMap, headerBefore: docHeaderBefore, groupEnd: docGroupEnd } =
+    buildDocOrder(documentsAffiches, employee.documents_manquants || []);
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -1017,10 +1144,13 @@ const EmployeeDetail = () => {
                 borderRadius: 12,
                 overflow: "hidden",
                 boxShadow: theme.shadow,
+                display: "flex",
+                flexDirection: "column",
               }}
             >
               <div
                 style={{
+                  order: -2,
                   padding: "14px 16px",
                   borderBottom: `1px solid ${theme.border}`,
                   color: theme.primary,
@@ -1037,6 +1167,7 @@ const EmployeeDetail = () => {
               {contrats.length > 0 && (
                 <div
                   style={{
+                    order: -1,
                     display: "flex",
                     gap: 6,
                     flexWrap: "wrap",
@@ -1071,15 +1202,21 @@ const EmployeeDetail = () => {
 
               {/* Documents présents */}
               {documentsAffiches.map((doc) => (
+                <div key={doc.id} style={{ order: docOrderMap.get(`p-${doc.id}`) ?? 0 }}>
+                {docHeaderBefore.get(`p-${doc.id}`) && (
+                  <div style={categoryHeaderStyle}>📁 {docHeaderBefore.get(`p-${doc.id}`)}</div>
+                )}
                 <div
-                  key={doc.id}
                   style={{
-                    borderBottom: `1px solid ${theme.border}`,
-                    background:
-                      selectedDoc?.id === doc.id
-                        ? theme.primaryBg
-                        : "transparent",
+                    borderBottom: `1px solid ${doc.type_document_parent ? "#FDE68A" : theme.border}`,
                     borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : "transparent"}`,
+                    ...(doc.type_document_parent ? categoryRowExtraStyle : {}),
+                    background: selectedDoc?.id === doc.id
+                      ? theme.primaryBg
+                      : doc.type_document_parent ? "#FFFDF7" : "transparent",
+                    ...(docGroupEnd.has(`p-${doc.id}`)
+                      ? { borderRadius: "0 0 8px 8px", borderBottom: "1px solid #FDE68A", marginBottom: 10 }
+                      : {}),
                   }}
                 >
                   {/* En-tête du document */}
@@ -1116,16 +1253,6 @@ const EmployeeDetail = () => {
                             </span>
                           ) : null;
                         })()}
-                      </div>
-                      <div
-                        style={{
-                          color: theme.textMuted,
-                          fontSize: 11,
-                          marginTop: 2,
-                        }}
-                      >
-                        v{doc.version} · {doc.nb_fichiers} fichier(s) ·{" "}
-                        {doc.file_size_kb} Ko
                       </div>
                     </div>
                     {user?.role === "ADMIN" && (
@@ -1194,14 +1321,19 @@ const EmployeeDetail = () => {
                             </span>
                             <div>
                               <div
+                                title={file.file_name}
                                 style={{
                                   color: theme.text,
                                   fontSize: 12,
                                   fontWeight:
                                     selectedFile?.id === file.id ? 600 : 400,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  maxWidth: 180,
                                 }}
                               >
-                                Page {index + 1}
+                                {stripExt(file.file_name) || `Page ${index + 1}`}
                               </div>
                               <div
                                 style={{ color: theme.textMuted, fontSize: 10 }}
@@ -1211,6 +1343,28 @@ const EmployeeDetail = () => {
                             </div>
                           </div>
                           {user?.role === "ADMIN" && (
+                            <div style={{ display: "flex", gap: 4 }}>
+                            <button
+                              onClick={(e) => handleRenameFile(file, e)}
+                              title="Renommer ce fichier"
+                              aria-label="Renommer ce fichier"
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: theme.textSecondary,
+                                cursor: "pointer",
+                                display: "flex",
+                                opacity: 0.5,
+                              }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.opacity = 1)
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.opacity = 0.5)
+                              }
+                            >
+                              <PencilIcon size={12} />
+                            </button>
                             <button
                               onClick={(e) => handleDeleteFile(file, e)}
                               title="Supprimer ce fichier"
@@ -1232,25 +1386,34 @@ const EmployeeDetail = () => {
                             >
                               <TrashIcon size={12} />
                             </button>
+                            </div>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
+                </div>
               ))}
 
               {/* Documents manquants */}
-              {employee.documents_manquants?.map((doc) => (
+              {(employee.documents_manquants || []).map((doc) => (
+                <div key={doc.code} style={{ order: docOrderMap.get(`m-${doc.code}`) ?? 0 }}>
+                {docHeaderBefore.get(`m-${doc.code}`) && (
+                  <div style={categoryHeaderStyle}>📁 {docHeaderBefore.get(`m-${doc.code}`)}</div>
+                )}
                 <div
-                  key={doc.code}
                   style={{
                     padding: "10px 16px",
-                    borderBottom: `1px solid ${theme.border}`,
-                    background: "#FAFAFA",
+                    borderBottom: `1px solid ${doc.parent_nom ? "#FDE68A" : theme.border}`,
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
+                    ...(doc.parent_nom ? categoryRowExtraStyle : {}),
+                    background: doc.parent_nom ? "#FFFDF7" : "#FAFAFA",
+                    ...(docGroupEnd.has(`m-${doc.code}`)
+                      ? { borderRadius: "0 0 8px 8px", borderBottom: "1px solid #FDE68A", marginBottom: 10 }
+                      : {}),
                   }}
                 >
                   <div>
@@ -1344,12 +1507,14 @@ const EmployeeDetail = () => {
                     </label>
                   )}
                 </div>
+                </div>
               ))}
 
               {/* Upload ADMIN */}
               {user?.role === "ADMIN" && (
                 <div
                   style={{
+                    order: 999999,
                     padding: 16,
                     borderTop: `2px solid ${theme.border}`,
                     background: theme.bg,
@@ -1381,10 +1546,26 @@ const EmployeeDetail = () => {
                       outline: "none",
                     }}
                   >
-                    {typesDocumentsList.map((t) => (
+                    {typesDocumentsList.filter((t) => !t.parent_nom).map((t) => (
                       <option key={t.code} value={t.code}>
                         {t.nom}
                       </option>
+                    ))}
+                    {Object.entries(
+                      typesDocumentsList
+                        .filter((t) => t.parent_nom)
+                        .reduce((acc, t) => {
+                          (acc[t.parent_nom] = acc[t.parent_nom] || []).push(t);
+                          return acc;
+                        }, {}),
+                    ).map(([label, items]) => (
+                      <optgroup key={label} label={label}>
+                        {items.map((t) => (
+                          <option key={t.code} value={t.code}>
+                            {t.nom}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                   <label
@@ -1476,6 +1657,48 @@ const EmployeeDetail = () => {
                       >
                         {selectedFile.file_size_kb} Ko
                       </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          marginTop: 3,
+                        }}
+                      >
+                        <span
+                          title={selectedFile.file_name}
+                          style={{
+                            color: theme.textSecondary,
+                            fontSize: 12,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            maxWidth: 260,
+                          }}
+                        >
+                          {stripExt(selectedFile.file_name)}
+                        </span>
+                        {user?.role === "ADMIN" && (
+                          <button
+                            onClick={(e) => handleRenameFile(selectedFile, e)}
+                            title="Renommer ce fichier"
+                            aria-label="Renommer ce fichier"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: theme.textSecondary,
+                              cursor: "pointer",
+                              display: "flex",
+                              opacity: 0.6,
+                              padding: 0,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
+                          >
+                            <PencilIcon size={12} />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 12 }}
@@ -1487,6 +1710,7 @@ const EmployeeDetail = () => {
                             <button
                               key={file.id}
                               onClick={() => loadFile(file)}
+                              title={file.file_name}
                               style={{
                                 background:
                                   selectedFile.id === file.id
@@ -1502,9 +1726,13 @@ const EmployeeDetail = () => {
                                 fontSize: 11,
                                 fontWeight: 600,
                                 cursor: "pointer",
+                                maxWidth: 140,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
                               }}
                             >
-                              Page {index + 1}
+                              {stripExt(file.file_name) || `Page ${index + 1}`}
                             </button>
                           ))}
                         </div>
@@ -1570,6 +1798,8 @@ const EmployeeDetail = () => {
           </div>
         )}
       </div>
+      {ConfirmDialog}
+      {PromptDialog}
     </PageBackground>
   );
 };

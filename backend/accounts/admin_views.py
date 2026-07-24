@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import generics, serializers
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsAdmin
 from audit.models import AuditLog
@@ -12,6 +13,7 @@ class UserSerializer(serializers.ModelSerializer):
     scope_directions_nom = serializers.SerializerMethodField()
     scope_departements_nom = serializers.SerializerMethodField()
     scope_services_nom = serializers.SerializerMethodField()
+    scope_types_documents_nom = serializers.SerializerMethodField()
 
     def get_scope_directions_nom(self, obj):
         return list(obj.scope_directions.values_list('nom', flat=True))
@@ -22,6 +24,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_scope_services_nom(self, obj):
         return list(obj.scope_services.values_list('nom', flat=True))
 
+    def get_scope_types_documents_nom(self, obj):
+        return list(obj.scope_types_documents.values_list('nom', flat=True))
+
     class Meta:
         model = User
         fields = [
@@ -29,6 +34,7 @@ class UserSerializer(serializers.ModelSerializer):
             'scope_directions', 'scope_directions_nom',
             'scope_departements', 'scope_departements_nom',
             'scope_services', 'scope_services_nom',
+            'scope_types_documents', 'scope_types_documents_nom',
         ]
         read_only_fields = ['id', 'last_login']
 
@@ -37,7 +43,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['username', 'nom', 'prenom', 'role', 'password']
+        fields = ['id', 'username', 'nom', 'prenom', 'role', 'password']
+        read_only_fields = ['id']
 
     def validate_password(self, value):
         # min_length=10 ci-dessus déjà couvert par MinimumLengthValidator, mais
@@ -77,7 +84,7 @@ class UserListCreateView(generics.ListCreateAPIView):
             details={'username': user.username, 'role': user.role},
         )
 
-class UserUpdateView(generics.UpdateAPIView):
+class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -93,7 +100,6 @@ class UserUpdateView(generics.UpdateAPIView):
         if is_demoting:
             remaining_admins = User.objects.filter(role='ADMIN', is_active=True).exclude(pk=target.pk).count()
             if remaining_admins == 0:
-                from rest_framework.exceptions import ValidationError
                 raise ValidationError("Impossible : c'est le dernier compte ADMIN actif.")
 
         def _scope_snapshot(u):
@@ -102,6 +108,7 @@ class UserUpdateView(generics.UpdateAPIView):
                 'scope_directions': sorted(str(i) for i in u.scope_directions.values_list('id', flat=True)),
                 'scope_departements': sorted(str(i) for i in u.scope_departements.values_list('id', flat=True)),
                 'scope_services': sorted(str(i) for i in u.scope_services.values_list('id', flat=True)),
+                'scope_types_documents': sorted(str(i) for i in u.scope_types_documents.values_list('id', flat=True)),
             }
 
         before = _scope_snapshot(target)
@@ -112,3 +119,18 @@ class UserUpdateView(generics.UpdateAPIView):
                 self.request, AuditLog.Action.MODIFY_USER, target=updated,
                 details={'before': before, 'after': after},
             )
+
+    def perform_destroy(self, instance):
+        if instance.pk == self.request.user.pk:
+            raise ValidationError("Impossible de supprimer votre propre compte.")
+        if instance.role == 'ADMIN':
+            remaining_admins = User.objects.filter(
+                role='ADMIN', is_active=True
+            ).exclude(pk=instance.pk).count()
+            if remaining_admins == 0:
+                raise ValidationError("Impossible : c'est le dernier compte ADMIN actif.")
+        AuditLog.log(
+            self.request, AuditLog.Action.DELETE_USER, target=instance,
+            details={'username': instance.username, 'role': instance.role},
+        )
+        instance.delete()

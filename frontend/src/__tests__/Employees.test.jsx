@@ -272,10 +272,11 @@ describe("Employees — bulk actions", () => {
   };
 
   test("archiver appelle /employees/bulk-delete/ avec action=archive", async () => {
-    window.confirm = jest.fn(() => true);
     api.post.mockResolvedValue({ data: { nb_archives: 1 } });
     await selectFirstEmployee();
     fireEvent.click(screen.getByText(/Archiver \(\d+\)/));
+    await waitFor(() => screen.getByText("Confirmer"));
+    fireEvent.click(screen.getByText("Confirmer"));
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith(
         "/employees/bulk-delete/",
@@ -285,9 +286,10 @@ describe("Employees — bulk actions", () => {
   });
 
   test("annuler la confirmation n'appelle pas l'API", async () => {
-    window.confirm = jest.fn(() => false);
     await selectFirstEmployee();
     fireEvent.click(screen.getByText(/Archiver \(\d+\)/));
+    await waitFor(() => screen.getByText("Annuler"));
+    fireEvent.click(screen.getByText("Annuler"));
     expect(api.post).not.toHaveBeenCalled();
   });
 

@@ -32,6 +32,14 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
     type_document = serializers.CharField(source='type_doc.code', read_only=True)
     type_document_label = serializers.CharField(source='type_doc.nom', read_only=True)
     type_doc_id = serializers.UUIDField(source='type_doc.id', read_only=True)
+    type_document_parent = serializers.SerializerMethodField()
+    # Ordre stable pour l'affichage : celui du type lui-même, ou — s'il
+    # appartient à une catégorie — celui de la catégorie, pour que tout le
+    # groupe reste positionné ensemble peu importe l'ordre des enfants.
+    ordre = serializers.SerializerMethodField()
+    # Ordre propre du type (pour trier les enfants entre eux dans une même
+    # catégorie), distinct de `ordre` qui positionne le groupe entier.
+    type_ordre = serializers.IntegerField(source='type_doc.ordre', read_only=True)
     obligatoire = serializers.BooleanField(source='type_doc.obligatoire', read_only=True)
     file_size_kb = serializers.FloatField(read_only=True)
     nb_fichiers = serializers.IntegerField(read_only=True)
@@ -41,13 +49,20 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
         model = EmployeeDocument
         fields = [
             'id', 'type_doc', 'type_doc_id',
-            'type_document', 'type_document_label', 'obligatoire',
-            'nb_fichiers', 'file_size_kb', 'fichiers',
+            'type_document', 'type_document_label', 'type_document_parent', 'obligatoire',
+            'ordre', 'type_ordre', 'nb_fichiers', 'file_size_kb', 'fichiers',
             'version', 'is_active', 'contrat',
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
             'notes',
         ]
         read_only_fields = ['id', 'version', 'uploaded_by', 'uploaded_at']
+
+    def get_type_document_parent(self, obj):
+        return obj.type_doc.parent.nom if obj.type_doc.parent_id else None
+
+    def get_ordre(self, obj):
+        t = obj.type_doc
+        return t.parent.ordre if t.parent_id else t.ordre
 
 
 # ─── CONTRAT ─────────────────────────────────────────────────────────────────
@@ -114,7 +129,9 @@ class DocumentUploadSerializer(serializers.Serializer):
     EmployeeDocument + N EmployeeDocumentFile.
     """
     type_doc = serializers.PrimaryKeyRelatedField(
-        queryset=TypeDocument.objects.filter(is_active=True)
+        # Seuls les types feuilles (pas de sous-types) sont uploadables —
+        # une catégorie comme "État civil" n'est qu'un regroupement visuel.
+        queryset=TypeDocument.objects.filter(is_active=True, sous_types__isnull=True)
     )
     files = serializers.ListField(
         child=serializers.FileField(),
@@ -185,9 +202,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         return round(obj.nb_types_presents / total * 100)
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):
-    documents = EmployeeDocumentSerializer(
-        many=True, read_only=True, source='documents_actifs'
-    )
+    documents = serializers.SerializerMethodField()
     dossier_complet = serializers.BooleanField(read_only=True)
     taux_completude = serializers.IntegerField(read_only=True)
     created_by_name = serializers.CharField(
@@ -222,18 +237,31 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def get_documents(self, obj):
+        qs = obj.documents_actifs
+        request = self.context.get('request')
+        if request:
+            qs = qs.filter(request.user.document_type_scope_q())
+        return EmployeeDocumentSerializer(qs, many=True).data
+
     def get_documents_manquants(self, obj):
-        tous = TypeDocument.objects.filter(is_active=True)
+        tous = TypeDocument.objects.filter(is_active=True, sous_types__isnull=True)
+        request = self.context.get('request')
+        if request:
+            tous = tous.filter(id__in=request.user.accessible_types_documents_qs())
         presents = set(
             obj.documents.filter(is_active=True).values_list('type_doc_id', flat=True)
         )
-        manquants = tous.exclude(id__in=presents)
+        manquants = tous.select_related('parent').exclude(id__in=presents)
         return [
             {
             'id': str(t.id),
             'code': t.code,
             'label': t.nom,
             'required': t.obligatoire,
+            'parent_nom': t.parent.nom if t.parent_id else None,
+            'ordre': t.parent.ordre if t.parent_id else t.ordre,
+            'type_ordre': t.ordre,
         }
         for t in manquants
     ]

@@ -76,6 +76,40 @@ les comptes existants).
 - UI d'assignation : page `/users`, bouton "Périmètre" (visible pour les comptes CONSULTANT) — cases à cocher en cascade (cocher une Direction filtre les Départements affichés à ceux qu'elle contient, etc.), boutons "Tout"/"Aucun" par niveau.
 - Toute vue qui liste/retrouve des employés, documents ou contrats doit appliquer ce scoping (voir `employees/views.py` : `EmployeeListCreateView`, `EmployeeDetailView`, `FileViewerView`, `DocumentViewerView`, `ContratListCreateView`, `ContratDetailView`, `ContratDocumentListUploadView`, `employee_search`).
 
+### Périmètre indépendant — Types de documents (2026-07-24)
+
+En plus du périmètre organisationnel ci-dessus, un CONSULTANT peut être
+restreint à certains **types de documents** (`User.scope_types_documents`,
+ManyToMany vers `TypeDocument`). Ce périmètre est **indépendant** et se
+combine en **ET** avec le périmètre organisationnel (qui vs quoi) — un
+CONSULTANT restreint aux deux ne voit que les documents des types
+autorisés, pour les employés de son périmètre organisationnel. Aucune
+sélection = accès non restreint (même règle que les 3 champs ci-dessus).
+
+- `User.document_type_scope_q(prefix='type_doc_id')` — Q object pour `.filter()` sur un queryset `EmployeeDocument` (adapter le prefix, ex. `'document__type_doc_id'`, pour un queryset `EmployeeDocumentFile`).
+- `User.can_access_document_type(type_doc_id)` — équivalent objet-par-objet.
+- `User.accessible_types_documents_qs()` — restreint `/ref/types-documents/` (GET) au périmètre.
+- Appliqué dans `DocumentListUploadView`, `ContratDocumentListUploadView`, `FileViewerView`, `DocumentViewerView`, et dans `EmployeeDetailSerializer.get_documents()` / `get_documents_manquants()`.
+- UI d'assignation : même modal "Périmètre" (page `/users`), section séparée "Types de documents" (pas de cascade, juste Tout/Aucun).
+
+---
+
+## Hiérarchie des types de documents — sous-dossiers (2026-07-24)
+
+`TypeDocument` supporte 2 niveaux via un champ auto-référent `parent`
+(`FK('self', null=True, on_delete=SET_NULL, related_name='sous_types')`) :
+une **catégorie** (ex. "État civil", `parent=None`) regroupe des types
+**feuilles** réellement uploadables (ex. "Acte de naissance", "Acte de
+mariage", `parent=<catégorie>`). Une catégorie ne peut pas elle-même avoir
+un parent (validé dans `TypeDocumentSerializer.validate_parent`, 2 niveaux
+max) et n'est jamais rattachable à un `EmployeeDocument`.
+
+- `TypeDocument.is_categorie` (property) — True si le type a des `sous_types` (donc non uploadable).
+- Toute requête qui compte/valide des types "réels" (complétude, `documents_manquants`, queryset d'upload) doit filtrer `sous_types__isnull=True` pour exclure les catégories — voir `Employee.dossier_complet`/`taux_completude`, `DocumentUploadSerializer.type_doc`, `EmployeeListCreateView.get_serializer_context`, `employee_search`.
+- `EmployeeDocumentSerializer.type_document_parent` / `documents_manquants[].parent_nom` — exposent le nom de la catégorie parente pour permettre au frontend de regrouper visuellement.
+- Frontend (`EmployeeDetail.jsx`, `ContratDetail.jsx`) : la sidebar "Documents" regroupe les documents (présents et manquants) par catégorie via `groupDocsByParent()` — un en-tête 📁 précède le premier document de chaque catégorie, les items sont légèrement indentés. Le `<select>` "Ajouter un document" liste les types racine puis les types groupés par `<optgroup>` (catégorie), et exclut toujours les catégories elles-mêmes (`typesDocumentsList` filtré sur `!t.is_categorie`).
+- UI de gestion : `/parametres` → onglet "Types de documents" → champ "Catégorie parente" (optionnel) dans le formulaire d'ajout/édition.
+
 ---
 
 ## Fiche employé — champs additionnels (2026-07-22)

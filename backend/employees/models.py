@@ -136,9 +136,22 @@ class Categorie(models.Model):
         return self.nom
 
 class TypeDocument(models.Model):
+    """
+    Peut être soit une CATÉGORIE (parent=None, sert juste à regrouper
+    visuellement des sous-types — ex. "État civil"), soit un type FEUILLE
+    (utilisable pour un upload réel — ex. "Acte de naissance", enfant de
+    "État civil", ou "Diplôme(s)" qui reste racine sans enfants). Seuls
+    deux niveaux sont autorisés : une catégorie ne peut pas avoir de parent.
+    Seuls les types feuilles comptent dans les statistiques de complétude
+    et peuvent être rattachés à un EmployeeDocument (voir `is_categorie`).
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=150, verbose_name="Nom")
     code = models.CharField(max_length=30, unique=True, verbose_name="Code")
+    parent = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='sous_types', verbose_name="Catégorie parente"
+    )
     obligatoire = models.BooleanField(default=False, verbose_name="Obligatoire")
     is_active = models.BooleanField(default=True, verbose_name="Actif")
     ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
@@ -151,6 +164,12 @@ class TypeDocument(models.Model):
 
     def __str__(self):
         return f"{self.nom} {'*' if self.obligatoire else ''}"
+
+    @property
+    def is_categorie(self):
+        """True si ce type sert uniquement à regrouper des sous-types
+        (jamais rattaché directement à un document)."""
+        return self.sous_types.exists()
 
 # ─── EMPLOYEE ─────────────────────────────────────────────────────────────────
 
@@ -229,7 +248,7 @@ class Employee(models.Model):
     @property
     def dossier_complet(self):
         types_obligatoires = TypeDocument.objects.filter(
-            obligatoire=True, is_active=True
+            obligatoire=True, is_active=True, sous_types__isnull=True
         ).values_list('id', flat=True)
         docs_presents = set(
         self.documents.filter(is_active=True).values_list('type_doc_id', flat=True)
@@ -238,7 +257,7 @@ class Employee(models.Model):
 
     @property
     def taux_completude(self):
-        total = TypeDocument.objects.filter(is_active=True).count()
+        total = TypeDocument.objects.filter(is_active=True, sous_types__isnull=True).count()
         if total == 0:
             return 0
         presents = self.documents.filter(is_active=True).values_list(
@@ -350,7 +369,11 @@ class EmployeeDocument(models.Model):
     class Meta:
         db_table = 'employee_documents'
         verbose_name = "Document employé"
-        ordering = ['-uploaded_at']
+        # Ordre stable basé sur l'ordre d'affichage configuré du type de
+        # document (Paramètres > Types de documents), pas sur la date
+        # d'upload — un ré-upload (nouvelle version) ne doit pas faire
+        # "sauter" le document en haut de la liste.
+        ordering = ['type_doc__ordre', 'type_doc__nom']
 
     def __str__(self):
         return f"{self.employee.matricule} — {self.type_doc.nom} v{self.version}"

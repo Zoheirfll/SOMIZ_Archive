@@ -207,19 +207,54 @@ class CategorieDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class TypeDocumentSerializer(serializers.ModelSerializer):
     nb_documents = serializers.SerializerMethodField()
+    parent_nom = serializers.CharField(source='parent.nom', read_only=True)
+    is_categorie = serializers.BooleanField(read_only=True)
     class Meta:
         model = TypeDocument
-        fields = ['id', 'nom', 'code', 'obligatoire', 'is_active', 'ordre', 'nb_documents']
+        fields = [
+            'id', 'nom', 'code', 'obligatoire', 'is_active', 'ordre',
+            'nb_documents', 'parent', 'parent_nom', 'is_categorie',
+        ]
     def get_nb_documents(self, obj):
         return obj.documents.filter(is_active=True).count()
+
+    def validate(self, attrs):
+        # Une catégorie (qui a des sous-types) n'est jamais uploadable
+        # directement — son propre "obligatoire" n'a donc aucun effet sur le
+        # calcul de complétude (voir sous_types__isnull=True partout ailleurs)
+        # et ne doit pas rester à True en base, pour ne pas induire l'admin
+        # en erreur en pensant que ça impose encore une exigence.
+        if self.instance and self.instance.sous_types.exists():
+            attrs['obligatoire'] = False
+        return attrs
+
+    def validate_parent(self, value):
+        if value is None:
+            return value
+        if self.instance and value.pk == self.instance.pk:
+            raise serializers.ValidationError("Un type ne peut pas être sa propre catégorie parente.")
+        if value.parent_id is not None:
+            raise serializers.ValidationError(
+                "Une catégorie parente ne peut pas elle-même avoir un parent (2 niveaux maximum)."
+            )
+        if self.instance and self.instance.sous_types.exists():
+            raise serializers.ValidationError(
+                "Ce type a déjà des sous-types — il ne peut pas devenir lui-même un sous-type."
+            )
+        return value
 
 class TypeDocumentListCreateView(generics.ListCreateAPIView):
     serializer_class = TypeDocumentSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
-    queryset = TypeDocument.objects.all()
+    def get_queryset(self):
+        if self.request.method == 'POST':
+            return TypeDocument.objects.select_related('parent').all()
+        # Restreint au périmètre d'un CONSULTANT scopé sur les types de
+        # documents — ADMIN et CONSULTANT non scopé voient tout, inchangé.
+        return self.request.user.accessible_types_documents_qs().select_related('parent')
 
 class TypeDocumentDetailView(TypeDocumentDestroyMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TypeDocumentSerializer
     permission_classes = [IsAdmin]
-    queryset = TypeDocument.objects.all()
+    queryset = TypeDocument.objects.select_related('parent').all()

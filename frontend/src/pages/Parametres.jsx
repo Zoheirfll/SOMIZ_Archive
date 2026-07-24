@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon, XIcon, RocketIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import PageBackground from "../components/PageBackground";
+import { useConfirm } from "../components/ConfirmDialog";
 import "../styles/animations.css";
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
@@ -197,7 +198,14 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
             <tr
               key={item.id}
               className="table-row-hover"
-              style={{ borderBottom: `1px solid ${theme.primaryBorder}`, background: idx % 2 === 0 ? theme.surface : "#FAFBFC" }}
+              style={{
+                borderBottom: `1px solid ${theme.primaryBorder}`,
+                background: item.is_categorie
+                  ? "#FFFBEB"
+                  : item.parent_nom
+                    ? "#FFFDF7"
+                    : idx % 2 === 0 ? theme.surface : "#FAFBFC",
+              }}
             >
               {columns.map((c) => (
                 <td
@@ -276,6 +284,7 @@ const TABS = [
 const Parametres = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  const { confirm, ConfirmDialog } = useConfirm();
   const [activeTab, setActiveTab] = useState("directions");
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -339,7 +348,7 @@ const Parametres = () => {
   };
 
   const handleDelete = async (item) => {
-    if (!window.confirm(`Supprimer "${item.nom}" ?`)) return;
+    if (!(await confirm(`Supprimer "${item.nom}" ?`))) return;
     try {
       await api.delete(`/ref/${activeTab}/${item.id}/`);
       showMessage("success", "Supprimé avec succès.");
@@ -428,7 +437,36 @@ const Parametres = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const items = data[activeTab] || [];
+  // Pour les types de documents : au lieu de trier à plat par `ordre` (ce
+  // qui sépare visuellement une catégorie de ses sous-types), on regroupe
+  // chaque catégorie avec ses enfants juste en dessous — la hiérarchie
+  // configurée dans "Catégorie parente" devient enfin visible dans le
+  // tableau, comme dans la sidebar Documents.
+  const sortTypesDocumentsHierarchy = (list) => {
+    const byId = new Map(list.map((t) => [t.id, t]));
+    const children = new Map();
+    list.forEach((t) => {
+      if (t.parent && byId.has(t.parent)) {
+        if (!children.has(t.parent)) children.set(t.parent, []);
+        children.get(t.parent).push(t);
+      }
+    });
+    children.forEach((arr) => arr.sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0)));
+    const roots = list
+      .filter((t) => !t.parent || !byId.has(t.parent))
+      .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+    const ordered = [];
+    roots.forEach((r) => {
+      ordered.push(r);
+      (children.get(r.id) || []).forEach((c) => ordered.push(c));
+    });
+    return ordered;
+  };
+
+  const items =
+    activeTab === "types-documents"
+      ? sortTypesDocumentsHierarchy(data[activeTab] || [])
+      : data[activeTab] || [];
 
   // ─── Colonnes par onglet ───────────────────────────────────────────────────
 
@@ -588,9 +626,34 @@ const Parametres = () => {
         ];
       case "types-documents":
         return [
-          { key: "nom", label: "Nom", bold: true },
+          {
+            key: "nom",
+            label: "Nom",
+            bold: true,
+            render: (i) =>
+              i.parent_nom ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 22 }}>
+                  <span style={{ color: theme.textMuted, fontSize: 13 }}>↳</span>
+                  <span>{i.nom}</span>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {i.is_categorie && <span title="Catégorie">📁</span>}
+                  <span style={{ fontWeight: 700 }}>{i.nom}</span>
+                </div>
+              ),
+          },
           { key: "code", label: "Code", mono: true, primary: true },
-          { key: "ordre", label: "Ordre" },
+          {
+            key: "ordre",
+            label: "Ordre",
+            render: (i) =>
+              i.parent_nom ? (
+                <span style={{ color: theme.textMuted, fontSize: 12 }}>— (suit "{i.parent_nom}")</span>
+              ) : (
+                i.ordre ?? "—"
+              ),
+          },
           {
             key: "obligatoire",
             label: "Obligatoire",
@@ -915,6 +978,26 @@ const Parametres = () => {
               placeholder="ATTESTATION"
             />
 
+            <label style={labelStyle}>Catégorie parente (optionnel)</label>
+            <select
+              name="parent"
+              value={form.parent || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+            >
+              <option value="">-- Aucune (type racine) --</option>
+              {items
+                .filter((t) => !t.parent && t.id !== modal?.item?.id)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nom}
+                  </option>
+                ))}
+            </select>
+            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: -8, marginBottom: 12 }}>
+              Rattacher ce type à une catégorie (ex. "Acte de naissance" sous "État civil") pour l'afficher comme sous-dossier. Un type devenant lui-même une catégorie (une fois qu'il a des sous-types) n'est plus uploadable directement.
+            </div>
+
             <label style={labelStyle}>Ordre d'affichage</label>
             <input
               type="number"
@@ -928,15 +1011,21 @@ const Parametres = () => {
             <label style={labelStyle}>Obligatoire ?</label>
             <select
               name="obligatoire"
-              value={form.obligatoire ?? false}
+              value={modal?.item?.is_categorie ? false : form.obligatoire ?? false}
               onChange={(e) =>
                 setForm({ ...form, obligatoire: e.target.value === "true" })
               }
+              disabled={modal?.item?.is_categorie}
               className="input-focus" style={inputStyle}
             >
               <option value="false">Optionnel</option>
               <option value="true">Obligatoire</option>
             </select>
+            {modal?.item?.is_categorie && (
+              <div style={{ color: theme.warning, fontSize: 11, marginTop: 4, marginBottom: 12 }}>
+                Cette catégorie a des sous-types — elle n'est plus uploadable directement, donc "Obligatoire" n'a aucun effet ici. Marquez le(s) sous-type(s) concerné(s) comme obligatoire(s) à la place.
+              </div>
+            )}
 
             <label style={labelStyle}>Statut</label>
             <select
@@ -1360,6 +1449,7 @@ const Parametres = () => {
           </div>
         </div>
       )}
+      {ConfirmDialog}
     </PageBackground>
   );
 };

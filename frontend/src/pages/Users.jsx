@@ -7,6 +7,7 @@ import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
+import { useConfirm } from "../components/ConfirmDialog";
 
 // SVG icons
 const IconPlus = () => (
@@ -36,6 +37,7 @@ const EyeIcon = ({ open }) => open ? (
 const Users = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  const { confirm, ConfirmDialog } = useConfirm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -66,7 +68,8 @@ const Users = () => {
   const [directions, setDirections] = useState([]);
   const [departements, setDepartements] = useState([]);
   const [services, setServices] = useState([]);
-  const [scopeForm, setScopeForm] = useState({ directions: [], departements: [], services: [] });
+  const [typesDocuments, setTypesDocuments] = useState([]);
+  const [scopeForm, setScopeForm] = useState({ directions: [], departements: [], services: [], types_documents: [] });
   const [savingScope, setSavingScope] = useState(false);
 
   useEffect(() => {
@@ -74,6 +77,7 @@ const Users = () => {
     api.get("/ref/directions/").then((res) => setDirections(res.data.results || res.data)).catch(() => {});
     api.get("/ref/departements/").then((res) => setDepartements(res.data.results || res.data)).catch(() => {});
     api.get("/ref/services/").then((res) => setServices(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/types-documents/").then((res) => setTypesDocuments(res.data.results || res.data)).catch(() => {});
   }, []);
 
   const openScopeModal = (u) => {
@@ -82,6 +86,7 @@ const Users = () => {
       directions: u.scope_directions || [],
       departements: u.scope_departements || [],
       services: u.scope_services || [],
+      types_documents: u.scope_types_documents || [],
     });
   };
 
@@ -141,6 +146,15 @@ const Users = () => {
     });
   };
 
+  const toggleTypeDocument = (id) => {
+    setScopeForm((prev) => {
+      const next = prev.types_documents.includes(id)
+        ? prev.types_documents.filter((x) => x !== id)
+        : [...prev.types_documents, id];
+      return { ...prev, types_documents: next };
+    });
+  };
+
   const selectAllInLevel = (level, items) => {
     setScopeForm((prev) => ({ ...prev, [level]: items.map((item) => item.id) }));
   };
@@ -156,6 +170,7 @@ const Users = () => {
         scope_directions: scopeForm.directions,
         scope_departements: scopeForm.departements,
         scope_services: scopeForm.services,
+        scope_types_documents: scopeForm.types_documents,
       });
       setMessage({ type: "success", text: "Périmètre mis à jour." });
       setScopeModal(null);
@@ -206,16 +221,31 @@ const Users = () => {
     }
     setSaving(true);
     try {
-      await api.post("/admin-users/", {
+      const response = await api.post("/admin-users/", {
         username: form.username,
         nom: form.nom,
         prenom: form.prenom,
         role: form.role,
         password: form.password,
       });
+      const hasScope =
+        form.role === "CONSULTANT" &&
+        (scopeForm.directions.length > 0 ||
+          scopeForm.departements.length > 0 ||
+          scopeForm.services.length > 0 ||
+          scopeForm.types_documents.length > 0);
+      if (hasScope && response.data.id) {
+        await api.patch(`/admin-users/${response.data.id}/`, {
+          scope_directions: scopeForm.directions,
+          scope_departements: scopeForm.departements,
+          scope_services: scopeForm.services,
+          scope_types_documents: scopeForm.types_documents,
+        });
+      }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
       setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", password: "", password2: "" });
+      setScopeForm({ directions: [], departements: [], services: [], types_documents: [] });
       fetchUsers();
     } catch (err) {
       const data = err.response?.data;
@@ -233,6 +263,25 @@ const Users = () => {
       fetchUsers();
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDeleteUser = async (targetUser) => {
+    if (!(await confirm(`Supprimer définitivement le compte "${targetUser.username}" ? Cette action est irréversible.`))) return;
+    try {
+      await api.delete(`/admin-users/${targetUser.id}/`);
+      setMessage({ type: "success", text: `Compte "${targetUser.username}" supprimé.` });
+      fetchUsers();
+    } catch (err) {
+      const data = err.response?.data;
+      const text =
+        data?.error ||
+        data?.detail ||
+        (Array.isArray(data) ? data[0] : null) ||
+        "Erreur lors de la suppression.";
+      setMessage({ type: "error", text });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
     }
   };
 
@@ -300,7 +349,10 @@ const Users = () => {
           </div>
           {isAdmin && (
             <button
-              onClick={() => setShowForm(!showForm)}
+              onClick={() => {
+                if (!showForm) setScopeForm({ directions: [], departements: [], services: [], types_documents: [] });
+                setShowForm(!showForm);
+              }}
               style={{
                 background: "rgba(255,255,255,0.15)",
                 border: "1.5px solid rgba(255,255,255,0.3)",
@@ -416,6 +468,72 @@ const Users = () => {
                 </div>
               </div>
 
+              {form.role === "CONSULTANT" && (
+                <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 20, marginTop: 24 }}>
+                  <div style={{ color: theme.text, fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
+                    Périmètre d'accès (optionnel)
+                  </div>
+                  <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 16 }}>
+                    Aucune case cochée nulle part = accès non restreint. Modifiable plus tard via le bouton "Périmètre".
+                  </div>
+
+                  {[
+                    { level: "directions", label: "Directions", items: directions, onToggle: toggleDirection },
+                    { level: "departements", label: "Départements", items: visibleDepartements, onToggle: toggleDepartement },
+                    { level: "services", label: "Services", items: visibleServices, onToggle: toggleService },
+                    { level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument },
+                  ].map(({ level, label, items, onToggle }) => (
+                    <div key={level} style={{ marginBottom: 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+                        <div style={{ display: "flex", gap: 10 }}>
+                          <button
+                            type="button"
+                            onClick={() => selectAllInLevel(level, items)}
+                            style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                          >
+                            Tout
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => clearLevel(level)}
+                            style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                          >
+                            Aucun
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 10,
+                        maxHeight: 140,
+                        overflowY: "auto",
+                        padding: "8px 12px",
+                        background: theme.bg,
+                      }}>
+                        {items.length === 0 ? (
+                          <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
+                        ) : (
+                          items.map((item) => (
+                            <label
+                              key={item.id}
+                              style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={scopeForm[level].includes(item.id)}
+                                onChange={() => onToggle(item.id)}
+                              />
+                              {item.nom}
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 24 }}>
                 <button
                   type="button"
@@ -525,19 +643,46 @@ const Users = () => {
                         {u.role}
                       </span>
                     </td>
-                    <td style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, maxWidth: 220 }}>
+                    <td style={{ padding: "13px 16px", fontSize: 13, maxWidth: 220 }}>
                       {(() => {
                         if (u.role === "ADMIN") {
                           return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Accès complet</span>;
                         }
-                        const noms = [
-                          ...(u.scope_directions_nom || []),
-                          ...(u.scope_departements_nom || []),
-                          ...(u.scope_services_nom || []),
-                        ];
-                        return noms.length > 0
-                          ? noms.join(", ")
-                          : <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Aucun (accès complet)</span>;
+                        const dirNoms = u.scope_directions_nom || [];
+                        const deptNoms = u.scope_departements_nom || [];
+                        const svcNoms = u.scope_services_nom || [];
+                        const typeNoms = u.scope_types_documents_nom || [];
+                        if (dirNoms.length === 0 && deptNoms.length === 0 && svcNoms.length === 0 && typeNoms.length === 0) {
+                          return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Aucun (accès complet)</span>;
+                        }
+                        const scopePill = (label, count, fullList, color) => (
+                          <span
+                            title={fullList.join(", ")}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              background: `${color}15`,
+                              color,
+                              border: `1px solid ${color}33`,
+                              borderRadius: 20,
+                              padding: "2px 10px",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "default",
+                            }}
+                          >
+                            {label} · {count}
+                          </span>
+                        );
+                        return (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {dirNoms.length > 0 && scopePill("Directions", dirNoms.length, dirNoms, "#166534")}
+                            {deptNoms.length > 0 && scopePill("Départements", deptNoms.length, deptNoms, "#1e40af")}
+                            {svcNoms.length > 0 && scopePill("Services", svcNoms.length, svcNoms, "#6d28d9")}
+                            {typeNoms.length > 0 && scopePill("Types de doc.", typeNoms.length, typeNoms, "#b45309")}
+                          </div>
+                        );
                       })()}
                     </td>
                     <td style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13 }}>
@@ -617,6 +762,24 @@ const Users = () => {
                               }}
                             >
                               Périmètre
+                            </button>
+                          )}
+                          {u.id !== user?.id && (
+                            <button
+                              onClick={() => handleDeleteUser(u)}
+                              style={{
+                                background: theme.dangerBg,
+                                border: `1px solid ${theme.dangerBorder}`,
+                                color: theme.danger,
+                                borderRadius: 8,
+                                padding: "5px 12px",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              Supprimer
                             </button>
                           )}
                         </div>
@@ -814,15 +977,18 @@ const Users = () => {
             style={{
               background: theme.surface,
               borderRadius: 16,
-              padding: 32,
               width: 520,
               maxWidth: "90vw",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
               boxShadow: "0 16px 48px rgba(15,23,42,0.2)",
               border: `1px solid ${theme.border}`,
               fontFamily: theme.fontFamily,
             }}
             onClick={(e) => e.stopPropagation()}
           >
+          <div style={{ padding: "32px 32px 0", overflowY: "auto", flex: 1 }}>
             <h2 style={{ color: theme.text, margin: "0 0 6px", fontSize: 17, fontWeight: 800 }}>
               Périmètre d'accès
             </h2>
@@ -889,7 +1055,63 @@ const Users = () => {
               </div>
             ))}
 
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 16 }}>
+              <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
+                Périmètre indépendant : restreint en plus les <strong>types de documents</strong> visibles (combiné en ET avec le périmètre organisationnel ci-dessus). Aucune case cochée = tous les types visibles.
+              </div>
+              {[{ level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument }].map(({ level, label, items, onToggle }) => (
+                <div key={level}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => selectAllInLevel(level, items)}
+                        style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                      >
+                        Tout
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => clearLevel(level)}
+                        style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                      >
+                        Aucun
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 10,
+                    maxHeight: 140,
+                    overflowY: "auto",
+                    padding: "8px 12px",
+                    background: theme.bg,
+                  }}>
+                    {items.length === 0 ? (
+                      <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
+                    ) : (
+                      items.map((item) => (
+                        <label
+                          key={item.id}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={scopeForm[level].includes(item.id)}
+                            onChange={() => onToggle(item.id)}
+                          />
+                          {item.nom}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", padding: "16px 32px", borderTop: `1px solid ${theme.border}`, flexShrink: 0 }}>
               <button
                 onClick={() => setScopeModal(null)}
                 style={{
@@ -927,6 +1149,7 @@ const Users = () => {
           </div>
         </div>
       )}
+      {ConfirmDialog}
     </PageBackground>
   );
 };

@@ -9,6 +9,7 @@ import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Clipboar
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 
 const STATUT_COLORS = {
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -16,10 +17,20 @@ const STATUT_COLORS = {
   demobilise: { bg: theme.dangerBg,  border: theme.dangerBorder,  color: theme.danger,   label: "Démobilisé" },
 };
 
+// Nom de fichier sans l'extension — l'utilisateur voit "Acte de naissance",
+// pas "Acte de naissance.png" (le type/mime reste géré côté serveur).
+const stripExt = (name) => {
+  if (!name) return name;
+  const dotIndex = name.lastIndexOf(".");
+  return dotIndex > 0 ? name.slice(0, dotIndex) : name;
+};
+
 const ContratDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { confirm, ConfirmDialog } = useConfirm();
+  const { prompt, PromptDialog } = usePrompt();
 
   const [contrat, setContrat] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -96,8 +107,11 @@ const ContratDetail = () => {
       const map = {};
       types.forEach((t) => { map[t.code] = t.nom; });
       setTypesDocuments(map);
-      setTypesDocumentsList(types);
-      if (types.length > 0) setUploadType(types[0].code);
+      // Seuls les types "feuilles" sont uploadables — une catégorie
+      // (ex. "État civil") ne sert qu'à regrouper visuellement.
+      const uploadable = types.filter((t) => !t.is_categorie);
+      setTypesDocumentsList(uploadable);
+      if (uploadable.length > 0) setUploadType(uploadable[0].code);
     } catch (err) {
       console.error(err);
     }
@@ -142,6 +156,53 @@ const ContratDetail = () => {
     if (doc.fichiers?.length > 0) loadFile(doc.fichiers[0]);
   };
 
+  // Regroupe les documents par catégorie parente (ex. "État civil") pour
+  // reconstituer visuellement des sous-dossiers dans la sidebar.
+  const groupDocsByParent = (docs, getParent) => {
+    const root = [];
+    const byParent = new Map();
+    docs.forEach((d) => {
+      const p = getParent(d);
+      if (!p) {
+        root.push(d);
+        return;
+      }
+      if (!byParent.has(p)) byParent.set(p, []);
+      byParent.get(p).push(d);
+    });
+    const ordered = [...root];
+    const headerBefore = new Map();
+    const groupEnd = new Set();
+    byParent.forEach((arr, parent) => {
+      headerBefore.set(arr[0], parent);
+      groupEnd.add(arr[arr.length - 1]);
+      ordered.push(...arr);
+    });
+    return { ordered, headerBefore, groupEnd };
+  };
+
+  const categoryHeaderStyle = {
+    marginTop: 8,
+    padding: "7px 16px",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    background: "#FFFBEB",
+    border: "1px solid #FDE68A",
+    borderBottom: "none",
+    borderRadius: "8px 8px 0 0",
+    color: theme.warning,
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  };
+
+  const categoryRowExtraStyle = {
+    background: "#FFFDF7",
+    borderRight: "1px solid #FDE68A",
+  };
+
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
@@ -169,7 +230,7 @@ const ContratDetail = () => {
 
   const handleDeleteFile = async (file, e) => {
     e.stopPropagation();
-    if (!window.confirm(`Supprimer "${file.file_name}" ?`)) return;
+    if (!(await confirm(`Supprimer "${file.file_name}" ?`))) return;
     try {
       await api.delete(`/files/${file.id}/`);
       setMessage({ type: "success", text: "Fichier supprimé." });
@@ -182,10 +243,32 @@ const ContratDetail = () => {
     }
   };
 
+  const handleRenameFile = async (file, e) => {
+    e?.stopPropagation();
+    const dotIndex = (file.file_name || "").lastIndexOf(".");
+    const baseName = dotIndex > 0 ? file.file_name.slice(0, dotIndex) : file.file_name || "";
+    const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
+    const newBaseName = await prompt("Nouveau nom du fichier :", baseName);
+    if (newBaseName === null || !newBaseName || newBaseName === baseName) return;
+    const newName = `${newBaseName}${ext}`;
+    try {
+      await api.patch(`/files/${file.id}/`, { file_name: newName });
+      setMessage({ type: "success", text: "Fichier renommé." });
+      fetchContrat();
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors du renommage.",
+      });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
   const handleDeleteDoc = async (doc, e) => {
     e.stopPropagation();
     const nomType = typesDocuments[doc.type_document] || doc.type_document;
-    if (!window.confirm(`Supprimer "${nomType} v${doc.version}" et ses ${doc.nb_fichiers} fichier(s) ?`)) return;
+    if (!(await confirm(`Supprimer "${nomType} v${doc.version}" et ses ${doc.nb_fichiers} fichier(s) ?`))) return;
     try {
       await api.delete(`/documents/${doc.id}/`);
       setMessage({ type: "success", text: "Document supprimé." });
@@ -212,6 +295,9 @@ const ContratDetail = () => {
   if (!contrat) return null;
 
   const statutStyle = STATUT_COLORS[contrat.statut] || STATUT_COLORS.actif;
+
+  const { ordered: presentOrdered, headerBefore: presentHeaders, groupEnd: presentGroupEnd } =
+    groupDocsByParent(contrat.documents || [], (d) => d.type_document_parent);
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -406,11 +492,21 @@ const ContratDetail = () => {
               Documents ({contrat.documents?.length || 0})
             </div>
 
-            {contrat.documents?.map((doc) => (
-              <div key={doc.id} style={{
-                borderBottom: `1px solid ${theme.border}`,
-                background: selectedDoc?.id === doc.id ? theme.primaryBg : "transparent",
+            {presentOrdered.map((doc) => (
+              <div key={doc.id}>
+              {presentHeaders.has(doc) && (
+                <div style={categoryHeaderStyle}>📁 {presentHeaders.get(doc)}</div>
+              )}
+              <div style={{
+                borderBottom: `1px solid ${doc.type_document_parent ? "#FDE68A" : theme.border}`,
                 borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : "transparent"}`,
+                ...(doc.type_document_parent ? categoryRowExtraStyle : {}),
+                background: selectedDoc?.id === doc.id
+                  ? theme.primaryBg
+                  : doc.type_document_parent ? "#FFFDF7" : "transparent",
+                ...(presentGroupEnd.has(doc)
+                  ? { borderRadius: "0 0 8px 8px", borderBottom: "1px solid #FDE68A", marginBottom: 10 }
+                  : {}),
               }}>
                 <div
                   onClick={() => handleSelectDoc(doc)}
@@ -422,9 +518,6 @@ const ContratDetail = () => {
                   <div style={{ flex: 1 }}>
                     <div style={{ color: theme.text, fontSize: 13, fontWeight: 600 }}>
                       {typesDocuments[doc.type_document] || doc.type_document}
-                    </div>
-                    <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
-                      v{doc.version} · {doc.nb_fichiers} fichier(s) · {doc.file_size_kb} Ko
                     </div>
                   </div>
                   {user?.role === "ADMIN" && (
@@ -464,13 +557,33 @@ const ContratDetail = () => {
                             {file.mime_type?.includes("pdf") ? <FileTextIcon size={13} /> : <ImageIcon size={13} />}
                           </span>
                           <div>
-                            <div style={{ color: theme.text, fontSize: 12, fontWeight: selectedFile?.id === file.id ? 600 : 400 }}>
-                              Page {index + 1}
+                            <div
+                              title={file.file_name}
+                              style={{
+                                color: theme.text, fontSize: 12, fontWeight: selectedFile?.id === file.id ? 600 : 400,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180,
+                              }}
+                            >
+                              {stripExt(file.file_name) || `Page ${index + 1}`}
                             </div>
                             <div style={{ color: theme.textMuted, fontSize: 10 }}>{file.file_size_kb} Ko</div>
                           </div>
                         </div>
                         {user?.role === "ADMIN" && (
+                          <div style={{ display: "flex", gap: 4 }}>
+                          <button
+                            onClick={(e) => handleRenameFile(file, e)}
+                            title="Renommer ce fichier"
+                            aria-label="Renommer ce fichier"
+                            style={{
+                              background: "transparent", border: "none",
+                              color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.5,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
+                          >
+                            <PencilIcon size={12} />
+                          </button>
                           <button
                             onClick={(e) => handleDeleteFile(file, e)}
                             title="Supprimer ce fichier"
@@ -484,11 +597,13 @@ const ContratDetail = () => {
                           >
                             <TrashIcon size={12} />
                           </button>
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
                 )}
+              </div>
               </div>
             ))}
 
@@ -516,8 +631,22 @@ const ContratDetail = () => {
                     background: theme.surface, marginBottom: 8, outline: "none",
                   }}
                 >
-                  {typesDocumentsList.map((t) => (
+                  {typesDocumentsList.filter((t) => !t.parent_nom).map((t) => (
                     <option key={t.code} value={t.code}>{t.nom}</option>
+                  ))}
+                  {Object.entries(
+                    typesDocumentsList
+                      .filter((t) => t.parent_nom)
+                      .reduce((acc, t) => {
+                        (acc[t.parent_nom] = acc[t.parent_nom] || []).push(t);
+                        return acc;
+                      }, {}),
+                  ).map(([label, items]) => (
+                    <optgroup key={label} label={label}>
+                      {items.map((t) => (
+                        <option key={t.code} value={t.code}>{t.nom}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <label style={{
@@ -564,6 +693,32 @@ const ContratDetail = () => {
                     <span style={{ color: theme.textSecondary, fontSize: 12, marginLeft: 8 }}>
                       {selectedFile.file_size_kb} Ko
                     </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
+                      <span
+                        title={selectedFile.file_name}
+                        style={{
+                          color: theme.textSecondary, fontSize: 12,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260,
+                        }}
+                      >
+                        {stripExt(selectedFile.file_name)}
+                      </span>
+                      {user?.role === "ADMIN" && (
+                        <button
+                          onClick={(e) => handleRenameFile(selectedFile, e)}
+                          title="Renommer ce fichier"
+                          aria-label="Renommer ce fichier"
+                          style={{
+                            background: "transparent", border: "none",
+                            color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.6, padding: 0,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                          onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
+                        >
+                          <PencilIcon size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {selectedDoc?.fichiers?.length > 1 && (
@@ -572,14 +727,16 @@ const ContratDetail = () => {
                           <button
                             key={file.id}
                             onClick={() => loadFile(file)}
+                            title={file.file_name}
                             style={{
                               background: selectedFile.id === file.id ? theme.primary : theme.primaryBg,
                               border: `1px solid ${theme.border}`,
                               color: selectedFile.id === file.id ? "#fff" : theme.primary,
                               borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                              maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                             }}
                           >
-                            Page {index + 1}
+                            {stripExt(file.file_name) || `Page ${index + 1}`}
                           </button>
                         ))}
                       </div>
@@ -626,6 +783,8 @@ const ContratDetail = () => {
           </div>
         </div>
       </div>
+      {ConfirmDialog}
+      {PromptDialog}
     </PageBackground>
   );
 };

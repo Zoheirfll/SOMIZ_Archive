@@ -7,7 +7,7 @@ import mimetypes
 import os
 import magic
 from django.conf import settings
-from django.db.models import Q, Count, OuterRef, Subquery
+from django.db.models import Q, Count, Exists, OuterRef, Subquery
 from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
 from rest_framework import generics, status, filters
@@ -33,6 +33,7 @@ from employees.serializers import (
     EmployeeCreateUpdateSerializer,
     DocumentUploadSerializer,
     EmployeeDocumentSerializer,
+    EmployeeDocumentFileSerializer,
     ContratListSerializer,
     ContratDetailSerializer,
     ContratCreateUpdateSerializer,
@@ -95,8 +96,10 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
                 Q(nom__icontains=q) |
                 Q(prenom__icontains=q) |
                 Q(matricule__icontains=q) |
-                Q(contrats__numero_contrat__icontains=q)
-            ).distinct()
+                Q(Exists(Contrat.objects.filter(
+                    employee=OuterRef('pk'), numero_contrat__icontains=q
+                )))
+            )
         if service:
             qs = qs.filter(service=service)
         if dept:
@@ -114,9 +117,11 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         if self.request.method == 'GET':
-            context['types_total'] = TypeDocument.objects.filter(is_active=True).count()
+            context['types_total'] = TypeDocument.objects.filter(
+                is_active=True, sous_types__isnull=True
+            ).count()
             context['types_obligatoires_total'] = TypeDocument.objects.filter(
-                obligatoire=True, is_active=True
+                obligatoire=True, is_active=True, sous_types__isnull=True
             ).count()
         return context
 
@@ -302,7 +307,9 @@ class DocumentListUploadView(APIView):
             raise Http404("Employé introuvable.")
         docs = EmployeeDocument.objects.filter(
             employee=employee, is_active=True
-        ).select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
+        ).filter(request.user.document_type_scope_q()).select_related(
+            'uploaded_by', 'type_doc'
+        ).prefetch_related('fichiers')
         serializer = EmployeeDocumentSerializer(docs, many=True)
         return Response(serializer.data)
 
@@ -385,6 +392,8 @@ class FileViewerView(APIView):
 
         if not request.user.can_access_employee(file_obj.document.employee):
             raise Http404
+        if not request.user.can_access_document_type(file_obj.document.type_doc_id):
+            raise Http404
 
         if not file_obj.file or not os.path.exists(file_obj.file.path):
             return Response(
@@ -421,9 +430,36 @@ class FileViewerView(APIView):
         return response
 
 
-class FileDeleteView(APIView):
-    """DELETE /api/files/{file_id}/ — ADMIN uniquement"""
+class FileDetailView(APIView):
+    """
+    PATCH  /api/files/{file_id}/ — renomme le fichier (ADMIN uniquement)
+    DELETE /api/files/{file_id}/ — supprime définitivement (ADMIN uniquement)
+    """
     permission_classes = [IsAdmin]
+
+    def patch(self, request, file_id):
+        try:
+            file_obj = EmployeeDocumentFile.objects.get(pk=file_id)
+        except EmployeeDocumentFile.DoesNotExist:
+            raise Http404
+
+        new_name = (request.data.get('file_name') or '').strip()
+        if not new_name:
+            return Response({'error': 'Le nom du fichier ne peut pas être vide.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_name) > 255:
+            return Response({'error': 'Nom trop long (255 caractères max).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        old_name = file_obj.file_name
+        file_obj.file_name = new_name
+        file_obj.save(update_fields=['file_name'])
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC,
+            target=file_obj.document,
+            details={'ancien_nom': old_name, 'nouveau_nom': new_name}
+        )
+
+        return Response(EmployeeDocumentFileSerializer(file_obj).data)
 
     def delete(self, request, file_id):
         try:
@@ -471,6 +507,8 @@ class DocumentViewerView(APIView):
             raise Http404("Document introuvable.")
 
         if not request.user.can_access_employee(doc.employee):
+            raise Http404("Document introuvable.")
+        if not request.user.can_access_document_type(doc.type_doc_id):
             raise Http404("Document introuvable.")
 
         # Le fichier physique vit sur EmployeeDocumentFile (un document peut
@@ -649,7 +687,9 @@ class ContratDocumentListUploadView(APIView):
             raise Http404
         docs = EmployeeDocument.objects.filter(
             contrat=contrat, is_active=True
-        ).select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
+        ).filter(request.user.document_type_scope_q()).select_related(
+            'uploaded_by', 'type_doc'
+        ).prefetch_related('fichiers')
         serializer = EmployeeDocumentSerializer(docs, many=True)
         return Response(serializer.data)
 
@@ -743,8 +783,10 @@ def employee_search(request):
     ).filter(request.user.employee_scope_q())[:10]
 
     context = {
-        'types_total': TypeDocument.objects.filter(is_active=True).count(),
-        'types_obligatoires_total': TypeDocument.objects.filter(obligatoire=True, is_active=True).count(),
+        'types_total': TypeDocument.objects.filter(is_active=True, sous_types__isnull=True).count(),
+        'types_obligatoires_total': TypeDocument.objects.filter(
+            obligatoire=True, is_active=True, sous_types__isnull=True
+        ).count(),
     }
     return Response(EmployeeListSerializer(employees, many=True, context=context).data)
 

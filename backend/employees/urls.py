@@ -7,7 +7,7 @@ from employees.views import (
     DocumentListUploadView,
     DocumentViewerView,
     FileViewerView,
-    FileDeleteView,
+    FileDetailView,
     DocumentDeleteView,
     employee_search,
     EmployeeBulkDeleteView,
@@ -43,5 +43,5 @@ urlpatterns = [
 
     # Fichiers individuels
     path('files/<uuid:file_id>/view/', FileViewerView.as_view(), name='file-view'),
-    path('files/<uuid:file_id>/', FileDeleteView.as_view(), name='file-delete'),
+    path('files/<uuid:file_id>/', FileDetailView.as_view(), name='file-detail'),
 ]
