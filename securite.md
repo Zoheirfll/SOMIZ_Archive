@@ -465,6 +465,47 @@ Les migrations en production seraient alors lancées avec un compte séparé (ou
 
 ---
 
+## 26. Re-vérification complète des points 1 à 25 (2026-07-25) — ⚠️ 1 point trouvé et corrigé
+
+**Demande** : repasser sur **tous** les points précédents, pas seulement l'audit ciblé du point 25, pour confirmer qu'aucun n'a régressé après le chantier "Champs personnalisés"/colonnes configurables.
+
+**Méthode** : relecture point par point + greps ciblés sur tout `frontend/src` et `backend/` (hors `venv/`) pour les motifs déjà identifiés comme sensibles dans ce document (`dangerouslySetInnerHTML`/`eval`, `no_log`, `str(e)` non catché, secrets en dur, `permission_classes` manquants).
+
+**Résultat point par point :**
+
+| # | Point | Statut |
+|---|---|---|
+| 1 | XSS | ✅ Intact — aucun nouveau sink (`dangerouslySetInnerHTML`/`innerHTML`/`eval`) introduit dans les nouveaux fichiers/composants. |
+| 2 | Rate limiting (Redis) | ✅ Intact — `settings.py` non touché par ce chantier. |
+| 3 | Secrets en dur | ✅ Intact — aucun secret introduit (les seuls faux positifs du grep sont des messages d'erreur de formulaire `Users.jsx`, pas des secrets). |
+| 4 | Authentification manquante | ✅ Intact — toutes les nouvelles vues (`ChampPersonnaliseListCreateView/DetailView`, `SystemFieldLabelListView/UpdateView`, `EmployeeChampsPersonnalisesView`) déclarent explicitement `permission_classes`/`get_permissions()` (vérifié ligne par ligne, voir extraits ci-dessus). |
+| 5 | Mots de passe | ✅ Intact — aucun champ mot de passe touché. |
+| 6 | IDOR / `no_log` | ✅ Intact — grep `no_log` dans `employees/` : zéro résultat, le bypass reste supprimé. |
+| 7 | Fichiers média | ✅ Intact — aucun changement sur `document_upload_path`/upload de fichiers. |
+| 8 | Input validation (CSV) | ✅ Intact + renforcé — `_check_csv_size`, gestion `(v or '').strip()` et `logger.exception()` toujours en place dans `import_views.py` après la dynamisation ; voir aussi la nouvelle faille ci-dessous (§ Faille trouvée). |
+| 9 | Variables d'environnement | ✅ Intact — aucun fichier `.env`/`.env.example` touché. |
+| 10 | Dépendances vulnérables | ✅ Intact — aucune nouvelle dépendance ajoutée à `requirements.txt`/`package.json` par ce chantier. |
+| 11 | CSRF / CORS | ✅ Intact — les nouvelles vues DRF héritent des mêmes classes d'authentification globales (`JWTCookieAuthentication` + `enforce_csrf()`), aucune vue n'a été déclarée avec des `authentication_classes` custom contournant le CSRF. |
+| 12 | Logs / session | ✅ Intact — aucun nouveau `except Exception`/`str(e)` renvoyé au client dans le code applicatif (grep limité aux occurrences hors `venv/`, seules des libs tierces remontent). |
+| 13 | SSRF / race conditions | ⚠️ Point mineur documenté (non bloquant) — voir ci-dessous. |
+| 14 | Rate-limiting par endpoint | ✅ Intact — les nouveaux endpoints (`/ref/champs-personnalises/`, `/ref/system-field-labels/`, `/employees/{id}/champs/`) ne servent aucun fichier/contenu volumineux, restent sous le throttle global `user` (200/min) comme le reste des CRUD référentiels — pas besoin d'un scope dédié comme `consultation`. |
+| 15–17, 19, 22, 23 | Infra / charge / MFA / DB privileges / backups / supply chain | ✅ Sans objet — aucun changement dans ces domaines cette session, verdicts déjà documentés inchangés. |
+| 18 | Timing attack login | ✅ Intact — `LoginView`/`LockoutModelBackend` non touchés. |
+| 20 | Purge RGPD | ✅ Intact — `EmployeeChampValeur` suit une simple `CASCADE` avec `Employee` (pas de rétention indépendante à gérer), cohérent avec l'absence de purge déjà documentée. |
+| 21 | En-têtes de sécurité | ✅ Intact — `PermissionsPolicyMiddleware` non touché. |
+| 24 | Scoping CONSULTANT | ✅ Reconfirmé — `champs_personnalises` sur `EmployeeListSerializer` ne fait que réexposer dans la liste des données déjà accessibles via le détail pour un employé dans le périmètre (voir point 25). |
+| 25 | Collision de code champ personnalisé | ✅ Corrigé ce jour (voir point 25 ci-dessus). |
+
+**⚠️ Faille supplémentaire trouvée en creusant le point 8/13** : `EmployeeChampsPersonnalisesView.patch()` ([`employees/views.py`](backend/employees/views.py)) faisait un `update_or_create()` directement sur `request.data.items()` **sans valider la longueur de la valeur** envoyée pour un champ personnalisé — `EmployeeChampValeur.valeur` est un `CharField(max_length=500)`, donc une valeur plus longue provoquait une `DataError` Postgres non rattrapée (500 non géré, contrairement au pattern déjà en place pour les autres vues depuis le point 8/12 — logguée mais pas de message générique propre au client). Impact limité (ADMIN uniquement) mais incohérent avec le reste de l'API qui valide systématiquement la longueur des champs via les serializers `ModelSerializer` (cette vue n'en utilise pas).
+
+**Correctif appliqué (avec accord préalable)** : ajout d'une vérification explicite `len(valeur) > 500` avant l'upsert, retournant un 400 avec message clair au lieu de laisser Postgres lever une erreur non gérée. 188/188 tests backend toujours au vert après le correctif.
+
+**Point mineur documenté, non corrigé (§13)** : `EmployeeChampValeur.objects.update_or_create()` dans cette même vue n'est pas englobé dans `transaction.atomic()`/`select_for_update()` — deux `PATCH` strictement concurrents sur le même `(employee, champ)` pourraient théoriquement lever une `IntegrityError` sur la contrainte `unique_together` plutôt que de s'enchaîner proprement. Vue réservée à l'ADMIN, usage typiquement séquentiel (un formulaire à la fois) — risque très faible, dans la même veine que le résidu déjà documenté au point 13 pour le premier upload de document. Non corrigé, à réévaluer si l'usage change (ex. édition multi-onglets simultanée).
+
+**Verdict global : 24 des 25 points précédents confirmés intacts sans régression ; 1 faille réelle supplémentaire trouvée et corrigée (validation de longueur manquante sur `EmployeeChampsPersonnalisesView`) ; 1 point mineur documenté sans correctif (race condition à très faible risque, ADMIN-only).**
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

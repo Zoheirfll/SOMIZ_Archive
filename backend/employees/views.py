@@ -309,9 +309,18 @@ class EmployeeChampsPersonnalisesView(APIView):
             champ = champs.get(str(champ_id))
             if not champ:
                 continue
+            valeur = (valeur or '').strip()
+            # EmployeeChampValeur.valeur est un CharField(max_length=500) —
+            # rejeter explicitement plutôt que de laisser Postgres lever une
+            # erreur non gérée (DataError -> 500) sur une valeur trop longue.
+            if len(valeur) > 500:
+                return Response(
+                    {'error': f"Valeur trop longue pour le champ « {champ.nom} » (500 caractères max)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             obj, _ = EmployeeChampValeur.objects.update_or_create(
                 employee=employee, champ=champ,
-                defaults={'valeur': (valeur or '').strip()},
+                defaults={'valeur': valeur},
             )
             details[champ.code] = obj.valeur
 
