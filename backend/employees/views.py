@@ -26,6 +26,8 @@ from employees.models import (
     EmployeeDocumentFile,
     TypeDocument,
     Contrat,
+    ChampPersonnalise,
+    EmployeeChampValeur,
 )
 from employees.serializers import (
     EmployeeListSerializer,
@@ -53,7 +55,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
     'nom', 'prenom', 'matricule', 'statut',
     'direction__nom', 'departement__nom',
     'service__nom', 'poste__nom', 'type_contrat__nom',
-    'date_embauche',
+    'date_embauche', 'date_naissance',
     ]
     ordering = ['nom']
 
@@ -64,6 +66,8 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
 
         qs = Employee.objects.select_related(
             'direction', 'departement', 'service', 'poste', 'type_contrat'
+        ).prefetch_related(
+            'valeurs_personnalisees__champ'
         ).filter(self.request.user.employee_scope_q()).annotate(
             nb_documents=Count(
                 'documents', filter=Q(documents__is_active=True), distinct=True
@@ -145,7 +149,7 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     PATCH  /api/employees/{id}/   → Modifier (ADMIN only)
     DELETE /api/employees/{id}/   → Soft delete (ADMIN only)
     """
-    queryset = Employee.objects.prefetch_related('documents')
+    queryset = Employee.objects.prefetch_related('documents', 'valeurs_personnalisees')
 
     def get_queryset(self):
         # 404 (pas 403) pour un employé hors périmètre — ne pas confirmer
@@ -282,6 +286,42 @@ class EmployeePhotoView(APIView):
                 target=employee,
                 details={'action': 'delete_photo'}
             )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EmployeeChampsPersonnalisesView(APIView):
+    """
+    PATCH /api/employees/{id}/champs/ — ADMIN uniquement.
+    Payload : { "<champ_id>": "valeur", ... } — un upsert par champ actif
+    fourni. Un champ omis dans le payload n'est pas touché.
+    """
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, pk):
+        try:
+            employee = Employee.objects.get(pk=pk)
+        except Employee.DoesNotExist:
+            raise Http404
+
+        champs = {str(c.id): c for c in ChampPersonnalise.objects.filter(is_active=True)}
+        details = {}
+        for champ_id, valeur in request.data.items():
+            champ = champs.get(str(champ_id))
+            if not champ:
+                continue
+            obj, _ = EmployeeChampValeur.objects.update_or_create(
+                employee=employee, champ=champ,
+                defaults={'valeur': (valeur or '').strip()},
+            )
+            details[champ.code] = obj.valeur
+
+        if details:
+            AuditLog.log(
+                request, AuditLog.Action.MODIFY_EMP,
+                target=employee,
+                details={'champs_personnalises': details}
+            )
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -1,7 +1,7 @@
 # SOMIZ — Journal de vérification sécurité
 
 Suivi des points de sécurité vérifiés à la demande, un par un.
-Dernière mise à jour : 2026-07-20.
+Dernière mise à jour : 2026-07-25.
 
 ---
 
@@ -441,6 +441,27 @@ Les migrations en production seraient alors lancées avec un compte séparé (ou
 **Bug préexistant découvert en testant (hors périmètre, non corrigé)** : `DocumentViewerView` (`/api/documents/{id}/view/`) référence `doc.file`, un attribut qui n'existe pas sur `EmployeeDocument` (le fichier réel vit sur `EmployeeDocumentFile`, exposé via `FileViewerView`/`/api/files/{id}/view/`). Cet endpoint était déjà cassé avant ce chantier — confirmé que le frontend ne l'utilise jamais (seul `/files/{id}/view/` est appelé), donc aucun risque de sécurité actif, juste du code mort. Signalé, pas corrigé (hors sujet du scoping).
 
 **Verdict : gap de conception résolu — le scoping organisation-wide est maintenant une vraie fonctionnalité opérationnelle, optionnelle par compte, rétrocompatible par défaut.**
+
+---
+
+## 25. Audit du chantier "Champs personnalisés" / colonnes configurables (2026-07-25) — ⚠️ Faille trouvée et corrigée
+
+**Contexte** : audit ciblé sur tout ce qui a été ajouté dans ce chantier — `ChampPersonnalise`/`EmployeeChampValeur` (EAV), migration RIB/NIN/Groupe sanguin/N° Sécu, `SystemFieldLabel` (renommage cosmétique), import CSV rendu dynamique (`champs_actifs` matché par `code.lower()`), et l'exposition de nouveaux champs dans `EmployeeListSerializer` (colonnes configurables `/employees`).
+
+**Périmètre vérifié** : `employees/models.py` (`ChampPersonnalise`, `EmployeeChampValeur`, `SystemFieldLabel`), `employees/referentiel_views.py` (CRUD champs personnalisés, libellés système), `employees/views.py` (`EmployeeChampsPersonnalisesView`, `EmployeeListCreateView`), `employees/serializers.py` (`EmployeeListSerializer`, `EmployeeDetailSerializer`), `employees/import_views.py` (import CSV dynamique).
+
+**Sain :**
+- `EmployeeChampsPersonnalisesView.patch()` (`/api/employees/<id>/champs/`) : `IsAdmin` uniquement, tracé dans `AuditLog` (`MODIFY_EMP`, détail `champs_personnalises`) — cohérent avec le reste des mutations employé.
+- `SystemFieldLabelUpdateView.put()` : `IsAdmin` uniquement ; `SystemFieldLabelListView` (`GET`) : `IsAdminOrConsultant` — ne renvoie que des libellés cosmétiques (`code`/`label`), aucune donnée employé, lecture par CONSULTANT sans risque.
+- Nouveaux champs exposés par `EmployeeListSerializer` (`date_naissance`, `date_embauche`, `categorie_nom`, `champs_personnalises`) : déjà accessibles à un CONSULTANT via `EmployeeDetailSerializer` pour tout employé dans son périmètre — les colonnes configurables de la liste n'ouvrent aucun accès nouveau, seulement un raccourci d'affichage sur des données déjà consultables. Le filtrage par périmètre (`employee_scope_q()`) s'applique toujours en amont dans `EmployeeListCreateView.get_queryset()`.
+- `EmployeeChampValeur`/`ChampPersonnalise` non exposés en dehors du scoping employé existant — `get_champs_personnalises()` (liste et détail) ne fait qu'un prefetch, pas de requête indépendante contournant le queryset scopé.
+- CSV import : ADMIN uniquement (`EmployeeImportView.permission_classes`), taille de fichier toujours vérifiée (`_check_csv_size`), gestion d'erreur générique déjà en place (points 8/12) — la dynamisation par `champs_actifs` ne réintroduit aucune des 3 failles déjà corrigées au point 8.
+
+**⚠️ Faille trouvée** : `ChampPersonnaliseSerializer` (création/modification d'un champ personnalisé, ADMIN via `/parametres`) n'empêchait pas un `code` identique (insensible à la casse) à un champ structurel réservé (`statut`, `poste`, `direction`, `date_embauche`, etc.). Comme l'import CSV construit désormais `champs_actifs = {code.lower(): champ}` à partir de **tous** les `ChampPersonnalise` actifs (voir section "Champs personnalisés" de `CLAUDE.md`), un ADMIN créant par erreur (ou malveillance interne) un champ personnalisé de code `STATUT` aurait fait entrer en collision silencieuse la colonne CSV `statut` (fixe, `Employee.statut`) avec ce nouveau champ dynamique — comportement d'import imprévisible selon l'ordre de traitement, potentiellement une écriture de valeur dans le mauvais champ ou une valeur silencieusement ignorée.
+
+**Correctif appliqué (avec accord préalable)** : `ChampPersonnaliseSerializer.validate_code()` ([`employees/referentiel_views.py`](backend/employees/referentiel_views.py)) rejette désormais (400, message explicite) tout `code` correspondant — insensible à la casse — à un des 13 champs structurels réservés (`RESERVED_CHAMP_CODES` : `matricule`, `numero_contrat`, `nom`, `prenom`, `date_naissance`, `date_embauche`, `statut`, `direction`, `departement`, `service`, `poste`, `type_contrat`, `categorie`). Vérifié : les 4 codes legacy migrés (`RIB`, `NUM_SECU`, `GROUPE_SANGUIN`, `NIN`) ne collisionnent avec aucun de ces noms, aucune migration de données nécessaire. 188/188 tests backend toujours au vert après le correctif.
+
+**Verdict : faille réelle (collision de nom exploitable via l'import CSV dynamique), corrigée. Le reste du chantier (EAV, renommage de libellé, colonnes configurables) ne réintroduit aucune régression sur le scoping, l'audit ou les permissions déjà en place.**
 
 ---
 

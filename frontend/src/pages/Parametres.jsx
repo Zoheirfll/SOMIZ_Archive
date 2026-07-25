@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon, XIcon, RocketIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import PageBackground from "../components/PageBackground";
-import { useConfirm } from "../components/ConfirmDialog";
+import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import "../styles/animations.css";
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
@@ -130,7 +130,7 @@ const labelStyle = {
 
 // ─── TABLEAU GÉNÉRIQUE ────────────────────────────────────────────────────────
 
-const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
+const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, isAdmin }) => (
   <div
     style={{
       background: theme.surface,
@@ -200,11 +200,13 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
               className="table-row-hover"
               style={{
                 borderBottom: `1px solid ${theme.primaryBorder}`,
-                background: item.is_categorie
-                  ? "#FFFBEB"
-                  : item.parent_nom
-                    ? "#FFFDF7"
-                    : idx % 2 === 0 ? theme.surface : "#FAFBFC",
+                background: item.system
+                  ? "#F1F5F9"
+                  : item.is_categorie
+                    ? "#FFFBEB"
+                    : item.parent_nom
+                      ? "#FFFDF7"
+                      : idx % 2 === 0 ? theme.surface : "#FAFBFC",
               }}
             >
               {columns.map((c) => (
@@ -223,6 +225,41 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
               ))}
               {isAdmin && (
                 <td style={{ padding: "11px 16px" }}>
+                  {item.system ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span
+                        title="Champ système — structure verrouillée pour préserver le fonctionnement de l'application"
+                        style={{
+                          color: theme.textMuted,
+                          fontSize: 11,
+                          fontStyle: "italic",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        🔒 Système
+                      </span>
+                      {onRenameSystem && (
+                        <button
+                          onClick={() => onRenameSystem(item)}
+                          title="Renommer le libellé affiché (n'affecte pas la structure)"
+                          aria-label="Renommer"
+                          style={{
+                            background: theme.primaryBg,
+                            border: `1px solid ${theme.primaryBorder}`,
+                            color: theme.primary,
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            display: "flex",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <PencilIcon size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
                       onClick={() => onEdit(item)}
@@ -257,6 +294,7 @@ const RefTable = ({ items, columns, onEdit, onDelete, loading, isAdmin }) => (
                       <TrashIcon size={13} />
                     </button>
                   </div>
+                  )}
                 </td>
               )}
             </tr>
@@ -277,6 +315,26 @@ const TABS = [
   { key: "types-contrat", label: "Types de contrat" },
   { key: "categories", label: "Catégories" },
   { key: "types-documents", label: "Types de documents" },
+  { key: "champs-personnalises", label: "Champs personnalisés" },
+];
+
+// Champs "système" de la fiche employé — pilotent le scoping/périmètre RGPD,
+// l'archivage, la recherche ou la logique métier (voir CLAUDE.md). Affichés
+// dans l'onglet "Champs personnalisés" pour vue d'ensemble complète, mais
+// jamais modifiables/supprimables depuis cet écran (`system: true`).
+const SYSTEM_FIELDS = [
+  { id: "sys-matricule", nom: "Matricule", code: "matricule", type_champ: "texte", system: true },
+  { id: "sys-nom", nom: "Nom", code: "nom", type_champ: "texte", system: true },
+  { id: "sys-prenom", nom: "Prénom", code: "prenom", type_champ: "texte", system: true },
+  { id: "sys-statut", nom: "Statut", code: "statut", type_champ: "texte", system: true },
+  { id: "sys-direction", nom: "Direction", code: "direction", type_champ: "référentiel", system: true },
+  { id: "sys-departement", nom: "Département", code: "departement", type_champ: "référentiel", system: true },
+  { id: "sys-service", nom: "Service", code: "service", type_champ: "référentiel", system: true },
+  { id: "sys-poste", nom: "Fonction", code: "poste", type_champ: "référentiel", system: true },
+  { id: "sys-type_contrat", nom: "Type de contrat", code: "type_contrat", type_champ: "référentiel", system: true },
+  { id: "sys-categorie", nom: "Catégorie", code: "categorie", type_champ: "référentiel", system: true },
+  { id: "sys-date_naissance", nom: "Date de naissance", code: "date_naissance", type_champ: "date", system: true },
+  { id: "sys-date_embauche", nom: "Date de recrutement", code: "date_embauche", type_champ: "date", system: true },
 ];
 
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
@@ -285,6 +343,8 @@ const Parametres = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const { confirm, ConfirmDialog } = useConfirm();
+  const { prompt, PromptDialog } = usePrompt();
+  const [systemLabels, setSystemLabels] = useState({});
   const [activeTab, setActiveTab] = useState("directions");
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -306,7 +366,28 @@ const Parametres = () => {
     // Charger directions et départements pour les selects
     fetchDirections();
     fetchDepartements();
+    if (activeTab === "champs-personnalises") fetchSystemLabels();
   }, [activeTab]);
+
+  const fetchSystemLabels = async () => {
+    try {
+      const r = await api.get("/ref/system-field-labels/");
+      const list = r.data.results || r.data;
+      setSystemLabels(Object.fromEntries(list.map((l) => [l.code, l.label])));
+    } catch {}
+  };
+
+  const handleRenameSystemField = async (item) => {
+    const newLabel = await prompt("Nouveau libellé affiché :", systemLabels[item.code] || item.nom);
+    if (newLabel === null) return;
+    try {
+      await api.put(`/ref/system-field-labels/${item.code}/`, { label: newLabel.trim() });
+      showMessage("success", "Libellé mis à jour.");
+      fetchSystemLabels();
+    } catch (err) {
+      showMessage("error", "Impossible de mettre à jour le libellé.");
+    }
+  };
 
   const fetchDirections = async () => {
     try {
@@ -466,7 +547,12 @@ const Parametres = () => {
   const items =
     activeTab === "types-documents"
       ? sortTypesDocumentsHierarchy(data[activeTab] || [])
-      : data[activeTab] || [];
+      : activeTab === "champs-personnalises"
+        ? [
+            ...SYSTEM_FIELDS.map((f) => ({ ...f, nom: systemLabels[f.code] || f.nom })),
+            ...(data[activeTab] || []),
+          ]
+        : data[activeTab] || [];
 
   // ─── Colonnes par onglet ───────────────────────────────────────────────────
 
@@ -698,6 +784,43 @@ const Parametres = () => {
                 {i.is_active ? "Actif" : "Inactif"}
               </span>
             ),
+          },
+        ];
+      case "champs-personnalises":
+        return [
+          { key: "nom", label: "Nom", bold: true },
+          { key: "code", label: "Code", mono: true, primary: true },
+          {
+            key: "type_champ",
+            label: "Type",
+            render: (i) => (
+              <span style={{ color: theme.textSecondary, fontSize: 12, textTransform: "capitalize" }}>
+                {i.type_champ}
+              </span>
+            ),
+          },
+          { key: "ordre", label: "Ordre", render: (i) => (i.system ? "—" : i.ordre) },
+          {
+            key: "is_active",
+            label: "Statut",
+            render: (i) =>
+              i.system ? (
+                <span style={{ color: theme.textMuted, fontSize: 11, fontStyle: "italic" }}>—</span>
+              ) : (
+                <span
+                  style={{
+                    background: i.is_active ? theme.primaryBg : theme.dangerBg,
+                    color: i.is_active ? theme.primary : theme.danger,
+                    border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
+                    borderRadius: 6,
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                >
+                  {i.is_active ? "Actif" : "Inactif"}
+                </span>
+              ),
           },
         ];
       default:
@@ -1042,6 +1165,71 @@ const Parametres = () => {
           </>
         );
 
+      case "champs-personnalises":
+        return (
+          <>
+            <label style={labelStyle}>
+              Nom <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <input
+              name="nom"
+              value={form.nom || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="Permis de conduire"
+            />
+
+            <label style={labelStyle}>
+              Code <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <input
+              name="code"
+              value={form.code || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="PERMIS"
+            />
+
+            <label style={labelStyle}>Type</label>
+            <select
+              name="type_champ"
+              value={form.type_champ || "texte"}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+            >
+              <option value="texte">Texte</option>
+              <option value="nombre">Nombre</option>
+              <option value="date">Date</option>
+            </select>
+
+            <label style={labelStyle}>Ordre d'affichage</label>
+            <input
+              type="number"
+              name="ordre"
+              value={form.ordre ?? 0}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              min="0"
+            />
+
+            <label style={labelStyle}>Statut</label>
+            <select
+              name="is_active"
+              value={form.is_active ?? true}
+              onChange={(e) =>
+                setForm({ ...form, is_active: e.target.value === "true" })
+              }
+              className="input-focus" style={inputStyle}
+            >
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: -8 }}>
+              Ce champ apparaîtra sur la fiche de tous les employés (section "Informations complémentaires").
+            </div>
+          </>
+        );
+
       default:
         return null;
     }
@@ -1210,6 +1398,7 @@ const Parametres = () => {
               columns={getColumns()}
               onEdit={openEdit}
               onDelete={handleDelete}
+              onRenameSystem={activeTab === "champs-personnalises" ? handleRenameSystemField : undefined}
               loading={loading}
               isAdmin={isAdmin}
             />
@@ -1450,6 +1639,7 @@ const Parametres = () => {
         </div>
       )}
       {ConfirmDialog}
+      {PromptDialog}
     </PageBackground>
   );
 };

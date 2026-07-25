@@ -8,7 +8,10 @@ from django.conf import settings
 from rest_framework import serializers
 
 
-from employees.models import Employee, EmployeeDocument, EmployeeDocumentFile, TypeDocument, Contrat
+from employees.models import (
+    Employee, EmployeeDocument, EmployeeDocumentFile, TypeDocument, Contrat,
+    ChampPersonnalise,
+)
 
 
 # ─── DOCUMENT ────────────────────────────────────────────────────────────────
@@ -175,19 +178,33 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     service_nom = serializers.CharField(source='service.nom', read_only=True)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
+    categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
     has_photo = serializers.SerializerMethodField()
+    champs_personnalises = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
         fields = [
             'id', 'matricule', 'numero_contrat_actif', 'nom', 'prenom',
+            'date_naissance', 'date_embauche',
             'direction_nom', 'departement_nom', 'service_nom',
-            'poste_nom', 'type_contrat_nom', 'has_photo',
+            'poste_nom', 'type_contrat_nom', 'categorie_nom', 'has_photo',
             'statut', 'dossier_complet', 'taux_completude', 'nb_documents',
+            'champs_personnalises',
         ]
 
     def get_has_photo(self, obj):
         return bool(obj.photo)
+
+    def get_champs_personnalises(self, obj):
+        # Colonnes optionnelles du tableau /employees — voir Employees.jsx
+        # (filtre "Colonnes"). Le queryset prefetch déjà valeurs+champ, donc
+        # pas de N+1 ici.
+        return {
+            v.champ.code: v.valeur
+            for v in obj.valeurs_personnalisees.all()
+            if v.champ.is_active
+        }
 
     def get_dossier_complet(self, obj):
         total_obligatoires = self.context.get('types_obligatoires_total', 0)
@@ -218,13 +235,13 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
     has_photo = serializers.SerializerMethodField()
+    champs_personnalises = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
         fields = [
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut', 'has_photo',
-            'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
             'direction', 'direction_nom',
             'departement', 'departement_nom',
             'service', 'service_nom',
@@ -232,10 +249,23 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'type_contrat', 'type_contrat_nom',
             'categorie', 'categorie_nom',
             'dossier_complet', 'taux_completude',
-            'documents', 'documents_manquants',
+            'documents', 'documents_manquants', 'champs_personnalises',
             'created_by_name', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_champs_personnalises(self, obj):
+        valeurs = {v.champ_id: v.valeur for v in obj.valeurs_personnalisees.all()}
+        return [
+            {
+                'id': str(c.id),
+                'code': c.code,
+                'nom': c.nom,
+                'type_champ': c.type_champ,
+                'valeur': valeurs.get(c.id, ''),
+            }
+            for c in ChampPersonnalise.objects.filter(is_active=True)
+        ]
 
     def get_documents(self, obj):
         qs = obj.documents_actifs
@@ -275,7 +305,6 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut',
-            'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
             'direction', 'departement', 'service',
             'poste', 'type_contrat', 'categorie',
         ]

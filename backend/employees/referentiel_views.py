@@ -10,10 +10,12 @@ from rest_framework import generics, serializers, status
 from rest_framework.response import Response
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
 from audit.models import AuditLog
+from rest_framework.views import APIView
 from employees.models import (
     Direction, Departement, Service, Poste,
     TypeContrat, Categorie, TypeDocument,
-    EmployeeDocument, EmployeeDocumentFile
+    EmployeeDocument, EmployeeDocumentFile,
+    ChampPersonnalise, SystemFieldLabel,
 )
 
 
@@ -258,3 +260,79 @@ class TypeDocumentDetailView(TypeDocumentDestroyMixin, generics.RetrieveUpdateDe
     serializer_class = TypeDocumentSerializer
     permission_classes = [IsAdmin]
     queryset = TypeDocument.objects.select_related('parent').all()
+
+# Codes réservés aux champs structurels d'Employee — voir SYSTEM_FIELDS
+# (frontend/src/pages/Parametres.jsx) et les colonnes CSV fixes
+# (EmployeeImportView.REQUIRED_COLS/OPTIONAL_COLS). Un ChampPersonnalise
+# portant un de ces codes entrerait en collision avec l'import CSV
+# dynamique (EmployeeImportView.champs_actifs matche par code.lower()) et
+# écraserait silencieusement la colonne structurelle correspondante.
+RESERVED_CHAMP_CODES = {
+    'matricule', 'numero_contrat', 'nom', 'prenom',
+    'date_naissance', 'date_embauche', 'statut',
+    'direction', 'departement', 'service',
+    'poste', 'type_contrat', 'categorie',
+}
+
+
+class ChampPersonnaliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChampPersonnalise
+        fields = ['id', 'nom', 'code', 'type_champ', 'ordre', 'is_active']
+
+    def validate_code(self, value):
+        if value.strip().lower() in RESERVED_CHAMP_CODES:
+            raise serializers.ValidationError(
+                "Ce code est réservé à un champ système (voir la colonne du même nom "
+                "dans l'import CSV) — choisissez un code différent."
+            )
+        return value
+
+
+class ChampPersonnaliseListCreateView(generics.ListCreateAPIView):
+    serializer_class = ChampPersonnaliseSerializer
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+    queryset = ChampPersonnalise.objects.all()
+
+
+class ChampPersonnaliseDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ChampPersonnaliseSerializer
+    permission_classes = [IsAdmin]
+    queryset = ChampPersonnalise.objects.all()
+
+
+class SystemFieldLabelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SystemFieldLabel
+        fields = ['code', 'label']
+
+
+class SystemFieldLabelListView(generics.ListAPIView):
+    """
+    GET /ref/system-field-labels/ — libellés personnalisés des champs
+    système (seulement ceux qui ont été renommés au moins une fois).
+    """
+    serializer_class = SystemFieldLabelSerializer
+    permission_classes = [IsAdminOrConsultant]
+    queryset = SystemFieldLabel.objects.all()
+
+
+class SystemFieldLabelUpdateView(APIView):
+    """
+    PUT /ref/system-field-labels/<code>/ — renomme (ou réinitialise si
+    label vide) le libellé affiché d'un champ système. Ne touche jamais au
+    champ réel sur Employee — purement cosmétique côté Paramètres/fiche
+    employé.
+    """
+    permission_classes = [IsAdmin]
+
+    def put(self, request, code):
+        label = (request.data.get('label') or '').strip()
+        if not label:
+            SystemFieldLabel.objects.filter(code=code).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        obj, _ = SystemFieldLabel.objects.update_or_create(
+            code=code, defaults={'label': label}
+        )
+        return Response(SystemFieldLabelSerializer(obj).data)

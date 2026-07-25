@@ -9,6 +9,30 @@ import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
 import { useConfirm } from "../components/ConfirmDialog";
 
+// Regroupe chaque catégorie de type de document (ex. "ETAT CIVIL") avec ses
+// sous-types juste en dessous, comme dans /parametres — sinon la liste plate
+// (triée par ordre brut) décroche les sous-types de leur catégorie.
+const sortTypesDocumentsHierarchy = (list) => {
+  const byId = new Map(list.map((t) => [t.id, t]));
+  const children = new Map();
+  list.forEach((t) => {
+    if (t.parent && byId.has(t.parent)) {
+      if (!children.has(t.parent)) children.set(t.parent, []);
+      children.get(t.parent).push(t);
+    }
+  });
+  children.forEach((arr) => arr.sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0)));
+  const roots = list
+    .filter((t) => !t.parent || !byId.has(t.parent))
+    .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
+  const ordered = [];
+  roots.forEach((r) => {
+    ordered.push(r);
+    (children.get(r.id) || []).forEach((c) => ordered.push(c));
+  });
+  return ordered;
+};
+
 // SVG icons
 const IconPlus = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -77,7 +101,9 @@ const Users = () => {
     api.get("/ref/directions/").then((res) => setDirections(res.data.results || res.data)).catch(() => {});
     api.get("/ref/departements/").then((res) => setDepartements(res.data.results || res.data)).catch(() => {});
     api.get("/ref/services/").then((res) => setServices(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/types-documents/").then((res) => setTypesDocuments(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/types-documents/").then((res) => {
+      setTypesDocuments(sortTypesDocumentsHierarchy(res.data.results || res.data));
+    }).catch(() => {});
   }, []);
 
   const openScopeModal = (u) => {
@@ -146,8 +172,22 @@ const Users = () => {
     });
   };
 
+  // Cocher une catégorie (ex. "ETAT CIVIL") ne fait rien à elle seule pour le
+  // périmètre — seuls les sous-types (feuilles) sont réellement rattachés à
+  // un document, la catégorie elle-même ne l'est jamais. Cocher la case
+  // "catégorie" sélectionne donc tous ses sous-types d'un coup ; son propre
+  // id n'est jamais ajouté à scope_types_documents.
   const toggleTypeDocument = (id) => {
+    const children = typesDocuments.filter((t) => t.parent === id);
     setScopeForm((prev) => {
+      if (children.length > 0) {
+        const childIds = children.map((c) => c.id);
+        const allSelected = childIds.every((cid) => prev.types_documents.includes(cid));
+        const next = allSelected
+          ? prev.types_documents.filter((x) => !childIds.includes(x))
+          : [...new Set([...prev.types_documents, ...childIds])];
+        return { ...prev, types_documents: next };
+      }
       const next = prev.types_documents.includes(id)
         ? prev.types_documents.filter((x) => x !== id)
         : [...prev.types_documents, id];
@@ -155,8 +195,24 @@ const Users = () => {
     });
   };
 
+  // État "coché" d'une ligne Types de documents — pour une catégorie, reflète
+  // si TOUS ses sous-types sont sélectionnés (son propre id n'est jamais
+  // dans scope_types_documents, voir toggleTypeDocument).
+  const isTypeDocChecked = (item) => {
+    if (item.is_categorie) {
+      const childIds = typesDocuments.filter((t) => t.parent === item.id).map((c) => c.id);
+      return childIds.length > 0 && childIds.every((cid) => scopeForm.types_documents.includes(cid));
+    }
+    return scopeForm.types_documents.includes(item.id);
+  };
+
   const selectAllInLevel = (level, items) => {
-    setScopeForm((prev) => ({ ...prev, [level]: items.map((item) => item.id) }));
+    // Pour les types de documents, ne jamais ajouter l'id d'une catégorie —
+    // elle n'est jamais rattachée à un document, seuls ses sous-types comptent.
+    const ids = level === "types_documents"
+      ? items.filter((item) => !item.is_categorie).map((item) => item.id)
+      : items.map((item) => item.id);
+    setScopeForm((prev) => ({ ...prev, [level]: ids }));
   };
 
   const clearLevel = (level) => {
@@ -517,14 +573,16 @@ const Users = () => {
                           items.map((item) => (
                             <label
                               key={item.id}
-                              style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
+                              style={{ display: "flex", alignItems: "center", gap: 8, padding: `4px 0 4px ${item.parent_nom ? 20 : 0}px`, fontSize: 13, color: theme.text, cursor: "pointer" }}
                             >
                               <input
                                 type="checkbox"
-                                checked={scopeForm[level].includes(item.id)}
+                                checked={level === "types_documents" ? isTypeDocChecked(item) : scopeForm[level].includes(item.id)}
                                 onChange={() => onToggle(item.id)}
                               />
-                              {item.nom}
+                              {item.parent_nom && <span style={{ color: theme.textMuted, fontSize: 12 }}>↳</span>}
+                              {!item.parent_nom && item.is_categorie && <span title="Catégorie">📁</span>}
+                              <span style={item.is_categorie ? { fontWeight: 700 } : undefined}>{item.nom}</span>
                             </label>
                           ))
                         )}
@@ -1094,14 +1152,16 @@ const Users = () => {
                       items.map((item) => (
                         <label
                           key={item.id}
-                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: `4px 0 4px ${item.parent_nom ? 20 : 0}px`, fontSize: 13, color: theme.text, cursor: "pointer" }}
                         >
                           <input
                             type="checkbox"
-                            checked={scopeForm[level].includes(item.id)}
+                            checked={isTypeDocChecked(item)}
                             onChange={() => onToggle(item.id)}
                           />
-                          {item.nom}
+                          {item.parent_nom && <span style={{ color: theme.textMuted, fontSize: 12 }}>↳</span>}
+                          {!item.parent_nom && item.is_categorie && <span title="Catégorie">📁</span>}
+                          <span style={item.is_categorie ? { fontWeight: 700 } : undefined}>{item.nom}</span>
                         </label>
                       ))
                     )}

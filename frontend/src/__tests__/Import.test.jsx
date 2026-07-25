@@ -31,7 +31,10 @@ const renderPage = () =>
     </MemoryRouter>
   );
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  api.get.mockResolvedValue({ data: [] });
+});
 
 describe("Import — rendu", () => {
   test("affiche le titre Import CSV", () => {

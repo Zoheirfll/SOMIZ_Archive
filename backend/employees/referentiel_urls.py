@@ -7,6 +7,8 @@ from employees.referentiel_views import (
     TypeContratListCreateView, TypeContratDetailView,
     CategorieListCreateView, CategorieDetailView,
     TypeDocumentListCreateView, TypeDocumentDetailView,
+    ChampPersonnaliseListCreateView, ChampPersonnaliseDetailView,
+    SystemFieldLabelListView, SystemFieldLabelUpdateView,
 )
 
 urlpatterns = [
@@ -24,4 +26,8 @@ urlpatterns = [
     path('categories/<uuid:pk>/', CategorieDetailView.as_view()),
     path('types-documents/', TypeDocumentListCreateView.as_view()),
     path('types-documents/<uuid:pk>/', TypeDocumentDetailView.as_view()),
+    path('champs-personnalises/', ChampPersonnaliseListCreateView.as_view()),
+    path('champs-personnalises/<uuid:pk>/', ChampPersonnaliseDetailView.as_view()),
+    path('system-field-labels/', SystemFieldLabelListView.as_view()),
+    path('system-field-labels/<str:code>/', SystemFieldLabelUpdateView.as_view()),
 ]

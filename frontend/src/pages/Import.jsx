@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
@@ -15,7 +15,18 @@ const Import = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [champsCodes, setChampsCodes] = useState([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    api
+      .get("/ref/champs-personnalises/")
+      .then((r) => {
+        const list = r.data.results || r.data;
+        setChampsCodes(list.filter((c) => c.is_active).map((c) => c.code.toLowerCase()));
+      })
+      .catch(() => {});
+  }, []);
 
   const handleFileChange = (e) => {
     const f = e.target.files[0];
@@ -215,10 +226,7 @@ const Import = () => {
                   "poste",
                   "type_contrat",
                   "categorie",
-                  "rib",
-                  "numero_secu_sociale",
-                  "groupe_sanguin",
-                  "nin",
+                  ...champsCodes,
                 ].map((c) => (
                   <div
                     key={c}

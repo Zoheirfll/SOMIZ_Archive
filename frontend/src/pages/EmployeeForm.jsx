@@ -120,10 +120,6 @@ const EmployeeForm = () => {
     date_naissance: "",
     date_embauche: "",
     statut: "actif",
-    rib: "",
-    numero_secu_sociale: "",
-    groupe_sanguin: "",
-    nin: "",
     direction: "",
     departement: "",
     service: "",
@@ -146,6 +142,8 @@ const EmployeeForm = () => {
   const [postes, setPostes] = useState([]);
   const [typesContrat, setTypesContrat] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [champsDefinitions, setChampsDefinitions] = useState([]);
+  const [champsValues, setChampsValues] = useState({});
 
   useEffect(() => {
     fetchReferentiels();
@@ -157,13 +155,14 @@ const EmployeeForm = () => {
 
   const fetchReferentiels = async () => {
     try {
-      const [dir, dept, srv, pos, tc, cat] = await Promise.all([
+      const [dir, dept, srv, pos, tc, cat, champs] = await Promise.all([
         api.get("/ref/directions/"),
         api.get("/ref/departements/"),
         api.get("/ref/services/"),
         api.get("/ref/postes/"),
         api.get("/ref/types-contrat/"),
         api.get("/ref/categories/"),
+        api.get("/ref/champs-personnalises/"),
       ]);
       setDirections(dir.data.results || dir.data);
       setDepartements(dept.data.results || dept.data);
@@ -171,6 +170,7 @@ const EmployeeForm = () => {
       setPostes(pos.data.results || pos.data);
       setTypesContrat(tc.data.results || tc.data);
       setCategories(cat.data.results || cat.data);
+      setChampsDefinitions((champs.data.results || champs.data).filter((c) => c.is_active));
     } catch (err) {
       console.error(err);
     }
@@ -187,10 +187,6 @@ const EmployeeForm = () => {
         date_naissance: emp.date_naissance || "",
         date_embauche: emp.date_embauche || "",
         statut: emp.statut || "actif",
-        rib: emp.rib || "",
-        numero_secu_sociale: emp.numero_secu_sociale || "",
-        groupe_sanguin: emp.groupe_sanguin || "",
-        nin: emp.nin || "",
         direction: emp.direction || "",
         departement: emp.departement || "",
         service: emp.service || "",
@@ -199,6 +195,14 @@ const EmployeeForm = () => {
         categorie: emp.categorie || "",
       };
       setForm(newForm);
+
+      if (emp.champs_personnalises) {
+        const values = {};
+        emp.champs_personnalises.forEach((c) => {
+          values[c.id] = c.valeur || "";
+        });
+        setChampsValues(values);
+      }
 
       // Pré-filtrer départements et services
       if (emp.direction) {
@@ -281,23 +285,28 @@ const EmployeeForm = () => {
 
     setLoading(true);
     try {
+      let employeeId = id;
       if (isEdit) {
         await api.patch(`/employees/${id}/`, payload);
         setMessage({ type: "success", text: "Employé modifié avec succès." });
         setTimeout(() => navigate(`/employees/${id}`), 1500);
       } else {
         const response = await api.post("/employees/", payload);
-        const newId = response.data.id;
+        employeeId = response.data.id;
         // Créer le contrat si un N° est fourni
         if (numero_contrat.trim()) {
-          await api.post(`/employees/${newId}/contrats/`, {
+          await api.post(`/employees/${employeeId}/contrats/`, {
             numero_contrat: numero_contrat.trim(),
             statut: "actif",
             ...(form.date_embauche ? { date_debut: form.date_embauche } : {}),
           });
         }
         setMessage({ type: "success", text: "Employé créé avec succès." });
-        setTimeout(() => navigate(`/employees/${newId}`), 1500);
+        setTimeout(() => navigate(`/employees/${employeeId}`), 1500);
+      }
+
+      if (champsDefinitions.length > 0) {
+        await api.patch(`/employees/${employeeId}/champs/`, champsValues);
       }
     } catch (err) {
       const data = err.response?.data;
@@ -527,38 +536,6 @@ const EmployeeForm = () => {
                 />
               </Field>
 
-              <Field label="RIP/RIB">
-                <Input name="rib" value={form.rib} onChange={handleChange} />
-              </Field>
-
-              <Field label="N° Sécurité Sociale">
-                <Input
-                  name="numero_secu_sociale"
-                  value={form.numero_secu_sociale}
-                  onChange={handleChange}
-                />
-              </Field>
-
-              <Field label="Groupe sanguin">
-                <Select
-                  name="groupe_sanguin"
-                  value={form.groupe_sanguin}
-                  onChange={handleChange}
-                >
-                  <option value="">-- Sélectionner --</option>
-                  {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
-                    (g) => (
-                      <option key={g} value={g}>
-                        {g}
-                      </option>
-                    ),
-                  )}
-                </Select>
-              </Field>
-
-              <Field label="NIN">
-                <Input name="nin" value={form.nin} onChange={handleChange} />
-              </Field>
             </div>
           </div>
 
@@ -677,6 +654,38 @@ const EmployeeForm = () => {
               </Field>
             </div>
           </div>
+
+          {/* Section Informations complémentaires (champs personnalisés) */}
+          {champsDefinitions.length > 0 && (
+            <div style={sectionCardStyle}>
+              <SectionHeader label="Informations complémentaires" />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "0 24px",
+                }}
+              >
+                {champsDefinitions.map((champ) => (
+                  <Field key={champ.id} label={champ.nom}>
+                    <Input
+                      type={
+                        champ.type_champ === "nombre"
+                          ? "number"
+                          : champ.type_champ === "date"
+                            ? "date"
+                            : "text"
+                      }
+                      value={champsValues[champ.id] || ""}
+                      onChange={(e) =>
+                        setChampsValues({ ...champsValues, [champ.id]: e.target.value })
+                      }
+                    />
+                  </Field>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div

@@ -13,7 +13,8 @@ from rest_framework import status
 from accounts.permissions import IsAdmin
 from employees.models import (
     Employee, Direction, Departement,
-    Service, Poste, TypeContrat, Categorie, Contrat
+    Service, Poste, TypeContrat, Categorie, Contrat,
+    ChampPersonnalise, EmployeeChampValeur,
 )
 
 logger = logging.getLogger('audit')
@@ -41,12 +42,14 @@ class EmployeeImportView(APIView):
     # Colonnes obligatoires
     REQUIRED_COLS = {'matricule', 'numero_contrat', 'nom', 'prenom'}
 
-    # Colonnes optionnelles
+    # Colonnes optionnelles structurelles — s'y ajoutent dynamiquement les
+    # codes des ChampPersonnalise actifs (voir champs_actifs dans post()) ;
+    # exposées ensemble via GET /ref/champs-personnalises/ pour le frontend
+    # (page Import.jsx).
     OPTIONAL_COLS = {
         'date_naissance', 'date_embauche', 'statut',
         'direction', 'departement', 'service',
         'poste', 'type_contrat', 'categorie',
-        'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
     }
 
     def post(self, request):
@@ -108,6 +111,13 @@ class EmployeeImportView(APIView):
         postes = {p.nom.upper(): p for p in Poste.objects.filter(is_active=True)}
         types_contrat = {t.nom.upper(): t for t in TypeContrat.objects.filter(is_active=True)}
         categories = {c.nom.upper(): c for c in Categorie.objects.filter(is_active=True)}
+
+        # Champs personnalisés actifs — colonne CSV = code du champ en
+        # minuscules (RIB -> 'rib'). Entièrement dynamique : un champ ajouté
+        # ou supprimé dans /parametres est immédiatement pris en compte,
+        # sans changement de code (voir Import.jsx qui liste ces mêmes
+        # colonnes optionnelles dynamiquement).
+        champs_actifs = {c.code.lower(): c for c in ChampPersonnalise.objects.filter(is_active=True)}
 
         # Matricules existants pour détecter les doublons
         matricules_existants = set(
@@ -194,15 +204,16 @@ class EmployeeImportView(APIView):
                     poste=poste,
                     type_contrat=type_contrat,
                     categorie=categorie,
-                    rib=row.get('rib', '').strip(),
-                    numero_secu_sociale=row.get('numero_secu_sociale', '').strip(),
-                    groupe_sanguin=row.get('groupe_sanguin', '').strip(),
-                    nin=row.get('nin', '').strip(),
                     created_by=request.user,
                 ),
                 'numero_contrat': numero_contrat,
                 'type_contrat_obj': type_contrat,
                 'date_debut': date_embauche or None,
+                'champs_valeurs': {
+                    code_lower: row.get(code_lower, '').strip()
+                    for code_lower in champs_actifs
+                    if row.get(code_lower, '').strip()
+                },
             })
 
             resultats.append({
@@ -238,6 +249,21 @@ class EmployeeImportView(APIView):
                                 ))
                     if contrats_a_creer:
                         Contrat.objects.bulk_create(contrats_a_creer, batch_size=500)
+
+                    # Champs personnalisés (dynamiques — voir champs_actifs ci-dessus)
+                    valeurs_a_creer = []
+                    for item in a_creer:
+                        emp = emp_map.get(item['employee'].matricule)
+                        if not emp:
+                            continue
+                        for code_lower, valeur in item['champs_valeurs'].items():
+                            champ = champs_actifs.get(code_lower)
+                            if champ:
+                                valeurs_a_creer.append(EmployeeChampValeur(
+                                    employee=emp, champ=champ, valeur=valeur,
+                                ))
+                    if valeurs_a_creer:
+                        EmployeeChampValeur.objects.bulk_create(valeurs_a_creer, batch_size=500)
             except Exception:
                 logger.exception("Échec de l'import CSV employés.")
                 return Response(
@@ -270,13 +296,19 @@ class EmployeeImportTemplateView(APIView):
         # BOM pour Excel
         response.write('\ufeff')
 
+        # Colonnes des champs personnalisés actifs — dynamiques, voir
+        # champs_actifs dans EmployeeImportView.post().
+        champs_codes = list(
+            ChampPersonnalise.objects.filter(is_active=True).values_list('code', flat=True)
+        )
+
         writer = csv.writer(response, delimiter=';')
         writer.writerow([
             'matricule', 'numero_contrat', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut',
             'direction', 'departement', 'service',
             'poste', 'type_contrat', 'categorie',
-            'rib', 'numero_secu_sociale', 'groupe_sanguin', 'nin',
+            *[c.lower() for c in champs_codes],
         ])
         # Exemple
         writer.writerow([
@@ -284,7 +316,7 @@ class EmployeeImportTemplateView(APIView):
             '2002-03-22', '2026-01-20', 'actif',
             'Direction Générale', 'DAP', 'Service Paie',
             'Cadre', 'CDI', '',
-            '00799999000123456789', '123456789012345', 'O+', '1234567890123456789',
+            *(['' for _ in champs_codes]),
         ])
 
         return response

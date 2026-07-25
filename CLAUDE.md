@@ -108,7 +108,106 @@ max) et n'est jamais rattachable à un `EmployeeDocument`.
 - Toute requête qui compte/valide des types "réels" (complétude, `documents_manquants`, queryset d'upload) doit filtrer `sous_types__isnull=True` pour exclure les catégories — voir `Employee.dossier_complet`/`taux_completude`, `DocumentUploadSerializer.type_doc`, `EmployeeListCreateView.get_serializer_context`, `employee_search`.
 - `EmployeeDocumentSerializer.type_document_parent` / `documents_manquants[].parent_nom` — exposent le nom de la catégorie parente pour permettre au frontend de regrouper visuellement.
 - Frontend (`EmployeeDetail.jsx`, `ContratDetail.jsx`) : la sidebar "Documents" regroupe les documents (présents et manquants) par catégorie via `groupDocsByParent()` — un en-tête 📁 précède le premier document de chaque catégorie, les items sont légèrement indentés. Le `<select>` "Ajouter un document" liste les types racine puis les types groupés par `<optgroup>` (catégorie), et exclut toujours les catégories elles-mêmes (`typesDocumentsList` filtré sur `!t.is_categorie`).
-- UI de gestion : `/parametres` → onglet "Types de documents" → champ "Catégorie parente" (optionnel) dans le formulaire d'ajout/édition.
+- UI de gestion : `/parametres` → onglet "Types de documents" → champ "Catégorie parente" (optionnel) dans le formulaire d'ajout/édition — désactivé (obligatoire forcé à "Optionnel") dès que le type a des sous-types, avec une note explicative.
+- **Piège "obligatoire" sur une catégorie** : une catégorie n'étant jamais uploadable, son propre `obligatoire=True` ne compte plus dans aucune statistique (voir `sous_types__isnull=True` ci-dessus) — si un type obligatoire existant reçoit des sous-types (devient une catégorie), l'exigence "disparaît" silencieusement sauf à la reporter explicitement sur au moins un des sous-types. `TypeDocumentSerializer.validate()` force `obligatoire=False` côté serveur dès que l'instance a des `sous_types`, pour qu'on ne puisse pas laisser une catégorie affichée "Obligatoire" par erreur (incident réel du 2026-07-24 : "Expériences professionnelles" et "Sécurité Sociale" étaient devenues des catégories sans que leurs nouveaux enfants soient marqués obligatoires, cassant le taux de complétude partout — dashboard, liste employés, fiche employé).
+- **Ordre d'affichage stable** : `EmployeeDocument.Meta.ordering = ['type_doc__ordre', 'type_doc__nom']` (plus `-uploaded_at`) — un document qui passe de "manquant" à "présent" (ou est ré-uploadé en nouvelle version) ne doit pas sauter en tête de liste. Sur `EmployeeDetail.jsx`/`ContratDetail.jsx`, les documents présents et manquants sont fusionnés en une seule séquence triée par l'`ordre` du type (celui de la catégorie parente si groupé) et positionnés via CSS `order` (flex) — pas de réordonnancement DOM — pour qu'un document garde exactement sa place visuelle en changeant de statut.
+
+---
+
+## Champs personnalisés — panneau "Informations" configurable (2026-07-25)
+
+Le panneau "Informations" de la fiche employé (`EmployeeDetail.jsx`) est
+partiellement dynamique, sur le modèle EAV (`ChampPersonnalise` +
+`EmployeeChampValeur`), **sans** convertir les champs structurels/relationnels
+en champs dynamiques — refusé explicitement car cela casserait le scoping
+CONSULTANT, la recherche, l'archivage et l'audit (voir section Scoping).
+
+- `ChampPersonnalise` (`nom`, `code` unique, `type_champ`: texte/nombre/date,
+  `ordre`, `is_active`) — CRUD ADMIN dans `/parametres` → onglet "Champs
+  personnalisés" (`/ref/champs-personnalises/`), même pattern que "Types de
+  documents".
+- `EmployeeChampValeur` — une ligne par `(employee, champ)`, `valeur` en
+  texte libre (`unique_together`). Mise à jour via `PATCH
+  /api/employees/<id>/champs/` (ADMIN uniquement, payload `{champ_id: valeur}`),
+  tracée dans l'audit log (`MODIFY_EMP`, détail `champs_personnalises`).
+- `EmployeeDetailSerializer.champs_personnalises` expose la liste
+  `[{id, code, nom, type_champ, valeur}]` pour tous les champs actifs
+  (valeur vide si pas encore renseignée pour cet employé).
+- **`SYSTEM_FIELDS`** (`Parametres.jsx`) : liste en dur des 12 champs
+  structurels (Matricule, Nom, Prénom, Statut, Direction, Département,
+  Service, Fonction, Type de contrat, Catégorie, Date de naissance, Date de
+  recrutement) — affichés dans le même tableau que les champs dynamiques
+  mais avec un badge "🔒 Système" à la place des boutons Modifier/Supprimer,
+  fond gris (`#F1F5F9`), colonnes Ordre/Statut à "—". Purement visuel : ces
+  champs restent des `ForeignKey`/colonnes fixes sur `Employee`, jamais
+  migrés vers l'EAV.
+- **Migration des 4 anciens champs** (2026-07-25) : `rib`,
+  `numero_secu_sociale`, `groupe_sanguin`, `nin` (colonnes toujours présentes
+  sur `Employee` en base, mais **plus exposées par aucun serializer**) ont
+  été migrés en 4 `ChampPersonnalise` (codes `RIB`, `NUM_SECU`,
+  `GROUPE_SANGUIN`, `NIN`) via script one-off (`manage.py shell`), données
+  copiées dans `EmployeeChampValeur`.
+- **Libellé renommable** (`SystemFieldLabel`, 2026-07-25) : un ADMIN peut
+  renommer l'affichage d'un champ système (bouton ✏️ à côté du badge "🔒
+  Système") sans toucher à sa structure — `code` (clé primaire, ex.
+  `poste`, `date_embauche`) reste figé, seul `label` change. `PUT
+  /ref/system-field-labels/<code>/` (ADMIN, `{label: '...'}` vide = reset) ;
+  `GET /ref/system-field-labels/` liste les overrides existants
+  (ADMIN+CONSULTANT). Purement cosmétique et **local à `/parametres` +
+  fiche employé** — ne renomme pas les en-têtes du CSV d'import/template
+  (ceux-ci restent le `code` technique, ex. `poste`), volontairement pour
+  ne pas casser des fichiers CSV déjà distribués aux utilisateurs.
+- **Import CSV entièrement dynamique** (2026-07-25) : `EmployeeImportView`
+  et `EmployeeImportTemplateView` (`import_views.py`) ne mappent plus une
+  liste figée de 4 colonnes historiques (`LEGACY_CHAMP_CODES`, supprimé) —
+  ils construisent `champs_actifs = {code.lower(): champ}` à partir de
+  **tous** les `ChampPersonnalise.objects.filter(is_active=True)` à chaque
+  requête. Toute colonne CSV dont le nom correspond au `code` (minuscule)
+  d'un champ personnalisé actif est automatiquement importée dans
+  `EmployeeChampValeur` — un champ ajouté/désactivé dans `/parametres` est
+  pris en compte immédiatement, sans changement de code. Le frontend
+  (`Import.jsx`) reflète la même liste dynamiquement (`GET
+  /ref/champs-personnalises/`) dans la section "Colonnes optionnelles" et
+  le template téléchargeable.
+- **Codes réservés** (`RESERVED_CHAMP_CODES`, `referentiel_views.py`,
+  2026-07-25) : `ChampPersonnaliseSerializer.validate_code()` refuse la
+  création/modification d'un champ personnalisé dont le `code` (insensible
+  à la casse) collision avec un des 13 champs structurels (`matricule`,
+  `numero_contrat`, `nom`, `prenom`, `date_naissance`, `date_embauche`,
+  `statut`, `direction`, `departement`, `service`, `poste`, `type_contrat`,
+  `categorie`) — sans ce garde-fou, un champ personnalisé nommé par erreur
+  `statut` ou `poste` serait aussi capté par l'import CSV dynamique
+  (`champs_actifs` dans `import_views.py`, matché par `code.lower()`) et
+  entrerait en conflit silencieux avec la colonne structurelle du même nom.
+
+---
+
+## Liste employés — colonnes configurables (2026-07-25)
+
+Le tableau `/employees` a un bouton "Colonnes" (à côté du filtre "Statut")
+ouvrant un menu à cocher, avec une ligne "Tout"/"Aucun" en haut et une zone
+scrollable (même pattern que les listes "Périmètre" de `/users`) :
+
+- Colonnes fixes déjà présentes avant ce chantier (N° Contrat, Direction,
+  Département, Service, Fonction, Statut, Dossier) restent **affichées par
+  défaut** — rien ne change dans la vue par défaut d'un utilisateur qui n'a
+  jamais touché au filtre.
+- Colonnes ajoutées par ce chantier (Date de naissance, Date de
+  recrutement, Type de contrat, Catégorie) et les champs personnalisés
+  actifs (RIB, NIN, etc., et tout futur champ ajouté dans `/parametres`)
+  sont proposées dans le même menu mais **masquées par défaut** — activées
+  volontairement par l'utilisateur.
+- Persistance : `localStorage` (`somiz_employees_column_overrides`), un
+  objet `{code: true|false}` qui ne stocke que les écarts par rapport au
+  défaut (`defaultColumnVisible()` dans `Employees.jsx`) — pas par
+  utilisateur côté serveur, juste par navigateur.
+- Backend : `EmployeeListSerializer` expose désormais aussi
+  `date_naissance`, `date_embauche`, `categorie_nom` et
+  `champs_personnalises` (dict `{code: valeur}`, réutilise
+  `valeurs_personnalisees.all()` déjà prefetché dans
+  `EmployeeListCreateView.get_queryset()` — pas de N+1). Le libellé "Poste"
+  a été renommé "Fonction" dans l'en-tête/le filtre pour rester cohérent
+  avec le reste de l'app (le champ modèle/l'API restent `poste`).
 
 ---
 
@@ -136,6 +235,45 @@ Chaque suppression reste tracée dans l'audit log (`AuditLog.Action.DELETE_DOC`)
 Un script one-off pour purger les fichiers orphelins de `backend/media/employees/` (fichiers sans ligne DB correspondante, ~184 fichiers) a mal comparé les chemins (bug de normalisation) et a supprimé **aussi les 7 fichiers activement référencés**. Les fichiers physiques n'ont pas pu être récupérés (pas de git, pas de corbeille — `os.remove()` est définitif) ; 3 d'entre eux (uploadés dans la même session) ont pu être ré-associés car les fichiers physiques n'avaient en fait pas été touchés par une suppression DB séparée juste avant.
 - **Leçon** : ne jamais exécuter de script de suppression en masse sur `media/` sans (1) lister précisément les chemins concernés et les faire valider un par un ou par échantillon par l'utilisateur, (2) vérifier la normalisation de chemin (relatif vs absolu) avant tout `os.remove()`, (3) faire une copie de sauvegarde du dossier avant toute purge.
 - `media/` est gitignored → aucune récupération possible via git en cas d'erreur.
+
+### Renommage de fichier (2026-07-24)
+- `FileDetailView` (`employees/views.py`, ex-`FileDeleteView`) gère désormais `PATCH /api/files/{id}/` (renomme, ADMIN only, log `MODIFY_DOC`) en plus de `DELETE`.
+- Frontend : pas d'édition inline (source de bugs — un champ texte ouvert pour un fichier pouvait se fermer sans sauvegarder si on cliquait sur un autre fichier avant que le blur ne se résolve). Utilise `usePrompt()` (`components/ConfirmDialog.jsx`) — une modale avec champ texte, remplace `window.prompt()`. Le nom proposé dans la modale est **sans l'extension** (`.pdf`, `.png`...) ; elle est automatiquement réattachée au nom final envoyé au serveur.
+- Affichage : partout où un `file_name` est montré (sidebar, onglets multi-fichiers, en-tête du viewer), l'extension est masquée via un helper local `stripExt()` (dupliqué dans `EmployeeDetail.jsx` et `ContratDetail.jsx`) — cosmétique uniquement, le nom stocké en base garde son extension.
+
+---
+
+## Photo de profil employé (2026-07-24)
+
+- `Employee.photo` (`ImageField`, upload_to `employee_photo_upload_path`, régénéré en UUID).
+- `EmployeePhotoView` (`GET`/`POST`/`DELETE` sur `/api/employees/{id}/photo/`) : GET ouvert à ADMIN+CONSULTANT (respecte le scoping via `can_access_employee`), POST/DELETE réservés ADMIN. Upload restreint à JPEG/PNG/WebP, 5 Mo max (`settings.ALLOWED_PHOTO_MIME_TYPES`/`MAX_PHOTO_SIZE_MB` — distinct des réglages documents qui acceptent aussi PDF/TIFF).
+- `has_photo` (bool) exposé dans `EmployeeListSerializer`/`EmployeeDetailSerializer` — jamais l'URL/le chemin brut du fichier.
+- Frontend : `components/EmployeeAvatar.jsx` — récupère la photo via un fetch blob authentifié (comme les documents, pas de lien direct vers `/media/`), fallback sur les initiales. `shape="square"` (coins arrondis, façon photo d'identité) utilisé sur la fiche employé (grand format, upload via crayon) et dans la liste `/employees` (petit format).
+
+---
+
+## Confirmations & saisies — plus de popups navigateur (2026-07-24)
+
+`window.confirm()` et `window.prompt()` sont bannis du code — remplacés par des modales stylées cohérentes avec le design system, définies dans `components/ConfirmDialog.jsx` :
+- `useConfirm()` → `{ confirm, ConfirmDialog }` : `if (!(await confirm("Supprimer ?"))) return;`, puis rendre `{ConfirmDialog}` quelque part dans le JSX du composant.
+- `usePrompt()` → `{ prompt, PromptDialog }` : `const v = await prompt("Nouveau nom :", valeurActuelle); if (v === null) return;`, puis rendre `{PromptDialog}`.
+- Utilisés dans `Employees.jsx`, `EmployeeDetail.jsx`, `ContratDetail.jsx`, `Parametres.jsx`, `Users.jsx`. Toute nouvelle confirmation/saisie doit passer par ces hooks, pas par les globales navigateur (tests Jest : simuler le clic sur le bouton "Confirmer"/"Renommer" de la modale plutôt que mocker `window.confirm`).
+
+---
+
+## Gestion des utilisateurs — suppression de compte (2026-07-24)
+
+`UserUpdateView` (`accounts/admin_views.py`) est passée de `UpdateAPIView` à `RetrieveUpdateDestroyAPIView` — `DELETE /api/admin-users/{id}/` supprime définitivement un compte (hard delete, ADMIN only), avec garde-fous dans `perform_destroy` :
+- Un ADMIN ne peut pas se supprimer lui-même.
+- Impossible de supprimer le dernier compte ADMIN actif.
+- Loggé en `AuditLog.Action.DELETE_USER`.
+Le formulaire de création (`/users`) inclut directement la section "Périmètre d'accès" (visible si rôle CONSULTANT) — le périmètre est sauvegardé juste après la création du compte, plus besoin de rouvrir "Périmètre" après coup.
+
+---
+
+## Import CSV employés — champs additionnels (2026-07-24)
+
+`EmployeeImportView.OPTIONAL_COLS` inclut désormais `rib`, `numero_secu_sociale`, `groupe_sanguin`, `nin` (mêmes noms de colonnes que les champs modèle). Le template téléchargeable (`EmployeeImportTemplateView`) et la liste de colonnes affichée sur `/import` (`frontend/src/pages/Import.jsx`) ont été mis à jour en conséquence.
 
 ---
 

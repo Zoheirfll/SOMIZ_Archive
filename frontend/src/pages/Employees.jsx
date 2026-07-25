@@ -302,6 +302,45 @@ const SectionHeader = ({ title, subtitle, color }) => (
   </div>
 );
 
+// ─── Colonnes optionnelles du tableau ─────────────────────────────────────────
+// Persistées côté navigateur (par utilisateur) — n'affecte que l'affichage,
+// aucune donnée n'est masquée côté serveur.
+// Par défaut : les colonnes fixes restent affichées telles qu'avant (aucun
+// changement du tableau existant) ; les champs personnalisés dynamiques,
+// eux, sont proposés dans le filtre mais MASQUÉS par défaut — l'utilisateur
+// les active volontairement via "Colonnes" s'il en a besoin. On ne
+// persiste que les choix explicites (overrides), pour que le comportement
+// par défaut reste correct même si de nouveaux champs sont ajoutés plus
+// tard dans /parametres.
+const COLUMN_OPTIONS_FIXED = [
+  { key: "numero_contrat", label: "N° Contrat" },
+  { key: "date_naissance", label: "Date de naissance" },
+  { key: "date_embauche", label: "Date de recrutement" },
+  { key: "direction", label: "Direction" },
+  { key: "departement", label: "Département" },
+  { key: "service", label: "Service" },
+  { key: "poste", label: "Fonction" },
+  { key: "type_contrat", label: "Type de contrat" },
+  { key: "categorie", label: "Catégorie" },
+  { key: "statut", label: "Statut" },
+  { key: "dossier", label: "Dossier" },
+];
+const COLUMNS_STORAGE_KEY = "somiz_employees_column_overrides";
+
+const loadColumnOverrides = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY));
+    if (saved && typeof saved === "object") return saved;
+  } catch {}
+  return {};
+};
+
+// Colonnes qui n'existaient pas dans le tableau avant l'ajout du filtre —
+// masquées par défaut comme les champs personnalisés, pour ne rien changer
+// à l'affichage existant tant que l'utilisateur ne les active pas lui-même.
+const NEWLY_ADDED_COLUMNS = new Set(["date_naissance", "date_embauche", "type_contrat", "categorie"]);
+const defaultColumnVisible = (key) => !key.startsWith("custom_") && !NEWLY_ADDED_COLUMNS.has(key);
+
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 const Employees = () => {
@@ -323,6 +362,42 @@ const Employees = () => {
   const [selected, setSelected] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState(null);
+  const [columnOverrides, setColumnOverrides] = useState(loadColumnOverrides);
+  const [colsMenuOpen, setColsMenuOpen] = useState(false);
+  const [customFields, setCustomFields] = useState([]); // champs personnalisés actifs
+
+  const isColumnVisible = (key) =>
+    key in columnOverrides ? columnOverrides[key] : defaultColumnVisible(key);
+
+  const toggleColumn = (key) => {
+    setColumnOverrides((prev) => {
+      const next = { ...prev, [key]: !isColumnVisible(key) };
+      localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const setAllColumns = (visible) => {
+    const next = { ...columnOverrides };
+    COLUMN_OPTIONS.forEach((c) => { next[c.key] = visible; });
+    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(next));
+    setColumnOverrides(next);
+  };
+
+  const COLUMN_OPTIONS = [
+    ...COLUMN_OPTIONS_FIXED,
+    ...customFields.map((c) => ({ key: `custom_${c.code}`, label: c.nom })),
+  ];
+
+  useEffect(() => {
+    api
+      .get("/ref/champs-personnalises/")
+      .then((r) => {
+        const list = r.data.results || r.data;
+        setCustomFields(list.filter((c) => c.is_active));
+      })
+      .catch(() => {});
+  }, []);
 
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -698,6 +773,107 @@ const Employees = () => {
           <option value="inactif">Inactif</option>
           <option value="archive">Archivé</option>
         </select>
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setColsMenuOpen((o) => !o)}
+            className="btn-lift"
+            style={{
+              border: `1.5px solid ${theme.border}`,
+              borderRadius: 10,
+              padding: "10px 16px",
+              color: theme.text,
+              fontSize: 13,
+              fontWeight: 600,
+              background: theme.surface,
+              cursor: "pointer",
+              fontFamily: theme.fontFamily,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Colonnes {colsMenuOpen ? "▲" : "▼"}
+          </button>
+          {colsMenuOpen && (
+            <>
+              <div
+                onClick={() => setColsMenuOpen(false)}
+                style={{ position: "fixed", inset: 0, zIndex: 10 }}
+              />
+              <div
+                className="anim-scale-in"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "calc(100% + 6px)",
+                  background: theme.surface,
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 10,
+                  boxShadow: theme.shadowMd,
+                  padding: 10,
+                  zIndex: 11,
+                  minWidth: 200,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 8px 8px" }}>
+                  <span style={{ color: theme.textMuted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Colonnes affichées
+                  </span>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() => setAllColumns(true)}
+                      style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                    >
+                      Tout
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAllColumns(false)}
+                      style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                    >
+                      Aucun
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 10,
+                    maxHeight: 220,
+                    overflowY: "auto",
+                    padding: "4px 8px",
+                    background: theme.bg,
+                  }}
+                >
+                  {COLUMN_OPTIONS.map((c) => (
+                    <label
+                      key={c.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 4px",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: 13,
+                        color: theme.text,
+                        fontFamily: theme.fontFamily,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isColumnVisible(c.key)}
+                        onChange={() => toggleColumn(c.key)}
+                        style={{ cursor: "pointer", accentColor: theme.primary }}
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Barre actions bulk */}
@@ -743,20 +919,32 @@ const Employees = () => {
                     </th>
                   )}
                   {[
-                    { label: "", key: null },
-                    { label: "Matricule", key: "matricule" },
-                    { label: "N° Contrat", key: null },
-                    { label: "Nom & Prénom", key: "nom" },
-                    { label: "Direction", key: "direction__nom" },
-                    { label: "Département", key: "departement__nom" },
-                    { label: "Service", key: "service__nom" },
-                    { label: "Poste", key: "poste__nom" },
-                    { label: "Statut", key: "statut" },
-                    { label: "Dossier", key: null },
-                    { label: "", key: null },
-                  ].map((h) => (
+                    { id: "avatar", label: "", key: null, col: null },
+                    { id: "matricule", label: "Matricule", key: "matricule", col: null },
+                    { id: "numero_contrat", label: "N° Contrat", key: null, col: "numero_contrat" },
+                    { id: "nom", label: "Nom & Prénom", key: "nom", col: null },
+                    { id: "date_naissance", label: "Date de naissance", key: "date_naissance", col: "date_naissance" },
+                    { id: "date_embauche", label: "Date de recrutement", key: "date_embauche", col: "date_embauche" },
+                    { id: "direction", label: "Direction", key: "direction__nom", col: "direction" },
+                    { id: "departement", label: "Département", key: "departement__nom", col: "departement" },
+                    { id: "service", label: "Service", key: "service__nom", col: "service" },
+                    { id: "poste", label: "Fonction", key: "poste__nom", col: "poste" },
+                    { id: "type_contrat", label: "Type de contrat", key: "type_contrat__nom", col: "type_contrat" },
+                    { id: "categorie", label: "Catégorie", key: null, col: "categorie" },
+                    { id: "statut", label: "Statut", key: "statut", col: "statut" },
+                    ...customFields.map((c) => ({
+                      id: `custom_${c.code}`,
+                      label: c.nom,
+                      key: null,
+                      col: `custom_${c.code}`,
+                    })),
+                    { id: "dossier", label: "Dossier", key: null, col: "dossier" },
+                    { id: "actions", label: "", key: null, col: null },
+                  ]
+                    .filter((h) => !h.col || isColumnVisible(h.col))
+                    .map((h) => (
                     <th
-                      key={h.label}
+                      key={h.id}
                       onClick={() => { if (!h.key) return; setOrdering(prev => prev === h.key ? `-${h.key}` : h.key); }}
                       style={{
                         padding: "13px 16px",
@@ -804,18 +992,35 @@ const Employees = () => {
                         {emp.matricule}
                       </span>
                     </td>
+                    {isColumnVisible("numero_contrat") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", whiteSpace: "nowrap", cursor: "pointer" }}>
                       {emp.numero_contrat_actif
                         ? <span style={{ fontFamily: "monospace", fontWeight: 600, fontSize: 12, color: theme.departementColor, background: theme.departementAccent || "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "3px 8px" }}>{emp.numero_contrat_actif}</span>
                         : <span style={{ color: theme.textMuted, fontSize: 12 }}>—</span>}
                     </td>
+                    )}
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.text, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer", fontSize: 14 }}>
                       {emp.nom} {emp.prenom}
                     </td>
+                    {isColumnVisible("date_naissance") && (
+                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>{emp.date_naissance || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    )}
+                    {isColumnVisible("date_embauche") && (
+                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>{emp.date_embauche || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    )}
+                    {isColumnVisible("direction") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.direction_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    )}
+                    {isColumnVisible("departement") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.departement_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    )}
+                    {isColumnVisible("service") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    )}
+                    {isColumnVisible("poste") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.poste_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    )}
+                    {isColumnVisible("statut") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <span style={{
                         background: emp.statut === "actif" ? theme.primaryBg : emp.statut === "archive" ? "#F8FAFC" : theme.dangerBg,
@@ -830,6 +1035,19 @@ const Employees = () => {
                         {emp.statut}
                       </span>
                     </td>
+                    )}
+                    {customFields
+                      .filter((c) => isColumnVisible(`custom_${c.code}`))
+                      .map((c) => (
+                        <td
+                          key={c.code}
+                          onClick={() => navigate(`/employees/${emp.id}`)}
+                          style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}
+                        >
+                          {emp.champs_personnalises?.[c.code] || <span style={{ color: theme.textMuted }}>—</span>}
+                        </td>
+                      ))}
+                    {isColumnVisible("dossier") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <span style={{
                         background: emp.dossier_complet ? theme.primaryBg : "#FFFBEB",
@@ -844,6 +1062,7 @@ const Employees = () => {
                         {emp.dossier_complet ? "✓ Complet" : `${emp.taux_completude}%`}
                       </span>
                     </td>
+                    )}
                     <td style={{ padding: "13px 16px" }} onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => navigate(`/employees/${emp.id}`)} className="btn-lift" style={{ background: theme.primary, border: "none", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: theme.fontFamily }}>
                         Voir →

@@ -452,10 +452,10 @@ const EmployeeDetail = () => {
     { label: "Fonction", value: employee.poste_nom || "—" },
     { label: "Type de contrat", value: employee.type_contrat_nom || "—" },
     { label: "Catégorie", value: employee.categorie_nom || "—" },
-    { label: "RIP/RIB", value: employee.rib || "—", mono: true },
-    { label: "N° Sécurité Sociale", value: employee.numero_secu_sociale || "—", mono: true },
-    { label: "Groupe sanguin", value: employee.groupe_sanguin || "—" },
-    { label: "NIN", value: employee.nin || "—", mono: true },
+    ...(employee.champs_personnalises || []).map((c) => ({
+      label: c.nom,
+      value: c.valeur || "—",
+    })),
   ];
 
   const documentsAffiches = (employee.documents || []).filter(

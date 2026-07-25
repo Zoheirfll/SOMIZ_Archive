@@ -266,6 +266,78 @@ class Employee(models.Model):
         return round(presents / total * 100)
 
 
+# ─── CHAMPS PERSONNALISÉS ──────────────────────────────────────────────────────
+
+class ChampPersonnalise(models.Model):
+    """
+    Champ additionnel définissable par un ADMIN (ex. "Permis de conduire"),
+    affiché sur la fiche employé sans nécessiter de migration de schéma —
+    même logique de gestion que TypeDocument (CRUD dans /parametres).
+    """
+    class TypeChamp(models.TextChoices):
+        TEXTE = 'texte', 'Texte'
+        NOMBRE = 'nombre', 'Nombre'
+        DATE = 'date', 'Date'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nom = models.CharField(max_length=100, verbose_name="Nom")
+    code = models.CharField(max_length=50, unique=True, verbose_name="Code")
+    type_champ = models.CharField(
+        max_length=10, choices=TypeChamp.choices, default=TypeChamp.TEXTE,
+        verbose_name="Type"
+    )
+    ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'champs_personnalises'
+        verbose_name = "Champ personnalisé"
+        ordering = ['ordre', 'nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class EmployeeChampValeur(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE, related_name='valeurs_personnalisees'
+    )
+    champ = models.ForeignKey(
+        ChampPersonnalise, on_delete=models.CASCADE, related_name='valeurs'
+    )
+    valeur = models.CharField(max_length=500, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'employee_champs_valeurs'
+        verbose_name = "Valeur de champ personnalisé"
+        unique_together = ('employee', 'champ')
+
+    def __str__(self):
+        return f"{self.employee.matricule} — {self.champ.nom} = {self.valeur}"
+
+
+class SystemFieldLabel(models.Model):
+    """
+    Libellé personnalisé pour un champ système (Matricule, Fonction, ...) —
+    purement cosmétique. `code` correspond à l'un des SYSTEM_FIELDS du
+    frontend (Parametres.jsx) ; ne touche jamais au champ réel sur Employee
+    (structure, scoping, recherche, CSV import restent inchangés).
+    """
+    code = models.CharField(max_length=50, primary_key=True)
+    label = models.CharField(max_length=100)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'system_field_labels'
+        verbose_name = "Libellé de champ système"
+
+    def __str__(self):
+        return f"{self.code} → {self.label}"
+
+
 # ─── CONTRAT ──────────────────────────────────────────────────────────────────
 
 class Contrat(models.Model):

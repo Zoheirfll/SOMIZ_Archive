@@ -4,6 +4,7 @@ from employees.views import (
     EmployeeListCreateView,
     EmployeeDetailView,
     EmployeePhotoView,
+    EmployeeChampsPersonnalisesView,
     DocumentListUploadView,
     DocumentViewerView,
     FileViewerView,
@@ -26,6 +27,7 @@ urlpatterns = [
     path('employees/bulk-delete/', EmployeeBulkDeleteView.as_view(), name='employee-bulk-delete'),
     path('employees/<uuid:pk>/', EmployeeDetailView.as_view(), name='employee-detail'),
     path('employees/<uuid:pk>/photo/', EmployeePhotoView.as_view(), name='employee-photo'),
+    path('employees/<uuid:pk>/champs/', EmployeeChampsPersonnalisesView.as_view(), name='employee-champs'),
 
     # Documents (sous-ressource d'un employé)
     path('employees/<uuid:emp_id>/documents/', DocumentListUploadView.as_view(), name='doc-list-upload'),
