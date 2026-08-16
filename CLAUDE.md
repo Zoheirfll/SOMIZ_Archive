@@ -354,6 +354,36 @@ if (error) return <div style={{ color: theme.danger, padding: 20 }}>{error}</div
 
 ---
 
+## Responsivité mobile (2026-08-16)
+
+Les styles étant 100% inline (`style={{}}`), les media queries CSS ne sont
+pas utilisables directement pour les changements de layout structurels
+(grille → colonne unique, drawer de navigation, etc.). Convention établie :
+
+- **`useIsMobile(breakpoint = 768)`** (`frontend/src/hooks/useIsMobile.js`)
+  — hook basé sur `window.matchMedia`, réactif au redimensionnement. À
+  utiliser dans tout composant qui a besoin d'adapter son layout sous
+  768px : `const isMobile = useIsMobile();` puis
+  `padding: isMobile ? "16px" : "40px 32px 32px"`,
+  `gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr"`,
+  `flexWrap: isMobile ? "wrap" : "nowrap"`, etc. — pas de nouvelle
+  approche par page, réutiliser ce hook partout.
+- `theme.heroPadding(isMobile)` / `theme.contentPadding(isMobile)`
+  (`frontend/src/styles/theme.js`) — helpers pour le pattern hero
+  header / contenu de page documenté plus haut, à préférer aux valeurs
+  codées en dur quand on ajoute une nouvelle page.
+- `Navbar.jsx` bascule en menu hamburger + tiroir coulissant (overlay,
+  même pattern que `ConfirmDialog.jsx`) sous 768px — la liste `navLinks`
+  et son filtre ADMIN restent inchangés, seul l'affichage change.
+- Tout `<table>` doit être enveloppé dans un conteneur
+  `overflowX: "auto"` (scroll horizontal) — pas de redesign en cartes
+  pour l'instant.
+- `frontend/src/setupTests.js` fournit un polyfill `window.matchMedia`
+  (absent de jsdom) qui retourne `matches: false` par défaut — les tests
+  s'exécutent donc en layout desktop sauf override explicite.
+
+---
+
 ## Routes principales
 
 | Route | Page | Accès |

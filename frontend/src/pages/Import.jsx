@@ -7,10 +7,12 @@ import { useAuth } from "../context/AuthContext";
 import { CheckIcon, FolderIcon } from "../components/icons";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import useIsMobile from "../hooks/useIsMobile";
 
 const Import = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  const isMobile = useIsMobile();
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -94,13 +96,13 @@ const Import = () => {
       <div
         style={{
           background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
-          padding: "32px 32px 36px",
+          padding: isMobile ? "20px 16px 24px" : "32px 32px 36px",
           position: "relative",
           overflow: "hidden",
         }}
       >
         <HeroDecor />
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1
               style={{
@@ -139,7 +141,7 @@ const Import = () => {
         </div>
       </div>
 
-      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 900, margin: "0 auto" }}>
 
         {/* Instructions card */}
         <div style={{ ...cardStyle, marginBottom: 20 }}>

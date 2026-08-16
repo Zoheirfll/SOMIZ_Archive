@@ -6,6 +6,7 @@ import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import useIsMobile from "../hooks/useIsMobile";
 
 const ACTION_COLORS = {
   VIEW: theme.primary,
@@ -34,6 +35,7 @@ const AuditLogs = () => {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [filters, setFilters] = useState({ user: "", action: "" });
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchLogs();
@@ -77,9 +79,9 @@ const AuditLogs = () => {
       <Navbar />
 
       {/* Hero header */}
-      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "32px 32px 36px", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 24px" : "32px 32px 36px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
-        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
               Journal d'audit
@@ -102,7 +104,7 @@ const AuditLogs = () => {
         </div>
       </div>
 
-      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {/* Filtres */}
         <div style={{
@@ -114,9 +116,10 @@ const AuditLogs = () => {
           display: "flex",
           gap: 12,
           alignItems: "center",
+          flexWrap: isMobile ? "wrap" : "nowrap",
           boxShadow: theme.shadowMd,
         }}>
-          <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
+          <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : 1, display: "flex", alignItems: "center" }}>
             <span style={{ position: "absolute", left: 12, color: theme.textMuted, pointerEvents: "none", display: "flex" }}>
               <IconSearch />
             </span>
@@ -163,6 +166,7 @@ const AuditLogs = () => {
               Aucune entrée trouvée.
             </div>
           ) : (
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: theme.bg, borderBottom: `2px solid ${theme.border}` }}>
@@ -225,6 +229,7 @@ const AuditLogs = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
 
           {/* Pagination */}

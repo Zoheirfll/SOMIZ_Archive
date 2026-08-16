@@ -9,6 +9,7 @@ import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import useCountUp from "../hooks/useCountUp";
+import useIsMobile from "../hooks/useIsMobile";
 
 // SVG icons
 const IconUsers = () => (
@@ -97,6 +98,7 @@ const Dashboard = () => {
   const [error, setError] = useState("");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (user?.role !== "ADMIN") {
@@ -153,9 +155,9 @@ const Dashboard = () => {
       <Navbar />
 
       {/* Hero header */}
-      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "32px 32px 36px", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 24px" : "32px 32px 36px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
-        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
               Tableau de bord
@@ -167,7 +169,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
         {/* Stat cards */}
         <div style={{
           display: "grid",

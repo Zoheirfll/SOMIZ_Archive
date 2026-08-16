@@ -8,6 +8,7 @@ import HeroDecor from "../components/HeroDecor";
 import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
 import { useConfirm } from "../components/ConfirmDialog";
+import useIsMobile from "../hooks/useIsMobile";
 
 // Regroupe chaque catégorie de type de document (ex. "ETAT CIVIL") avec ses
 // sous-types juste en dessous, comme dans /parametres — sinon la liste plate
@@ -60,6 +61,7 @@ const EyeIcon = ({ open }) => open ? (
 
 const Users = () => {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const isAdmin = user?.role === "ADMIN";
   const { confirm, ConfirmDialog } = useConfirm();
   const [users, setUsers] = useState([]);
@@ -392,9 +394,9 @@ const Users = () => {
       <Navbar />
 
       {/* Hero header */}
-      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "32px 32px 36px", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 24px" : "32px 32px 36px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
-        <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
               Gestion des utilisateurs
@@ -431,7 +433,7 @@ const Users = () => {
         </div>
       </div>
 
-      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 1000, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1000, margin: "0 auto" }}>
 
         {message && (
           <div style={{

@@ -11,6 +11,7 @@ import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner 
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import useIsMobile from "../hooks/useIsMobile";
 
 // Nom de fichier sans l'extension — l'utilisateur voit "Acte de naissance",
 // pas "Acte de naissance.png" (le type/mime reste géré côté serveur).
@@ -27,6 +28,7 @@ const EmployeeDetail = () => {
   const { user } = useAuth();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
+  const isMobile = useIsMobile();
 
   const [employee, setEmployee] = useState(null);
   const [contrats, setContrats] = useState([]);
@@ -470,13 +472,13 @@ const EmployeeDetail = () => {
       <Navbar />
 
       {/* Hero header */}
-      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "28px 32px 32px", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 20px" : "28px 32px 32px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <button onClick={() => navigate(-1)} style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer", marginBottom: 16, fontFamily: "inherit" }}>
             ← Retour
           </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
               <EmployeeAvatar employee={employee} size={96} fontSize={32} light shape="square" />
               {user?.role === "ADMIN" && (
@@ -527,7 +529,7 @@ const EmployeeDetail = () => {
                 </span>
               </div>
             </div>
-            <div style={{ marginLeft: "auto", textAlign: "right" }}>
+            <div style={{ marginLeft: isMobile ? 0 : "auto", textAlign: isMobile ? "left" : "right" }}>
               <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 11, marginBottom: 4 }}>Complétude dossier</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 120, background: "rgba(255,255,255,0.15)", borderRadius: 4, height: 6 }}>
@@ -545,7 +547,7 @@ const EmployeeDetail = () => {
         </div>
       </div>
 
-      <div style={{ padding: "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "16px" : "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {message && (
           <div className="notif-banner" style={{ background: message.type === "success" ? theme.primaryBg : theme.dangerBg, border: `1px solid ${message.type === "success" ? theme.border : theme.dangerBorder}`, color: message.type === "success" ? theme.primary : theme.danger, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, fontWeight: 600 }}>
@@ -724,7 +726,7 @@ const EmployeeDetail = () => {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr",
                     gap: 12,
                     marginBottom: 12,
                   }}
@@ -1132,7 +1134,7 @@ const EmployeeDetail = () => {
             className="tab-content"
             style={{
               display: "grid",
-              gridTemplateColumns: "300px 1fr",
+              gridTemplateColumns: isMobile ? "1fr" : "300px 1fr",
               gap: 20,
             }}
           >

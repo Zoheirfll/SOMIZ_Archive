@@ -6,6 +6,7 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import useIsMobile from "../hooks/useIsMobile";
 import "../styles/animations.css";
 
 // SVG icons
@@ -36,6 +37,7 @@ const EyeIcon = ({ open }) => open ? (
 const Profil = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [form, setForm] = useState({
     ancien_mot_de_passe: "",
     nouveau_mot_de_passe: "",
@@ -131,9 +133,9 @@ const Profil = () => {
       <Navbar />
 
       {/* Hero header */}
-      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: "32px 32px 36px", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 24px" : "32px 32px 36px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
-        <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
               Mon profil
@@ -164,7 +166,7 @@ const Profil = () => {
         </div>
       </div>
 
-      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 680, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 680, margin: "0 auto" }}>
 
         {/* Carte profil */}
         <div style={{

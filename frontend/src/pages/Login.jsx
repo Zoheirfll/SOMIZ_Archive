@@ -4,6 +4,7 @@ import { login } from "../services/auth";
 import { useAuth } from "../context/AuthContext";
 import { theme } from "../styles/theme";
 import { EyeIcon } from "../components/icons";
+import useIsMobile from "../hooks/useIsMobile";
 import "../styles/animations.css";
 
 const Login = () => {
@@ -15,6 +16,7 @@ const Login = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const isMobile = useIsMobile();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,10 +55,12 @@ const Login = () => {
       style={{
         minHeight: "100vh",
         display: "flex",
+        flexDirection: isMobile ? "column" : "row",
         fontFamily: theme.fontFamily,
       }}
     >
       {/* Left panel — brand */}
+      {!isMobile && (
       <div
         style={{
           width: "45%",
@@ -148,6 +152,7 @@ const Login = () => {
         </div>
 
       </div>
+      )}
 
       {/* Right panel — form */}
       <div
@@ -157,7 +162,7 @@ const Login = () => {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: 48,
+          padding: isMobile ? "32px 20px" : 48,
         }}
       >
         <div
@@ -166,7 +171,7 @@ const Login = () => {
             background: theme.surface,
             border: `1px solid ${theme.border}`,
             borderRadius: 20,
-            padding: "44px 40px",
+            padding: isMobile ? "32px 24px" : "44px 40px",
             width: "100%",
             maxWidth: 400,
             boxShadow: theme.shadowMd,

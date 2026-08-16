@@ -7,6 +7,7 @@ import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon,
 import Skeleton from "../components/Skeleton";
 import PageBackground from "../components/PageBackground";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import useIsMobile from "../hooks/useIsMobile";
 import "../styles/animations.css";
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
@@ -156,6 +157,7 @@ const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, i
         Aucun élément. Cliquez sur "Ajouter" pour commencer.
       </div>
     ) : (
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ background: theme.primaryBg }}>
@@ -301,6 +303,7 @@ const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, i
           ))}
         </tbody>
       </table>
+      </div>
     )}
   </div>
 );
@@ -342,6 +345,7 @@ const SYSTEM_FIELDS = [
 const Parametres = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
+  const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
   const [systemLabels, setSystemLabels] = useState({});
@@ -1238,7 +1242,7 @@ const Parametres = () => {
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
-      <div className="anim-fade-in" style={{ padding: "32px", maxWidth: 1100, margin: "0 auto" }}>
+      <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 28 }}>
           <h1
             style={{

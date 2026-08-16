@@ -10,6 +10,7 @@ import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import useIsMobile from "../hooks/useIsMobile";
 
 const STATUT_COLORS = {
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -31,6 +32,7 @@ const ContratDetail = () => {
   const { user } = useAuth();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
+  const isMobile = useIsMobile();
 
   const [contrat, setContrat] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
@@ -306,14 +308,14 @@ const ContratDetail = () => {
       {/* Hero Header */}
       <div style={{
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
-        padding: "40px 32px 32px",
+        padding: isMobile ? "20px 16px 20px" : "40px 32px 32px",
         position: "relative",
         overflow: "hidden",
       }}>
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           {/* Breadcrumb */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
             <button onClick={() => navigate("/employees")} style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "rgba(255,255,255,0.8)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
               ← Employés
             </button>
@@ -326,7 +328,7 @@ const ContratDetail = () => {
           </div>
 
           {/* Hero content */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
               <div style={{ width: 64, height: 64, borderRadius: 16, background: "rgba(255,255,255,0.15)", border: "2px solid rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
                 <ClipboardIcon size={28} />
@@ -357,7 +359,7 @@ const ContratDetail = () => {
       </div>
 
       {/* Content */}
-      <div style={{ padding: "32px", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {message && (
           <div className="notif-banner" style={{
@@ -383,7 +385,7 @@ const ContratDetail = () => {
           {/* Formulaire d'édition inline */}
           {editing ? (
             <form onSubmit={handleSave}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "12px 24px", marginBottom: 16 }}>
                 <div>
                   <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>N° Contrat</label>
                   <input
@@ -478,7 +480,7 @@ const ContratDetail = () => {
         </div>
 
         {/* Documents + Viewer */}
-        <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20 }}>
+        <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "300px 1fr", gap: 20 }}>
           {/* Sidebar documents */}
           <div style={{
             background: theme.surface, border: `1px solid ${theme.border}`,

@@ -10,6 +10,7 @@ import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import { useConfirm } from "../components/ConfirmDialog";
+import useIsMobile from "../hooks/useIsMobile";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -344,6 +345,7 @@ const defaultColumnVisible = (key) => !key.startsWith("custom_") && !NEWLY_ADDED
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 const Employees = () => {
+  const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
   const [view, setView] = useState("directions");
   const [selectedDirection, setSelectedDirection] = useState(null);
@@ -707,8 +709,8 @@ const Employees = () => {
       )}
 
       {/* Filtres */}
-      <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, padding: "16px 20px", marginBottom: 16, display: "flex", gap: 12, alignItems: "center", boxShadow: theme.shadow }}>
-        <form onSubmit={handleTableSearchSubmit} style={{ flex: 1, display: "flex", gap: 8 }}>
+      <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, padding: "16px 20px", marginBottom: 16, display: "flex", gap: 12, alignItems: "center", flexWrap: isMobile ? "wrap" : "nowrap", boxShadow: theme.shadow }}>
+        <form onSubmit={handleTableSearchSubmit} style={{ flex: isMobile ? "1 1 100%" : 1, display: "flex", gap: 8 }}>
           <div style={{ flex: 1, position: "relative" }}>
             <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: theme.textMuted, pointerEvents: "none", display: "flex" }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -1122,7 +1124,7 @@ const Employees = () => {
       {/* Hero header */}
       <div style={{
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
-        padding: "36px 32px 40px",
+        padding: isMobile ? "20px 16px 24px" : "36px 32px 40px",
         position: "relative",
         overflow: "hidden",
       }}>
@@ -1193,7 +1195,7 @@ const Employees = () => {
       </div>
 
       {/* Main content */}
-      <div style={{ padding: "28px 32px", maxWidth: 1300, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "16px" : "28px 32px", maxWidth: 1300, margin: "0 auto" }}>
 
         {/* Breadcrumb */}
         {breadcrumbItems.length > 1 && (

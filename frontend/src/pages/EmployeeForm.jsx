@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import useIsMobile from "../hooks/useIsMobile";
 
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 18 }}>
@@ -107,6 +108,7 @@ const EmployeeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = !!id;
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (user && user.role !== "ADMIN") navigate("/employees");
@@ -348,7 +350,7 @@ const EmployeeForm = () => {
         style={{
           background:
             "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
-          padding: "32px 32px 36px",
+          padding: isMobile ? "20px 16px 24px" : "32px 32px 36px",
           position: "relative",
           overflow: "hidden",
         }}
@@ -382,7 +384,7 @@ const EmployeeForm = () => {
 
       <div
         className="anim-fade-in"
-        style={{ padding: "32px", maxWidth: 900, margin: "0 auto" }}
+        style={{ padding: isMobile ? "16px" : "32px", maxWidth: 900, margin: "0 auto" }}
       >
         {/* Back button */}
         <button
@@ -432,7 +434,7 @@ const EmployeeForm = () => {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                 gap: "0 24px",
               }}
             >
@@ -545,7 +547,7 @@ const EmployeeForm = () => {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                 gap: "0 24px",
               }}
             >
@@ -662,7 +664,7 @@ const EmployeeForm = () => {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
+                  gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                   gap: "0 24px",
                 }}
               >

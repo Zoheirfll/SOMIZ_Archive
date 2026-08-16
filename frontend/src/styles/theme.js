@@ -68,3 +68,13 @@ export const theme = {
   // ─── Cartes — liseré supérieur dégradé ───────────────────────────────────
   cardBorderTopGrad: "linear-gradient(90deg, #166534 0%, #F59E0B 100%)",
 };
+
+// ─── Helpers responsives (voir hooks/useIsMobile.js) ───────────────────────
+// Pattern hero header commun à toutes les pages (CLAUDE.md) : padding fixe
+// 40px/32px en desktop, réduit sur mobile pour ne pas manger l'espace des
+// petits écrans (~360-390px). Réutiliser plutôt que dupliquer ces valeurs.
+export const heroPadding = (isMobile) =>
+  isMobile ? "24px 16px 20px" : "40px 32px 32px";
+
+export const contentPadding = (isMobile) =>
+  isMobile ? "16px" : "32px";
