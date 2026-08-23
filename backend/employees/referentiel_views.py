@@ -123,14 +123,32 @@ class CategorieSerializer(serializers.ModelSerializer):
 
 # ─── VIEWS ────────────────────────────────────────────────────────────────────
 
-class DirectionListCreateView(generics.ListCreateAPIView):
+class ReferentielSearchMixin:
+    """Filtre la queryset sur ?q= (recherche nom/code, insensible à la casse).
+    Appliqué avant pagination — recherche donc sur l'ensemble des données,
+    pas seulement la page courante affichée côté frontend."""
+
+    search_fields = ['nom', 'code']
+
+    def filter_search(self, qs):
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            from django.db.models import Q
+            condition = Q()
+            for field in self.search_fields:
+                condition |= Q(**{f'{field}__icontains': q})
+            qs = qs.filter(condition)
+        return qs
+
+
+class DirectionListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = DirectionSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
         # Restreint au périmètre d'un CONSULTANT scopé (ex. filtre page
         # Employés) — ADMIN et CONSULTANT non scopé voient tout, inchangé.
-        return self.request.user.accessible_directions_qs()
+        return self.filter_search(self.request.user.accessible_directions_qs())
 
 class DirectionDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DirectionSerializer
@@ -138,7 +156,7 @@ class DirectionDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Direction.objects.all()
 
 
-class DepartementListCreateView(generics.ListCreateAPIView):
+class DepartementListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = DepartementSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -147,7 +165,7 @@ class DepartementListCreateView(generics.ListCreateAPIView):
         direction = self.request.query_params.get('direction')
         if direction:
             qs = qs.filter(direction=direction)
-        return qs
+        return self.filter_search(qs)
 
 class DepartementDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DepartementSerializer
@@ -155,7 +173,7 @@ class DepartementDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Departement.objects.select_related('direction')
 
 
-class ServiceListCreateView(generics.ListCreateAPIView):
+class ServiceListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = ServiceSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -164,7 +182,7 @@ class ServiceListCreateView(generics.ListCreateAPIView):
         departement = self.request.query_params.get('departement')
         if departement:
             qs = qs.filter(departement=departement)
-        return qs
+        return self.filter_search(qs)
 
 class ServiceDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ServiceSerializer
@@ -172,11 +190,12 @@ class ServiceDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Service.objects.select_related('departement__direction')
 
 
-class PosteListCreateView(generics.ListCreateAPIView):
+class PosteListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = PosteSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
-    queryset = Poste.objects.all()
+    def get_queryset(self):
+        return self.filter_search(Poste.objects.all())
 
 class PosteDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PosteSerializer
@@ -184,11 +203,13 @@ class PosteDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Poste.objects.all()
 
 
-class TypeContratListCreateView(generics.ListCreateAPIView):
+class TypeContratListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = TypeContratSerializer
+    search_fields = ['nom']
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
-    queryset = TypeContrat.objects.all()
+    def get_queryset(self):
+        return self.filter_search(TypeContrat.objects.all())
 
 class TypeContratDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TypeContratSerializer
@@ -196,11 +217,13 @@ class TypeContratDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = TypeContrat.objects.all()
 
 
-class CategorieListCreateView(generics.ListCreateAPIView):
+class CategorieListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = CategorieSerializer
+    search_fields = ['nom']
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
-    queryset = Categorie.objects.all()
+    def get_queryset(self):
+        return self.filter_search(Categorie.objects.all())
 
 class CategorieDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CategorieSerializer

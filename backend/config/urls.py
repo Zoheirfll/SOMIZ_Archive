@@ -10,8 +10,8 @@ urlpatterns = [
         path('reporting/', include('audit.urls')),
         path('admin-users/', include('accounts.admin_urls')),
         path('ref/', include('employees.referentiel_urls')),
-        path('api/ref/import/<str:model>/', __import__('employees.import_views', fromlist=['ReferentielImportView']).ReferentielImportView.as_view()),
-        path('api/ref/import/<str:model>/template/', __import__('employees.import_views', fromlist=['ReferentielImportTemplateView']).ReferentielImportTemplateView.as_view()),
+        path('ref/import/<str:model>/', __import__('employees.import_views', fromlist=['ReferentielImportView']).ReferentielImportView.as_view()),
+        path('ref/import/<str:model>/template/', __import__('employees.import_views', fromlist=['ReferentielImportTemplateView']).ReferentielImportTemplateView.as_view()),
     ])),
     # React — doit être en dernier
     re_path(r'^(?!api/|django-admin/|static/).*$', TemplateView.as_view(template_name='index.html')),

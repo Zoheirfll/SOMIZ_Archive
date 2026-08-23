@@ -360,18 +360,37 @@ const Parametres = () => {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageMeta, setPageMeta] = useState({ count: 0, next: null, previous: null });
 
   // Données des référentiels pour les selects
   const [directions, setDirections] = useState([]);
   const [departements, setDepartements] = useState([]);
 
   useEffect(() => {
-    fetchTab(activeTab);
     // Charger directions et départements pour les selects
     fetchDirections();
     fetchDepartements();
     if (activeTab === "champs-personnalises") fetchSystemLabels();
+    setSearchInput("");
+    setSearch("");
+    setPage(1);
   }, [activeTab]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => {
+    fetchTab(activeTab, page, search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, page, search]);
 
   const fetchSystemLabels = async () => {
     try {
@@ -407,14 +426,24 @@ const Parametres = () => {
     } catch {}
   };
 
-  const fetchTab = async (tab) => {
+  const fetchTab = async (tab, pageNum = 1, q = "") => {
     setLoading(true);
     try {
-      const response = await api.get(`/ref/${tab}/`);
-      setData((prev) => ({
-        ...prev,
-        [tab]: response.data.results || response.data,
-      }));
+      const params = { page: pageNum };
+      if (q) params.q = q;
+      const response = await api.get(`/ref/${tab}/`, { params });
+      const isPaginated = Array.isArray(response.data?.results);
+      const results = isPaginated ? response.data.results : response.data;
+      setData((prev) => ({ ...prev, [tab]: results }));
+      setPageMeta(
+        isPaginated
+          ? {
+              count: response.data.count,
+              next: response.data.next,
+              previous: response.data.previous,
+            }
+          : { count: (results || []).length, next: null, previous: null },
+      );
     } catch (err) {
       showMessage("error", "Impossible de charger les données.");
     } finally {
@@ -437,7 +466,7 @@ const Parametres = () => {
     try {
       await api.delete(`/ref/${activeTab}/${item.id}/`);
       showMessage("success", "Supprimé avec succès.");
-      fetchTab(activeTab);
+      fetchTab(activeTab, page, search);
     } catch (err) {
       const serverError = err.response?.data?.error;
       showMessage(
@@ -461,7 +490,7 @@ const Parametres = () => {
         { headers: { "Content-Type": "multipart/form-data" } },
       );
       setImportResult(response.data);
-      fetchTab(activeTab);
+      fetchTab(activeTab, page, search);
       fetchDirections();
       fetchDepartements();
     } catch (err) {
@@ -499,7 +528,7 @@ const Parametres = () => {
         showMessage("success", "Modifié avec succès.");
       }
       setModal(null);
-      fetchTab(activeTab);
+      fetchTab(activeTab, page, search);
       fetchDirections();
       fetchDepartements();
     } catch (err) {
@@ -1334,10 +1363,32 @@ const Parametres = () => {
                 justifyContent: "space-between",
                 alignItems: "center",
                 marginBottom: 16,
+                flexWrap: "wrap",
+                gap: 12,
               }}
             >
-              <div style={{ color: theme.textSecondary, fontSize: 13 }}>
-                {items.length} élément(s)
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 200 }}>
+                <div style={{ color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap" }}>
+                  {pageMeta.count} élément(s)
+                </div>
+                <input
+                  type="text"
+                  placeholder="Rechercher..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="input-focus"
+                  style={{
+                    border: `1px solid ${theme.primaryBorder}`,
+                    borderRadius: 8,
+                    padding: "7px 12px",
+                    fontSize: 13,
+                    color: theme.text,
+                    background: theme.bg,
+                    outline: "none",
+                    minWidth: 200,
+                    maxWidth: 320,
+                  }}
+                />
               </div>
               {isAdmin && (
                 <div style={{ display: "flex", gap: 8 }}>
@@ -1406,6 +1457,52 @@ const Parametres = () => {
               loading={loading}
               isAdmin={isAdmin}
             />
+
+            {(pageMeta.next || pageMeta.previous) && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 16,
+                  marginTop: 16,
+                }}
+              >
+                <button
+                  onClick={() => setPage((p) => p - 1)}
+                  disabled={!pageMeta.previous}
+                  style={{
+                    border: `1px solid ${theme.primaryBorder}`,
+                    background: theme.surface,
+                    color: pageMeta.previous ? theme.text : theme.textMuted,
+                    borderRadius: 8,
+                    padding: "7px 16px",
+                    fontSize: 13,
+                    cursor: pageMeta.previous ? "pointer" : "not-allowed",
+                  }}
+                >
+                  ← Précédent
+                </button>
+                <span style={{ color: theme.textSecondary, fontSize: 13 }}>
+                  Page {page} sur {Math.max(1, Math.ceil(pageMeta.count / 25))}
+                </span>
+                <button
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={!pageMeta.next}
+                  style={{
+                    border: `1px solid ${theme.primaryBorder}`,
+                    background: theme.surface,
+                    color: pageMeta.next ? theme.text : theme.textMuted,
+                    borderRadius: 8,
+                    padding: "7px 16px",
+                    fontSize: 13,
+                    cursor: pageMeta.next ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Suivant →
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
