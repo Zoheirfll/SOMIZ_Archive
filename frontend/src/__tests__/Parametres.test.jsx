@@ -68,7 +68,8 @@ describe("Parametres — rendu initial", () => {
     renderPage();
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(
-        expect.stringContaining("/ref/directions/")
+        expect.stringContaining("/ref/directions/"),
+        expect.anything()
       );
     });
   });
@@ -115,7 +116,8 @@ describe("Parametres — navigation onglets", () => {
     fireEvent.click(screen.getByText("Postes"));
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(
-        expect.stringContaining("/ref/postes/")
+        expect.stringContaining("/ref/postes/"),
+        expect.anything()
       );
     });
   });
@@ -126,7 +128,8 @@ describe("Parametres — navigation onglets", () => {
     fireEvent.click(screen.getByText("Types de contrat"));
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(
-        expect.stringContaining("/ref/types-contrat/")
+        expect.stringContaining("/ref/types-contrat/"),
+        expect.anything()
       );
     });
   });
@@ -137,7 +140,8 @@ describe("Parametres — navigation onglets", () => {
     fireEvent.click(screen.getByText("Types de documents"));
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(
-        expect.stringContaining("/ref/types-documents/")
+        expect.stringContaining("/ref/types-documents/"),
+        expect.anything()
       );
     });
   });
