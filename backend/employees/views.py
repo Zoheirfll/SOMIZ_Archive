@@ -65,7 +65,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         ).order_by('-date_debut', '-id')
 
         qs = Employee.objects.select_related(
-            'direction', 'departement', 'service', 'poste', 'type_contrat'
+            'direction', 'departement', 'service', 'cellule', 'poste', 'type_contrat'
         ).prefetch_related(
             'valeurs_personnalisees__champ'
         ).filter(self.request.user.employee_scope_q()).annotate(
@@ -111,6 +111,12 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(departement=dept)
         if direction:
             qs = qs.filter(direction=direction)
+        pole = self.request.query_params.get('pole')
+        if pole:
+            qs = qs.filter(departement__pole=pole)
+        cellule = self.request.query_params.get('cellule')
+        if cellule:
+            qs = qs.filter(cellule=cellule)
         if statut:
             qs = qs.filter(statut=statut)
 

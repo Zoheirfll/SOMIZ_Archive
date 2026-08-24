@@ -16,6 +16,7 @@ from employees.models import (
     TypeContrat, Categorie, TypeDocument,
     EmployeeDocument, EmployeeDocumentFile,
     ChampPersonnalise, SystemFieldLabel,
+    Pole, Cellule,
 )
 
 
@@ -76,14 +77,34 @@ class DirectionSerializer(serializers.ModelSerializer):
         return obj.departements.filter(is_active=True).count()
 
 
+class PoleSerializer(serializers.ModelSerializer):
+    direction_nom = serializers.CharField(source='direction.nom', read_only=True)
+    nb_departements = serializers.SerializerMethodField()
+    class Meta:
+        model = Pole
+        fields = ['id', 'direction', 'direction_nom', 'nom', 'code', 'description', 'is_active', 'nb_departements']
+    def get_nb_departements(self, obj):
+        return obj.departements.filter(is_active=True).count()
+
+
 class DepartementSerializer(serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
+    pole_nom = serializers.CharField(source='pole.nom', read_only=True, default=None)
     nb_services = serializers.SerializerMethodField()
     class Meta:
         model = Departement
-        fields = ['id', 'direction', 'direction_nom', 'nom', 'code', 'description', 'is_active', 'nb_services']
+        fields = ['id', 'direction', 'direction_nom', 'pole', 'pole_nom', 'nom', 'code', 'description', 'is_active', 'nb_services']
     def get_nb_services(self, obj):
         return obj.services.filter(is_active=True).count()
+
+    def validate(self, attrs):
+        direction = attrs.get('direction', getattr(self.instance, 'direction', None))
+        pole = attrs.get('pole', getattr(self.instance, 'pole', None))
+        if pole is not None and direction is not None and pole.direction_id != direction.id:
+            raise serializers.ValidationError(
+                {"pole": "Ce Pôle n'appartient pas à la Direction sélectionnée."}
+            )
+        return attrs
 
 
 class ServiceSerializer(serializers.ModelSerializer):
@@ -92,6 +113,29 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = ['id', 'departement', 'departement_nom', 'direction_nom', 'nom', 'code', 'description', 'is_active']
+
+
+class CelluleSerializer(serializers.ModelSerializer):
+    direction_nom = serializers.CharField(source='direction.nom', read_only=True, default=None)
+    departement_nom = serializers.CharField(source='departement.nom', read_only=True, default=None)
+    nb_employes = serializers.SerializerMethodField()
+    class Meta:
+        model = Cellule
+        fields = [
+            'id', 'direction', 'direction_nom', 'departement', 'departement_nom',
+            'nom', 'code', 'description', 'is_active', 'nb_employes',
+        ]
+    def get_nb_employes(self, obj):
+        return obj.employees.count()
+
+    def validate(self, attrs):
+        direction = attrs.get('direction', getattr(self.instance, 'direction', None))
+        departement = attrs.get('departement', getattr(self.instance, 'departement', None))
+        if bool(direction) == bool(departement):
+            raise serializers.ValidationError(
+                "Une Cellule doit être rattachée à exactement une Direction OU un Département."
+            )
+        return attrs
 
 
 class PosteSerializer(serializers.ModelSerializer):
@@ -156,21 +200,50 @@ class DirectionDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Direction.objects.all()
 
 
-class DepartementListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
-    serializer_class = DepartementSerializer
+class PoleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+    serializer_class = PoleSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        qs = self.request.user.accessible_departements_qs().select_related('direction')
+        qs = Pole.objects.select_related('direction').all()
         direction = self.request.query_params.get('direction')
         if direction:
             qs = qs.filter(direction=direction)
         return self.filter_search(qs)
 
+class PoleDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = PoleSerializer
+    permission_classes = [IsAdmin]
+    queryset = Pole.objects.select_related('direction')
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.departements.exists():
+            return Response(
+                {"error": "Impossible de supprimer — des départements sont encore rattachés à ce Pôle."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+
+class DepartementListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+    serializer_class = DepartementSerializer
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+    def get_queryset(self):
+        qs = self.request.user.accessible_departements_qs().select_related('direction', 'pole')
+        direction = self.request.query_params.get('direction')
+        if direction:
+            qs = qs.filter(direction=direction)
+        pole = self.request.query_params.get('pole')
+        if pole:
+            qs = qs.filter(pole=pole)
+        return self.filter_search(qs)
+
 class DepartementDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DepartementSerializer
     permission_classes = [IsAdmin]
-    queryset = Departement.objects.select_related('direction')
+    queryset = Departement.objects.select_related('direction', 'pole')
 
 
 class ServiceListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
@@ -188,6 +261,26 @@ class ServiceDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ServiceSerializer
     permission_classes = [IsAdmin]
     queryset = Service.objects.select_related('departement__direction')
+
+
+class CelluleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+    serializer_class = CelluleSerializer
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+    def get_queryset(self):
+        qs = Cellule.objects.select_related('direction', 'departement').all()
+        direction = self.request.query_params.get('direction')
+        if direction:
+            qs = qs.filter(direction=direction)
+        departement = self.request.query_params.get('departement')
+        if departement:
+            qs = qs.filter(departement=departement)
+        return self.filter_search(qs)
+
+class CelluleDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = CelluleSerializer
+    permission_classes = [IsAdmin]
+    queryset = Cellule.objects.select_related('direction', 'departement')
 
 
 class PosteListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
