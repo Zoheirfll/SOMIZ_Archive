@@ -12,6 +12,7 @@ import Parametres from "./pages/Parametres";
 import Import from "./pages/Import";
 import Profil from "./pages/Profil";
 import ContratDetail from "./pages/ContratDetail";
+import Organigramme from "./pages/Organigramme";
 
 function App() {
   return (
@@ -48,6 +49,14 @@ function App() {
             element={
               <ProtectedRoute adminOnly>
                 <EmployeeForm />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/organigramme"
+            element={
+              <ProtectedRoute>
+                <Organigramme />
               </ProtectedRoute>
             }
           />

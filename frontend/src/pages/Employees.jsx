@@ -476,19 +476,49 @@ const Employees = () => {
       if (statut) params.statut = statut;
       if (ordering) params.ordering = ordering;
       if (selectedService) params.service = selectedService.id;
+      else if (selectedDepartement) params.departement = selectedDepartement.id;
+      else if (selectedDirection) params.direction = selectedDirection.id;
       const response = await api.get("/employees/", { params });
       setEmployees(response.data.results || response.data);
       setTotalCount(response.data.count || 0);
       setTotalPages(Math.ceil((response.data.count || 0) / PAGE_SIZE));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, [view, search, statut, page, ordering, selectedService]);
+  }, [view, search, statut, page, ordering, selectedService, selectedDepartement, selectedDirection]);
 
   useEffect(() => {
     if (view !== "employees") return;
     const delay = setTimeout(fetchEmployees, 300);
     return () => clearTimeout(delay);
   }, [fetchEmployees]);
+
+  // Arrivée depuis l'Organigramme (/employees?direction=<id> etc.) — bascule
+  // directement sur la liste des employés filtrée, sans repasser par le
+  // drill-down carte par carte.
+  useEffect(() => {
+    const directionId = searchParams.get("direction");
+    const departementId = searchParams.get("departement");
+    const serviceId = searchParams.get("service");
+    if (!directionId && !departementId && !serviceId) return;
+    (async () => {
+      try {
+        if (serviceId) {
+          const res = await api.get(`/ref/services/${serviceId}/`);
+          setSelectedService(res.data);
+        } else if (departementId) {
+          const res = await api.get(`/ref/departements/${departementId}/`);
+          setSelectedDepartement(res.data);
+        } else if (directionId) {
+          const res = await api.get(`/ref/directions/${directionId}/`);
+          setSelectedDirection(res.data);
+        }
+        setView("employees");
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Navigation ───────────────────────────────────────────────────────────
 

@@ -90,6 +90,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
 
         # Filtres via query params
         q = self.request.query_params.get('q')
+        direction = self.request.query_params.get('direction')
         dept = self.request.query_params.get('departement')
         service = self.request.query_params.get('service')
         statut = self.request.query_params.get('statut')
@@ -108,6 +109,8 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(service=service)
         if dept:
             qs = qs.filter(departement=dept)
+        if direction:
+            qs = qs.filter(direction=direction)
         if statut:
             qs = qs.filter(statut=statut)
 
