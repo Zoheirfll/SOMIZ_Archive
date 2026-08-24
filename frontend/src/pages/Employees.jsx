@@ -1047,7 +1047,7 @@ const Employees = () => {
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.departement_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     )}
                     {isColumnVisible("service") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || (emp.cellule_nom ? `Cellule : ${emp.cellule_nom}` : <span style={{ color: theme.textMuted }}>—</span>)}</td>
                     )}
                     {isColumnVisible("poste") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.poste_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
