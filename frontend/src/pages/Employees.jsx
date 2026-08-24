@@ -351,6 +351,9 @@ const Employees = () => {
   const [selectedDirection, setSelectedDirection] = useState(null);
   const [selectedDepartement, setSelectedDepartement] = useState(null);
   const [selectedService, setSelectedService] = useState(null);
+  // Filtre Pôle/Cellule — arrivée depuis l'Organigramme uniquement, en
+  // dehors du drill-down Direction>Département>Service existant.
+  const [orgFilter, setOrgFilter] = useState(null);
   const [directions, setDirections] = useState([]);
   const [departements, setDepartements] = useState([]);
   const [services, setServices] = useState([]);
@@ -475,7 +478,8 @@ const Employees = () => {
       if (search) params.q = search;
       if (statut) params.statut = statut;
       if (ordering) params.ordering = ordering;
-      if (selectedService) params.service = selectedService.id;
+      if (orgFilter) params[orgFilter.type] = orgFilter.id;
+      else if (selectedService) params.service = selectedService.id;
       else if (selectedDepartement) params.departement = selectedDepartement.id;
       else if (selectedDirection) params.direction = selectedDirection.id;
       const response = await api.get("/employees/", { params });
@@ -484,7 +488,7 @@ const Employees = () => {
       setTotalPages(Math.ceil((response.data.count || 0) / PAGE_SIZE));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, [view, search, statut, page, ordering, selectedService, selectedDepartement, selectedDirection]);
+  }, [view, search, statut, page, ordering, selectedService, selectedDepartement, selectedDirection, orgFilter]);
 
   useEffect(() => {
     if (view !== "employees") return;
@@ -499,15 +503,23 @@ const Employees = () => {
     const directionId = searchParams.get("direction");
     const departementId = searchParams.get("departement");
     const serviceId = searchParams.get("service");
-    if (!directionId && !departementId && !serviceId) return;
+    const poleId = searchParams.get("pole");
+    const celluleId = searchParams.get("cellule");
+    if (!directionId && !departementId && !serviceId && !poleId && !celluleId) return;
     (async () => {
       try {
         if (serviceId) {
           const res = await api.get(`/ref/services/${serviceId}/`);
           setSelectedService(res.data);
+        } else if (celluleId) {
+          const res = await api.get(`/ref/cellules/${celluleId}/`);
+          setOrgFilter({ type: "cellule", id: celluleId, nom: res.data.nom });
         } else if (departementId) {
           const res = await api.get(`/ref/departements/${departementId}/`);
           setSelectedDepartement(res.data);
+        } else if (poleId) {
+          const res = await api.get(`/ref/poles/${poleId}/`);
+          setOrgFilter({ type: "pole", id: poleId, nom: res.data.nom });
         } else if (directionId) {
           const res = await api.get(`/ref/directions/${directionId}/`);
           setSelectedDirection(res.data);
@@ -733,6 +745,27 @@ const Employees = () => {
             </span>
           </div>
           <button onClick={goToAllEmployees} style={{ background: "none", border: `1px solid ${theme.serviceColor}30`, color: theme.serviceColor, borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+            Retirer le filtre
+          </button>
+        </div>
+      )}
+
+      {/* Bannière filtre Pôle/Cellule (arrivée depuis l'Organigramme) */}
+      {orgFilter && (
+        <div style={{
+          background: "#b4530915",
+          border: "1px solid #FDE68A",
+          borderRadius: 12,
+          padding: "12px 20px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}>
+          <span style={{ color: "#b45309", fontWeight: 600, fontSize: 13, fontFamily: theme.fontFamily }}>
+            Filtré par {orgFilter.type === "pole" ? "pôle" : "cellule"} : <strong>{orgFilter.nom}</strong>
+          </span>
+          <button onClick={() => setOrgFilter(null)} style={{ background: "none", border: "1px solid #FDE68A", color: "#b45309", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
             Retirer le filtre
           </button>
         </div>
