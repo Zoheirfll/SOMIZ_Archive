@@ -312,8 +312,10 @@ const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, i
 
 const TABS = [
   { key: "directions", label: "Directions" },
+  { key: "poles", label: "Pôles" },
   { key: "departements", label: "Départements" },
   { key: "services", label: "Services" },
+  { key: "cellules", label: "Cellules" },
   { key: "postes", label: "Postes" },
   { key: "types-contrat", label: "Types de contrat" },
   { key: "categories", label: "Catégories" },
@@ -367,11 +369,13 @@ const Parametres = () => {
 
   // Données des référentiels pour les selects
   const [directions, setDirections] = useState([]);
+  const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
 
   useEffect(() => {
     // Charger directions et départements pour les selects
     fetchDirections();
+    fetchPoles();
     fetchDepartements();
     if (activeTab === "champs-personnalises") fetchSystemLabels();
     setSearchInput("");
@@ -416,6 +420,13 @@ const Parametres = () => {
     try {
       const r = await api.get("/ref/directions/");
       setDirections(r.data.results || r.data);
+    } catch {}
+  };
+
+  const fetchPoles = async () => {
+    try {
+      const r = await api.get("/ref/poles/");
+      setPoles(r.data.results || r.data);
     } catch {}
   };
 
@@ -492,6 +503,7 @@ const Parametres = () => {
       setImportResult(response.data);
       fetchTab(activeTab, page, search);
       fetchDirections();
+      fetchPoles();
       fetchDepartements();
     } catch (err) {
       setImportResult({
@@ -530,6 +542,7 @@ const Parametres = () => {
       setModal(null);
       fetchTab(activeTab, page, search);
       fetchDirections();
+      fetchPoles();
       fetchDepartements();
     } catch (err) {
       const data = err.response?.data;
@@ -622,11 +635,44 @@ const Parametres = () => {
             ),
           },
         ];
+      case "poles":
+        return [
+          { key: "nom", label: "Nom", bold: true },
+          { key: "code", label: "Code", mono: true, primary: true },
+          { key: "direction_nom", label: "Direction" },
+          {
+            key: "nb_departements",
+            label: "Départements",
+            render: (i) => (
+              <Badge count={i.nb_departements} color={theme.primary} />
+            ),
+          },
+          {
+            key: "is_active",
+            label: "Statut",
+            render: (i) => (
+              <span
+                style={{
+                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
+                  color: i.is_active ? theme.primary : theme.danger,
+                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {i.is_active ? "Actif" : "Inactif"}
+              </span>
+            ),
+          },
+        ];
       case "departements":
         return [
           { key: "nom", label: "Nom", bold: true },
           { key: "code", label: "Code", mono: true, primary: true },
           { key: "direction_nom", label: "Direction" },
+          { key: "pole_nom", label: "Pôle", render: (i) => i.pole_nom || "—" },
           {
             key: "nb_services",
             label: "Services",
@@ -660,6 +706,45 @@ const Parametres = () => {
           { key: "code", label: "Code", mono: true, primary: true },
           { key: "departement_nom", label: "Département" },
           { key: "direction_nom", label: "Direction" },
+          {
+            key: "is_active",
+            label: "Statut",
+            render: (i) => (
+              <span
+                style={{
+                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
+                  color: i.is_active ? theme.primary : theme.danger,
+                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {i.is_active ? "Actif" : "Inactif"}
+              </span>
+            ),
+          },
+        ];
+      case "cellules":
+        return [
+          { key: "nom", label: "Nom", bold: true },
+          { key: "code", label: "Code", mono: true, primary: true },
+          {
+            key: "rattachement",
+            label: "Rattachée à",
+            render: (i) =>
+              i.direction_nom
+                ? `Direction : ${i.direction_nom}`
+                : `Département : ${i.departement_nom}`,
+          },
+          {
+            key: "nb_employes",
+            label: "Employés",
+            render: (i) => (
+              <Badge count={i.nb_employes} color={theme.primary} />
+            ),
+          },
           {
             key: "is_active",
             label: "Statut",
@@ -909,7 +994,7 @@ const Parametres = () => {
           </>
         );
 
-      case "departements":
+      case "poles":
         return (
           <>
             <label style={labelStyle}>
@@ -925,6 +1010,81 @@ const Parametres = () => {
               {directions.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.nom}
+                </option>
+              ))}
+            </select>
+            <label style={labelStyle}>
+              Nom <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <input
+              name="nom"
+              value={form.nom || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="Pôle Machines Tournantes"
+            />
+            <label style={labelStyle}>Code</label>
+            <input
+              name="code"
+              value={form.code || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="PMT"
+            />
+            <label style={labelStyle}>Description</label>
+            <textarea
+              name="description"
+              value={form.description || ""}
+              onChange={handleChange}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+            />
+            <label style={labelStyle}>Statut</label>
+            <select
+              name="is_active"
+              value={form.is_active ?? true}
+              onChange={(e) =>
+                setForm({ ...form, is_active: e.target.value === "true" })
+              }
+              className="input-focus" style={inputStyle}
+            >
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+          </>
+        );
+
+      case "departements": {
+        const polesDeLaDirection = poles.filter((p) => p.direction === form.direction);
+        return (
+          <>
+            <label style={labelStyle}>
+              Direction <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <select
+              name="direction"
+              value={form.direction || ""}
+              onChange={(e) => setForm({ ...form, direction: e.target.value, pole: "" })}
+              className="input-focus" style={inputStyle}
+            >
+              <option value="">-- Sélectionner --</option>
+              {directions.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.nom}
+                </option>
+              ))}
+            </select>
+            <label style={labelStyle}>Pôle (optionnel)</label>
+            <select
+              name="pole"
+              value={form.pole || ""}
+              onChange={handleChange}
+              disabled={!form.direction || polesDeLaDirection.length === 0}
+              className="input-focus" style={inputStyle}
+            >
+              <option value="">-- Aucun (rattaché directement à la Direction) --</option>
+              {polesDeLaDirection.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nom}
                 </option>
               ))}
             </select>
@@ -967,6 +1127,7 @@ const Parametres = () => {
             </select>
           </>
         );
+      }
 
       case "services":
         return (
@@ -1026,6 +1187,101 @@ const Parametres = () => {
             </select>
           </>
         );
+
+      case "cellules": {
+        const rattachement = form.departement ? "departement" : "direction";
+        return (
+          <>
+            <label style={labelStyle}>
+              Rattachée à <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  checked={rattachement === "direction"}
+                  onChange={() => setForm({ ...form, direction: form.direction || "", departement: "" })}
+                />
+                Une Direction
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  checked={rattachement === "departement"}
+                  onChange={() => setForm({ ...form, departement: form.departement || "", direction: "" })}
+                />
+                Un Département
+              </label>
+            </div>
+            {rattachement === "direction" ? (
+              <select
+                name="direction"
+                value={form.direction || ""}
+                onChange={handleChange}
+                className="input-focus" style={inputStyle}
+              >
+                <option value="">-- Sélectionner une Direction --</option>
+                {directions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nom}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select
+                name="departement"
+                value={form.departement || ""}
+                onChange={handleChange}
+                className="input-focus" style={inputStyle}
+              >
+                <option value="">-- Sélectionner un Département --</option>
+                {departements.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nom} ({d.direction_nom})
+                  </option>
+                ))}
+              </select>
+            )}
+            <label style={labelStyle}>
+              Nom <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <input
+              name="nom"
+              value={form.nom || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="Cellule Audit Interne"
+            />
+            <label style={labelStyle}>Code</label>
+            <input
+              name="code"
+              value={form.code || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="CAI"
+            />
+            <label style={labelStyle}>Description</label>
+            <textarea
+              name="description"
+              value={form.description || ""}
+              onChange={handleChange}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+            />
+            <label style={labelStyle}>Statut</label>
+            <select
+              name="is_active"
+              value={form.is_active ?? true}
+              onChange={(e) =>
+                setForm({ ...form, is_active: e.target.value === "true" })
+              }
+              className="input-focus" style={inputStyle}
+            >
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+          </>
+        );
+      }
 
       case "postes":
         return (
