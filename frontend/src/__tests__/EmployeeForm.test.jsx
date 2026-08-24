@@ -83,6 +83,7 @@ beforeEach(() => {
     if (url.includes("/ref/directions/")) return Promise.resolve({ data: mockRefs.directions });
     if (url.includes("/ref/departements/")) return Promise.resolve({ data: mockRefs.departements });
     if (url.includes("/ref/services/")) return Promise.resolve({ data: mockRefs.services });
+    if (url.includes("/ref/cellules/")) return Promise.resolve({ data: [] });
     if (url.includes("/ref/postes/")) return Promise.resolve({ data: mockRefs.postes });
     if (url.includes("/ref/types-contrat/")) return Promise.resolve({ data: mockRefs.types_contrat });
     if (url.includes("/ref/categories/")) return Promise.resolve({ data: mockRefs.categories });

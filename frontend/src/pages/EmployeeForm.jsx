@@ -125,6 +125,7 @@ const EmployeeForm = () => {
     direction: "",
     departement: "",
     service: "",
+    cellule: "",
     poste: "",
     type_contrat: "",
     categorie: "",
@@ -141,6 +142,7 @@ const EmployeeForm = () => {
   const [departementsFiltres, setDepartementsFiltres] = useState([]);
   const [services, setServices] = useState([]);
   const [servicesFiltres, setServicesFiltres] = useState([]);
+  const [cellules, setCellules] = useState([]);
   const [postes, setPostes] = useState([]);
   const [typesContrat, setTypesContrat] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -157,10 +159,11 @@ const EmployeeForm = () => {
 
   const fetchReferentiels = async () => {
     try {
-      const [dir, dept, srv, pos, tc, cat, champs] = await Promise.all([
+      const [dir, dept, srv, cel, pos, tc, cat, champs] = await Promise.all([
         api.get("/ref/directions/"),
         api.get("/ref/departements/"),
         api.get("/ref/services/"),
+        api.get("/ref/cellules/"),
         api.get("/ref/postes/"),
         api.get("/ref/types-contrat/"),
         api.get("/ref/categories/"),
@@ -169,6 +172,7 @@ const EmployeeForm = () => {
       setDirections(dir.data.results || dir.data);
       setDepartements(dept.data.results || dept.data);
       setServices(srv.data.results || srv.data);
+      setCellules(cel.data.results || cel.data);
       setPostes(pos.data.results || pos.data);
       setTypesContrat(tc.data.results || tc.data);
       setCategories(cat.data.results || cat.data);
@@ -192,6 +196,7 @@ const EmployeeForm = () => {
         direction: emp.direction || "",
         departement: emp.departement || "",
         service: emp.service || "",
+        cellule: emp.cellule || "",
         poste: emp.poste || "",
         type_contrat: emp.type_contrat || "",
         categorie: emp.categorie || "",
@@ -245,14 +250,14 @@ const EmployeeForm = () => {
 
   const handleDirectionChange = (e) => {
     const dirId = e.target.value;
-    setForm({ ...form, direction: dirId, departement: "", service: "" });
+    setForm({ ...form, direction: dirId, departement: "", service: "", cellule: "" });
     setDepartementsFiltres(departements.filter((d) => d.direction === dirId));
     setServicesFiltres([]);
   };
 
   const handleDepartementChange = (e) => {
     const deptId = e.target.value;
-    setForm({ ...form, departement: deptId, service: "" });
+    setForm({ ...form, departement: deptId, service: "", cellule: "" });
     setServicesFiltres(services.filter((s) => s.departement === deptId));
   };
 
@@ -590,7 +595,9 @@ const EmployeeForm = () => {
                 <Select
                   name="service"
                   value={form.service || ""}
-                  onChange={handleChange}
+                  onChange={(e) =>
+                    setForm({ ...form, service: e.target.value, cellule: "" })
+                  }
                   disabled={!form.departement}
                 >
                   <option value="">-- Sélectionner --</option>
@@ -599,6 +606,32 @@ const EmployeeForm = () => {
                     .map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.nom}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+
+              <Field label="Cellule (alternative au Service)">
+                <Select
+                  name="cellule"
+                  value={form.cellule || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, cellule: e.target.value, service: "" })
+                  }
+                  disabled={!form.direction}
+                >
+                  <option value="">-- Aucune --</option>
+                  {cellules
+                    .filter(
+                      (c) =>
+                        c.is_active &&
+                        (form.departement
+                          ? c.departement === form.departement
+                          : c.direction === form.direction),
+                    )
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nom}
                       </option>
                     ))}
                 </Select>
