@@ -70,11 +70,23 @@ class TypeDocumentDestroyMixin:
 
 class DirectionSerializer(serializers.ModelSerializer):
     nb_departements = serializers.SerializerMethodField()
+    nb_poles = serializers.SerializerMethodField()
+    nb_cellules = serializers.SerializerMethodField()
     class Meta:
         model = Direction
-        fields = ['id', 'nom', 'code', 'description', 'is_active', 'nb_departements']
+        fields = [
+            'id', 'nom', 'code', 'description', 'is_active',
+            'nb_departements', 'nb_poles', 'nb_cellules',
+        ]
     def get_nb_departements(self, obj):
+        # Total (directs + regroupes sous un Pole de cette Direction) —
+        # inchange par l'ajout des Poles/Cellules, pour ne pas casser les
+        # ecrans existants (Parametres) qui affichent deja ce total.
         return obj.departements.filter(is_active=True).count()
+    def get_nb_poles(self, obj):
+        return obj.poles.filter(is_active=True).count()
+    def get_nb_cellules(self, obj):
+        return obj.cellules.filter(is_active=True).count()
 
 
 class PoleSerializer(serializers.ModelSerializer):

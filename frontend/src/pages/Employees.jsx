@@ -148,7 +148,7 @@ const HierarchyCard = ({ icon, name, code, count, countLabel, gradient, accentCo
           pointerEvents: "none",
         }} />
 
-        {/* Icône */}
+        {/* Avatar : abréviation du code si disponible, sinon icône générique */}
         <div style={{
           width: 52,
           height: 52,
@@ -160,8 +160,11 @@ const HierarchyCard = ({ icon, name, code, count, countLabel, gradient, accentCo
           color: "#FFFFFF",
           backdropFilter: "blur(4px)",
           border: "1px solid rgba(255,255,255,0.2)",
+          fontWeight: 800,
+          fontSize: 15,
+          letterSpacing: "-0.02em",
         }}>
-          {icon}
+          {code ? code.slice(0, 4).toUpperCase() : icon}
         </div>
 
         {/* Compteur */}
@@ -697,7 +700,20 @@ const Employees = () => {
         title: "Directions",
         subtitle: "Sélectionnez une direction pour explorer ses départements",
         color: theme.directionColor,
-        items: directions.map((d) => ({ ...d, __type: "direction" })),
+        items: directions.map((d) => {
+          // Badge composé : une Direction organisée en Pôles ou avec des
+          // Cellules directes ne doit pas afficher seulement "X
+          // département(s)" — trompeur si l'essentiel passe par des Pôles.
+          const parts = [];
+          if (d.nb_departements) parts.push(`${d.nb_departements} départ.`);
+          if (d.nb_poles) parts.push(`${d.nb_poles} pôle(s)`);
+          if (d.nb_cellules) parts.push(`${d.nb_cellules} cellule(s)`);
+          return {
+            ...d,
+            __type: "direction",
+            __badge: parts.length > 0 ? parts.join(" · ") : null,
+          };
+        }),
       },
       departements: selectedPole
         ? {
@@ -754,14 +770,15 @@ const Employees = () => {
           }}>
             {cfg.items.map((item, idx) => {
               const meta = TYPE_META[item.__type];
+              const hasBadge = item.__badge !== undefined;
               return (
                 <HierarchyCard
                   key={item.id}
                   icon={meta.icon}
                   name={item.nom}
                   code={item.code}
-                  count={item[meta.countKey] != null ? item[meta.countKey] : undefined}
-                  countLabel={meta.countLabel}
+                  count={hasBadge ? item.__badge : (item[meta.countKey] != null ? item[meta.countKey] : undefined)}
+                  countLabel={hasBadge ? "" : meta.countLabel}
                   gradient={meta.gradient}
                   accentColor={meta.color}
                   animClass={`anim-pop ${delayClass(idx)}`}
