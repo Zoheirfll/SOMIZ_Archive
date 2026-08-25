@@ -12,22 +12,37 @@ const LEVEL = {
     color: "#166534",
     bg: "#F0FDF4",
     border: "#BBF7D0",
-    countLabel: "département(s)",
+  },
+  pole: {
+    label: "Pôle",
+    color: "#0d9488",
+    bg: "#F0FDFA",
+    border: "#99F6E4",
   },
   departement: {
     label: "Département",
     color: "#1e40af",
     bg: "#EFF6FF",
     border: "#BFDBFE",
-    countLabel: "service(s)",
   },
   service: {
     label: "Service",
     color: "#6d28d9",
     bg: "#F5F3FF",
     border: "#DDD6FE",
-    countLabel: null,
   },
+  cellule: {
+    label: "Cellule",
+    color: "#b45309",
+    bg: "#FFFBEB",
+    border: "#FDE68A",
+  },
+};
+
+const CHILD_LABEL = {
+  direction: "département/pôle/cellule",
+  pole: "département(s)",
+  departement: "service/cellule",
 };
 
 const ChevronIcon = ({ open, color }) => (
@@ -66,11 +81,11 @@ const ArrowRightIcon = ({ color }) => (
   </svg>
 );
 
-// Un nœud de l'arbre (Direction, Département ou Service) — accordéon
-// vertical : cliquer le corps de la carte déplie ses enfants juste en
-// dessous (indentés), cliquer la flèche navigue vers la liste filtrée.
-// Ce pattern garantit que la page ne déborde jamais horizontalement,
-// contrairement à un diagramme en arbre classique avec beaucoup de nœuds.
+// Un nœud de l'arbre (Direction, Pôle, Département, Service ou Cellule) —
+// accordéon vertical : cliquer le corps de la carte déplie ses enfants
+// juste en dessous (indentés), cliquer la flèche navigue vers la liste
+// filtrée. Ce pattern garantit que la page ne déborde jamais
+// horizontalement, contrairement à un diagramme en arbre classique.
 const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, onNavigate }) => {
   const s = LEVEL[level];
   return (
@@ -139,7 +154,7 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
             flexShrink: 0,
           }}
         >
-          {childCount} {s.countLabel}
+          {childCount} {CHILD_LABEL[level]}
         </span>
       )}
 
@@ -172,11 +187,12 @@ const Organigramme = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [directions, setDirections] = useState([]);
+  const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
   const [services, setServices] = useState([]);
+  const [cellules, setCellules] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openDirections, setOpenDirections] = useState(new Set());
-  const [openDepartements, setOpenDepartements] = useState(new Set());
+  const [openIds, setOpenIds] = useState(new Set());
 
   const fetchAllPages = async (url) => {
     let results = [];
@@ -201,14 +217,18 @@ const Organigramme = () => {
     (async () => {
       setLoading(true);
       try {
-        const [dir, dept, srv] = await Promise.all([
+        const [dir, pol, dept, srv, cel] = await Promise.all([
           fetchAllPages("/ref/directions/"),
+          fetchAllPages("/ref/poles/"),
           fetchAllPages("/ref/departements/"),
           fetchAllPages("/ref/services/"),
+          fetchAllPages("/ref/cellules/"),
         ]);
         setDirections(dir.filter((d) => d.is_active));
+        setPoles(pol.filter((p) => p.is_active));
         setDepartements(dept.filter((d) => d.is_active));
         setServices(srv.filter((s) => s.is_active));
+        setCellules(cel.filter((c) => c.is_active));
       } catch (err) {
         console.error(err);
       } finally {
@@ -217,15 +237,68 @@ const Organigramme = () => {
     })();
   }, []);
 
-  const deptsOf = (directionId) => departements.filter((d) => d.direction === directionId);
-  const servicesOf = (departementId) => services.filter((s) => s.departement === departementId);
-
-  const toggle = (set, setSet, id) => {
-    setSet((prev) => {
+  const toggle = (id) => {
+    setOpenIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  // Enfants d'un nœud, quel que soit son type — reflète les règles
+  // métier : un Département peut être direct sous une Direction OU sous
+  // un Pôle ; une Cellule peut être sous une Direction OU un Département.
+  const childrenOf = (node, level) => {
+    if (level === "direction") {
+      return [
+        ...poles.filter((p) => p.direction === node.id).map((p) => ({ ...p, level: "pole" })),
+        ...departements
+          .filter((d) => d.direction === node.id && !d.pole)
+          .map((d) => ({ ...d, level: "departement" })),
+        ...cellules.filter((c) => c.direction === node.id).map((c) => ({ ...c, level: "cellule" })),
+      ];
+    }
+    if (level === "pole") {
+      return departements.filter((d) => d.pole === node.id).map((d) => ({ ...d, level: "departement" }));
+    }
+    if (level === "departement") {
+      return [
+        ...services.filter((s) => s.departement === node.id).map((s) => ({ ...s, level: "service" })),
+        ...cellules.filter((c) => c.departement === node.id).map((c) => ({ ...c, level: "cellule" })),
+      ];
+    }
+    return [];
+  };
+
+  const navigateTo = (node, level) => {
+    const paramByLevel = {
+      direction: "direction",
+      pole: "pole",
+      departement: "departement",
+      service: "service",
+      cellule: "cellule",
+    };
+    navigate(`/employees?${paramByLevel[level]}=${node.id}`);
+  };
+
+  const renderNode = (node, level, depth) => {
+    const children = childrenOf(node, level);
+    const open = openIds.has(node.id);
+    return (
+      <div key={node.id}>
+        <OrgNode
+          level={level}
+          nom={node.nom}
+          depth={depth}
+          hasChildren={children.length > 0}
+          open={open}
+          childCount={children.length || undefined}
+          onToggle={() => toggle(node.id)}
+          onNavigate={() => navigateTo(node, level)}
+        />
+        {open && children.map((child) => renderNode(child, child.level, depth + 1))}
+      </div>
+    );
   };
 
   return (
@@ -257,55 +330,7 @@ const Organigramme = () => {
           </div>
         ) : (
           <div>
-            {directions.map((dir) => {
-              const depts = deptsOf(dir.id);
-              const dirOpen = openDirections.has(dir.id);
-              return (
-                <div key={dir.id}>
-                  <OrgNode
-                    level="direction"
-                    nom={dir.nom}
-                    depth={0}
-                    hasChildren={depts.length > 0}
-                    open={dirOpen}
-                    childCount={depts.length || undefined}
-                    onToggle={() => toggle(openDirections, setOpenDirections, dir.id)}
-                    onNavigate={() => navigate(`/employees?direction=${dir.id}`)}
-                  />
-                  {dirOpen &&
-                    depts.map((dept) => {
-                      const svcs = servicesOf(dept.id);
-                      const deptOpen = openDepartements.has(dept.id);
-                      return (
-                        <div key={dept.id}>
-                          <OrgNode
-                            level="departement"
-                            nom={dept.nom}
-                            depth={1}
-                            hasChildren={svcs.length > 0}
-                            open={deptOpen}
-                            childCount={svcs.length || undefined}
-                            onToggle={() => toggle(openDepartements, setOpenDepartements, dept.id)}
-                            onNavigate={() => navigate(`/employees?departement=${dept.id}`)}
-                          />
-                          {deptOpen &&
-                            svcs.map((svc) => (
-                              <OrgNode
-                                key={svc.id}
-                                level="service"
-                                nom={svc.nom}
-                                depth={2}
-                                hasChildren={false}
-                                childCount={null}
-                                onNavigate={() => navigate(`/employees?service=${svc.id}`)}
-                              />
-                            ))}
-                        </div>
-                      );
-                    })}
-                </div>
-              );
-            })}
+            {directions.map((dir) => renderNode(dir, "direction", 0))}
           </div>
         )}
       </div>

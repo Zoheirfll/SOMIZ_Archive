@@ -45,11 +45,50 @@ class Direction(models.Model):
         return self.nom
 
 
+class Pole(models.Model):
+    """
+    Regroupement optionnel de Départements sous une Direction — reflète les
+    organigrammes réels où une Direction peut contenir directement des
+    Départements OU les regrouper par Pôle (ex. "Pôle Machines Tournantes"
+    contenant plusieurs Départements). Toujours rattaché à UNE Direction —
+    contrairement à Departement/Service, un Pôle ne contient jamais
+    d'employés directement (voir Departement.pole).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    direction = models.ForeignKey(
+        Direction, on_delete=models.CASCADE,
+        related_name='poles', verbose_name="Direction"
+    )
+    nom = models.CharField(max_length=150, verbose_name="Nom")
+    code = models.CharField(max_length=20, blank=True, verbose_name="Code")
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'poles'
+        verbose_name = "Pôle"
+        ordering = ['direction__nom', 'nom']
+        unique_together = [['direction', 'nom']]
+
+    def __str__(self):
+        return f"{self.direction.nom} → {self.nom}"
+
+
 class Departement(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     direction = models.ForeignKey(
         Direction, on_delete=models.CASCADE,
         related_name='departements', verbose_name="Direction"
+    )
+    # Regroupement d'affichage optionnel — si renseigné, doit appartenir à
+    # la même Direction (validé côté serializer). `direction` reste la
+    # source de vérité pour le scoping/les filtres, inchangé par l'ajout
+    # du Pôle : un Département "sous Pôle" est toujours aussi retrouvable
+    # via sa Direction directe, exactement comme avant.
+    pole = models.ForeignKey(
+        Pole, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='departements', verbose_name="Pôle"
     )
     nom = models.CharField(max_length=150, verbose_name="Nom")
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
@@ -87,6 +126,45 @@ class Service(models.Model):
 
     def __str__(self):
         return f"{self.departement.nom} → {self.nom}"
+
+
+class Cellule(models.Model):
+    """
+    Unité terminale (contient des employés, comme un Service) rattachée
+    directement à une Direction OU à un Département — jamais à un Service.
+    Exactement un des deux champs `direction`/`departement` doit être
+    renseigné (validé côté serializer et en base via `clean()`).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    direction = models.ForeignKey(
+        Direction, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='cellules', verbose_name="Direction"
+    )
+    departement = models.ForeignKey(
+        Departement, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='cellules', verbose_name="Département"
+    )
+    nom = models.CharField(max_length=150, verbose_name="Nom")
+    code = models.CharField(max_length=20, blank=True, verbose_name="Code")
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'cellules'
+        verbose_name = "Cellule"
+        ordering = ['nom']
+
+    def __str__(self):
+        parent = self.direction.nom if self.direction_id else self.departement.nom
+        return f"{parent} → {self.nom}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if bool(self.direction_id) == bool(self.departement_id):
+            raise ValidationError(
+                "Une Cellule doit être rattachée à exactement une Direction OU un Département."
+            )
 
 
 class Poste(models.Model):
@@ -206,6 +284,10 @@ class Employee(models.Model):
     )
     service = models.ForeignKey(
         Service, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='employees'
+    )
+    cellule = models.ForeignKey(
+        Cellule, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='employees'
     )
     poste = models.ForeignKey(

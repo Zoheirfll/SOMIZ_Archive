@@ -176,6 +176,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     service_nom = serializers.CharField(source='service.nom', read_only=True)
+    cellule_nom = serializers.CharField(source='cellule.nom', read_only=True, default=None)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
@@ -187,7 +188,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'matricule', 'numero_contrat_actif', 'nom', 'prenom',
             'date_naissance', 'date_embauche',
-            'direction_nom', 'departement_nom', 'service_nom',
+            'direction_nom', 'departement_nom', 'service_nom', 'cellule_nom',
             'poste_nom', 'type_contrat_nom', 'categorie_nom', 'has_photo',
             'statut', 'dossier_complet', 'taux_completude', 'nb_documents',
             'champs_personnalises',
@@ -231,6 +232,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     service_nom = serializers.CharField(source='service.nom', read_only=True)
+    cellule_nom = serializers.CharField(source='cellule.nom', read_only=True, default=None)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
@@ -245,6 +247,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'direction', 'direction_nom',
             'departement', 'departement_nom',
             'service', 'service_nom',
+            'cellule', 'cellule_nom',
             'poste', 'poste_nom',
             'type_contrat', 'type_contrat_nom',
             'categorie', 'categorie_nom',
@@ -305,7 +308,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut',
-            'direction', 'departement', 'service',
+            'direction', 'departement', 'service', 'cellule',
             'poste', 'type_contrat', 'categorie',
         ]
         read_only_fields = ['id']
@@ -317,3 +320,19 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
 
     def validate_prenom(self, value):
         return value.strip().capitalize()
+
+    def validate(self, attrs):
+        # Une Cellule est rattachée à une Direction OU un Département — on
+        # aligne automatiquement direction/departement/service de l'employé
+        # sur celui de la Cellule choisie, pour que le scoping CONSULTANT
+        # (basé sur ces champs) continue de fonctionner sans modification.
+        cellule = attrs.get('cellule', getattr(self.instance, 'cellule', None))
+        if cellule is not None:
+            attrs['service'] = None
+            if cellule.departement_id:
+                attrs['departement'] = cellule.departement
+                attrs['direction'] = cellule.departement.direction
+            else:
+                attrs['departement'] = None
+                attrs['direction'] = cellule.direction
+        return attrs

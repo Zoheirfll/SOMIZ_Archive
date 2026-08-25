@@ -37,6 +37,23 @@ const IconService = ({ size = 32 }) => (
   </svg>
 );
 
+const IconPole = ({ size = 32 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="6" r="3"/>
+    <path d="M12 9v4M6 20v-2a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v2"/>
+    <path d="M6 20h12"/>
+  </svg>
+);
+
+const IconCellule = ({ size = 32 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+    <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+    <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+  </svg>
+);
+
 const IconUsers = ({ size = 24, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -131,7 +148,7 @@ const HierarchyCard = ({ icon, name, code, count, countLabel, gradient, accentCo
           pointerEvents: "none",
         }} />
 
-        {/* Icône */}
+        {/* Avatar : abréviation du code si disponible, sinon icône générique */}
         <div style={{
           width: 52,
           height: 52,
@@ -143,8 +160,11 @@ const HierarchyCard = ({ icon, name, code, count, countLabel, gradient, accentCo
           color: "#FFFFFF",
           backdropFilter: "blur(4px)",
           border: "1px solid rgba(255,255,255,0.2)",
+          fontWeight: 800,
+          fontSize: 15,
+          letterSpacing: "-0.02em",
         }}>
-          {icon}
+          {code ? code.slice(0, 4).toUpperCase() : icon}
         </div>
 
         {/* Compteur */}
@@ -349,11 +369,19 @@ const Employees = () => {
   const { confirm, ConfirmDialog } = useConfirm();
   const [view, setView] = useState("directions");
   const [selectedDirection, setSelectedDirection] = useState(null);
+  const [selectedPole, setSelectedPole] = useState(null);
   const [selectedDepartement, setSelectedDepartement] = useState(null);
   const [selectedService, setSelectedService] = useState(null);
+  // Filtre Pôle/Cellule — arrivée depuis l'Organigramme uniquement, en
+  // dehors du drill-down Direction>Département>Service existant.
+  const [orgFilter, setOrgFilter] = useState(null);
   const [directions, setDirections] = useState([]);
+  const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
+  const [departementsDePole, setDepartementsDePole] = useState([]);
+  const [cellulesDirection, setCellulesDirection] = useState([]);
   const [services, setServices] = useState([]);
+  const [cellulesDepartement, setCellulesDepartement] = useState([]);
   const [hierarchyLoading, setHierarchyLoading] = useState(false);
   const [hierarchyKey, setHierarchyKey] = useState(0);
 
@@ -444,22 +472,45 @@ const Employees = () => {
     const fetch = async () => {
       setHierarchyLoading(true);
       try {
-        const res = await api.get("/ref/departements/", { params: { direction: selectedDirection.id } });
-        setDepartements(res.data.results || res.data);
-      } catch { setDepartements([]); }
+        const [deptRes, poleRes, celRes] = await Promise.all([
+          api.get("/ref/departements/", { params: { direction: selectedDirection.id } }),
+          api.get("/ref/poles/", { params: { direction: selectedDirection.id } }),
+          api.get("/ref/cellules/", { params: { direction: selectedDirection.id } }),
+        ]);
+        setDepartements(deptRes.data.results || deptRes.data);
+        setPoles(poleRes.data.results || poleRes.data);
+        setCellulesDirection(celRes.data.results || celRes.data);
+      } catch { setDepartements([]); setPoles([]); setCellulesDirection([]); }
       finally { setHierarchyLoading(false); }
     };
     fetch();
   }, [selectedDirection]);
 
   useEffect(() => {
+    if (!selectedPole) return;
+    const fetch = async () => {
+      setHierarchyLoading(true);
+      try {
+        const res = await api.get("/ref/departements/", { params: { pole: selectedPole.id } });
+        setDepartementsDePole(res.data.results || res.data);
+      } catch { setDepartementsDePole([]); }
+      finally { setHierarchyLoading(false); }
+    };
+    fetch();
+  }, [selectedPole]);
+
+  useEffect(() => {
     if (!selectedDepartement) return;
     const fetch = async () => {
       setHierarchyLoading(true);
       try {
-        const res = await api.get("/ref/services/", { params: { departement: selectedDepartement.id } });
-        setServices(res.data.results || res.data);
-      } catch { setServices([]); }
+        const [srvRes, celRes] = await Promise.all([
+          api.get("/ref/services/", { params: { departement: selectedDepartement.id } }),
+          api.get("/ref/cellules/", { params: { departement: selectedDepartement.id } }),
+        ]);
+        setServices(srvRes.data.results || srvRes.data);
+        setCellulesDepartement(celRes.data.results || celRes.data);
+      } catch { setServices([]); setCellulesDepartement([]); }
       finally { setHierarchyLoading(false); }
     };
     fetch();
@@ -475,7 +526,8 @@ const Employees = () => {
       if (search) params.q = search;
       if (statut) params.statut = statut;
       if (ordering) params.ordering = ordering;
-      if (selectedService) params.service = selectedService.id;
+      if (orgFilter) params[orgFilter.type] = orgFilter.id;
+      else if (selectedService) params.service = selectedService.id;
       else if (selectedDepartement) params.departement = selectedDepartement.id;
       else if (selectedDirection) params.direction = selectedDirection.id;
       const response = await api.get("/employees/", { params });
@@ -484,7 +536,7 @@ const Employees = () => {
       setTotalPages(Math.ceil((response.data.count || 0) / PAGE_SIZE));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, [view, search, statut, page, ordering, selectedService, selectedDepartement, selectedDirection]);
+  }, [view, search, statut, page, ordering, selectedService, selectedDepartement, selectedDirection, orgFilter]);
 
   useEffect(() => {
     if (view !== "employees") return;
@@ -499,15 +551,23 @@ const Employees = () => {
     const directionId = searchParams.get("direction");
     const departementId = searchParams.get("departement");
     const serviceId = searchParams.get("service");
-    if (!directionId && !departementId && !serviceId) return;
+    const poleId = searchParams.get("pole");
+    const celluleId = searchParams.get("cellule");
+    if (!directionId && !departementId && !serviceId && !poleId && !celluleId) return;
     (async () => {
       try {
         if (serviceId) {
           const res = await api.get(`/ref/services/${serviceId}/`);
           setSelectedService(res.data);
+        } else if (celluleId) {
+          const res = await api.get(`/ref/cellules/${celluleId}/`);
+          setOrgFilter({ type: "cellule", id: celluleId, nom: res.data.nom });
         } else if (departementId) {
           const res = await api.get(`/ref/departements/${departementId}/`);
           setSelectedDepartement(res.data);
+        } else if (poleId) {
+          const res = await api.get(`/ref/poles/${poleId}/`);
+          setOrgFilter({ type: "pole", id: poleId, nom: res.data.nom });
         } else if (directionId) {
           const res = await api.get(`/ref/directions/${directionId}/`);
           setSelectedDirection(res.data);
@@ -522,11 +582,13 @@ const Employees = () => {
 
   // ─── Navigation ───────────────────────────────────────────────────────────
 
-  const goToDirections = () => { setView("directions"); setSelectedDirection(null); setSelectedDepartement(null); setSelectedService(null); setHierarchyKey(k => k + 1); };
-  const selectDirection = (dir) => { setSelectedDirection(dir); setSelectedDepartement(null); setSelectedService(null); setView("departements"); setHierarchyKey(k => k + 1); };
+  const goToDirections = () => { setView("directions"); setSelectedDirection(null); setSelectedPole(null); setSelectedDepartement(null); setSelectedService(null); setOrgFilter(null); setHierarchyKey(k => k + 1); };
+  const selectDirection = (dir) => { setSelectedDirection(dir); setSelectedPole(null); setSelectedDepartement(null); setSelectedService(null); setOrgFilter(null); setView("departements"); setHierarchyKey(k => k + 1); };
+  const selectPole = (pole) => { setSelectedPole(pole); setSelectedDepartement(null); setSelectedService(null); setHierarchyKey(k => k + 1); };
   const selectDepartement = (dept) => { setSelectedDepartement(dept); setSelectedService(null); setView("services"); setHierarchyKey(k => k + 1); };
   const selectService = (svc) => { setSelectedService(svc); setView("employees"); setPage(1); setHierarchyKey(k => k + 1); };
-  const goToAllEmployees = () => { setSelectedService(null); setView("employees"); setPage(1); };
+  const selectCellule = (cellule) => { setOrgFilter({ type: "cellule", id: cellule.id, nom: cellule.nom }); setView("employees"); setPage(1); setHierarchyKey(k => k + 1); };
+  const goToAllEmployees = () => { setSelectedService(null); setOrgFilter(null); setView("employees"); setPage(1); };
 
   // ─── Bulk actions ─────────────────────────────────────────────────────────
 
@@ -579,10 +641,12 @@ const Employees = () => {
 
   const breadcrumbItems = [
     { label: "Toutes les directions", onClick: view !== "directions" ? goToDirections : null },
-    ...(selectedDirection ? [{ label: selectedDirection.nom, onClick: view !== "departements" ? () => { setView("departements"); setSelectedDepartement(null); setSelectedService(null); setHierarchyKey(k => k + 1); } : null }] : []),
+    ...(selectedDirection ? [{ label: selectedDirection.nom, onClick: (view !== "departements" || selectedPole) ? () => { setView("departements"); setSelectedPole(null); setSelectedDepartement(null); setSelectedService(null); setHierarchyKey(k => k + 1); } : null }] : []),
+    ...(selectedPole ? [{ label: selectedPole.nom, onClick: view !== "departements" ? () => { setView("departements"); setSelectedDepartement(null); setSelectedService(null); setHierarchyKey(k => k + 1); } : null }] : []),
     ...(selectedDepartement ? [{ label: selectedDepartement.nom, onClick: view !== "services" ? () => { setView("services"); setSelectedService(null); setHierarchyKey(k => k + 1); } : null }] : []),
     ...(selectedService ? [{ label: selectedService.nom, onClick: null }] : []),
-    ...(view === "employees" && !selectedService ? [{ label: "Tous les employés", onClick: null }] : []),
+    ...(orgFilter?.type === "cellule" ? [{ label: orgFilter.nom, onClick: null }] : []),
+    ...(view === "employees" && !selectedService && !orgFilter ? [{ label: "Tous les employés", onClick: null }] : []),
   ];
 
   const delayClass = (i) => ["", "delay-1", "delay-2", "delay-3", "delay-4", "delay-5", "delay-6", "delay-7"][Math.min(i, 7)];
@@ -600,42 +664,82 @@ const Employees = () => {
       );
     }
 
+    // Style/comportement par type de nœud — un même écran (departements/
+    // services) peut mélanger plusieurs types (Pôle+Département+Cellule,
+    // ou Service+Cellule), donc le style se lit par item, pas par écran.
+    const TYPE_META = {
+      direction: {
+        color: theme.directionColor, gradient: theme.directionGrad,
+        icon: <IconDirection size={28} />, countLabel: "département(s)",
+        countKey: "nb_departements", onSelect: selectDirection,
+      },
+      pole: {
+        color: "#0d9488", gradient: "linear-gradient(135deg, #042f2e 0%, #0d9488 60%, #14b8a6 100%)",
+        icon: <IconPole size={28} />, countLabel: "département(s)",
+        countKey: "nb_departements", onSelect: selectPole,
+      },
+      departement: {
+        color: theme.departementColor, gradient: theme.departementGrad,
+        icon: <IconDepartement size={28} />, countLabel: "service(s)",
+        countKey: "nb_services", onSelect: selectDepartement,
+      },
+      service: {
+        color: theme.serviceColor, gradient: theme.serviceGrad,
+        icon: <IconService size={28} />, countLabel: "employé(s)",
+        countKey: "nb_employes", onSelect: selectService,
+      },
+      cellule: {
+        color: "#b45309", gradient: "linear-gradient(135deg, #451a03 0%, #b45309 60%, #d97706 100%)",
+        icon: <IconCellule size={28} />, countLabel: "employé(s)",
+        countKey: "nb_employes", onSelect: selectCellule,
+      },
+    };
+
     const configs = {
       directions: {
         title: "Directions",
         subtitle: "Sélectionnez une direction pour explorer ses départements",
-        items: directions,
         color: theme.directionColor,
-        gradient: theme.directionGrad,
-        accent: theme.directionAccent,
-        icon: <IconDirection size={28} />,
-        countLabel: "département(s)",
-        countKey: "nb_departements",
-        onSelect: selectDirection,
+        items: directions.map((d) => {
+          // Badge composé : une Direction organisée en Pôles ou avec des
+          // Cellules directes ne doit pas afficher seulement "X
+          // département(s)" — trompeur si l'essentiel passe par des Pôles.
+          const parts = [];
+          if (d.nb_departements) parts.push(`${d.nb_departements} départ.`);
+          if (d.nb_poles) parts.push(`${d.nb_poles} pôle(s)`);
+          if (d.nb_cellules) parts.push(`${d.nb_cellules} cellule(s)`);
+          return {
+            ...d,
+            __type: "direction",
+            __badge: parts.length > 0 ? parts.join(" · ") : null,
+          };
+        }),
       },
-      departements: {
-        title: `Départements · ${selectedDirection?.nom}`,
-        subtitle: "Sélectionnez un département pour voir ses services",
-        items: departements,
-        color: theme.departementColor,
-        gradient: theme.departementGrad,
-        accent: theme.departementAccent,
-        icon: <IconDepartement size={28} />,
-        countLabel: "service(s)",
-        countKey: "nb_services",
-        onSelect: selectDepartement,
-      },
+      departements: selectedPole
+        ? {
+            title: `Départements · ${selectedPole.nom}`,
+            subtitle: "Sélectionnez un département pour voir ses services",
+            color: "#0d9488",
+            items: departementsDePole.map((d) => ({ ...d, __type: "departement" })),
+          }
+        : {
+            title: `Direction · ${selectedDirection?.nom}`,
+            subtitle: "Pôles, départements directs et cellules de cette direction",
+            color: theme.directionColor,
+            items: [
+              ...poles.map((p) => ({ ...p, __type: "pole" })),
+              ...departements.filter((d) => !d.pole).map((d) => ({ ...d, __type: "departement" })),
+              ...cellulesDirection.map((c) => ({ ...c, __type: "cellule" })),
+            ],
+          },
       services: {
-        title: `Services · ${selectedDepartement?.nom}`,
-        subtitle: "Sélectionnez un service pour voir ses employés",
-        items: services,
-        color: theme.serviceColor,
-        gradient: theme.serviceGrad,
-        accent: theme.serviceAccent,
-        icon: <IconService size={28} />,
-        countLabel: "employé(s)",
-        countKey: "nb_employes",
-        onSelect: selectService,
+        title: `Département · ${selectedDepartement?.nom}`,
+        subtitle: "Services et cellules de ce département",
+        color: theme.departementColor,
+        items: [
+          ...services.map((s) => ({ ...s, __type: "service" })),
+          ...cellulesDepartement.map((c) => ({ ...c, __type: "cellule" })),
+        ],
       },
     };
 
@@ -664,20 +768,24 @@ const Employees = () => {
             gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
             gap: 20,
           }}>
-            {cfg.items.map((item, idx) => (
-              <HierarchyCard
-                key={item.id}
-                icon={cfg.icon}
-                name={item.nom}
-                code={item.code}
-                count={item[cfg.countKey] != null ? item[cfg.countKey] : undefined}
-                countLabel={cfg.countLabel}
-                gradient={cfg.gradient}
-                accentColor={cfg.color}
-                animClass={`anim-pop ${delayClass(idx)}`}
-                onClick={() => cfg.onSelect(item)}
-              />
-            ))}
+            {cfg.items.map((item, idx) => {
+              const meta = TYPE_META[item.__type];
+              const hasBadge = item.__badge !== undefined;
+              return (
+                <HierarchyCard
+                  key={item.id}
+                  icon={meta.icon}
+                  name={item.nom}
+                  code={item.code}
+                  count={hasBadge ? item.__badge : (item[meta.countKey] != null ? item[meta.countKey] : undefined)}
+                  countLabel={hasBadge ? "" : meta.countLabel}
+                  gradient={meta.gradient}
+                  accentColor={meta.color}
+                  animClass={`anim-pop ${delayClass(idx)}`}
+                  onClick={() => meta.onSelect(item)}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -733,6 +841,27 @@ const Employees = () => {
             </span>
           </div>
           <button onClick={goToAllEmployees} style={{ background: "none", border: `1px solid ${theme.serviceColor}30`, color: theme.serviceColor, borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+            Retirer le filtre
+          </button>
+        </div>
+      )}
+
+      {/* Bannière filtre Pôle/Cellule (arrivée depuis l'Organigramme) */}
+      {orgFilter && (
+        <div style={{
+          background: "#b4530915",
+          border: "1px solid #FDE68A",
+          borderRadius: 12,
+          padding: "12px 20px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}>
+          <span style={{ color: "#b45309", fontWeight: 600, fontSize: 13, fontFamily: theme.fontFamily }}>
+            Filtré par {orgFilter.type === "pole" ? "pôle" : "cellule"} : <strong>{orgFilter.nom}</strong>
+          </span>
+          <button onClick={() => setOrgFilter(null)} style={{ background: "none", border: "1px solid #FDE68A", color: "#b45309", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
             Retirer le filtre
           </button>
         </div>
@@ -1047,7 +1176,7 @@ const Employees = () => {
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.departement_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     )}
                     {isColumnVisible("service") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || (emp.cellule_nom ? `Cellule : ${emp.cellule_nom}` : <span style={{ color: theme.textMuted }}>—</span>)}</td>
                     )}
                     {isColumnVisible("poste") && (
                     <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.poste_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>

@@ -451,6 +451,9 @@ const EmployeeDetail = () => {
     { label: "Direction", value: employee.direction_nom || "—" },
     { label: "Département", value: employee.departement_nom || "—" },
     { label: "Service", value: employee.service_nom || "—" },
+    ...(employee.cellule_nom
+      ? [{ label: "Cellule", value: employee.cellule_nom }]
+      : []),
     { label: "Fonction", value: employee.poste_nom || "—" },
     { label: "Type de contrat", value: employee.type_contrat_nom || "—" },
     { label: "Catégorie", value: employee.categorie_nom || "—" },

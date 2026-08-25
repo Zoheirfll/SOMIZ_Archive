@@ -1,8 +1,10 @@
 from django.urls import path
 from employees.referentiel_views import (
     DirectionListCreateView, DirectionDetailView,
+    PoleListCreateView, PoleDetailView,
     DepartementListCreateView, DepartementDetailView,
     ServiceListCreateView, ServiceDetailView,
+    CelluleListCreateView, CelluleDetailView,
     PosteListCreateView, PosteDetailView,
     TypeContratListCreateView, TypeContratDetailView,
     CategorieListCreateView, CategorieDetailView,
@@ -14,10 +16,14 @@ from employees.referentiel_views import (
 urlpatterns = [
     path('directions/', DirectionListCreateView.as_view()),
     path('directions/<uuid:pk>/', DirectionDetailView.as_view()),
+    path('poles/', PoleListCreateView.as_view()),
+    path('poles/<uuid:pk>/', PoleDetailView.as_view()),
     path('departements/', DepartementListCreateView.as_view()),
     path('departements/<uuid:pk>/', DepartementDetailView.as_view()),
     path('services/', ServiceListCreateView.as_view()),
     path('services/<uuid:pk>/', ServiceDetailView.as_view()),
+    path('cellules/', CelluleListCreateView.as_view()),
+    path('cellules/<uuid:pk>/', CelluleDetailView.as_view()),
     path('postes/', PosteListCreateView.as_view()),
     path('postes/<uuid:pk>/', PosteDetailView.as_view()),
     path('types-contrat/', TypeContratListCreateView.as_view()),
