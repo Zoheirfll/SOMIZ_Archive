@@ -8,7 +8,7 @@ import SecureDocViewer from "../components/SecureDocViewer";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import ScanImportModal from "../components/ScanImportModal";
-import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
+import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner, TagIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
@@ -404,6 +404,29 @@ const EmployeeDetail = () => {
     const newBaseName = await prompt("Nouveau nom du fichier :", baseName);
     if (newBaseName === null || !newBaseName || newBaseName === baseName) return;
     const newName = `${newBaseName}${ext}`;
+    try {
+      await api.patch(`/files/${file.id}/`, { file_name: newName });
+      setMessage({ type: "success", text: "Fichier renommé." });
+      fetchEmployee();
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors du renommage.",
+      });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
+  // Renomme un fichier d'après le libellé de son type de document
+  // ("Acte de naissance" au lieu du nom technique du scan), en un clic.
+  const handleAutoRenameFile = async (file, label, e) => {
+    e?.stopPropagation();
+    if (!label) return;
+    const dotIndex = (file.file_name || "").lastIndexOf(".");
+    const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
+    const newName = `${label}${ext}`;
+    if (newName === file.file_name) return;
     try {
       await api.patch(`/files/${file.id}/`, { file_name: newName });
       setMessage({ type: "success", text: "Fichier renommé." });
@@ -1368,6 +1391,23 @@ const EmployeeDetail = () => {
                           {user?.role === "ADMIN" && (
                             <div style={{ display: "flex", gap: 4 }}>
                             <button
+                              onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
+                              title="Renommer d'après le type de document"
+                              aria-label="Renommer d'après le type de document"
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: theme.textSecondary,
+                                cursor: "pointer",
+                                display: "flex",
+                                opacity: 0.5,
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                              onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
+                            >
+                              <TagIcon size={12} />
+                            </button>
+                            <button
                               onClick={(e) => handleRenameFile(file, e)}
                               title="Renommer ce fichier"
                               aria-label="Renommer ce fichier"
@@ -1714,6 +1754,26 @@ const EmployeeDetail = () => {
                         >
                           {stripExt(selectedFile.file_name)}
                         </span>
+                        {user?.role === "ADMIN" && (
+                          <button
+                            onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
+                            title="Renommer d'après le type de document"
+                            aria-label="Renommer d'après le type de document"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: theme.textSecondary,
+                              cursor: "pointer",
+                              display: "flex",
+                              opacity: 0.6,
+                              padding: 0,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
+                          >
+                            <TagIcon size={12} />
+                          </button>
+                        )}
                         {user?.role === "ADMIN" && (
                           <button
                             onClick={(e) => handleRenameFile(selectedFile, e)}
