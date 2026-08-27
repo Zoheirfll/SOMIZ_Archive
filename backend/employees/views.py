@@ -455,6 +455,21 @@ class DocumentListUploadView(APIView):
         )
 
 
+def _scan_import_file_name(source_name, pages):
+    """Nom affiché d'un fichier issu du scan/import — garde le nom du
+    fichier scanné (cohérent avec l'upload normal, qui conserve toujours
+    le nom du fichier choisi, et préserve la traçabilité si le même type
+    de document est réimporté plus tard). Pour une part obtenue par
+    découpage de pages, ajoute juste la plage de pages entre parenthèses
+    pour distinguer les morceaux d'un même fichier source."""
+    base, ext = os.path.splitext(source_name)
+    ext = ext or '.pdf'
+    if pages:
+        page_label = f"p{pages[0]}" if len(pages) == 1 else f"p{pages[0]}-{pages[-1]}"
+        return f"{base} ({page_label}){ext}"
+    return f"{base}{ext}"
+
+
 class ScanImportView(APIView):
     """
     POST /api/employees/{emp_id}/documents/scan-import/
@@ -494,17 +509,16 @@ class ScanImportView(APIView):
                         if part['is_image'] or part['pages'] is None:
                             source_file.seek(0)
                             file_to_save = source_file
-                            file_name = source_file.name
+                            file_name = _scan_import_file_name(source_file.name, None)
                         else:
                             total_pages = pdf_page_count(source_file)
                             if list(part['pages']) == list(range(1, total_pages + 1)):
                                 source_file.seek(0)
                                 file_to_save = source_file
-                                file_name = source_file.name
+                                file_name = _scan_import_file_name(source_file.name, None)
                             else:
                                 extracted = extract_pdf_pages(source_file, part['pages'])
-                                base_name = os.path.splitext(source_file.name)[0]
-                                file_name = f"{base_name}_p{'-'.join(map(str, part['pages']))}.pdf"
+                                file_name = _scan_import_file_name(source_file.name, part['pages'])
                                 file_to_save = File(extracted, name=file_name)
 
                         file_to_save.seek(0)

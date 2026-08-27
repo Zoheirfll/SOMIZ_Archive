@@ -22,6 +22,27 @@ const stripExt = (name) => {
   return dotIndex > 0 ? name.slice(0, dotIndex) : name;
 };
 
+// file_size_kb vient du backend en Ko — affiché en Mo pour rester lisible
+// sur des documents scannés qui font souvent plusieurs Mo.
+const formatSizeMo = (kb) => {
+  if (kb === null || kb === undefined) return "";
+  return `${(kb / 1024).toFixed(2)} Mo`;
+};
+
+// Date + heure d'upload d'un fichier (ex. "27/08/2026 13:30").
+const formatDateTime = (isoString) => {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const EmployeeDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1342,11 +1363,6 @@ const EmployeeDetail = () => {
                               >
                                 {stripExt(file.file_name) || `Page ${index + 1}`}
                               </div>
-                              <div
-                                style={{ color: theme.textMuted, fontSize: 10 }}
-                              >
-                                {file.file_size_kb} Ko
-                              </div>
                             </div>
                           </div>
                           {user?.role === "ADMIN" && (
@@ -1677,15 +1693,6 @@ const EmployeeDetail = () => {
                         {typesDocuments[selectedDoc?.type_document] ||
                           selectedDoc?.type_document}
                       </span>
-                      <span
-                        style={{
-                          color: theme.textSecondary,
-                          fontSize: 12,
-                          marginLeft: 8,
-                        }}
-                      >
-                        {selectedFile.file_size_kb} Ko
-                      </span>
                       <div
                         style={{
                           display: "flex",
@@ -1769,7 +1776,7 @@ const EmployeeDetail = () => {
                       <span
                         style={{ color: theme.textSecondary, fontSize: 12 }}
                       >
-                        {selectedFile.file_size_kb} Ko
+                        {formatSizeMo(selectedFile.file_size_kb)} · {formatDateTime(selectedFile.uploaded_at)}
                       </span>
                     </div>
                   </div>

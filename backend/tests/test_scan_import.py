@@ -165,6 +165,42 @@ class TestScanImportView:
         doc = EmployeeDocument.objects.get(employee=employee, type_doc=type_doc)
         assert doc.nb_fichiers == 1
 
+    def test_file_name_keeps_source_name_with_page_range_suffix_when_split(self, admin_user, employee):
+        """Le nom affiché garde le nom du fichier scanné (cohérent avec
+        l'upload normal) — une part obtenue par découpage de pages ajoute
+        juste la plage entre parenthèses pour rester distinguable."""
+        type_doc = TypeDocument.objects.create(nom="Acte de résidence", code="ACTE_RES", is_active=True)
+        client = auth_client(admin_user)
+        file = pdf_upload_file(3, name="ilovepdf_merged.pdf")
+        plan = json.dumps({"groups": [
+            {"type_doc": str(type_doc.id), "parts": [{"file_index": 0, "pages": [2]}]}
+        ]})
+        with patch("employees.views.magic.from_buffer", return_value="application/pdf"), \
+             patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
+            resp = client.post(self._url(employee), {"files": [file], "plan": plan}, format="multipart")
+        assert resp.status_code == 201, resp.data
+        doc = EmployeeDocument.objects.get(employee=employee, type_doc=type_doc)
+        stored_file = doc.fichiers.get(is_active=True)
+        assert stored_file.file_name == "ilovepdf_merged (p2).pdf"
+
+    def test_file_name_unchanged_when_whole_file_reused(self, admin_user, employee):
+        """Cohérent avec l'upload normal : quand toutes les pages d'un
+        fichier vont dans le même groupe, aucun découpage n'a lieu et le
+        nom original est conservé tel quel."""
+        type_doc = TypeDocument.objects.create(nom="CV", code="CV_NAME", is_active=True)
+        client = auth_client(admin_user)
+        file = pdf_upload_file(2, name="mon_cv.pdf")
+        plan = json.dumps({"groups": [
+            {"type_doc": str(type_doc.id), "parts": [{"file_index": 0, "pages": [1, 2]}]}
+        ]})
+        with patch("employees.views.magic.from_buffer", return_value="application/pdf"), \
+             patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
+            resp = client.post(self._url(employee), {"files": [file], "plan": plan}, format="multipart")
+        assert resp.status_code == 201, resp.data
+        doc = EmployeeDocument.objects.get(employee=employee, type_doc=type_doc)
+        stored_file = doc.fichiers.get(is_active=True)
+        assert stored_file.file_name == "mon_cv.pdf"
+
     def test_split_single_pdf_into_two_groups(self, admin_user, employee):
         type_a = TypeDocument.objects.create(nom="Acte naissance", code="ACTE_NAISS", is_active=True)
         type_b = TypeDocument.objects.create(nom="CV", code="CV2", is_active=True)
