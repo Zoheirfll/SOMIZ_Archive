@@ -92,17 +92,25 @@ const Users = () => {
   // correspond à au moins une direction/département/service choisi).
   const [scopeModal, setScopeModal] = useState(null);
   const [directions, setDirections] = useState([]);
+  const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
   const [services, setServices] = useState([]);
+  const [cellules, setCellules] = useState([]);
   const [typesDocuments, setTypesDocuments] = useState([]);
-  const [scopeForm, setScopeForm] = useState({ directions: [], departements: [], services: [], types_documents: [] });
+  const [scopeForm, setScopeForm] = useState({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
   const [savingScope, setSavingScope] = useState(false);
 
   useEffect(() => {
     fetchUsers();
-    api.get("/ref/directions/").then((res) => setDirections(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/departements/").then((res) => setDepartements(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/services/").then((res) => setServices(res.data.results || res.data)).catch(() => {});
+    // ?all=1 — un compte ADMIN doit voir l'intégralité du référentiel pour
+    // pouvoir attribuer n'importe quel périmètre, indépendamment de son
+    // propre périmètre (toujours non restreint pour ADMIN, mais garde le
+    // même paramètre que /organigramme par cohérence).
+    api.get("/ref/directions/?all=1").then((res) => setDirections(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/poles/?all=1").then((res) => setPoles(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/departements/?all=1").then((res) => setDepartements(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/services/?all=1").then((res) => setServices(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/cellules/?all=1").then((res) => setCellules(res.data.results || res.data)).catch(() => {});
     api.get("/ref/types-documents/").then((res) => {
       setTypesDocuments(sortTypesDocumentsHierarchy(res.data.results || res.data));
     }).catch(() => {});
@@ -112,35 +120,59 @@ const Users = () => {
     setScopeModal(u);
     setScopeForm({
       directions: u.scope_directions || [],
+      poles: u.scope_poles || [],
       departements: u.scope_departements || [],
       services: u.scope_services || [],
+      cellules: u.scope_cellules || [],
       types_documents: u.scope_types_documents || [],
     });
   };
 
   // Listes affichées en cascade : cocher une direction ne laisse apparaître
-  // que ses départements ; cocher un département ne laisse apparaître que
-  // ses services. Sans direction cochée, tous les départements sont visibles
-  // (pour un scoping direct par département sans passer par la direction).
-  const visibleDepartements = scopeForm.directions.length > 0
-    ? departements.filter((d) => scopeForm.directions.includes(d.direction))
-    : departements;
+  // que ses pôles/départements/cellules ; cocher un pôle ou un département ne
+  // laisse apparaître que ses départements/services. Sans direction cochée,
+  // tout est visible (pour un scoping direct à un niveau inférieur sans
+  // passer par la direction).
+  const visiblePoles = scopeForm.directions.length > 0
+    ? poles.filter((p) => scopeForm.directions.includes(p.direction))
+    : poles;
+
+  const visibleDepartements = (() => {
+    let list = departements;
+    if (scopeForm.directions.length > 0) list = list.filter((d) => scopeForm.directions.includes(d.direction));
+    if (scopeForm.poles.length > 0) list = list.filter((d) => scopeForm.poles.includes(d.pole));
+    return list;
+  })();
 
   const visibleServices = scopeForm.departements.length > 0
     ? services.filter((s) => scopeForm.departements.includes(s.departement))
-    : scopeForm.directions.length > 0
-      ? services.filter((s) => {
-          const dep = departements.find((d) => d.id === s.departement);
-          return dep && scopeForm.directions.includes(dep.direction);
-        })
+    : scopeForm.directions.length > 0 || scopeForm.poles.length > 0
+      ? services.filter((s) => visibleDepartements.some((d) => d.id === s.departement))
       : services;
+
+  // Une Cellule est rattachée soit directement à une Direction, soit à un
+  // Département — les deux filtres (Directions cochées / Départements
+  // cochés) s'appliquent donc en OR, pas en cascade exclusive, sinon une
+  // cellule directement sous une Direction disparaît dès qu'un Département
+  // est aussi coché.
+  const visibleCellules =
+    scopeForm.directions.length === 0 && scopeForm.departements.length === 0
+      ? cellules
+      : cellules.filter((c) =>
+          (c.direction && scopeForm.directions.includes(c.direction)) ||
+          (c.departement && scopeForm.departements.includes(c.departement))
+        );
 
   const toggleDirection = (id) => {
     setScopeForm((prev) => {
       const nextDirections = prev.directions.includes(id)
         ? prev.directions.filter((x) => x !== id)
         : [...prev.directions, id];
-      // Retire les départements/services qui ne sont plus dans la cascade visible.
+      // Retire les pôles/départements/services/cellules qui ne sont plus dans la cascade visible.
+      const stillVisiblePoleIds = nextDirections.length > 0
+        ? poles.filter((p) => nextDirections.includes(p.direction)).map((p) => p.id)
+        : poles.map((p) => p.id);
+      const nextPoles = prev.poles.filter((poleId) => stillVisiblePoleIds.includes(poleId));
       const stillVisibleDeps = nextDirections.length > 0
         ? departements.filter((d) => nextDirections.includes(d.direction)).map((d) => d.id)
         : departements.map((d) => d.id);
@@ -150,7 +182,20 @@ const Users = () => {
         const svc = services.find((s) => s.id === svcId);
         return svc && stillVisibleDepSet.has(svc.departement);
       });
-      return { directions: nextDirections, departements: nextDepartements, services: nextServices };
+      const nextCellules = prev.cellules.filter((celId) => {
+        const cel = cellules.find((c) => c.id === celId);
+        if (!cel) return false;
+        if (cel.departement) return stillVisibleDeps.includes(cel.departement);
+        return nextDirections.length === 0 || nextDirections.includes(cel.direction);
+      });
+      return { ...prev, directions: nextDirections, poles: nextPoles, departements: nextDepartements, services: nextServices, cellules: nextCellules };
+    });
+  };
+
+  const togglePole = (id) => {
+    setScopeForm((prev) => {
+      const next = prev.poles.includes(id) ? prev.poles.filter((x) => x !== id) : [...prev.poles, id];
+      return { ...prev, poles: next };
     });
   };
 
@@ -171,6 +216,13 @@ const Users = () => {
     setScopeForm((prev) => {
       const next = prev.services.includes(id) ? prev.services.filter((x) => x !== id) : [...prev.services, id];
       return { ...prev, services: next };
+    });
+  };
+
+  const toggleCellule = (id) => {
+    setScopeForm((prev) => {
+      const next = prev.cellules.includes(id) ? prev.cellules.filter((x) => x !== id) : [...prev.cellules, id];
+      return { ...prev, cellules: next };
     });
   };
 
@@ -226,8 +278,10 @@ const Users = () => {
     try {
       await api.patch(`/admin-users/${scopeModal.id}/`, {
         scope_directions: scopeForm.directions,
+        scope_poles: scopeForm.poles,
         scope_departements: scopeForm.departements,
         scope_services: scopeForm.services,
+        scope_cellules: scopeForm.cellules,
         scope_types_documents: scopeForm.types_documents,
       });
       setMessage({ type: "success", text: "Périmètre mis à jour." });
@@ -289,21 +343,25 @@ const Users = () => {
       const hasScope =
         form.role === "CONSULTANT" &&
         (scopeForm.directions.length > 0 ||
+          scopeForm.poles.length > 0 ||
           scopeForm.departements.length > 0 ||
           scopeForm.services.length > 0 ||
+          scopeForm.cellules.length > 0 ||
           scopeForm.types_documents.length > 0);
       if (hasScope && response.data.id) {
         await api.patch(`/admin-users/${response.data.id}/`, {
           scope_directions: scopeForm.directions,
+          scope_poles: scopeForm.poles,
           scope_departements: scopeForm.departements,
           scope_services: scopeForm.services,
+          scope_cellules: scopeForm.cellules,
           scope_types_documents: scopeForm.types_documents,
         });
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
       setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", password: "", password2: "" });
-      setScopeForm({ directions: [], departements: [], services: [], types_documents: [] });
+      setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
       fetchUsers();
     } catch (err) {
       const data = err.response?.data;
@@ -408,7 +466,7 @@ const Users = () => {
           {isAdmin && (
             <button
               onClick={() => {
-                if (!showForm) setScopeForm({ directions: [], departements: [], services: [], types_documents: [] });
+                if (!showForm) setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
                 setShowForm(!showForm);
               }}
               style={{
@@ -537,8 +595,10 @@ const Users = () => {
 
                   {[
                     { level: "directions", label: "Directions", items: directions, onToggle: toggleDirection },
+                    { level: "poles", label: "Pôles", items: visiblePoles, onToggle: togglePole },
                     { level: "departements", label: "Départements", items: visibleDepartements, onToggle: toggleDepartement },
                     { level: "services", label: "Services", items: visibleServices, onToggle: toggleService },
+                    { level: "cellules", label: "Cellules", items: visibleCellules, onToggle: toggleCellule },
                     { level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument },
                   ].map(({ level, label, items, onToggle }) => (
                     <div key={level} style={{ marginBottom: 16 }}>
@@ -709,10 +769,12 @@ const Users = () => {
                           return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Accès complet</span>;
                         }
                         const dirNoms = u.scope_directions_nom || [];
+                        const poleNoms = u.scope_poles_nom || [];
                         const deptNoms = u.scope_departements_nom || [];
                         const svcNoms = u.scope_services_nom || [];
+                        const celNoms = u.scope_cellules_nom || [];
                         const typeNoms = u.scope_types_documents_nom || [];
-                        if (dirNoms.length === 0 && deptNoms.length === 0 && svcNoms.length === 0 && typeNoms.length === 0) {
+                        if (dirNoms.length === 0 && poleNoms.length === 0 && deptNoms.length === 0 && svcNoms.length === 0 && celNoms.length === 0 && typeNoms.length === 0) {
                           return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Aucun (accès complet)</span>;
                         }
                         const scopePill = (label, count, fullList, color) => (
@@ -738,8 +800,10 @@ const Users = () => {
                         return (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                             {dirNoms.length > 0 && scopePill("Directions", dirNoms.length, dirNoms, "#166534")}
+                            {poleNoms.length > 0 && scopePill("Pôles", poleNoms.length, poleNoms, "#0d9488")}
                             {deptNoms.length > 0 && scopePill("Départements", deptNoms.length, deptNoms, "#1e40af")}
                             {svcNoms.length > 0 && scopePill("Services", svcNoms.length, svcNoms, "#6d28d9")}
+                            {celNoms.length > 0 && scopePill("Cellules", celNoms.length, celNoms, "#b45309")}
                             {typeNoms.length > 0 && scopePill("Types de doc.", typeNoms.length, typeNoms, "#b45309")}
                           </div>
                         );
@@ -1063,8 +1127,10 @@ const Users = () => {
 
             {[
               { level: "directions", label: "Directions", items: directions, onToggle: toggleDirection },
+              { level: "poles", label: "Pôles", items: visiblePoles, onToggle: togglePole },
               { level: "departements", label: "Départements", items: visibleDepartements, onToggle: toggleDepartement },
               { level: "services", label: "Services", items: visibleServices, onToggle: toggleService },
+              { level: "cellules", label: "Cellules", items: visibleCellules, onToggle: toggleCellule },
             ].map(({ level, label, items, onToggle }) => (
               <div key={level} style={{ marginBottom: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>

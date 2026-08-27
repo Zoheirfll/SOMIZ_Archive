@@ -257,6 +257,7 @@ class Employee(models.Model):
         ACTIF = 'actif', 'Actif'
         INACTIF = 'inactif', 'Inactif'
         ARCHIVE = 'archive', 'Archivé'
+        DEMOBILISE = 'demobilise', 'Démobilisé'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     matricule = models.CharField(max_length=20, unique=True, db_index=True)
@@ -346,6 +347,18 @@ class Employee(models.Model):
             'type_doc_id', flat=True
         ).distinct().count()
         return round(presents / total * 100)
+
+    def sync_statut_from_dernier_contrat(self):
+        """Le statut de l'employé suit celui de son contrat le plus récent —
+        "le plus récent" = le plus grand N° de contrat (tri alphanumérique
+        décroissant sur numero_contrat, pas la date de création) — appelé
+        après chaque création/modification/suppression de contrat. Un
+        employé sans contrat garde son statut tel quel (pas de contrat =
+        rien à synchroniser)."""
+        dernier = self.contrats.order_by('-numero_contrat').first()
+        if dernier and dernier.statut != self.statut:
+            self.statut = dernier.statut
+            self.save(update_fields=['statut'])
 
 
 # ─── CHAMPS PERSONNALISÉS ──────────────────────────────────────────────────────
@@ -460,6 +473,15 @@ class Contrat(models.Model):
 
     def __str__(self):
         return f"{self.numero_contrat} — {self.employee.matricule}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.employee.sync_statut_from_dernier_contrat()
+
+    def delete(self, *args, **kwargs):
+        employee = self.employee
+        super().delete(*args, **kwargs)
+        employee.sync_statut_from_dernier_contrat()
 
     @property
     def documents_actifs(self):

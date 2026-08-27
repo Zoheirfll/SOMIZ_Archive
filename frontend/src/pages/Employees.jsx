@@ -11,6 +11,7 @@ import HeroDecor from "../components/HeroDecor";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import { useConfirm } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
+import { employeeSlug } from "../utils/employeeSlug";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -933,6 +934,7 @@ const Employees = () => {
           <option value="actif">Actif</option>
           <option value="inactif">Inactif</option>
           <option value="archive">Archivé</option>
+          <option value="demobilise">Démobilisé</option>
         </select>
         <div style={{ position: "relative" }}>
           <button
@@ -1145,44 +1147,44 @@ const Employees = () => {
                         <input type="checkbox" checked={selected.has(emp.id)} onChange={() => toggleSelect(emp.id)} style={{ cursor: "pointer", width: 15, height: 15, accentColor: theme.primary }} />
                       </td>
                     )}
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <EmployeeAvatar employee={emp} size={48} fontSize={16} shape="square" />
                     </td>
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 13, color: theme.primary, background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`, borderRadius: 6, padding: "3px 8px" }}>
                         {emp.matricule}
                       </span>
                     </td>
                     {isColumnVisible("numero_contrat") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", whiteSpace: "nowrap", cursor: "pointer" }}>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", whiteSpace: "nowrap", cursor: "pointer" }}>
                       {emp.numero_contrat_actif
                         ? <span style={{ fontFamily: "monospace", fontWeight: 600, fontSize: 12, color: theme.departementColor, background: theme.departementAccent || "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "3px 8px" }}>{emp.numero_contrat_actif}</span>
                         : <span style={{ color: theme.textMuted, fontSize: 12 }}>—</span>}
                     </td>
                     )}
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.text, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer", fontSize: 14 }}>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", color: theme.text, fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer", fontSize: 14 }}>
                       {emp.nom} {emp.prenom}
                     </td>
                     {isColumnVisible("date_naissance") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>{emp.date_naissance || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>{emp.date_naissance || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     )}
                     {isColumnVisible("date_embauche") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>{emp.date_embauche || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap", cursor: "pointer" }}>{emp.date_embauche || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     )}
                     {isColumnVisible("direction") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.direction_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.direction_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     )}
                     {isColumnVisible("departement") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.departement_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.departement_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     )}
                     {isColumnVisible("service") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || (emp.cellule_nom ? `Cellule : ${emp.cellule_nom}` : <span style={{ color: theme.textMuted }}>—</span>)}</td>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.service_nom || (emp.cellule_nom ? `Cellule : ${emp.cellule_nom}` : <span style={{ color: theme.textMuted }}>—</span>)}</td>
                     )}
                     {isColumnVisible("poste") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.poste_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}>{emp.poste_nom || <span style={{ color: theme.textMuted }}>—</span>}</td>
                     )}
                     {isColumnVisible("statut") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <span style={{
                         background: emp.statut === "actif" ? theme.primaryBg : emp.statut === "archive" ? "#F8FAFC" : theme.dangerBg,
                         color: emp.statut === "actif" ? theme.primary : emp.statut === "archive" ? "#64748B" : theme.danger,
@@ -1202,14 +1204,14 @@ const Employees = () => {
                       .map((c) => (
                         <td
                           key={c.code}
-                          onClick={() => navigate(`/employees/${emp.id}`)}
+                          onClick={() => navigate(`/employees/${employeeSlug(emp)}`)}
                           style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13, cursor: "pointer" }}
                         >
                           {emp.champs_personnalises?.[c.code] || <span style={{ color: theme.textMuted }}>—</span>}
                         </td>
                       ))}
                     {isColumnVisible("dossier") && (
-                    <td onClick={() => navigate(`/employees/${emp.id}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
+                    <td onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} style={{ padding: "13px 16px", cursor: "pointer" }}>
                       <span style={{
                         background: emp.dossier_complet ? theme.primaryBg : "#FFFBEB",
                         color: emp.dossier_complet ? theme.primary : "#92400E",
@@ -1225,7 +1227,7 @@ const Employees = () => {
                     </td>
                     )}
                     <td style={{ padding: "13px 16px" }} onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => navigate(`/employees/${emp.id}`)} className="btn-lift" style={{ background: theme.primary, border: "none", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: theme.fontFamily }}>
+                      <button onClick={() => navigate(`/employees/${employeeSlug(emp)}`)} className="btn-lift" style={{ background: theme.primary, border: "none", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: theme.fontFamily }}>
                         Voir →
                       </button>
                     </td>

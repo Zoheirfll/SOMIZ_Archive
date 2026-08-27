@@ -86,28 +86,32 @@ const ArrowRightIcon = ({ color }) => (
 // juste en dessous (indentés), cliquer la flèche navigue vers la liste
 // filtrée. Ce pattern garantit que la page ne déborde jamais
 // horizontalement, contrairement à un diagramme en arbre classique.
-const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, onNavigate }) => {
+const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, onNavigate, accessible }) => {
   const s = LEVEL[level];
+  const color = accessible ? s.color : "#64748B";
+  const bg = accessible ? s.bg : "#F1F5F9";
+  const border = accessible ? s.border : "#CBD5E1";
   return (
     <div
       className="hover-lift"
-      onClick={hasChildren ? onToggle : onNavigate}
+      onClick={hasChildren ? onToggle : accessible ? onNavigate : undefined}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 10,
         marginLeft: depth * 28,
-        background: s.bg,
-        border: `1px solid ${s.border}`,
-        borderLeft: `4px solid ${s.color}`,
+        background: bg,
+        border: `1px solid ${border}`,
+        borderLeft: `4px solid ${color}`,
         borderRadius: 10,
         padding: "12px 14px",
         marginBottom: 8,
-        cursor: "pointer",
+        cursor: hasChildren || accessible ? "pointer" : "default",
+        opacity: accessible ? 1 : 0.9,
       }}
     >
       {hasChildren ? (
-        <ChevronIcon open={open} color={s.color} />
+        <ChevronIcon open={open} color={color} />
       ) : (
         <span style={{ width: 16, flexShrink: 0 }} />
       )}
@@ -115,7 +119,7 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
-            color: s.color,
+            color,
             fontSize: 10,
             fontWeight: 700,
             textTransform: "uppercase",
@@ -126,7 +130,7 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
         </div>
         <div
           style={{
-            color: theme.text,
+            color: accessible ? theme.text : theme.textMuted,
             fontSize: 14,
             fontWeight: 700,
             fontFamily: theme.fontFamily,
@@ -144,8 +148,8 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
         <span
           style={{
             background: "#fff",
-            border: `1px solid ${s.border}`,
-            color: s.color,
+            border: `1px solid ${border}`,
+            color,
             borderRadius: 20,
             padding: "2px 10px",
             fontSize: 11,
@@ -158,27 +162,48 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
         </span>
       )}
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onNavigate();
-        }}
-        title="Voir les employés"
-        aria-label="Voir les employés"
-        style={{
-          background: s.color,
-          border: "none",
-          color: "#fff",
-          borderRadius: 8,
-          padding: "8px 10px",
-          display: "flex",
-          alignItems: "center",
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      >
-        <ArrowRightIcon color="#fff" />
-      </button>
+      {accessible ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate();
+          }}
+          title="Voir les employés"
+          aria-label="Voir les employés"
+          style={{
+            background: color,
+            border: "none",
+            color: "#fff",
+            borderRadius: 8,
+            padding: "8px 10px",
+            display: "flex",
+            alignItems: "center",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          <ArrowRightIcon color="#fff" />
+        </button>
+      ) : (
+        <span
+          title="Hors de votre périmètre"
+          style={{
+            background: "#E2E8F0",
+            border: "1px solid #94A3B8",
+            color: "#475569",
+            borderRadius: 20,
+            padding: "4px 10px",
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+          }}
+        >
+          Hors périmètre
+        </span>
+      )}
     </div>
   );
 };
@@ -191,6 +216,11 @@ const Organigramme = () => {
   const [departements, setDepartements] = useState([]);
   const [services, setServices] = useState([]);
   const [cellules, setCellules] = useState([]);
+  const [accessibleDirIds, setAccessibleDirIds] = useState(null);
+  const [accessiblePoleIds, setAccessiblePoleIds] = useState(null);
+  const [accessibleDeptIds, setAccessibleDeptIds] = useState(null);
+  const [accessibleSvcIds, setAccessibleSvcIds] = useState(null);
+  const [accessibleCelIds, setAccessibleCelIds] = useState(null);
   const [loading, setLoading] = useState(true);
   const [openIds, setOpenIds] = useState(new Set());
 
@@ -217,7 +247,14 @@ const Organigramme = () => {
     (async () => {
       setLoading(true);
       try {
-        const [dir, pol, dept, srv, cel] = await Promise.all([
+        // Arbre complet (?all=1 ignore le périmètre CONSULTANT côté backend)
+        // + listes scopées, pour déterminer ce qui reste accessible.
+        const [dir, pol, dept, srv, cel, scopedDir, scopedPol, scopedDept, scopedSrv, scopedCel] = await Promise.all([
+          fetchAllPages("/ref/directions/?all=1"),
+          fetchAllPages("/ref/poles/?all=1"),
+          fetchAllPages("/ref/departements/?all=1"),
+          fetchAllPages("/ref/services/?all=1"),
+          fetchAllPages("/ref/cellules/?all=1"),
           fetchAllPages("/ref/directions/"),
           fetchAllPages("/ref/poles/"),
           fetchAllPages("/ref/departements/"),
@@ -229,6 +266,11 @@ const Organigramme = () => {
         setDepartements(dept.filter((d) => d.is_active));
         setServices(srv.filter((s) => s.is_active));
         setCellules(cel.filter((c) => c.is_active));
+        setAccessibleDirIds(new Set(scopedDir.map((d) => d.id)));
+        setAccessiblePoleIds(new Set(scopedPol.map((p) => p.id)));
+        setAccessibleDeptIds(new Set(scopedDept.map((d) => d.id)));
+        setAccessibleSvcIds(new Set(scopedSrv.map((s) => s.id)));
+        setAccessibleCelIds(new Set(scopedCel.map((c) => c.id)));
       } catch (err) {
         console.error(err);
       } finally {
@@ -270,6 +312,18 @@ const Organigramme = () => {
     return [];
   };
 
+  // Un nœud est accessible si la liste scopée correspondante (déjà filtrée
+  // par le backend selon le périmètre CONSULTANT) le contient.
+  const isAccessible = (node, level) => {
+    if (!accessibleDirIds) return true; // pas encore chargé — pas de flash grisé
+    if (level === "direction") return accessibleDirIds.has(node.id);
+    if (level === "pole") return accessiblePoleIds.has(node.id);
+    if (level === "departement") return accessibleDeptIds.has(node.id);
+    if (level === "service") return accessibleSvcIds.has(node.id);
+    if (level === "cellule") return accessibleCelIds.has(node.id);
+    return true;
+  };
+
   const navigateTo = (node, level) => {
     const paramByLevel = {
       direction: "direction",
@@ -295,6 +349,7 @@ const Organigramme = () => {
           childCount={children.length || undefined}
           onToggle={() => toggle(node.id)}
           onNavigate={() => navigateTo(node, level)}
+          accessible={isAccessible(node, level)}
         />
         {open && children.map((child) => renderNode(child, child.level, depth + 1))}
       </div>

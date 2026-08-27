@@ -11,6 +11,7 @@ import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
+import { employeeSlug } from "../utils/employeeSlug";
 
 const STATUT_COLORS = {
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -320,7 +321,7 @@ const ContratDetail = () => {
               ← Employés
             </button>
             <span style={{ color: "rgba(255,255,255,0.4)" }}>›</span>
-            <button onClick={() => navigate(`/employees/${contrat.employee_id}`)} style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "rgba(255,255,255,0.8)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
+            <button onClick={() => navigate(`/employees/${employeeSlug(contrat)}`)} style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "rgba(255,255,255,0.8)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
               {contrat.employee_matricule} — {contrat.employee_nom}
             </button>
             <span style={{ color: "rgba(255,255,255,0.4)" }}>›</span>
@@ -349,7 +350,7 @@ const ContratDetail = () => {
                 </button>
               )}
               {user?.role === "ADMIN" && (
-                <button onClick={() => navigate(`/employees/${contrat.employee_id}?tab=contrats`)} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                <button onClick={() => navigate(`/employees/${employeeSlug(contrat)}?tab=contrats`)} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   + Nouveau contrat
                 </button>
               )}

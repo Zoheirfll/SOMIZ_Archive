@@ -63,17 +63,21 @@ Direction
 ## Scoping organisation-wide (périmètre CONSULTANT)
 
 Un CONSULTANT peut être restreint à un périmètre : `User.scope_directions`,
-`scope_departements`, `scope_services` (ManyToMany, sélection multiple à
-chaque niveau — union : un employé est visible dès qu'il correspond à AU
-MOINS un élément choisi, peu importe le niveau). **Aucune sélection nulle
-part = accès non restreint** (comportement historique préservé pour tous
-les comptes existants).
+`scope_poles`, `scope_departements`, `scope_services`, `scope_cellules`
+(ManyToMany, sélection multiple à chaque niveau — union : un employé est
+visible dès qu'il correspond à AU MOINS un élément choisi, peu importe le
+niveau). **Aucune sélection nulle part = accès non restreint**
+(comportement historique préservé pour tous les comptes existants).
+`Employee` n'a pas de FK directe vers `Pole` (seulement via
+`departement.pole`) — un périmètre par Pôle se traduit donc en
+`departement__pole_id__in`.
 
 - `User.employee_scope_q(prefix='')` — Q object à utiliser dans `.filter()` (ex. `prefix='employee__'` pour un queryset `Contrat`).
 - `User.can_access_employee(employee)` — équivalent objet-par-objet pour `get_object()`.
-- `User.accessible_directions_qs()` / `accessible_departements_qs()` / `accessible_services_qs()` — pour restreindre les listes référentiels (`/ref/*`) au périmètre (utilisé par le filtre cascade de `/employees`).
+- `User.accessible_directions_qs()` / `accessible_poles_qs()` / `accessible_departements_qs()` / `accessible_services_qs()` / `accessible_cellules_qs()` — pour restreindre les listes référentiels (`/ref/*`) au périmètre (utilisé par le filtre cascade de `/employees` et par `/organigramme`).
+- `/ref/directions/`, `/ref/poles/`, `/ref/departements/`, `/ref/services/`, `/ref/cellules/` acceptent `?all=1` pour ignorer le périmètre et renvoyer le référentiel complet (utilisé uniquement par `/organigramme`, qui affiche l'arbre entier mais grise les nœuds hors périmètre côté frontend plutôt que de les cacher — voir `Organigramme.jsx`).
 - ADMIN toujours non restreint, quel que soit ce qui est renseigné sur son compte.
-- UI d'assignation : page `/users`, bouton "Périmètre" (visible pour les comptes CONSULTANT) — cases à cocher en cascade (cocher une Direction filtre les Départements affichés à ceux qu'elle contient, etc.), boutons "Tout"/"Aucun" par niveau.
+- UI d'assignation : page `/users`, bouton "Périmètre" (visible pour les comptes CONSULTANT) — cases à cocher en cascade (cocher une Direction filtre les Pôles/Départements affichés à ceux qu'elle contient, etc.), boutons "Tout"/"Aucun" par niveau.
 - Toute vue qui liste/retrouve des employés, documents ou contrats doit appliquer ce scoping (voir `employees/views.py` : `EmployeeListCreateView`, `EmployeeDetailView`, `FileViewerView`, `DocumentViewerView`, `ContratListCreateView`, `ContratDetailView`, `ContratDocumentListUploadView`, `employee_search`).
 
 ### Périmètre indépendant — Types de documents (2026-07-24)

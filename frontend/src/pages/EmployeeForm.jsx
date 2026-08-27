@@ -490,6 +490,7 @@ const EmployeeForm = () => {
                   <option value="actif">Actif</option>
                   <option value="inactif">Inactif</option>
                   <option value="archive">Archivé</option>
+                  <option value="demobilise">Démobilisé</option>
                 </Select>
               </Field>
 

@@ -204,7 +204,14 @@ class DirectionListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView
     def get_queryset(self):
         # Restreint au périmètre d'un CONSULTANT scopé (ex. filtre page
         # Employés) — ADMIN et CONSULTANT non scopé voient tout, inchangé.
-        return self.filter_search(self.request.user.accessible_directions_qs())
+        # ?all=1 ignore le périmètre (utilisé par l'Organigramme pour
+        # afficher l'arbre complet — le périmètre y est appliqué côté
+        # frontend uniquement pour griser les nœuds hors accès).
+        if self.request.query_params.get('all') == '1':
+            qs = Direction.objects.all()
+        else:
+            qs = self.request.user.accessible_directions_qs()
+        return self.filter_search(qs)
 
 class DirectionDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DirectionSerializer
@@ -217,7 +224,10 @@ class PoleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        qs = Pole.objects.select_related('direction').all()
+        if self.request.query_params.get('all') == '1':
+            qs = Pole.objects.select_related('direction').all()
+        else:
+            qs = self.request.user.accessible_poles_qs().select_related('direction')
         direction = self.request.query_params.get('direction')
         if direction:
             qs = qs.filter(direction=direction)
@@ -243,7 +253,10 @@ class DepartementListCreateView(ReferentielSearchMixin, generics.ListCreateAPIVi
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        qs = self.request.user.accessible_departements_qs().select_related('direction', 'pole')
+        if self.request.query_params.get('all') == '1':
+            qs = Departement.objects.select_related('direction', 'pole').all()
+        else:
+            qs = self.request.user.accessible_departements_qs().select_related('direction', 'pole')
         direction = self.request.query_params.get('direction')
         if direction:
             qs = qs.filter(direction=direction)
@@ -263,7 +276,10 @@ class ServiceListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        qs = self.request.user.accessible_services_qs().select_related('departement__direction')
+        if self.request.query_params.get('all') == '1':
+            qs = Service.objects.select_related('departement__direction').all()
+        else:
+            qs = self.request.user.accessible_services_qs().select_related('departement__direction')
         departement = self.request.query_params.get('departement')
         if departement:
             qs = qs.filter(departement=departement)
@@ -280,7 +296,10 @@ class CelluleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        qs = Cellule.objects.select_related('direction', 'departement').all()
+        if self.request.query_params.get('all') == '1':
+            qs = Cellule.objects.select_related('direction', 'departement').all()
+        else:
+            qs = self.request.user.accessible_cellules_qs().select_related('direction', 'departement')
         direction = self.request.query_params.get('direction')
         if direction:
             qs = qs.filter(direction=direction)

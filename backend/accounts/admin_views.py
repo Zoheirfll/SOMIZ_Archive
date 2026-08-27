@@ -11,18 +11,26 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     scope_directions_nom = serializers.SerializerMethodField()
+    scope_poles_nom = serializers.SerializerMethodField()
     scope_departements_nom = serializers.SerializerMethodField()
     scope_services_nom = serializers.SerializerMethodField()
+    scope_cellules_nom = serializers.SerializerMethodField()
     scope_types_documents_nom = serializers.SerializerMethodField()
 
     def get_scope_directions_nom(self, obj):
         return list(obj.scope_directions.values_list('nom', flat=True))
+
+    def get_scope_poles_nom(self, obj):
+        return list(obj.scope_poles.values_list('nom', flat=True))
 
     def get_scope_departements_nom(self, obj):
         return list(obj.scope_departements.values_list('nom', flat=True))
 
     def get_scope_services_nom(self, obj):
         return list(obj.scope_services.values_list('nom', flat=True))
+
+    def get_scope_cellules_nom(self, obj):
+        return list(obj.scope_cellules.values_list('nom', flat=True))
 
     def get_scope_types_documents_nom(self, obj):
         return list(obj.scope_types_documents.values_list('nom', flat=True))
@@ -32,8 +40,10 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
+            'scope_poles', 'scope_poles_nom',
             'scope_departements', 'scope_departements_nom',
             'scope_services', 'scope_services_nom',
+            'scope_cellules', 'scope_cellules_nom',
             'scope_types_documents', 'scope_types_documents_nom',
         ]
         read_only_fields = ['id', 'last_login']
@@ -106,8 +116,10 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
             return {
                 'role': u.role, 'is_active': u.is_active,
                 'scope_directions': sorted(str(i) for i in u.scope_directions.values_list('id', flat=True)),
+                'scope_poles': sorted(str(i) for i in u.scope_poles.values_list('id', flat=True)),
                 'scope_departements': sorted(str(i) for i in u.scope_departements.values_list('id', flat=True)),
                 'scope_services': sorted(str(i) for i in u.scope_services.values_list('id', flat=True)),
+                'scope_cellules': sorted(str(i) for i in u.scope_cellules.values_list('id', flat=True)),
                 'scope_types_documents': sorted(str(i) for i in u.scope_types_documents.values_list('id', flat=True)),
             }
 

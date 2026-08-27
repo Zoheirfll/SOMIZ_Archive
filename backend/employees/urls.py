@@ -25,15 +25,18 @@ urlpatterns = [
     path('employees/import/', EmployeeImportView.as_view(), name='employee-import'),
     path('employees/import/template/', EmployeeImportTemplateView.as_view(), name='employee-import-template'),
     path('employees/bulk-delete/', EmployeeBulkDeleteView.as_view(), name='employee-bulk-delete'),
-    path('employees/<uuid:pk>/', EmployeeDetailView.as_view(), name='employee-detail'),
-    path('employees/<uuid:pk>/photo/', EmployeePhotoView.as_view(), name='employee-photo'),
-    path('employees/<uuid:pk>/champs/', EmployeeChampsPersonnalisesView.as_view(), name='employee-champs'),
+    # <str:pk> accepte l'UUID brut (anciens liens) ET le matricule, utilisé
+    # comme URL lisible côté frontend (voir EmployeeDetailView.get_object) —
+    # volontairement pas de nom dans l'URL (donnée personnelle, RGPD).
+    path('employees/<str:pk>/', EmployeeDetailView.as_view(), name='employee-detail'),
+    path('employees/<str:pk>/photo/', EmployeePhotoView.as_view(), name='employee-photo'),
+    path('employees/<str:pk>/champs/', EmployeeChampsPersonnalisesView.as_view(), name='employee-champs'),
 
     # Documents (sous-ressource d'un employé)
-    path('employees/<uuid:emp_id>/documents/', DocumentListUploadView.as_view(), name='doc-list-upload'),
+    path('employees/<str:emp_id>/documents/', DocumentListUploadView.as_view(), name='doc-list-upload'),
 
     # Contrats (sous-ressource d'un employé)
-    path('employees/<uuid:emp_id>/contrats/', ContratListCreateView.as_view(), name='contrat-list'),
+    path('employees/<str:emp_id>/contrats/', ContratListCreateView.as_view(), name='contrat-list'),
 
     # Contrat — détail + dossier
     path('contrats/<uuid:pk>/', ContratDetailView.as_view(), name='contrat-detail'),

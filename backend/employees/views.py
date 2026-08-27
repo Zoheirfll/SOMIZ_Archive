@@ -8,6 +8,7 @@ import os
 import magic
 from django.conf import settings
 from django.db.models import Q, Count, Exists, OuterRef, Subquery
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
 from rest_framework import generics, status, filters
@@ -41,6 +42,27 @@ from employees.serializers import (
     ContratCreateUpdateSerializer,
 )
 
+
+def resolve_employee(raw, queryset=None):
+    """Résout un employé à partir du segment d'URL `raw`, qui peut être soit
+    un UUID brut (anciens liens), soit le matricule (URL lisible côté
+    frontend — volontairement sans le nom, donnée personnelle qui n'a rien à
+    faire dans une URL). Le split sur '-' tolère un éventuel suffixe
+    cosmétique si jamais un lien de ce format existe encore, le matricule
+    lui-même ne contenant jamais de tiret. Lève Http404 si introuvable.
+    `queryset` permet de passer un queryset déjà scopé/filtré (sinon
+    Employee.objects.all())."""
+    qs = queryset if queryset is not None else Employee.objects.all()
+    matricule = raw.split('-', 1)[0]
+    obj = qs.filter(matricule=matricule).first()
+    if obj is None:
+        try:
+            obj = qs.filter(pk=raw).first()
+        except (ValueError, DjangoValidationError):
+            obj = None
+    if obj is None:
+        raise Http404
+    return obj
 
 
 # ─── EMPLOYEES ────────────────────────────────────────────────────────────────
@@ -165,6 +187,12 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         # son existence à un CONSULTANT qui n'y a pas accès.
         return self.queryset.filter(self.request.user.employee_scope_q())
 
+    def get_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+        obj = resolve_employee(self.kwargs['pk'], queryset)
+        self.check_object_permissions(self.request, obj)
+        return obj
+
     def get_serializer_class(self):
         if self.request.method in ('PATCH', 'PUT'):
             return EmployeeCreateUpdateSerializer
@@ -226,10 +254,7 @@ class EmployeePhotoView(APIView):
         return [IsAdmin()]
 
     def _get_employee(self, request, pk):
-        try:
-            employee = Employee.objects.get(pk=pk)
-        except Employee.DoesNotExist:
-            raise Http404
+        employee = resolve_employee(pk)
         if not request.user.can_access_employee(employee):
             raise Http404
         return employee
@@ -307,10 +332,7 @@ class EmployeeChampsPersonnalisesView(APIView):
     permission_classes = [IsAdmin]
 
     def patch(self, request, pk):
-        try:
-            employee = Employee.objects.get(pk=pk)
-        except Employee.DoesNotExist:
-            raise Http404
+        employee = resolve_employee(pk)
 
         champs = {str(c.id): c for c in ChampPersonnalise.objects.filter(is_active=True)}
         details = {}
@@ -354,10 +376,7 @@ class DocumentListUploadView(APIView):
         return [IsAdminOrConsultant()]
 
     def _get_employee(self, emp_id):
-        try:
-            return Employee.objects.get(pk=emp_id)
-        except Employee.DoesNotExist:
-            raise Http404("Employé introuvable.")
+        return resolve_employee(emp_id)
 
     def get(self, request, emp_id):
         employee = self._get_employee(emp_id)
@@ -659,7 +678,7 @@ class ContratListCreateView(APIView):
         return [IsAdminOrConsultant()]
 
     def get(self, request, emp_id):
-        employee = get_object_or_404(Employee, pk=emp_id)
+        employee = resolve_employee(emp_id)
         if not request.user.can_access_employee(employee):
             raise Http404
         contrats = employee.contrats.select_related('type_contrat').order_by('-date_debut', '-id')
@@ -667,7 +686,7 @@ class ContratListCreateView(APIView):
         return Response(serializer.data)
 
     def post(self, request, emp_id):
-        employee = get_object_or_404(Employee, pk=emp_id)
+        employee = resolve_employee(emp_id)
         serializer = ContratCreateUpdateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
