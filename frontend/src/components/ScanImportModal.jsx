@@ -96,20 +96,15 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
         return;
       }
     }
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedPageIds((prev) => {
-        const next = new Set(prev);
-        next.has(pageId) ? next.delete(pageId) : next.add(pageId);
-        return next;
-      });
-      setLastClickedId(pageId);
-      return;
-    }
-    // Clic simple : sélectionne uniquement cette page (comportement
-    // standard d'une grille de fichiers) — Shift pour une plage, Ctrl
-    // pour ajouter/retirer une page, ou "Sélectionner tout le fichier"
-    // pour prendre toutes les pages d'un même fichier source d'un coup.
-    setSelectedPageIds(new Set([pageId]));
+    // Clic simple : bascule la sélection de cette page (re-cliquer la
+    // désélectionne) — Shift pour une plage, ou "Sélectionner tout le
+    // fichier" pour prendre toutes les pages d'un même fichier source
+    // d'un coup.
+    setSelectedPageIds((prev) => {
+      const next = new Set(prev);
+      next.has(pageId) ? next.delete(pageId) : next.add(pageId);
+      return next;
+    });
     setLastClickedId(pageId);
   };
 
@@ -282,7 +277,7 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
               )}
             </div>
             <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 10 }}>
-              Cliquez une page pour la sélectionner seule, Shift-clic pour une plage, Ctrl-clic pour ajouter/retirer une page.
+              Cliquez une page pour la sélectionner/désélectionner, Shift-clic pour une plage.
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
