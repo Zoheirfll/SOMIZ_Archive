@@ -30,6 +30,7 @@ class AuditLog(models.Model):
         CREATE_USER = 'CREATE_USER', 'Création utilisateur'
         MODIFY_USER = 'MODIFY_USER', 'Modification utilisateur (rôle/statut)'
         DELETE_USER = 'DELETE_USER', 'Suppression utilisateur'
+        CONSENT = 'CONSENT', 'Consentement Loi 18-07 accepté'
 
     # Pas de UUIDField ici — BIGSERIAL plus rapide pour les logs
     # (table peut atteindre des millions de lignes)

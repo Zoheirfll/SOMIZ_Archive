@@ -126,3 +126,7 @@ class TestAuditActions:
         for action, _ in AuditLog.Action.choices:
             log = AuditLog.log(request, action)
             assert log.action == action
+
+
+def test_consent_action_choice_exists():
+    assert AuditLog.Action.CONSENT == 'CONSENT'

@@ -31,6 +31,7 @@ LOGIN_URL = "/api/auth/login/"
 LOGOUT_URL = "/api/auth/logout/"
 ME_URL = "/api/auth/me/"
 CHANGE_PWD_URL = "/api/auth/change-password/"
+CONSENT_URL = "/api/auth/consent/"
 
 
 class TestLoginView:
@@ -269,3 +270,46 @@ class TestHasConsentedIntegration:
         client = auth_client(admin_user)
         resp = client.get("/api/employees/")
         assert resp.status_code == 200
+
+
+class TestConsentView:
+    def test_records_consent_and_logs_audit(self, db):
+        from audit.models import AuditLog
+        user = User.objects.create_user(
+            username="consent_flow", password="Pass1234!", nom="N", prenom="N",
+        )
+        client = auth_client(user)
+        resp = client.post(CONSENT_URL)
+        assert resp.status_code == 200
+        user.refresh_from_db()
+        assert user.consent_loi1807_accepted_at is not None
+        assert AuditLog.objects.filter(action=AuditLog.Action.CONSENT, user=user).exists()
+
+    def test_consent_then_protected_route_allowed(self, db):
+        user = User.objects.create_user(
+            username="consent_then_access", password="Pass1234!", nom="N", prenom="N", role="ADMIN",
+        )
+        client = auth_client(user)
+        client.post(CONSENT_URL)
+        resp = client.get("/api/employees/")
+        assert resp.status_code == 200
+
+
+class TestNeedsConsentExposed:
+    def test_login_exposes_needs_consent_true(self, db):
+        User.objects.create_user(
+            username="besoin_consent", password="Pass1234!", nom="N", prenom="N",
+        )
+        client = APIClient()
+        resp = client.post(LOGIN_URL, {"username": "besoin_consent", "password": "Pass1234!"})
+        assert resp.data["user"]["needs_consent"] is True
+
+    def test_login_exposes_needs_consent_false(self, admin_user):
+        client = APIClient()
+        resp = client.post(LOGIN_URL, {"username": "admin_test", "password": "AdminPass123!"})
+        assert resp.data["user"]["needs_consent"] is False
+
+    def test_me_exposes_needs_consent(self, admin_user):
+        client = auth_client(admin_user)
+        resp = client.get(ME_URL)
+        assert resp.data["needs_consent"] is False

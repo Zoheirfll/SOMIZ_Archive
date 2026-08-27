@@ -149,6 +149,7 @@ class LoginView(APIView):
                 'nom': user.nom,
                 'prenom': user.prenom,
                 'role': user.role,
+                'needs_consent': not bool(user.consent_loi1807_accepted_at),
             }
         })
         _set_auth_cookies(request, response, refresh.access_token, refresh)
@@ -192,7 +193,26 @@ class UserMeView(APIView):
             'full_name': user.full_name,
             'role': user.role,
             'is_admin': user.is_admin,
+            'needs_consent': not bool(user.consent_loi1807_accepted_at),
         })
+
+
+class ConsentView(APIView):
+    """
+    POST /api/auth/consent/
+    Enregistre le consentement Loi 18-07 de l'utilisateur connecté.
+    Accessible même sans consentement préalable (sinon impossible de
+    jamais consentir) — permission_classes explicite écrase HasConsented
+    du défaut global.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request.user.consent_loi1807_accepted_at = timezone.now()
+        request.user.save(update_fields=['consent_loi1807_accepted_at'])
+        AuditLog.log(request, AuditLog.Action.CONSENT, target=request.user)
+        return Response({'message': 'Consentement enregistré.'})
+
 
 class ChangePasswordView(APIView):
     """
