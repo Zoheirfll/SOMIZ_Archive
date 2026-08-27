@@ -102,3 +102,21 @@ class TestBruteForce:
         admin_user.locked_until = timezone.now() - timedelta(minutes=1)
         admin_user.save()
         assert admin_user.is_locked() is False
+
+
+class TestConsentLoi1807:
+    def test_new_user_has_no_consent_by_default(self):
+        user = User.objects.create_user(
+            username="nouveau", password="Pass1234!", nom="N", prenom="N",
+        )
+        assert user.consent_loi1807_accepted_at is None
+
+    def test_consent_can_be_recorded(self):
+        user = User.objects.create_user(
+            username="nouveau2", password="Pass1234!", nom="N", prenom="N",
+        )
+        now = timezone.now()
+        user.consent_loi1807_accepted_at = now
+        user.save(update_fields=["consent_loi1807_accepted_at"])
+        user.refresh_from_db()
+        assert user.consent_loi1807_accepted_at is not None

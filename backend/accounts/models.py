@@ -68,6 +68,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
 
+    # Loi 18-07 (Algérie) — consentement au traitement des données
+    # personnelles, requis avant tout accès. null = jamais consenti.
+    # Un seul consentement à vie par compte (pas de versionnage du texte).
+    consent_loi1807_accepted_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Consentement Loi 18-07 accepté le"
+    )
+
     # Périmètre d'accès (CONSULTANT uniquement — ADMIN garde toujours l'accès
     # complet). Plusieurs directions/départements/services peuvent être
     # sélectionnés simultanément (union — un employé est visible dès qu'il

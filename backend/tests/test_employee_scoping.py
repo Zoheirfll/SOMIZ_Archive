@@ -10,6 +10,7 @@ un élément choisi, à n'importe quel niveau.
 import pytest
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -57,6 +58,7 @@ def scoped_consultant(db):
         nom="Scope",
         prenom="Test",
         role="CONSULTANT",
+        consent_loi1807_accepted_at=timezone.now(),
     )
 
 
