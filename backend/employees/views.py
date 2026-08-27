@@ -121,6 +121,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         service = self.request.query_params.get('service')
         statut = self.request.query_params.get('statut')
         complet = self.request.query_params.get('dossier_complet')
+        type_manquant = self.request.query_params.get('type_manquant')
 
         if q:
             qs = qs.filter(
@@ -145,6 +146,28 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(cellule=cellule)
         if statut:
             qs = qs.filter(statut=statut)
+
+        if complet is not None:
+            types_obligatoires = TypeDocument.objects.filter(
+                obligatoire=True, is_active=True, sous_types__isnull=True
+            )
+            if complet.lower() in ('true', '1'):
+                for t in types_obligatoires:
+                    qs = qs.filter(documents__type_doc=t, documents__is_active=True)
+                qs = qs.distinct()
+            elif complet.lower() in ('false', '0'):
+                incomplete_ids = qs
+                for t in types_obligatoires:
+                    incomplete_ids = incomplete_ids.filter(
+                        documents__type_doc=t, documents__is_active=True
+                    )
+                qs = qs.exclude(pk__in=incomplete_ids.values('pk'))
+
+        if type_manquant:
+            qs = qs.exclude(
+                documents__type_doc__code=type_manquant,
+                documents__is_active=True,
+            )
 
         return qs
 
@@ -216,8 +239,23 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
         return super().retrieve(request, *args, **kwargs)
 
+    # Champs d'affectation organisationnelle — un changement sur l'un
+    # d'eux constitue un "transfert" tracé séparément dans le détail de
+    # l'audit log (voir perform_update), en plus du diff générique.
+    TRANSFER_FIELDS = ['direction', 'departement', 'service', 'cellule']
+
     def perform_update(self, serializer):
+        instance = serializer.instance
+        # Capturer les libellés AVANT save() : serializer.save() mute
+        # `instance` en place (même objet Python), donc après le save on
+        # ne peut plus lire les anciennes valeurs depuis `instance`.
+        old_affectation = {
+            field: (getattr(instance, field).nom if getattr(instance, field, None) else None)
+            for field in self.TRANSFER_FIELDS
+        }
+
         employee = serializer.save()
+
         # Convertir les dates en strings pour que JSON puisse les sérialiser
         details = {}
         for k, v in serializer.validated_data.items():
@@ -227,6 +265,19 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
                 details[k] = str(v.pk)
             else:
                 details[k] = str(v) if v is not None else None
+
+        new_affectation = {
+            field: (getattr(employee, field).nom if getattr(employee, field, None) else None)
+            for field in self.TRANSFER_FIELDS
+        }
+        changed = {
+            field: {'de': old_affectation[field], 'vers': new_affectation[field]}
+            for field in self.TRANSFER_FIELDS
+            if field in serializer.validated_data and old_affectation[field] != new_affectation[field]
+        }
+        if changed:
+            details['transfer'] = changed
+
         AuditLog.log(
             self.request, AuditLog.Action.MODIFY_EMP,
             target=employee,

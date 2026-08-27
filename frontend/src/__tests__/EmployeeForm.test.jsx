@@ -335,6 +335,73 @@ describe("EmployeeForm — soumission édition", () => {
       expect(screen.getByText("Une erreur est survenue.")).toBeInTheDocument();
     });
   });
+
+  test("changer le service demande confirmation avant d'enregistrer", async () => {
+    const refsWithSecondService = {
+      ...mockRefs,
+      services: [
+        ...mockRefs.services,
+        { id: "svc-2", nom: "Comptabilité", departement: "dep-1", is_active: true },
+      ],
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/directions/")) return Promise.resolve({ data: refsWithSecondService.directions });
+      if (url.includes("/ref/departements/")) return Promise.resolve({ data: refsWithSecondService.departements });
+      if (url.includes("/ref/services/")) return Promise.resolve({ data: refsWithSecondService.services });
+      if (url.includes("/ref/cellules/")) return Promise.resolve({ data: [] });
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
+    api.patch.mockResolvedValue({ data: mockEmployee });
+    renderEdit();
+    await screen.findByDisplayValue("Dupont");
+
+    const serviceSelect = await screen.findByDisplayValue("Paie");
+    fireEvent.change(serviceSelect, { target: { value: "svc-2" } });
+    fireEvent.click(screen.getByText(/Enregistrer les modifications/));
+
+    // La confirmation s'affiche avec l'ancien et le nouveau service, et
+    // aucun PATCH n'est envoyé tant qu'elle n'est pas validée.
+    await screen.findByText(/Paie → Comptabilité/);
+    expect(api.patch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Confirmer"));
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith(
+        "/employees/emp-uuid/",
+        expect.objectContaining({ service: "svc-2" })
+      );
+    });
+  });
+
+  test("annuler la confirmation de transfert n'envoie pas le PATCH", async () => {
+    const refsWithSecondService = {
+      ...mockRefs,
+      services: [
+        ...mockRefs.services,
+        { id: "svc-2", nom: "Comptabilité", departement: "dep-1", is_active: true },
+      ],
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/directions/")) return Promise.resolve({ data: refsWithSecondService.directions });
+      if (url.includes("/ref/departements/")) return Promise.resolve({ data: refsWithSecondService.departements });
+      if (url.includes("/ref/services/")) return Promise.resolve({ data: refsWithSecondService.services });
+      if (url.includes("/ref/cellules/")) return Promise.resolve({ data: [] });
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
+    renderEdit();
+    await screen.findByDisplayValue("Dupont");
+
+    const serviceSelect = await screen.findByDisplayValue("Paie");
+    fireEvent.change(serviceSelect, { target: { value: "svc-2" } });
+    fireEvent.click(screen.getByText(/Enregistrer les modifications/));
+
+    await screen.findByText(/Paie → Comptabilité/);
+    const annulerButtons = screen.getAllByText("Annuler");
+    fireEvent.click(annulerButtons[annulerButtons.length - 1]);
+    expect(api.patch).not.toHaveBeenCalled();
+  });
 });
 
 describe("EmployeeForm — validation champs", () => {

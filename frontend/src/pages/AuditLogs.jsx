@@ -21,6 +21,25 @@ const ACTION_COLORS = {
   LOGIN_FAIL: theme.danger,
 };
 
+// Champs d'affectation organisationnelle traçés par un transfert
+// d'employé (voir employees/views.py EmployeeDetailView.perform_update).
+const TRANSFER_FIELD_LABELS = {
+  direction: "Direction",
+  departement: "Département",
+  service: "Service",
+  cellule: "Cellule",
+};
+
+// Résume le detail JSON d'un transfert en une ligne lisible, ex.
+// "Service : Paie → Comptabilité".
+const formatTransfer = (details) => {
+  const transfer = details?.transfer;
+  if (!transfer) return null;
+  return Object.entries(transfer)
+    .map(([field, { de, vers }]) => `${TRANSFER_FIELD_LABELS[field] || field} : ${de || "—"} → ${vers || "—"}`)
+    .join(" · ");
+};
+
 // SVG search icon
 const IconSearch = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -170,7 +189,7 @@ const AuditLogs = () => {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: theme.bg, borderBottom: `2px solid ${theme.border}` }}>
-                  {["Date & Heure", "Utilisateur", "Action", "Cible", "IP"].map((h) => (
+                  {["Date & Heure", "Utilisateur", "Action", "Cible", "Détails", "IP"].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -221,6 +240,9 @@ const AuditLogs = () => {
                     </td>
                     <td style={{ padding: "11px 16px", color: theme.textSecondary, fontSize: 13 }}>
                       {log.target_label || "—"}
+                    </td>
+                    <td style={{ padding: "11px 16px", color: theme.textSecondary, fontSize: 12 }}>
+                      {formatTransfer(log.details) || "—"}
                     </td>
                     <td style={{ padding: "11px 16px", color: theme.textMuted, fontSize: 12, fontFamily: "monospace" }}>
                       {log.ip_address || "—"}

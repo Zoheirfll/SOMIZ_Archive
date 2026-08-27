@@ -87,6 +87,26 @@ describe("AuditLogs — chargement", () => {
     });
   });
 
+  test("affiche le detail d'un transfert de service", async () => {
+    const log = makeLog("1", "MODIFY_EMP");
+    log.details = {
+      transfer: { service: { de: "Paie", vers: "Comptabilité" } },
+    };
+    api.get.mockResolvedValue(mockResponse([log]));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("Service : Paie → Comptabilité")).toBeInTheDocument();
+    });
+  });
+
+  test("affiche un tiret si le log n'a pas de detail de transfert", async () => {
+    api.get.mockResolvedValue(mockResponse([makeLog("1")]));
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    });
+  });
+
   test("affiche l'adresse IP", async () => {
     api.get.mockResolvedValue(mockResponse([makeLog(1)]));
     renderPage();
