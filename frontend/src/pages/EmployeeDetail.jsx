@@ -1183,7 +1183,7 @@ const EmployeeDetail = () => {
             className="tab-content"
             style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "300px 1fr",
+              gridTemplateColumns: isMobile ? "1fr" : "340px 1fr",
               gap: 20,
             }}
           >
@@ -1381,7 +1381,7 @@ const EmployeeDetail = () => {
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
                                   whiteSpace: "nowrap",
-                                  maxWidth: 180,
+                                  maxWidth: 210,
                                 }}
                               >
                                 {stripExt(file.file_name) || `Page ${index + 1}`}
@@ -1389,7 +1389,7 @@ const EmployeeDetail = () => {
                             </div>
                           </div>
                           {user?.role === "ADMIN" && (
-                            <div style={{ display: "flex", gap: 4 }}>
+                            <div style={{ display: "flex", gap: 6 }}>
                             <button
                               onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
                               title="Renommer d'après le type de document"
@@ -1801,7 +1801,7 @@ const EmployeeDetail = () => {
                     >
                       {/* Onglets fichiers */}
                       {selectedDoc?.fichiers?.length > 1 && (
-                        <div style={{ display: "flex", gap: 4 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
                           {selectedDoc.fichiers.map((file, index) => (
                             <button
                               key={file.id}

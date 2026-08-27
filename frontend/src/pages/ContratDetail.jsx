@@ -525,7 +525,7 @@ const ContratDetail = () => {
         </div>
 
         {/* Documents + Viewer */}
-        <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "300px 1fr", gap: 20 }}>
+        <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "340px 1fr", gap: 20 }}>
           {/* Sidebar documents */}
           <div style={{
             background: theme.surface, border: `1px solid ${theme.border}`,
@@ -608,7 +608,7 @@ const ContratDetail = () => {
                               title={file.file_name}
                               style={{
                                 color: theme.text, fontSize: 12, fontWeight: selectedFile?.id === file.id ? 600 : 400,
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 210,
                               }}
                             >
                               {stripExt(file.file_name) || `Page ${index + 1}`}
@@ -616,7 +616,7 @@ const ContratDetail = () => {
                           </div>
                         </div>
                         {user?.role === "ADMIN" && (
-                          <div style={{ display: "flex", gap: 4 }}>
+                          <div style={{ display: "flex", gap: 6 }}>
                           <button
                             onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
                             title="Renommer d'après le type de document"
@@ -793,7 +793,7 @@ const ContratDetail = () => {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {selectedDoc?.fichiers?.length > 1 && (
-                      <div style={{ display: "flex", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
                         {selectedDoc.fichiers.map((file, index) => (
                           <button
                             key={file.id}
