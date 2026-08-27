@@ -475,8 +475,10 @@ class ScanImportView(APIView):
     POST /api/employees/{emp_id}/documents/scan-import/
     Import groupé : plusieurs fichiers scannés (PDF multi-pages et/ou
     images) répartis en groupes, chaque groupe devenant un
-    EmployeeDocument. Un groupe qui échoue (page hors limites, etc.)
-    n'annule pas les autres — chaque groupe est traité indépendamment.
+    EmployeeDocument du dossier général de l'employé (jamais d'un
+    contrat spécifique — un contrat a sa propre page dédiée pour ça).
+    Un groupe qui échoue (page hors limites, etc.) n'annule pas les
+    autres — chaque groupe est traité indépendamment.
     """
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAdmin]

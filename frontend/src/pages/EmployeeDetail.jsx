@@ -352,9 +352,11 @@ const EmployeeDetail = () => {
     formData.append("type_doc", typeSelectionne?.id || uploadType);
     files.forEach((file) => formData.append("files", file));
 
-    const url = selectedContratId
-      ? `/contrats/${selectedContratId}/documents/`
-      : `/employees/${id}/documents/`;
+    // Toujours le dossier général de l'employé — un contrat sélectionné
+    // dans la sidebar sert uniquement à filtrer l'affichage, pas à
+    // choisir où attacher un nouvel upload (cohérent avec "Scanner un
+    // dossier", qui n'a jamais eu de notion de contrat).
+    const url = `/employees/${id}/documents/`;
 
     try {
       await api.post(url, formData, {

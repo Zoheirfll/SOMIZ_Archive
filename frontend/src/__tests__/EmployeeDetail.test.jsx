@@ -389,7 +389,7 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("upload réussi appelle api.post sur l'endpoint du contrat sélectionné", async () => {
+  test("upload réussi cible toujours le dossier général même avec un contrat sélectionné", async () => {
     api.post.mockResolvedValue({});
     api.get.mockImplementation((url) => {
       if (url.includes("types-documents")) {
@@ -422,7 +422,7 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
       fireEvent.change(mainInput, { target: { files: [file] } });
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith(
-          "/contrats/contrat-1/documents/",
+          "/employees/emp-uuid/documents/",
           expect.any(FormData),
           expect.any(Object)
         );

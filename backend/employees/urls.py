@@ -18,10 +18,12 @@ from employees.views import (
     ContratDocumentListUploadView,
 )
 from employees.import_views import EmployeeImportView, EmployeeImportTemplateView
+from employees.grh_integration import GRHEmployeeSyncView
 
 urlpatterns = [
     # Employés
     path('employees/', EmployeeListCreateView.as_view(), name='employee-list'),
+    path('employees/grh-sync/', GRHEmployeeSyncView.as_view(), name='employee-grh-sync'),
     path('employees/search/', employee_search, name='employee-search'),
     path('employees/import/', EmployeeImportView.as_view(), name='employee-import'),
     path('employees/import/template/', EmployeeImportTemplateView.as_view(), name='employee-import-template'),
