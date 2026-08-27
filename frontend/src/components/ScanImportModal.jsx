@@ -105,10 +105,17 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
       setLastClickedId(pageId);
       return;
     }
-    // Clic simple : sélectionne toutes les pages du même fichier source.
-    const sameFileIds = pages.filter((p) => p.fileIndex === page.fileIndex).map((p) => p.id);
-    setSelectedPageIds(new Set(sameFileIds));
+    // Clic simple : sélectionne uniquement cette page (comportement
+    // standard d'une grille de fichiers) — Shift pour une plage, Ctrl
+    // pour ajouter/retirer une page, ou "Sélectionner tout le fichier"
+    // pour prendre toutes les pages d'un même fichier source d'un coup.
+    setSelectedPageIds(new Set([pageId]));
     setLastClickedId(pageId);
+  };
+
+  const selectWholeFile = (fileIndex) => {
+    const sameFileIds = pages.filter((p) => p.fileIndex === fileIndex).map((p) => p.id);
+    setSelectedPageIds(new Set(sameFileIds));
   };
 
   const assignSelectionToType = () => {
@@ -259,6 +266,23 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
               >
                 Assigner ({selectedPageIds.size})
               </button>
+              {selectedPageIds.size > 0 && (
+                <button
+                  onClick={() => {
+                    const selectedPage = pages.find((p) => selectedPageIds.has(p.id));
+                    if (selectedPage) selectWholeFile(selectedPage.fileIndex);
+                  }}
+                  style={{
+                    background: "none", border: `1px solid ${theme.border}`, borderRadius: 6,
+                    padding: "6px 12px", fontSize: 11, color: theme.textSecondary, cursor: "pointer",
+                  }}
+                >
+                  Sélectionner tout le fichier
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 10 }}>
+              Cliquez une page pour la sélectionner seule, Shift-clic pour une plage, Ctrl-clic pour ajouter/retirer une page.
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>

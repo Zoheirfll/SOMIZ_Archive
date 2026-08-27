@@ -71,7 +71,7 @@ const baseTypes = [
 ];
 
 describe("ScanImportModal - sélection et groupes", () => {
-  it("clicking one page selects every page of its source file by default", async () => {
+  it("clicking one page selects only that page", async () => {
     render(
       <ScanImportModal
         employeeId="EMP001"
@@ -87,6 +87,29 @@ describe("ScanImportModal - sélection et groupes", () => {
 
     const firstThumb = await screen.findByTestId("scan-page-0-1");
     await userEvent.click(firstThumb);
+
+    expect(screen.getByTestId("scan-page-0-1")).toHaveAttribute("data-selected", "true");
+    expect(screen.getByTestId("scan-page-0-2")).toHaveAttribute("data-selected", "false");
+    expect(screen.getByTestId("scan-page-0-3")).toHaveAttribute("data-selected", "false");
+  });
+
+  it("'Sélectionner tout le fichier' selects every page of the clicked page's source file", async () => {
+    render(
+      <ScanImportModal
+        employeeId="EMP001"
+        typesDocumentsList={baseTypes}
+        onClose={jest.fn()}
+        onImported={jest.fn()}
+      />
+    );
+    const file = new File(["pdf"], "scan.pdf", { type: "application/pdf" });
+    const input = screen.getByLabelText(/cliquez ou déposez/i, { selector: "input" });
+    await selectFile(input, file);
+    await flushPdfLoad();
+
+    const firstThumb = await screen.findByTestId("scan-page-0-1");
+    await userEvent.click(firstThumb);
+    await userEvent.click(screen.getByText(/sélectionner tout le fichier/i));
 
     expect(screen.getByTestId("scan-page-0-1")).toHaveAttribute("data-selected", "true");
     expect(screen.getByTestId("scan-page-0-2")).toHaveAttribute("data-selected", "true");
@@ -133,6 +156,7 @@ describe("ScanImportModal - sélection et groupes", () => {
 
     const page1 = await screen.findByTestId("scan-page-0-1");
     await userEvent.click(page1);
+    await userEvent.click(screen.getByText(/sélectionner tout le fichier/i));
 
     const select = screen.getByTestId("scan-assign-type-select");
     await userEvent.selectOptions(select, "type-a");
@@ -171,6 +195,7 @@ describe("ScanImportModal - soumission", () => {
 
     const page1 = await screen.findByTestId("scan-page-0-1");
     await userEvent.click(page1);
+    await userEvent.click(screen.getByText(/sélectionner tout le fichier/i));
     await userEvent.click(screen.getByTestId("scan-assign-button"));
 
     await userEvent.click(screen.getByTestId("scan-import-submit"));
