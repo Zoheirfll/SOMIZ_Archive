@@ -506,6 +506,24 @@ Les migrations en production seraient alors lancées avec un compte séparé (ou
 
 ---
 
+## 27. Consentement Loi 18-07 obligatoire avant tout accès (2026-08-27) — ✅ Implémenté
+
+**Demande** : bloquer l'accès à SOMIZ (tous rôles, y compris ADMIN) tant qu'un utilisateur n'a pas explicitement consenti au traitement de ses données personnelles, conformément à la Loi n°18-07 du 10 juin 2018 (Algérie). Un seul consentement à vie par compte, y compris pour les comptes créés avant ce chantier (jamais consentis juridiquement).
+
+**Implémentation** :
+- `User.consent_loi1807_accepted_at` (DateTimeField, `null=True`) — `null` = jamais consenti, sans backfill pour les comptes existants (migration `0008_user_consent_loi1807_accepted_at`).
+- `POST /api/auth/consent/` (`ConsentView`, `IsAuthenticated`) enregistre la date et journalise `AuditLog.Action.CONSENT`.
+- `LoginView`/`UserMeView` exposent `needs_consent: bool`.
+- Frontend : page `/consentement` (case à cocher + boutons Accepter/Refuser), `ProtectedRoute` redirige systématiquement vers `/consentement` si `user.needs_consent` est vrai (sauf sur `/consentement` elle-même).
+
+**⚠️ Point trouvé pendant l'implémentation (corrigé avant merge)** : le plan initial ajoutait une permission `HasConsented` à `REST_FRAMEWORK['DEFAULT_PERMISSION_CLASSES']`, en supposant que cela suffirait à bloquer toute l'API. Un test d'intégration (`test_unconsented_user_blocked_on_protected_route`) a révélé que **la quasi-totalité des vues métier** (`employees/views.py`, `referentiel_views.py`, `import_views.py`, `audit/views.py`, `admin_views.py`) déclarent `permission_classes = [IsAdmin]` ou `[IsAdminOrConsultant]` **explicitement** — en DRF, `permission_classes` déclaré sur une vue **remplace entièrement** le défaut global, il ne s'y ajoute pas. `HasConsented` seule dans `DEFAULT_PERMISSION_CLASSES` n'aurait donc protégé que les quelques vues sans `permission_classes` propre (`LoginView`/`refresh` déjà `AllowAny`, `LogoutView`/`UserMeView`/`ChangePasswordView` déjà `IsAuthenticated`) — c'est-à-dire quasiment aucune vue exposant des données réelles. Un utilisateur non consentant aurait donc pu continuer à consulter `/api/employees/`, documents, contrats, etc. sans blocage réel.
+
+**Correctif appliqué** : le contrôle de consentement est intégré directement dans `IsAdmin.has_permission()` et `IsAdminOrConsultant.has_permission()` (`accounts/permissions.py`) — les deux classes de permission réellement utilisées par toutes les vues métier — plutôt que dans une classe séparée comptant sur le défaut global. `HasConsented` reste définie et branchée dans `DEFAULT_PERMISSION_CLASSES` pour couvrir les futures vues qui n'en déclareraient pas explicitement, mais ce n'est plus le mécanisme de protection principal. Vérifié par `TestHasConsentedIntegration` (bloque `/api/employees/` sans consentement, autorise `logout`/`me`/`consent`) et par la suite complète (236/236 tests backend au vert).
+
+**Verdict : faille de conception trouvée avant merge (blocage non appliqué aux vues métier réelles) grâce aux tests d'intégration prévus au plan, corrigée en déplaçant le contrôle dans les classes de permission effectivement utilisées partout.**
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_
