@@ -238,3 +238,34 @@ class TestAdminResetPasswordView:
         consultant_user.refresh_from_db()
         assert consultant_user.failed_login_attempts == 0
         assert consultant_user.locked_until is None
+
+
+class TestHasConsentedIntegration:
+    def test_unconsented_user_blocked_on_protected_route(self, db):
+        user = User.objects.create_user(
+            username="bloque_test", password="Pass1234!", nom="N", prenom="N", role="ADMIN",
+        )
+        client = auth_client(user)
+        resp = client.get("/api/employees/")
+        assert resp.status_code == 403
+
+    def test_unconsented_user_can_still_call_me(self, db):
+        user = User.objects.create_user(
+            username="bloque_me", password="Pass1234!", nom="N", prenom="N",
+        )
+        client = auth_client(user)
+        resp = client.get(ME_URL)
+        assert resp.status_code == 200
+
+    def test_unconsented_user_can_still_logout(self, db):
+        user = User.objects.create_user(
+            username="bloque_logout", password="Pass1234!", nom="N", prenom="N",
+        )
+        client = auth_client(user)
+        resp = client.post(LOGOUT_URL)
+        assert resp.status_code == 200
+
+    def test_consented_admin_not_blocked(self, admin_user):
+        client = auth_client(admin_user)
+        resp = client.get("/api/employees/")
+        assert resp.status_code == 200

@@ -156,7 +156,10 @@ class LoginView(APIView):
 
 
 class LogoutView(APIView):
-    """POST /api/auth/logout/ — Blackliste le refresh token et efface les cookies."""
+    """POST /api/auth/logout/ — Blackliste le refresh token et efface les cookies.
+    Reste accessible même sans consentement Loi 18-07 (un utilisateur bloqué
+    doit pouvoir se déconnecter) — permission_classes explicite ci-dessous
+    écrase HasConsented du défaut global."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -174,7 +177,11 @@ class LogoutView(APIView):
 
 
 class UserMeView(APIView):
-    """GET /api/auth/me/ — Infos de l'utilisateur connecté."""
+    """GET /api/auth/me/ — Infos de l'utilisateur connecté.
+    Reste accessible même sans consentement Loi 18-07 (le frontend doit
+    pouvoir lire needs_consent sans être lui-même bloqué par un 403) —
+    permission_classes explicite ci-dessous écrase HasConsented du défaut
+    global."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):

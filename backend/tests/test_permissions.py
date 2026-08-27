@@ -58,3 +58,29 @@ class TestIsAdminOrConsultantPermission:
         request = make_request(role="CONSULTANT", is_active=False)
         request.user.is_active = False
         assert self.permission.has_permission(request, None) is False
+
+
+class TestHasConsented:
+    def test_blocks_user_without_consent(self, db):
+        from accounts.permissions import HasConsented
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            username="sans_consent", password="Pass1234!", nom="N", prenom="N",
+        )
+        request = MagicMock(user=user)
+        assert HasConsented().has_permission(request, None) is False
+
+    def test_allows_user_with_consent(self, db):
+        from accounts.permissions import HasConsented
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+
+        User = get_user_model()
+        user = User.objects.create_user(
+            username="avec_consent", password="Pass1234!", nom="N", prenom="N",
+            consent_loi1807_accepted_at=timezone.now(),
+        )
+        request = MagicMock(user=user)
+        assert HasConsented().has_permission(request, None) is True
