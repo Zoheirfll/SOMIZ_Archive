@@ -184,6 +184,32 @@ class TestScanImportView:
         assert doc_a.nb_fichiers == 1
         assert doc_b.nb_fichiers == 1
 
+    def test_split_part_file_size_matches_extracted_content_not_original(self, admin_user, employee):
+        """Regression: le Content-Length servi par FileViewerView vient de
+        EmployeeDocumentFile.file_size — s'il reprend la taille du fichier
+        original (non decoupe) au lieu de la taille reelle du PDF extrait,
+        le navigateur reste bloque a attendre des octets qui n'arrivent
+        jamais (Content-Length trop grand)."""
+        from employees.models import EmployeeDocumentFile
+        type_a = TypeDocument.objects.create(nom="Acte naissance", code="ACTE_NAISS2", is_active=True)
+        client = auth_client(admin_user)
+        # Fichier source à 10 pages : la part extraite (1 page) doit être
+        # nettement plus petite que le fichier original entier.
+        file = pdf_upload_file(10, name="scan.pdf")
+        original_size = file.size
+        plan = json.dumps({"groups": [
+            {"type_doc": str(type_a.id), "parts": [{"file_index": 0, "pages": [4]}]},
+        ]})
+        with patch("employees.views.magic.from_buffer", return_value="application/pdf"), \
+             patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
+            resp = client.post(self._url(employee), {"files": [file], "plan": plan}, format="multipart")
+        assert resp.status_code == 201, resp.data
+        doc = EmployeeDocument.objects.get(employee=employee, type_doc=type_a)
+        stored_file = doc.fichiers.get(is_active=True)
+        assert stored_file.file_size < original_size
+        # La taille enregistrée doit correspondre au fichier physique réel.
+        assert stored_file.file_size == stored_file.file.size
+
     def test_consultant_forbidden(self, consultant_user, employee):
         type_doc = TypeDocument.objects.create(nom="CV", code="CV", is_active=True)
         client = auth_client(consultant_user)

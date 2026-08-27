@@ -514,7 +514,7 @@ class ScanImportView(APIView):
                             document=doc,
                             file=file_to_save,
                             file_name=file_name,
-                            file_size=getattr(source_file, 'size', None) or file_to_save.size,
+                            file_size=file_to_save.size,
                             mime_type=mime,
                             ordre=ordre,
                         )
