@@ -15,19 +15,21 @@ jest.mock("../services/api", () => ({
 import api from "../services/api";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 
-const TestConsumer = ({ onLogin, onLogout }) => {
-  const { user, authenticated, authChecked, loginSuccess, logoutSuccess } = useAuth();
+const TestConsumer = ({ onLogin, onLogout, onRefresh }) => {
+  const { user, authenticated, authChecked, loginSuccess, logoutSuccess, refreshUser } = useAuth();
   return (
     <div>
       <div data-testid="authenticated">{String(authenticated)}</div>
       <div data-testid="checked">{String(authChecked)}</div>
       <div data-testid="username">{user?.username ?? "none"}</div>
+      <div data-testid="needs-consent">{String(user?.needs_consent)}</div>
       {onLogin && (
         <button onClick={() => loginSuccess({ username: "admin", role: "ADMIN" })}>Login</button>
       )}
       {onLogout && (
         <button onClick={() => logoutSuccess()}>Logout</button>
       )}
+      {onRefresh && <button onClick={() => refreshUser()}>Refresh</button>}
     </div>
   );
 };
@@ -87,5 +89,21 @@ describe("AuthContext — logoutSuccess()", () => {
     await userEvent.click(screen.getByRole("button", { name: "Logout" }));
     expect(screen.getByTestId("authenticated").textContent).toBe("false");
     expect(screen.getByTestId("username").textContent).toBe("none");
+  });
+});
+
+describe("AuthContext — refreshUser()", () => {
+  test("recharge l'utilisateur depuis /auth/me/ et met à jour needs_consent", async () => {
+    api.get.mockResolvedValueOnce({ data: { username: "admin", role: "ADMIN", needs_consent: true } });
+    renderConsumer({ onRefresh: true });
+    await waitFor(() => {
+      expect(screen.getByTestId("needs-consent").textContent).toBe("true");
+    });
+
+    api.get.mockResolvedValueOnce({ data: { username: "admin", role: "ADMIN", needs_consent: false } });
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("needs-consent").textContent).toBe("false");
+    });
   });
 });
