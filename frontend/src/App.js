@@ -13,6 +13,7 @@ import Import from "./pages/Import";
 import Profil from "./pages/Profil";
 import ContratDetail from "./pages/ContratDetail";
 import Organigramme from "./pages/Organigramme";
+import Consentement from "./pages/Consentement";
 
 function App() {
   return (
@@ -20,6 +21,14 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/consentement"
+            element={
+              <ProtectedRoute>
+                <Consentement />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/employees"
             element={

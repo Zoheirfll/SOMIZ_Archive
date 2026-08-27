@@ -14,8 +14,8 @@ jest.mock("../context/AuthContext", () => ({
 import { useAuth } from "../context/AuthContext";
 import ProtectedRoute from "../components/ProtectedRoute";
 
-const renderWithRouter = (authenticated, authChecked = true) => {
-  useAuth.mockReturnValue({ authenticated, authChecked });
+const renderWithRouter = (authenticated, authChecked = true, user = {}) => {
+  useAuth.mockReturnValue({ authenticated, authChecked, user });
   return render(
     <MemoryRouter initialEntries={["/protected"]}>
       <Routes>
@@ -28,6 +28,7 @@ const renderWithRouter = (authenticated, authChecked = true) => {
           }
         />
         <Route path="/login" element={<div>Page Login</div>} />
+        <Route path="/consentement" element={<div>Page Consentement</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -54,5 +55,16 @@ describe("ProtectedRoute", () => {
   test("n'affiche pas la page login si authentifié", () => {
     renderWithRouter(true);
     expect(screen.queryByText("Page Login")).not.toBeInTheDocument();
+  });
+
+  test("redirige vers /consentement si needs_consent est vrai", () => {
+    renderWithRouter(true, true, { role: "ADMIN", needs_consent: true });
+    expect(screen.queryByText("Contenu protégé")).not.toBeInTheDocument();
+    expect(screen.getByText("Page Consentement")).toBeInTheDocument();
+  });
+
+  test("affiche la page si needs_consent est faux", () => {
+    renderWithRouter(true, true, { role: "ADMIN", needs_consent: false });
+    expect(screen.getByText("Contenu protégé")).toBeInTheDocument();
   });
 });

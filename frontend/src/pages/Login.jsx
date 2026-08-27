@@ -27,7 +27,7 @@ const Login = () => {
       // Les tokens JWT sont dans les cookies httpOnly — on stocke uniquement les infos user
       sessionStorage.setItem("user", JSON.stringify(data.user));
       loginSuccess(data.user);
-      navigate("/employees");
+      navigate(data.user.needs_consent ? "/consentement" : "/employees");
     } catch (err) {
       setError(err.response?.data?.error || "Identifiants incorrects.");
     } finally {
