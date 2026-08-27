@@ -93,7 +93,7 @@ describe("ScanImportModal - sélection et groupes", () => {
     expect(screen.getByTestId("scan-page-0-3")).toHaveAttribute("data-selected", "false");
   });
 
-  it("'Sélectionner tout le fichier' selects every page of the clicked page's source file", async () => {
+  it("double-clicking a page selects every page of its source file", async () => {
     render(
       <ScanImportModal
         employeeId="EMP001"
@@ -108,8 +108,7 @@ describe("ScanImportModal - sélection et groupes", () => {
     await flushPdfLoad();
 
     const firstThumb = await screen.findByTestId("scan-page-0-1");
-    await userEvent.click(firstThumb);
-    await userEvent.click(screen.getByText(/sélectionner tout le fichier/i));
+    await userEvent.dblClick(firstThumb);
 
     expect(screen.getByTestId("scan-page-0-1")).toHaveAttribute("data-selected", "true");
     expect(screen.getByTestId("scan-page-0-2")).toHaveAttribute("data-selected", "true");
@@ -140,7 +139,7 @@ describe("ScanImportModal - sélection et groupes", () => {
     expect(screen.getByTestId("scan-page-0-3")).toHaveAttribute("data-selected", "false");
   });
 
-  it("assigning a type to a selection creates a highlighted group", async () => {
+  it("clicking a dossier while pages are selected assigns the selection to it", async () => {
     render(
       <ScanImportModal
         employeeId="EMP001"
@@ -155,14 +154,40 @@ describe("ScanImportModal - sélection et groupes", () => {
     await flushPdfLoad();
 
     const page1 = await screen.findByTestId("scan-page-0-1");
-    await userEvent.click(page1);
-    await userEvent.click(screen.getByText(/sélectionner tout le fichier/i));
-
-    const select = screen.getByTestId("scan-assign-type-select");
-    await userEvent.selectOptions(select, "type-a");
-    await userEvent.click(screen.getByTestId("scan-assign-button"));
+    await userEvent.dblClick(page1);
+    await userEvent.click(screen.getByTestId("scan-dossier-type-a"));
 
     expect(await screen.findByText(/CV — 3 page/i)).toBeInTheDocument();
+  });
+
+  it("dragging a page onto a dossier assigns it via drag & drop", async () => {
+    render(
+      <ScanImportModal
+        employeeId="EMP001"
+        typesDocumentsList={baseTypes}
+        onClose={jest.fn()}
+        onImported={jest.fn()}
+      />
+    );
+    const file = new File(["pdf"], "scan.pdf", { type: "application/pdf" });
+    const input = screen.getByLabelText(/cliquez ou déposez/i, { selector: "input" });
+    await selectFile(input, file);
+    await flushPdfLoad();
+
+    const page2 = await screen.findByTestId("scan-page-0-2");
+    const dossier = screen.getByTestId("scan-dossier-type-b");
+
+    let stored = "";
+    const dataTransfer = {
+      setData: (_type, value) => { stored = value; },
+      getData: () => stored,
+      effectAllowed: null,
+    };
+    fireEvent.dragStart(page2, { dataTransfer });
+    fireEvent.dragOver(dossier, { dataTransfer });
+    fireEvent.drop(dossier, { dataTransfer });
+
+    expect(await screen.findByText(/Diplôme — 1 page/i)).toBeInTheDocument();
   });
 });
 
@@ -194,9 +219,8 @@ describe("ScanImportModal - soumission", () => {
     await flushPdfLoad();
 
     const page1 = await screen.findByTestId("scan-page-0-1");
-    await userEvent.click(page1);
-    await userEvent.click(screen.getByText(/sélectionner tout le fichier/i));
-    await userEvent.click(screen.getByTestId("scan-assign-button"));
+    await userEvent.dblClick(page1);
+    await userEvent.click(screen.getByTestId("scan-dossier-type-a"));
 
     await userEvent.click(screen.getByTestId("scan-import-submit"));
 

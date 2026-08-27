@@ -41,7 +41,7 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
   const [groups, setGroups] = useState([]); // {id, typeDocId, pageIds: []}
   const [selectedPageIds, setSelectedPageIds] = useState(new Set());
   const [lastClickedId, setLastClickedId] = useState(null);
-  const [assignTypeId, setAssignTypeId] = useState(typesDocumentsList[0]?.id || "");
+  const [dragOverTypeId, setDragOverTypeId] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -97,9 +97,8 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
       }
     }
     // Clic simple : bascule la sélection de cette page (re-cliquer la
-    // désélectionne) — Shift pour une plage, ou "Sélectionner tout le
-    // fichier" pour prendre toutes les pages d'un même fichier source
-    // d'un coup.
+    // désélectionne) — Shift pour une plage, double-clic pour prendre
+    // toutes les pages d'un même fichier source d'un coup.
     setSelectedPageIds((prev) => {
       const next = new Set(prev);
       next.has(pageId) ? next.delete(pageId) : next.add(pageId);
@@ -113,26 +112,56 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
     setSelectedPageIds(new Set(sameFileIds));
   };
 
-  const assignSelectionToType = () => {
-    if (!assignTypeId || selectedPageIds.size === 0) return;
-    const selectedIds = Array.from(selectedPageIds);
+  // Assigne un ensemble de pages à un type de document — appelée au
+  // dépôt (drag & drop) d'une ou plusieurs pages sur un dossier, ou au
+  // clic sur un dossier quand des pages sont déjà sélectionnées.
+  const assignPagesToType = (pageIds, typeDocId) => {
+    if (!typeDocId || pageIds.length === 0) return;
     setGroups((prev) => {
-      // Retire les pages sélectionnées de tout groupe existant (une page
+      // Retire les pages concernées de tout groupe existant (une page
       // appartient à au plus un groupe), puis crée/étend le groupe cible.
       const cleaned = prev
-        .map((g) => ({ ...g, pageIds: g.pageIds.filter((id) => !selectedIds.includes(id)) }))
+        .map((g) => ({ ...g, pageIds: g.pageIds.filter((id) => !pageIds.includes(id)) }))
         .filter((g) => g.pageIds.length > 0);
-      const existingTarget = cleaned.find((g) => g.typeDocId === assignTypeId);
+      const existingTarget = cleaned.find((g) => g.typeDocId === typeDocId);
       if (existingTarget) {
         return cleaned.map((g) =>
           g.id === existingTarget.id
-            ? { ...g, pageIds: [...g.pageIds, ...selectedIds] }
+            ? { ...g, pageIds: [...g.pageIds, ...pageIds] }
             : g
         );
       }
-      return [...cleaned, { id: `grp-${Date.now()}`, typeDocId: assignTypeId, pageIds: selectedIds }];
+      return [...cleaned, { id: `grp-${Date.now()}`, typeDocId, pageIds }];
     });
     setSelectedPageIds(new Set());
+  };
+
+  const handlePageDragStart = (page, e) => {
+    // Si la page glissée fait partie de la sélection courante, on
+    // déplace toute la sélection ; sinon on ne déplace que cette page.
+    const idsToDrag = selectedPageIds.has(page.id) && selectedPageIds.size > 0
+      ? Array.from(selectedPageIds)
+      : [page.id];
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", JSON.stringify(idsToDrag));
+  };
+
+  const handleDropOnDossier = (typeDocId, e) => {
+    e.preventDefault();
+    setDragOverTypeId(null);
+    let pageIds = [];
+    try {
+      pageIds = JSON.parse(e.dataTransfer.getData("text/plain") || "[]");
+    } catch {
+      pageIds = [];
+    }
+    if (pageIds.length === 0) return;
+    assignPagesToType(pageIds, typeDocId);
+  };
+
+  const handleDossierClick = (typeDocId) => {
+    if (selectedPageIds.size === 0) return;
+    assignPagesToType(Array.from(selectedPageIds), typeDocId);
   };
 
   const unassignedCount = pages.filter((p) => !groupIdForPage(p.id)).length;
@@ -236,48 +265,39 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
 
         {pages.length > 0 && !result && (
           <>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-              <select
-                data-testid="scan-assign-type-select"
-                value={assignTypeId}
-                onChange={(e) => setAssignTypeId(e.target.value)}
-                className="input-focus"
-                style={{ border: `1px solid ${theme.border}`, borderRadius: 6, padding: "6px 10px", fontSize: 12 }}
-              >
-                {typesDocumentsList.filter((t) => !t.is_categorie).map((t) => (
-                  <option key={t.id} value={t.id}>{t.nom}</option>
-                ))}
-              </select>
-              <button
-                data-testid="scan-assign-button"
-                onClick={assignSelectionToType}
-                disabled={selectedPageIds.size === 0}
-                className="btn-lift"
-                style={{
-                  background: selectedPageIds.size === 0 ? theme.border : theme.primary,
-                  color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px",
-                  fontSize: 12, fontWeight: 700, cursor: selectedPageIds.size === 0 ? "not-allowed" : "pointer",
-                }}
-              >
-                Assigner ({selectedPageIds.size})
-              </button>
-              {selectedPageIds.size > 0 && (
-                <button
-                  onClick={() => {
-                    const selectedPage = pages.find((p) => selectedPageIds.has(p.id));
-                    if (selectedPage) selectWholeFile(selectedPage.fileIndex);
-                  }}
-                  style={{
-                    background: "none", border: `1px solid ${theme.border}`, borderRadius: 6,
-                    padding: "6px 12px", fontSize: 11, color: theme.textSecondary, cursor: "pointer",
-                  }}
-                >
-                  Sélectionner tout le fichier
-                </button>
-              )}
+            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 8 }}>
+              Glissez une page (ou plusieurs pages sélectionnées) vers un dossier ci-dessous pour l'assigner. Cliquez une page pour la sélectionner/désélectionner, Shift-clic pour une plage.
             </div>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 10 }}>
-              Cliquez une page pour la sélectionner/désélectionner, Shift-clic pour une plage.
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              {typesDocumentsList.filter((t) => !t.is_categorie).map((t) => {
+                const group = groups.find((g) => g.typeDocId === t.id);
+                const isDragOver = dragOverTypeId === t.id;
+                return (
+                  <div
+                    key={t.id}
+                    data-testid={`scan-dossier-${t.id}`}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverTypeId(t.id); }}
+                    onDragLeave={() => setDragOverTypeId((prev) => (prev === t.id ? null : prev))}
+                    onDrop={(e) => handleDropOnDossier(t.id, e)}
+                    onClick={() => handleDossierClick(t.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      border: `2px dashed ${isDragOver ? theme.primary : theme.border}`,
+                      background: group ? colorForGroup(group.id) : (isDragOver ? theme.primaryBg : theme.surface),
+                      borderRadius: 10, padding: "8px 12px", fontSize: 12, fontWeight: 600, color: theme.text,
+                      cursor: selectedPageIds.size > 0 ? "pointer" : "default",
+                    }}
+                  >
+                    📁 {t.nom}
+                    {group && (
+                      <span style={{ color: theme.textMuted, fontWeight: 400 }}>
+                        ({group.pageIds.length})
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
@@ -289,11 +309,15 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
                     key={page.id}
                     data-testid={`scan-page-${page.id}`}
                     data-selected={isSelected ? "true" : "false"}
+                    draggable
+                    onDragStart={(e) => handlePageDragStart(page, e)}
                     onClick={(e) => handlePageClick(page, e)}
+                    onDoubleClick={() => selectWholeFile(page.fileIndex)}
+                    title="Double-clic : sélectionner tout le fichier"
                     style={{
                       border: `2px solid ${isSelected ? theme.primary : theme.border}`,
                       background: groupId ? colorForGroup(groupId) : theme.surface,
-                      borderRadius: 8, padding: 6, cursor: "pointer", textAlign: "center", fontSize: 10,
+                      borderRadius: 8, padding: 6, cursor: "grab", textAlign: "center", fontSize: 10,
                     }}
                   >
                     <div style={{ width: "100%", aspectRatio: "3/4", background: "#F1F5F9", borderRadius: 4, marginBottom: 4, overflow: "hidden" }}>
