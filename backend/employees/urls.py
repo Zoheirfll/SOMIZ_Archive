@@ -6,6 +6,7 @@ from employees.views import (
     EmployeePhotoView,
     EmployeeChampsPersonnalisesView,
     DocumentListUploadView,
+    ScanImportView,
     DocumentViewerView,
     FileViewerView,
     FileDetailView,
@@ -34,6 +35,7 @@ urlpatterns = [
 
     # Documents (sous-ressource d'un employé)
     path('employees/<str:emp_id>/documents/', DocumentListUploadView.as_view(), name='doc-list-upload'),
+    path('employees/<str:emp_id>/documents/scan-import/', ScanImportView.as_view(), name='doc-scan-import'),
 
     # Contrats (sous-ressource d'un employé)
     path('employees/<str:emp_id>/contrats/', ContratListCreateView.as_view(), name='contrat-list'),

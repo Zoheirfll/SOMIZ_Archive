@@ -7,6 +7,8 @@ import mimetypes
 import os
 import magic
 from django.conf import settings
+from django.core.files.base import File
+from django.db import transaction
 from django.db.models import Q, Count, Exists, OuterRef, Subquery
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import StreamingHttpResponse, Http404
@@ -35,12 +37,14 @@ from employees.serializers import (
     EmployeeDetailSerializer,
     EmployeeCreateUpdateSerializer,
     DocumentUploadSerializer,
+    ScanImportSerializer,
     EmployeeDocumentSerializer,
     EmployeeDocumentFileSerializer,
     ContratListSerializer,
     ContratDetailSerializer,
     ContratCreateUpdateSerializer,
 )
+from employees.pdf_utils import pdf_page_count, extract_pdf_pages, PdfExtractionError
 
 
 def resolve_employee(raw, queryset=None):
@@ -449,6 +453,99 @@ class DocumentListUploadView(APIView):
             EmployeeDocumentSerializer(doc).data,
             status=status.HTTP_201_CREATED
         )
+
+
+class ScanImportView(APIView):
+    """
+    POST /api/employees/{emp_id}/documents/scan-import/
+    Import groupé : plusieurs fichiers scannés (PDF multi-pages et/ou
+    images) répartis en groupes, chaque groupe devenant un
+    EmployeeDocument. Un groupe qui échoue (page hors limites, etc.)
+    n'annule pas les autres — chaque groupe est traité indépendamment.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAdmin]
+
+    def post(self, request, emp_id):
+        employee = resolve_employee(emp_id)
+
+        serializer = ScanImportSerializer(data={
+            'files': request.FILES.getlist('files'),
+            'plan': request.data.get('plan', ''),
+        })
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        created = []
+        failed = []
+
+        for group in serializer.validated_data['groups']:
+            type_doc = group['type_doc']
+            try:
+                with transaction.atomic():
+                    doc = EmployeeDocument.objects.create(
+                        employee=employee,
+                        type_doc=type_doc,
+                        uploaded_by=request.user,
+                        notes=group.get('notes', ''),
+                    )
+                    for ordre, part in enumerate(group['parts'], start=1):
+                        source_file = part['file']
+                        if part['is_image'] or part['pages'] is None:
+                            source_file.seek(0)
+                            file_to_save = source_file
+                            file_name = source_file.name
+                        else:
+                            total_pages = pdf_page_count(source_file)
+                            if list(part['pages']) == list(range(1, total_pages + 1)):
+                                source_file.seek(0)
+                                file_to_save = source_file
+                                file_name = source_file.name
+                            else:
+                                extracted = extract_pdf_pages(source_file, part['pages'])
+                                base_name = os.path.splitext(source_file.name)[0]
+                                file_name = f"{base_name}_p{'-'.join(map(str, part['pages']))}.pdf"
+                                file_to_save = File(extracted, name=file_name)
+
+                        file_to_save.seek(0)
+                        mime = magic.from_buffer(file_to_save.read(2048), mime=True)
+                        file_to_save.seek(0)
+                        EmployeeDocumentFile.objects.create(
+                            document=doc,
+                            file=file_to_save,
+                            file_name=file_name,
+                            file_size=getattr(source_file, 'size', None) or file_to_save.size,
+                            mime_type=mime,
+                            ordre=ordre,
+                        )
+
+                AuditLog.log(
+                    request, AuditLog.Action.UPLOAD,
+                    target=doc,
+                    details={
+                        'type': doc.type_doc.code,
+                        'version': doc.version,
+                        'nb_fichiers': doc.nb_fichiers,
+                        'via': 'scan_import',
+                    }
+                )
+                created.append({
+                    'type_doc': str(type_doc.id),
+                    'type_doc_nom': type_doc.nom,
+                    'document_id': str(doc.id),
+                })
+            except PdfExtractionError as exc:
+                failed.append({
+                    'type_doc': str(type_doc.id),
+                    'type_doc_nom': type_doc.nom,
+                    'error': str(exc),
+                })
+
+        return Response(
+            {'created': created, 'failed': failed},
+            status=status.HTTP_201_CREATED
+        )
+
 
 class FileViewerView(APIView):
     """
