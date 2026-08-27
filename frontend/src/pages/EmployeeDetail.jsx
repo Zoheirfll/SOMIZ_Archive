@@ -1405,7 +1405,7 @@ const EmployeeDetail = () => {
                               onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                               onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
                             >
-                              <TagIcon size={12} />
+                              <TagIcon size={16} />
                             </button>
                             <button
                               onClick={(e) => handleRenameFile(file, e)}
@@ -1426,7 +1426,7 @@ const EmployeeDetail = () => {
                                 (e.currentTarget.style.opacity = 0.5)
                               }
                             >
-                              <PencilIcon size={12} />
+                              <PencilIcon size={16} />
                             </button>
                             <button
                               onClick={(e) => handleDeleteFile(file, e)}
@@ -1447,7 +1447,7 @@ const EmployeeDetail = () => {
                                 (e.currentTarget.style.opacity = 0.5)
                               }
                             >
-                              <TrashIcon size={12} />
+                              <TrashIcon size={16} />
                             </button>
                             </div>
                           )}
@@ -1771,7 +1771,7 @@ const EmployeeDetail = () => {
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
                           >
-                            <TagIcon size={12} />
+                            <TagIcon size={16} />
                           </button>
                         )}
                         {user?.role === "ADMIN" && (
@@ -1791,7 +1791,7 @@ const EmployeeDetail = () => {
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
                           >
-                            <PencilIcon size={12} />
+                            <PencilIcon size={16} />
                           </button>
                         )}
                       </div>
