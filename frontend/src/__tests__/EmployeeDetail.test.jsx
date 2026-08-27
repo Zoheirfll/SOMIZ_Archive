@@ -12,6 +12,9 @@ jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 jest.mock("../components/SecureDocViewer", () => () => (
   <div data-testid="doc-viewer">Visionneuse document</div>
 ));
+jest.mock("../components/ScanImportModal", () => () => (
+  <div data-testid="scan-import-modal">Scan import</div>
+));
 jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));

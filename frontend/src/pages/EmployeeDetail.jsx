@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import ScanImportModal from "../components/ScanImportModal";
 import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
@@ -42,6 +43,7 @@ const EmployeeDetail = () => {
   const [docLoading, setDocLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [showScanImport, setShowScanImport] = useState(false);
   const [uploadType, setUploadType] = useState("");
   const [message, setMessage] = useState(null);
   const [typesDocuments, setTypesDocuments] = useState({});
@@ -1525,6 +1527,28 @@ const EmployeeDetail = () => {
                     background: theme.bg,
                   }}
                 >
+                  <button
+                    onClick={() => setShowScanImport(true)}
+                    className="btn-lift"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      width: "100%",
+                      background: theme.surface,
+                      color: theme.primary,
+                      border: `1px solid ${theme.primaryBorder}`,
+                      borderRadius: 6,
+                      padding: "8px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <PaperclipIcon size={13} /> Scanner un dossier
+                  </button>
                   <div
                     style={{
                       color: theme.text,
@@ -1805,6 +1829,17 @@ const EmployeeDetail = () => {
       </div>
       {ConfirmDialog}
       {PromptDialog}
+      {showScanImport && (
+        <ScanImportModal
+          employeeId={id}
+          typesDocumentsList={typesDocumentsList}
+          onClose={() => setShowScanImport(false)}
+          onImported={() => {
+            fetchEmployee();
+            fetchContrats();
+          }}
+        />
+      )}
     </PageBackground>
   );
 };
