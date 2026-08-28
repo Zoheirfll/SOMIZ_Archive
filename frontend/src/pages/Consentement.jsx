@@ -48,7 +48,7 @@ const Consentement = () => {
         }}
       >
         <h1 style={{ color: "#fff", fontWeight: 800, fontSize: 24, margin: 0, letterSpacing: "-0.02em" }}>
-          Protection de vos données personnelles
+          Engagement de confidentialité et protection des données
         </h1>
         <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 6 }}>
           Loi n°18-07 du 10 juin 2018 (Algérie)
@@ -69,32 +69,48 @@ const Consentement = () => {
           }}
         >
           <p>
-            Conformément à la Loi n°18-07 du 10 juin 2018 relative à la protection des
-            personnes physiques dans le traitement des données à caractère personnel,
-            nous vous informons des éléments suivants avant tout accès à votre compte SOMIZ.
+            SOMIZ vous donne accès, dans le cadre de vos fonctions, à des données
+            personnelles concernant <strong>d'autres employés</strong> de l'organisme
+            (identité, documents administratifs, données de contrat) — par exemple les
+            membres de votre équipe, de votre département ou service, ou, selon votre
+            rôle, certains types de documents pour l'ensemble du personnel (cas d'un
+            gestionnaire de la sécurité sociale, par exemple). Conformément à la Loi
+            n°18-07 du 10 juin 2018 relative à la protection des personnes physiques
+            dans le traitement des données à caractère personnel, cet accès s'accompagne
+            d'obligations qui vous engagent personnellement.
           </p>
           <p>
             <strong>Responsable du traitement :</strong> votre organisme employeur, via
             l'application SOMIZ (Système d'Archivage des Dossiers RH).
           </p>
           <p>
-            <strong>Finalités :</strong> gestion administrative de votre dossier des
-            ressources humaines (archivage de documents, contrats, informations relatives
-            à votre situation professionnelle).
+            <strong>Finalités autorisées :</strong> vous ne devez consulter, utiliser ou
+            traiter les données auxquelles vous accédez que pour la gestion administrative
+            du dossier RH des employés relevant de votre périmètre, jamais à d'autres fins
+            personnelles ou étrangères à vos fonctions.
           </p>
           <p>
-            <strong>Données concernées :</strong> vos données d'identité, vos documents
-            administratifs et les données relatives à votre contrat de travail.
+            <strong>Confidentialité :</strong> vous vous engagez à ne pas divulguer, copier,
+            exporter ou communiquer à des tiers non autorisés les données personnelles
+            d'autrui consultées via SOMIZ, y compris après la fin de vos fonctions ou de
+            votre contrat.
           </p>
           <p>
-            <strong>Vos droits :</strong> vous disposez d'un droit d'accès, de rectification
-            et d'opposition sur vos données, à exercer auprès du service des ressources
-            humaines de votre organisme.
+            <strong>Traçabilité :</strong> chaque consultation, modification ou suppression
+            effectuée dans SOMIZ est journalisée et associée à votre compte ; cette
+            traçabilité peut être utilisée pour vérifier le respect du présent engagement.
+          </p>
+          <p>
+            <strong>Vos propres données :</strong> comme tout employé, vous disposez
+            également d'un droit d'accès, de rectification et d'opposition sur vos
+            propres données, à exercer auprès du service des ressources humaines de
+            votre organisme.
           </p>
           <p style={{ marginBottom: 0 }}>
-            <strong>Durée de conservation :</strong> vos données sont conservées pendant
-            la durée de votre relation contractuelle, puis selon les délais légaux
-            applicables.
+            <strong>Durée de conservation :</strong> les données consultées sont conservées
+            selon les règles internes de l'organisme et les délais légaux applicables ; tout
+            manquement au présent engagement peut engager votre responsabilité conformément
+            à la Loi 18-07 et au règlement intérieur.
           </p>
         </div>
 
@@ -115,8 +131,9 @@ const Consentement = () => {
             onChange={(e) => setChecked(e.target.checked)}
             style={{ marginTop: 3, width: 16, height: 16, cursor: "pointer", accentColor: theme.primary }}
           />
-          J'ai lu et j'accepte le traitement de mes données personnelles conformément à la
-          Loi 18-07.
+          J'ai lu et je m'engage à respecter les obligations de confidentialité et de
+          protection des données personnelles d'autrui rappelées ci-dessus, conformément
+          à la Loi 18-07.
         </label>
 
         {error && (

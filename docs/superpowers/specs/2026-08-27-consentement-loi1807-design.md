@@ -166,3 +166,25 @@ autres actions.
   tard, une politique de re-consentement devra être conçue séparément).
 - Pas de validation juridique du texte affiché — à faire relire par un
   juriste avant mise en production si nécessaire.
+
+## Amendement (2026-08-28) — reformulation du texte affiché
+
+Le texte initial de `/consentement` était rédigé comme si chaque
+utilisateur ne consultait que ses propres données ("protection de vos
+données personnelles"). Ce cadrage est inexact pour SOMIZ : la majorité
+des comptes (ADMIN, ou CONSULTANT avec périmètre) consultent des données
+**d'autres employés** — un directeur voit toute son équipe, un chef de
+département/service ses subordonnés, un cadre restreint à un type de
+document (ex. Sécurité Sociale) peut voir ce type pour l'ensemble du
+personnel indépendamment du périmètre organisationnel (voir section
+"Scoping" de `CLAUDE.md`).
+
+Le texte a été réécrit en conséquence (titre "Engagement de
+confidentialité et protection des données") pour porter sur :
+finalités autorisées (n'utiliser les données d'autrui que pour la
+gestion RH de son périmètre), confidentialité (ne pas divulguer/copier/
+exporter), traçabilité (audit log nominatif), et responsabilité en cas
+de manquement — tout en conservant un paragraphe sur les droits propres
+de l'utilisateur en tant qu'employé. Aucun changement de comportement
+(case à cocher, endpoint, blocage) — uniquement le contenu affiché dans
+`frontend/src/pages/Consentement.jsx`.
