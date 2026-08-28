@@ -7,6 +7,8 @@ import mimetypes
 import os
 import magic
 from django.conf import settings
+from django.core.files.base import File
+from django.db import transaction
 from django.db.models import Q, Count, Exists, OuterRef, Subquery
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import StreamingHttpResponse, Http404
@@ -35,12 +37,14 @@ from employees.serializers import (
     EmployeeDetailSerializer,
     EmployeeCreateUpdateSerializer,
     DocumentUploadSerializer,
+    ScanImportSerializer,
     EmployeeDocumentSerializer,
     EmployeeDocumentFileSerializer,
     ContratListSerializer,
     ContratDetailSerializer,
     ContratCreateUpdateSerializer,
 )
+from employees.pdf_utils import pdf_page_count, extract_pdf_pages, PdfExtractionError
 
 
 def resolve_employee(raw, queryset=None):
@@ -117,6 +121,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         service = self.request.query_params.get('service')
         statut = self.request.query_params.get('statut')
         complet = self.request.query_params.get('dossier_complet')
+        type_manquant = self.request.query_params.get('type_manquant')
 
         if q:
             qs = qs.filter(
@@ -141,6 +146,28 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(cellule=cellule)
         if statut:
             qs = qs.filter(statut=statut)
+
+        if complet is not None:
+            types_obligatoires = TypeDocument.objects.filter(
+                obligatoire=True, is_active=True, sous_types__isnull=True
+            )
+            if complet.lower() in ('true', '1'):
+                for t in types_obligatoires:
+                    qs = qs.filter(documents__type_doc=t, documents__is_active=True)
+                qs = qs.distinct()
+            elif complet.lower() in ('false', '0'):
+                incomplete_ids = qs
+                for t in types_obligatoires:
+                    incomplete_ids = incomplete_ids.filter(
+                        documents__type_doc=t, documents__is_active=True
+                    )
+                qs = qs.exclude(pk__in=incomplete_ids.values('pk'))
+
+        if type_manquant:
+            qs = qs.exclude(
+                documents__type_doc__code=type_manquant,
+                documents__is_active=True,
+            )
 
         return qs
 
@@ -212,8 +239,23 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
         return super().retrieve(request, *args, **kwargs)
 
+    # Champs d'affectation organisationnelle — un changement sur l'un
+    # d'eux constitue un "transfert" tracé séparément dans le détail de
+    # l'audit log (voir perform_update), en plus du diff générique.
+    TRANSFER_FIELDS = ['direction', 'departement', 'service', 'cellule']
+
     def perform_update(self, serializer):
+        instance = serializer.instance
+        # Capturer les libellés AVANT save() : serializer.save() mute
+        # `instance` en place (même objet Python), donc après le save on
+        # ne peut plus lire les anciennes valeurs depuis `instance`.
+        old_affectation = {
+            field: (getattr(instance, field).nom if getattr(instance, field, None) else None)
+            for field in self.TRANSFER_FIELDS
+        }
+
         employee = serializer.save()
+
         # Convertir les dates en strings pour que JSON puisse les sérialiser
         details = {}
         for k, v in serializer.validated_data.items():
@@ -223,6 +265,19 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
                 details[k] = str(v.pk)
             else:
                 details[k] = str(v) if v is not None else None
+
+        new_affectation = {
+            field: (getattr(employee, field).nom if getattr(employee, field, None) else None)
+            for field in self.TRANSFER_FIELDS
+        }
+        changed = {
+            field: {'de': old_affectation[field], 'vers': new_affectation[field]}
+            for field in self.TRANSFER_FIELDS
+            if field in serializer.validated_data and old_affectation[field] != new_affectation[field]
+        }
+        if changed:
+            details['transfer'] = changed
+
         AuditLog.log(
             self.request, AuditLog.Action.MODIFY_EMP,
             target=employee,
@@ -449,6 +504,115 @@ class DocumentListUploadView(APIView):
             EmployeeDocumentSerializer(doc).data,
             status=status.HTTP_201_CREATED
         )
+
+
+def _scan_import_file_name(source_name, pages):
+    """Nom affiché d'un fichier issu du scan/import — garde le nom du
+    fichier scanné (cohérent avec l'upload normal, qui conserve toujours
+    le nom du fichier choisi, et préserve la traçabilité si le même type
+    de document est réimporté plus tard). Pour une part obtenue par
+    découpage de pages, ajoute juste la plage de pages entre parenthèses
+    pour distinguer les morceaux d'un même fichier source."""
+    base, ext = os.path.splitext(source_name)
+    ext = ext or '.pdf'
+    if pages:
+        page_label = f"p{pages[0]}" if len(pages) == 1 else f"p{pages[0]}-{pages[-1]}"
+        return f"{base} ({page_label}){ext}"
+    return f"{base}{ext}"
+
+
+class ScanImportView(APIView):
+    """
+    POST /api/employees/{emp_id}/documents/scan-import/
+    Import groupé : plusieurs fichiers scannés (PDF multi-pages et/ou
+    images) répartis en groupes, chaque groupe devenant un
+    EmployeeDocument du dossier général de l'employé (jamais d'un
+    contrat spécifique — un contrat a sa propre page dédiée pour ça).
+    Un groupe qui échoue (page hors limites, etc.) n'annule pas les
+    autres — chaque groupe est traité indépendamment.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAdmin]
+
+    def post(self, request, emp_id):
+        employee = resolve_employee(emp_id)
+
+        serializer = ScanImportSerializer(data={
+            'files': request.FILES.getlist('files'),
+            'plan': request.data.get('plan', ''),
+        })
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        created = []
+        failed = []
+
+        for group in serializer.validated_data['groups']:
+            type_doc = group['type_doc']
+            try:
+                with transaction.atomic():
+                    doc = EmployeeDocument.objects.create(
+                        employee=employee,
+                        type_doc=type_doc,
+                        uploaded_by=request.user,
+                        notes=group.get('notes', ''),
+                    )
+                    for ordre, part in enumerate(group['parts'], start=1):
+                        source_file = part['file']
+                        if part['is_image'] or part['pages'] is None:
+                            source_file.seek(0)
+                            file_to_save = source_file
+                            file_name = _scan_import_file_name(source_file.name, None)
+                        else:
+                            total_pages = pdf_page_count(source_file)
+                            if list(part['pages']) == list(range(1, total_pages + 1)):
+                                source_file.seek(0)
+                                file_to_save = source_file
+                                file_name = _scan_import_file_name(source_file.name, None)
+                            else:
+                                extracted = extract_pdf_pages(source_file, part['pages'])
+                                file_name = _scan_import_file_name(source_file.name, part['pages'])
+                                file_to_save = File(extracted, name=file_name)
+
+                        file_to_save.seek(0)
+                        mime = magic.from_buffer(file_to_save.read(2048), mime=True)
+                        file_to_save.seek(0)
+                        EmployeeDocumentFile.objects.create(
+                            document=doc,
+                            file=file_to_save,
+                            file_name=file_name,
+                            file_size=file_to_save.size,
+                            mime_type=mime,
+                            ordre=ordre,
+                        )
+
+                AuditLog.log(
+                    request, AuditLog.Action.UPLOAD,
+                    target=doc,
+                    details={
+                        'type': doc.type_doc.code,
+                        'version': doc.version,
+                        'nb_fichiers': doc.nb_fichiers,
+                        'via': 'scan_import',
+                    }
+                )
+                created.append({
+                    'type_doc': str(type_doc.id),
+                    'type_doc_nom': type_doc.nom,
+                    'document_id': str(doc.id),
+                })
+            except PdfExtractionError as exc:
+                failed.append({
+                    'type_doc': str(type_doc.id),
+                    'type_doc_nom': type_doc.nom,
+                    'error': str(exc),
+                })
+
+        return Response(
+            {'created': created, 'failed': failed},
+            status=status.HTTP_201_CREATED
+        )
+
 
 class FileViewerView(APIView):
     """

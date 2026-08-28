@@ -45,26 +45,6 @@ const CHILD_LABEL = {
   departement: "service/cellule",
 };
 
-const ChevronIcon = ({ open, color }) => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    style={{
-      transform: open ? "rotate(90deg)" : "rotate(0deg)",
-      transition: "transform 0.15s ease",
-      flexShrink: 0,
-    }}
-  >
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
-
 const ArrowRightIcon = ({ color }) => (
   <svg
     width="14"
@@ -81,12 +61,11 @@ const ArrowRightIcon = ({ color }) => (
   </svg>
 );
 
-// Un nœud de l'arbre (Direction, Pôle, Département, Service ou Cellule) —
-// accordéon vertical : cliquer le corps de la carte déplie ses enfants
-// juste en dessous (indentés), cliquer la flèche navigue vers la liste
-// filtrée. Ce pattern garantit que la page ne déborde jamais
-// horizontalement, contrairement à un diagramme en arbre classique.
-const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, onNavigate, accessible }) => {
+// Carte d'un nœud de l'arbre (Direction, Pôle, Département, Service ou
+// Cellule) dans l'écran drill-down. Le corps de la carte descend d'un
+// niveau (s'il a des enfants) ; le bouton flèche mène directement à la
+// liste des employés filtrée sur ce nœud.
+const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible }) => {
   const s = LEVEL[level];
   const color = accessible ? s.color : "#64748B";
   const bg = accessible ? s.bg : "#F1F5F9";
@@ -94,28 +73,20 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
   return (
     <div
       className="hover-lift"
-      onClick={hasChildren ? onToggle : accessible ? onNavigate : undefined}
+      onClick={hasChildren ? onEnter : accessible ? onNavigate : undefined}
       style={{
         display: "flex",
         alignItems: "center",
         gap: 10,
-        marginLeft: depth * 28,
         background: bg,
         border: `1px solid ${border}`,
         borderLeft: `4px solid ${color}`,
-        borderRadius: 10,
-        padding: "12px 14px",
-        marginBottom: 8,
+        borderRadius: 12,
+        padding: "14px 16px",
         cursor: hasChildren || accessible ? "pointer" : "default",
         opacity: accessible ? 1 : 0.9,
       }}
     >
-      {hasChildren ? (
-        <ChevronIcon open={open} color={color} />
-      ) : (
-        <span style={{ width: 16, flexShrink: 0 }} />
-      )}
-
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -131,38 +102,43 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
         <div
           style={{
             color: accessible ? theme.text : theme.textMuted,
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: 700,
             fontFamily: theme.fontFamily,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            whiteSpace: "normal",
+            wordBreak: "break-word",
           }}
-          title={nom}
         >
           {nom}
         </div>
+        {childCount != null && (
+          <div style={{ color, fontSize: 11, fontWeight: 700, marginTop: 4 }}>
+            {childCount} {CHILD_LABEL[level]}
+          </div>
+        )}
+        {!accessible && (
+          <span
+            title="Hors de votre périmètre"
+            style={{
+              display: "inline-block",
+              marginTop: 4,
+              background: "#E2E8F0",
+              border: "1px solid #94A3B8",
+              color: "#475569",
+              borderRadius: 20,
+              padding: "2px 8px",
+              fontSize: 10,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Hors périmètre
+          </span>
+        )}
       </div>
 
-      {childCount != null && (
-        <span
-          style={{
-            background: "#fff",
-            border: `1px solid ${border}`,
-            color,
-            borderRadius: 20,
-            padding: "2px 10px",
-            fontSize: 11,
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-        >
-          {childCount} {CHILD_LABEL[level]}
-        </span>
-      )}
-
-      {accessible ? (
+      {accessible && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -184,25 +160,6 @@ const OrgNode = ({ level, nom, childCount, hasChildren, depth, onToggle, open, o
         >
           <ArrowRightIcon color="#fff" />
         </button>
-      ) : (
-        <span
-          title="Hors de votre périmètre"
-          style={{
-            background: "#E2E8F0",
-            border: "1px solid #94A3B8",
-            color: "#475569",
-            borderRadius: 20,
-            padding: "4px 10px",
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-        >
-          Hors périmètre
-        </span>
       )}
     </div>
   );
@@ -222,7 +179,9 @@ const Organigramme = () => {
   const [accessibleSvcIds, setAccessibleSvcIds] = useState(null);
   const [accessibleCelIds, setAccessibleCelIds] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [openIds, setOpenIds] = useState(new Set());
+  // Chemin depuis la racine SOMIZ jusqu'à l'écran courant, ex.
+  // [{id, level: "direction", nom}, {id, level: "departement", nom}].
+  const [path, setPath] = useState([]);
 
   const fetchAllPages = async (url) => {
     let results = [];
@@ -279,14 +238,6 @@ const Organigramme = () => {
     })();
   }, []);
 
-  const toggle = (id) => {
-    setOpenIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
   // Enfants d'un nœud, quel que soit son type — reflète les règles
   // métier : un Département peut être direct sous une Direction OU sous
   // un Pôle ; une Cellule peut être sous une Direction OU un Département.
@@ -335,26 +286,15 @@ const Organigramme = () => {
     navigate(`/employees?${paramByLevel[level]}=${node.id}`);
   };
 
-  const renderNode = (node, level, depth) => {
-    const children = childrenOf(node, level);
-    const open = openIds.has(node.id);
-    return (
-      <div key={node.id}>
-        <OrgNode
-          level={level}
-          nom={node.nom}
-          depth={depth}
-          hasChildren={children.length > 0}
-          open={open}
-          childCount={children.length || undefined}
-          onToggle={() => toggle(node.id)}
-          onNavigate={() => navigateTo(node, level)}
-          accessible={isAccessible(node, level)}
-        />
-        {open && children.map((child) => renderNode(child, child.level, depth + 1))}
-      </div>
-    );
-  };
+  // Enfants affichés à l'écran courant : les Directions à la racine, ou
+  // les enfants du dernier nœud du chemin sinon.
+  const current = path.length > 0 ? path[path.length - 1] : null;
+  const currentChildren = current
+    ? childrenOf(current, current.level)
+    : directions.map((d) => ({ ...d, level: "direction" }));
+
+  const enter = (node) => setPath((prev) => [...prev, node]);
+  const goToDepth = (depth) => setPath((prev) => prev.slice(0, depth));
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -369,12 +309,47 @@ const Organigramme = () => {
         <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em" }}>
           Organigramme
         </h1>
-        <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13, marginTop: 6 }}>
-          Cliquez sur une ligne pour déplier, ou sur la flèche pour voir les employés
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 4,
+            marginTop: 12,
+            fontSize: 13,
+          }}
+        >
+          <span
+            onClick={() => goToDepth(0)}
+            style={{
+              color: "rgba(255,255,255,0.85)",
+              fontWeight: path.length === 0 ? 800 : 600,
+              cursor: path.length === 0 ? "default" : "pointer",
+              textDecoration: path.length === 0 ? "none" : "underline",
+            }}
+          >
+            SOMIZ
+          </span>
+          {path.map((node, i) => (
+            <span key={node.id} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "rgba(255,255,255,0.5)" }}>›</span>
+              <span
+                onClick={() => goToDepth(i + 1)}
+                style={{
+                  color: "rgba(255,255,255,0.85)",
+                  fontWeight: i === path.length - 1 ? 800 : 600,
+                  cursor: i === path.length - 1 ? "default" : "pointer",
+                  textDecoration: i === path.length - 1 ? "none" : "underline",
+                }}
+              >
+                {node.nom}
+              </span>
+            </span>
+          ))}
         </div>
       </div>
 
-      <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "16px" : "32px 24px 48px", maxWidth: 1200, margin: "0 auto" }}>
         {loading ? (
           <div style={{ textAlign: "center", padding: 60, color: theme.textSecondary }}>
             Chargement de l'organigramme...
@@ -384,8 +359,77 @@ const Organigramme = () => {
             Aucune direction configurée.
           </div>
         ) : (
-          <div>
-            {directions.map((dir) => renderNode(dir, "direction", 0))}
+          // Layout en grappe : le nœud courant, un tronc, une barre horizontale,
+          // puis ses enfants en grille qui s'enroule sur plusieurs lignes — jamais
+          // de scroll horizontal, quel que soit le nombre d'enfants.
+          <div style={{ textAlign: "center" }}>
+            {/* Nœud courant — SOMIZ à la racine, sinon le dernier élément du chemin */}
+            <div style={{ width: 240, margin: "0 auto" }}>
+              {current ? (
+                <OrgCard
+                  level={current.level}
+                  nom={current.nom}
+                  hasChildren={false}
+                  onEnter={undefined}
+                  onNavigate={() => navigateTo(current, current.level)}
+                  accessible={isAccessible(current, current.level)}
+                />
+              ) : (
+                <div
+                  style={{
+                    background: theme.text,
+                    color: "#fff",
+                    borderRadius: 12,
+                    padding: "14px 0",
+                    fontWeight: 800,
+                    fontSize: 15,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  SOMIZ
+                </div>
+              )}
+            </div>
+
+            {currentChildren.length === 0 ? (
+              <div style={{ padding: "40px 0 20px", color: theme.textMuted }}>
+                Aucun élément à ce niveau.
+              </div>
+            ) : (
+              <>
+                {/* Tronc vertical du nœud courant vers la barre */}
+                <div style={{ width: 2, height: 24, background: theme.textMuted, margin: "0 auto" }} />
+                {/* Barre horizontale regroupant tous les enfants */}
+                <div style={{ height: 2, background: theme.textMuted, maxWidth: 640, margin: "0 auto" }} />
+                <div style={{ width: 2, height: 24, background: theme.textMuted, margin: "0 auto" }} />
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    gap: 14,
+                  }}
+                >
+                  {currentChildren.map((node) => {
+                    const children = childrenOf(node, node.level);
+                    return (
+                      <div key={node.id} style={{ width: 240 }}>
+                        <OrgCard
+                          level={node.level}
+                          nom={node.nom}
+                          hasChildren={children.length > 0}
+                          childCount={children.length || undefined}
+                          onEnter={() => enter(node)}
+                          onNavigate={() => navigateTo(node, node.level)}
+                          accessible={isAccessible(node, node.level)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

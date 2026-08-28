@@ -4,6 +4,7 @@ Fixtures partagées pour tous les tests backend SOMIZ.
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from employees.models import (
     Direction, Departement, Service, Poste,
     TypeContrat, Categorie, TypeDocument, Employee, Contrat
@@ -20,6 +21,7 @@ def admin_user(db):
         nom="Admin",
         prenom="Test",
         role="ADMIN",
+        consent_loi1807_accepted_at=timezone.now(),
     )
 
 
@@ -31,6 +33,7 @@ def consultant_user(db):
         nom="Consultant",
         prenom="Test",
         role="CONSULTANT",
+        consent_loi1807_accepted_at=timezone.now(),
     )
 
 

@@ -5,7 +5,7 @@ import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
-import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, ClipboardIcon, CheckIcon } from "../components/icons";
+import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, ClipboardIcon, CheckIcon, TagIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
@@ -25,6 +25,27 @@ const stripExt = (name) => {
   if (!name) return name;
   const dotIndex = name.lastIndexOf(".");
   return dotIndex > 0 ? name.slice(0, dotIndex) : name;
+};
+
+// file_size_kb vient du backend en Ko — affiché en Mo pour rester lisible
+// sur des documents scannés qui font souvent plusieurs Mo.
+const formatSizeMo = (kb) => {
+  if (kb === null || kb === undefined) return "";
+  return `${(kb / 1024).toFixed(2)} Mo`;
+};
+
+// Date + heure d'upload d'un fichier (ex. "27/08/2026 13:30").
+const formatDateTime = (isoString) => {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 const ContratDetail = () => {
@@ -87,7 +108,7 @@ const ContratDetail = () => {
       await api.patch(`/contrats/${id}/`, payload);
       setMessage({ type: "success", text: "Contrat modifié avec succès." });
       setEditing(false);
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       const detail = err.response?.data?.numero_contrat?.[0] || "Erreur lors de la modification.";
       setMessage({ type: "error", text: detail });
@@ -120,12 +141,12 @@ const ContratDetail = () => {
     }
   };
 
-  const fetchContrat = async () => {
-    setLoading(true);
+  const fetchContrat = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get(`/contrats/${id}/`);
       setContrat(response.data);
-      if (response.data.documents?.length > 0) {
+      if (!silent && response.data.documents?.length > 0) {
         const firstDoc = response.data.documents[0];
         setSelectedDoc(firstDoc);
         if (firstDoc.fichiers?.length > 0) loadFile(firstDoc.fichiers[0]);
@@ -133,7 +154,7 @@ const ContratDetail = () => {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -221,7 +242,7 @@ const ContratDetail = () => {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setMessage({ type: "success", text: `${files.length} fichier(s) uploadé(s) avec succès.` });
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({ type: "error", text: err.response?.data?.files?.[0] || "Erreur lors de l'upload." });
     } finally {
@@ -238,7 +259,7 @@ const ContratDetail = () => {
       await api.delete(`/files/${file.id}/`);
       setMessage({ type: "success", text: "Fichier supprimé." });
       if (selectedFile?.id === file.id) { setSelectedFile(null); setDocUrl(null); }
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {
@@ -257,7 +278,30 @@ const ContratDetail = () => {
     try {
       await api.patch(`/files/${file.id}/`, { file_name: newName });
       setMessage({ type: "success", text: "Fichier renommé." });
-      fetchContrat();
+      fetchContrat(true);
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors du renommage.",
+      });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
+  // Renomme un fichier d'après le libellé de son type de document
+  // ("Acte de naissance" au lieu du nom technique du scan), en un clic.
+  const handleAutoRenameFile = async (file, label, e) => {
+    e?.stopPropagation();
+    if (!label) return;
+    const dotIndex = (file.file_name || "").lastIndexOf(".");
+    const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
+    const newName = `${label}${ext}`;
+    if (newName === file.file_name) return;
+    try {
+      await api.patch(`/files/${file.id}/`, { file_name: newName });
+      setMessage({ type: "success", text: "Fichier renommé." });
+      fetchContrat(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -276,7 +320,7 @@ const ContratDetail = () => {
       await api.delete(`/documents/${doc.id}/`);
       setMessage({ type: "success", text: "Document supprimé." });
       if (selectedDoc?.id === doc.id) { setSelectedDoc(null); setSelectedFile(null); setDocUrl(null); }
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {
@@ -481,7 +525,7 @@ const ContratDetail = () => {
         </div>
 
         {/* Documents + Viewer */}
-        <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "300px 1fr", gap: 20 }}>
+        <div className="anim-fade-in delay-2" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "340px 1fr", gap: 20 }}>
           {/* Sidebar documents */}
           <div style={{
             background: theme.surface, border: `1px solid ${theme.border}`,
@@ -564,16 +608,28 @@ const ContratDetail = () => {
                               title={file.file_name}
                               style={{
                                 color: theme.text, fontSize: 12, fontWeight: selectedFile?.id === file.id ? 600 : 400,
-                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 210,
                               }}
                             >
                               {stripExt(file.file_name) || `Page ${index + 1}`}
                             </div>
-                            <div style={{ color: theme.textMuted, fontSize: 10 }}>{file.file_size_kb} Ko</div>
                           </div>
                         </div>
                         {user?.role === "ADMIN" && (
-                          <div style={{ display: "flex", gap: 4 }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
+                            title="Renommer d'après le type de document"
+                            aria-label="Renommer d'après le type de document"
+                            style={{
+                              background: "transparent", border: "none",
+                              color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.5,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
+                          >
+                            <TagIcon size={16} />
+                          </button>
                           <button
                             onClick={(e) => handleRenameFile(file, e)}
                             title="Renommer ce fichier"
@@ -585,7 +641,7 @@ const ContratDetail = () => {
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
                           >
-                            <PencilIcon size={12} />
+                            <PencilIcon size={16} />
                           </button>
                           <button
                             onClick={(e) => handleDeleteFile(file, e)}
@@ -598,7 +654,7 @@ const ContratDetail = () => {
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
                           >
-                            <TrashIcon size={12} />
+                            <TrashIcon size={16} />
                           </button>
                           </div>
                         )}
@@ -693,9 +749,6 @@ const ContratDetail = () => {
                     <span style={{ color: theme.text, fontWeight: 700, fontSize: 14 }}>
                       {typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document}
                     </span>
-                    <span style={{ color: theme.textSecondary, fontSize: 12, marginLeft: 8 }}>
-                      {selectedFile.file_size_kb} Ko
-                    </span>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
                       <span
                         title={selectedFile.file_name}
@@ -708,6 +761,21 @@ const ContratDetail = () => {
                       </span>
                       {user?.role === "ADMIN" && (
                         <button
+                          onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
+                          title="Renommer d'après le type de document"
+                          aria-label="Renommer d'après le type de document"
+                          style={{
+                            background: "transparent", border: "none",
+                            color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.6, padding: 0,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                          onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
+                        >
+                          <TagIcon size={16} />
+                        </button>
+                      )}
+                      {user?.role === "ADMIN" && (
+                        <button
                           onClick={(e) => handleRenameFile(selectedFile, e)}
                           title="Renommer ce fichier"
                           aria-label="Renommer ce fichier"
@@ -718,14 +786,14 @@ const ContratDetail = () => {
                           onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                           onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
                         >
-                          <PencilIcon size={12} />
+                          <PencilIcon size={16} />
                         </button>
                       )}
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {selectedDoc?.fichiers?.length > 1 && (
-                      <div style={{ display: "flex", gap: 4 }}>
+                      <div style={{ display: "flex", gap: 6 }}>
                         {selectedDoc.fichiers.map((file, index) => (
                           <button
                             key={file.id}
@@ -745,7 +813,7 @@ const ContratDetail = () => {
                       </div>
                     )}
                     <span style={{ color: theme.textSecondary, fontSize: 12 }}>
-                      {selectedFile.file_size_kb} Ko
+                      {formatSizeMo(selectedFile.file_size_kb)} · {formatDateTime(selectedFile.uploaded_at)}
                     </span>
                   </div>
                 </div>

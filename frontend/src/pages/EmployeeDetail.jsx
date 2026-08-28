@@ -7,7 +7,8 @@ import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
-import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner } from "../components/icons";
+import ScanImportModal from "../components/ScanImportModal";
+import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner, TagIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
@@ -19,6 +20,27 @@ const stripExt = (name) => {
   if (!name) return name;
   const dotIndex = name.lastIndexOf(".");
   return dotIndex > 0 ? name.slice(0, dotIndex) : name;
+};
+
+// file_size_kb vient du backend en Ko — affiché en Mo pour rester lisible
+// sur des documents scannés qui font souvent plusieurs Mo.
+const formatSizeMo = (kb) => {
+  if (kb === null || kb === undefined) return "";
+  return `${(kb / 1024).toFixed(2)} Mo`;
+};
+
+// Date + heure d'upload d'un fichier (ex. "27/08/2026 13:30").
+const formatDateTime = (isoString) => {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 const EmployeeDetail = () => {
@@ -42,6 +64,7 @@ const EmployeeDetail = () => {
   const [docLoading, setDocLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [showScanImport, setShowScanImport] = useState(false);
   const [uploadType, setUploadType] = useState("");
   const [message, setMessage] = useState(null);
   const [typesDocuments, setTypesDocuments] = useState({});
@@ -159,15 +182,15 @@ const EmployeeDetail = () => {
     }
   };
 
-  const fetchEmployee = async () => {
-    setLoading(true);
+  const fetchEmployee = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get(`/employees/${id}/`);
       setEmployee(response.data);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -184,7 +207,7 @@ const EmployeeDetail = () => {
       await api.post(`/employees/${id}/photo/`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      await fetchEmployee();
+      await fetchEmployee(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -329,9 +352,11 @@ const EmployeeDetail = () => {
     formData.append("type_doc", typeSelectionne?.id || uploadType);
     files.forEach((file) => formData.append("files", file));
 
-    const url = selectedContratId
-      ? `/contrats/${selectedContratId}/documents/`
-      : `/employees/${id}/documents/`;
+    // Toujours le dossier général de l'employé — un contrat sélectionné
+    // dans la sidebar sert uniquement à filtrer l'affichage, pas à
+    // choisir où attacher un nouvel upload (cohérent avec "Scanner un
+    // dossier", qui n'a jamais eu de notion de contrat).
+    const url = `/employees/${id}/documents/`;
 
     try {
       await api.post(url, formData, {
@@ -341,7 +366,7 @@ const EmployeeDetail = () => {
         type: "success",
         text: `${files.length} fichier(s) uploadé(s) avec succès.`,
       });
-      fetchEmployee();
+      fetchEmployee(true);
       fetchContrats();
     } catch (err) {
       setMessage({
@@ -365,7 +390,7 @@ const EmployeeDetail = () => {
         setSelectedFile(null);
         setDocUrl(null);
       }
-      fetchEmployee();
+      fetchEmployee(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {
@@ -384,7 +409,30 @@ const EmployeeDetail = () => {
     try {
       await api.patch(`/files/${file.id}/`, { file_name: newName });
       setMessage({ type: "success", text: "Fichier renommé." });
-      fetchEmployee();
+      fetchEmployee(true);
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors du renommage.",
+      });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
+  // Renomme un fichier d'après le libellé de son type de document
+  // ("Acte de naissance" au lieu du nom technique du scan), en un clic.
+  const handleAutoRenameFile = async (file, label, e) => {
+    e?.stopPropagation();
+    if (!label) return;
+    const dotIndex = (file.file_name || "").lastIndexOf(".");
+    const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
+    const newName = `${label}${ext}`;
+    if (newName === file.file_name) return;
+    try {
+      await api.patch(`/files/${file.id}/`, { file_name: newName });
+      setMessage({ type: "success", text: "Fichier renommé." });
+      fetchEmployee(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -412,7 +460,7 @@ const EmployeeDetail = () => {
         setSelectedFile(null);
         setDocUrl(null);
       }
-      fetchEmployee();
+      fetchEmployee(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {
@@ -1137,7 +1185,7 @@ const EmployeeDetail = () => {
             className="tab-content"
             style={{
               display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "300px 1fr",
+              gridTemplateColumns: isMobile ? "1fr" : "340px 1fr",
               gap: 20,
             }}
           >
@@ -1335,20 +1383,32 @@ const EmployeeDetail = () => {
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
                                   whiteSpace: "nowrap",
-                                  maxWidth: 180,
+                                  maxWidth: 210,
                                 }}
                               >
                                 {stripExt(file.file_name) || `Page ${index + 1}`}
                               </div>
-                              <div
-                                style={{ color: theme.textMuted, fontSize: 10 }}
-                              >
-                                {file.file_size_kb} Ko
-                              </div>
                             </div>
                           </div>
                           {user?.role === "ADMIN" && (
-                            <div style={{ display: "flex", gap: 4 }}>
+                            <div style={{ display: "flex", gap: 6 }}>
+                            <button
+                              onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
+                              title="Renommer d'après le type de document"
+                              aria-label="Renommer d'après le type de document"
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: theme.textSecondary,
+                                cursor: "pointer",
+                                display: "flex",
+                                opacity: 0.5,
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                              onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
+                            >
+                              <TagIcon size={16} />
+                            </button>
                             <button
                               onClick={(e) => handleRenameFile(file, e)}
                               title="Renommer ce fichier"
@@ -1368,7 +1428,7 @@ const EmployeeDetail = () => {
                                 (e.currentTarget.style.opacity = 0.5)
                               }
                             >
-                              <PencilIcon size={12} />
+                              <PencilIcon size={16} />
                             </button>
                             <button
                               onClick={(e) => handleDeleteFile(file, e)}
@@ -1389,7 +1449,7 @@ const EmployeeDetail = () => {
                                 (e.currentTarget.style.opacity = 0.5)
                               }
                             >
-                              <TrashIcon size={12} />
+                              <TrashIcon size={16} />
                             </button>
                             </div>
                           )}
@@ -1494,7 +1554,7 @@ const EmployeeDetail = () => {
                               type: "success",
                               text: `${doc.label} uploadé avec succès.`,
                             });
-                            fetchEmployee();
+                            fetchEmployee(true);
                           } catch (err) {
                             setMessage({
                               type: "error",
@@ -1525,6 +1585,28 @@ const EmployeeDetail = () => {
                     background: theme.bg,
                   }}
                 >
+                  <button
+                    onClick={() => setShowScanImport(true)}
+                    className="btn-lift"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      width: "100%",
+                      background: theme.surface,
+                      color: theme.primary,
+                      border: `1px solid ${theme.primaryBorder}`,
+                      borderRadius: 6,
+                      padding: "8px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <PaperclipIcon size={13} /> Scanner un dossier
+                  </button>
                   <div
                     style={{
                       color: theme.text,
@@ -1653,15 +1735,6 @@ const EmployeeDetail = () => {
                         {typesDocuments[selectedDoc?.type_document] ||
                           selectedDoc?.type_document}
                       </span>
-                      <span
-                        style={{
-                          color: theme.textSecondary,
-                          fontSize: 12,
-                          marginLeft: 8,
-                        }}
-                      >
-                        {selectedFile.file_size_kb} Ko
-                      </span>
                       <div
                         style={{
                           display: "flex",
@@ -1685,6 +1758,26 @@ const EmployeeDetail = () => {
                         </span>
                         {user?.role === "ADMIN" && (
                           <button
+                            onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
+                            title="Renommer d'après le type de document"
+                            aria-label="Renommer d'après le type de document"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: theme.textSecondary,
+                              cursor: "pointer",
+                              display: "flex",
+                              opacity: 0.6,
+                              padding: 0,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
+                          >
+                            <TagIcon size={16} />
+                          </button>
+                        )}
+                        {user?.role === "ADMIN" && (
+                          <button
                             onClick={(e) => handleRenameFile(selectedFile, e)}
                             title="Renommer ce fichier"
                             aria-label="Renommer ce fichier"
@@ -1700,7 +1793,7 @@ const EmployeeDetail = () => {
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
                           >
-                            <PencilIcon size={12} />
+                            <PencilIcon size={16} />
                           </button>
                         )}
                       </div>
@@ -1710,7 +1803,7 @@ const EmployeeDetail = () => {
                     >
                       {/* Onglets fichiers */}
                       {selectedDoc?.fichiers?.length > 1 && (
-                        <div style={{ display: "flex", gap: 4 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
                           {selectedDoc.fichiers.map((file, index) => (
                             <button
                               key={file.id}
@@ -1745,7 +1838,7 @@ const EmployeeDetail = () => {
                       <span
                         style={{ color: theme.textSecondary, fontSize: 12 }}
                       >
-                        {selectedFile.file_size_kb} Ko
+                        {formatSizeMo(selectedFile.file_size_kb)} · {formatDateTime(selectedFile.uploaded_at)}
                       </span>
                     </div>
                   </div>
@@ -1805,6 +1898,17 @@ const EmployeeDetail = () => {
       </div>
       {ConfirmDialog}
       {PromptDialog}
+      {showScanImport && (
+        <ScanImportModal
+          employeeId={id}
+          typesDocumentsList={typesDocumentsList}
+          onClose={() => setShowScanImport(false)}
+          onImported={() => {
+            fetchEmployee(true);
+            fetchContrats();
+          }}
+        />
+      )}
     </PageBackground>
   );
 };

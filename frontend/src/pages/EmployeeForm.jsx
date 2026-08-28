@@ -8,6 +8,7 @@ import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
+import { useConfirm } from "../components/ConfirmDialog";
 
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 18 }}>
@@ -109,6 +110,7 @@ const EmployeeForm = () => {
   const navigate = useNavigate();
   const isEdit = !!id;
   const isMobile = useIsMobile();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
     if (user && user.role !== "ADMIN") navigate("/employees");
@@ -148,6 +150,9 @@ const EmployeeForm = () => {
   const [categories, setCategories] = useState([]);
   const [champsDefinitions, setChampsDefinitions] = useState([]);
   const [champsValues, setChampsValues] = useState({});
+  // Snapshot de l'affectation au chargement (mode édition), pour détecter
+  // un transfert et demander confirmation avant de sauvegarder.
+  const [originalAffectation, setOriginalAffectation] = useState(null);
 
   useEffect(() => {
     fetchReferentiels();
@@ -202,6 +207,12 @@ const EmployeeForm = () => {
         categorie: emp.categorie || "",
       };
       setForm(newForm);
+      setOriginalAffectation({
+        direction: newForm.direction,
+        departement: newForm.departement,
+        service: newForm.service,
+        cellule: newForm.cellule,
+      });
 
       if (emp.champs_personnalises) {
         const values = {};
@@ -211,17 +222,10 @@ const EmployeeForm = () => {
         setChampsValues(values);
       }
 
-      // Pré-filtrer départements et services
-      if (emp.direction) {
-        setDepartementsFiltres((dept) =>
-          dept.filter((d) => d.direction === emp.direction),
-        );
-      }
-      if (emp.departement) {
-        setServicesFiltres((srv) =>
-          srv.filter((s) => s.departement === emp.departement),
-        );
-      }
+      // Le pré-filtrage des départements/services est géré par l'effet
+      // ci-dessous (déclenché par form.direction/form.departement) — il
+      // se déclenche quel que soit l'ordre d'arrivée entre cet appel et
+      // fetchReferentiels().
     } catch (err) {
       console.error(err);
     } finally {
@@ -241,7 +245,12 @@ const EmployeeForm = () => {
         services.filter((s) => s.departement === form.departement),
       );
     }
-  }, [departements, services]);
+    // form.direction/form.departement dans les deps : fetchEmployee() et
+    // fetchReferentiels() partent en parallèle au montage, donc cet effet
+    // doit aussi se redéclencher quand le formulaire se remplit après que
+    // les référentiels sont déjà arrivés (sinon les listes filtrées
+    // restent vides et l'utilisateur doit tout resélectionner).
+  }, [departements, services, form.direction, form.departement]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -275,12 +284,35 @@ const EmployeeForm = () => {
     return errs;
   };
 
+  // Nom lisible d'une Direction/Département/Service/Cellule à partir de son id.
+  const affectationLabel = (field, valueId) => {
+    if (!valueId) return "Aucun(e)";
+    const listByField = { direction: directions, departement: departements, service: services, cellule: cellules };
+    const found = (listByField[field] || []).find((r) => r.id === valueId);
+    return found?.nom || "?";
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
+    }
+
+    if (isEdit && originalAffectation) {
+      const changedFields = ["direction", "departement", "service", "cellule"].filter(
+        (field) => (form[field] || "") !== (originalAffectation[field] || "")
+      );
+      if (changedFields.length > 0) {
+        const summary = changedFields
+          .map((field) => `${affectationLabel(field, originalAffectation[field])} → ${affectationLabel(field, form[field])}`)
+          .join("\n");
+        const confirmed = await confirm(
+          `Cette modification déplace l'employé :\n\n${summary}\n\nConfirmer le transfert ?`
+        );
+        if (!confirmed) return;
+      }
     }
 
     // Nettoyer les champs vides — exclure numero_contrat du payload employé
@@ -777,6 +809,7 @@ const EmployeeForm = () => {
           </div>
         </form>
       </div>
+      {ConfirmDialog}
     </PageBackground>
   );
 };

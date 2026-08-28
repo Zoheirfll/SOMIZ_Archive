@@ -3,6 +3,7 @@ apps/employees/serializers.py
 Serializers Django REST Framework
 """
 
+import json
 import magic  # python-magic pour validation MIME réelle
 from django.conf import settings
 from rest_framework import serializers
@@ -158,6 +159,110 @@ class DocumentUploadSerializer(serializers.Serializer):
                     f"{file.name} : type non autorisé ({mime})."
                 )
         return files
+
+
+class ScanImportPartSerializer(serializers.Serializer):
+    file_index = serializers.IntegerField(min_value=0)
+    pages = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False
+    )
+    is_image = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        if not attrs.get("is_image") and not attrs.get("pages"):
+            raise serializers.ValidationError(
+                "Une part PDF doit préciser au moins une page."
+            )
+        return attrs
+
+
+class ScanImportGroupSerializer(serializers.Serializer):
+    type_doc = serializers.PrimaryKeyRelatedField(
+        queryset=TypeDocument.objects.filter(is_active=True, sous_types__isnull=True)
+    )
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+    parts = ScanImportPartSerializer(many=True)
+
+    def validate_parts(self, parts):
+        if not parts:
+            raise serializers.ValidationError("Un groupe doit contenir au moins une part.")
+        return parts
+
+
+class ScanImportSerializer(serializers.Serializer):
+    """
+    Import groupé de fichiers scannés (PDF multi-pages et/ou images) pour
+    un employé, répartis en plusieurs groupes/types de documents en une
+    seule opération. `plan` est une chaîne JSON (envoyée en multipart aux
+    côtés des fichiers) décrivant les groupes ; `file_index` dans chaque
+    part référence la position du fichier dans `files`.
+    """
+    files = serializers.ListField(
+        child=serializers.FileField(), min_length=1, max_length=20
+    )
+    plan = serializers.CharField()
+
+    def validate_plan(self, value):
+        try:
+            data = json.loads(value)
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("JSON invalide.")
+        if not isinstance(data, dict) or "groups" not in data:
+            raise serializers.ValidationError("Le plan doit contenir une clé 'groups'.")
+        return data
+
+    def validate(self, attrs):
+        files = attrs["files"]
+        max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        for file in files:
+            if file.size > max_size:
+                raise serializers.ValidationError(
+                    f"{file.name} trop lourd. Maximum {settings.MAX_UPLOAD_SIZE_MB} Mo."
+                )
+            file.seek(0)
+            mime = magic.from_buffer(file.read(2048), mime=True)
+            file.seek(0)
+            if mime not in settings.ALLOWED_MIME_TYPES:
+                raise serializers.ValidationError(
+                    f"{file.name} : type non autorisé ({mime})."
+                )
+
+        groups_serializer = ScanImportGroupSerializer(
+            data=attrs["plan"]["groups"], many=True
+        )
+        if not groups_serializer.is_valid():
+            raise serializers.ValidationError({"plan": groups_serializer.errors})
+
+        total_pages = 0
+        resolved_groups = []
+        for group in groups_serializer.validated_data:
+            resolved_parts = []
+            for part in group["parts"]:
+                idx = part["file_index"]
+                if idx >= len(files):
+                    raise serializers.ValidationError(
+                        {"plan": f"file_index {idx} hors limites."}
+                    )
+                pages = part.get("pages") or []
+                total_pages += len(pages) if pages else 1
+                resolved_parts.append({
+                    "file": files[idx],
+                    "pages": pages or None,
+                    "is_image": part.get("is_image", False),
+                })
+            resolved_groups.append({
+                "type_doc": group["type_doc"],
+                "notes": group.get("notes", ""),
+                "parts": resolved_parts,
+            })
+
+        if total_pages > 100:
+            raise serializers.ValidationError(
+                "Maximum 100 pages au total par import."
+            )
+
+        attrs["groups"] = resolved_groups
+        return attrs
 
 
 # ─── EMPLOYEE ─────────────────────────────────────────────────────────────────

@@ -577,7 +577,11 @@ class EmployeeDocument(models.Model):
         return round(total / 1024, 1) if total else None
 
     def save(self, *args, **kwargs):
-        if not self.pk:
+        # self._state.adding (pas `not self.pk`) : `id` a un
+        # default=uuid.uuid4, donc self.pk est déjà rempli à l'instanciation,
+        # avant même le premier save() — `not self.pk` serait toujours faux
+        # et ne détecterait jamais une insertion.
+        if self._state.adding:
             # transaction.atomic + select_for_update : sans ça, deux uploads
             # concurrents du même type de document pour le même employé
             # peuvent tous les deux lire "aucun actif" et créer deux documents

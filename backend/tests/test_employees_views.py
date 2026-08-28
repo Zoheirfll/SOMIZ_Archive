@@ -66,6 +66,59 @@ class TestEmployeeListView:
         resp = client.get(EMPLOYEES_URL, {"statut": "archive"})
         assert any(e["statut"] == "archive" for e in resp.data["results"])
 
+    def test_filter_dossier_complet_true_excludes_incomplet(
+        self, admin_user, employee, type_doc_obligatoire
+    ):
+        # employee n'a pas le document obligatoire -> dossier incomplet
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"dossier_complet": "true"})
+        assert resp.status_code == 200
+        assert not any(e["id"] == str(employee.id) for e in resp.data["results"])
+
+    def test_filter_dossier_complet_true_includes_complet(
+        self, admin_user, employee, type_doc_obligatoire
+    ):
+        EmployeeDocument.objects.create(
+            employee=employee, type_doc=type_doc_obligatoire, uploaded_by=admin_user
+        )
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"dossier_complet": "true"})
+        assert any(e["id"] == str(employee.id) for e in resp.data["results"])
+
+    def test_filter_dossier_complet_false_includes_incomplet(
+        self, admin_user, employee, type_doc_obligatoire
+    ):
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"dossier_complet": "false"})
+        assert any(e["id"] == str(employee.id) for e in resp.data["results"])
+
+    def test_filter_dossier_complet_false_excludes_complet(
+        self, admin_user, employee, type_doc_obligatoire
+    ):
+        EmployeeDocument.objects.create(
+            employee=employee, type_doc=type_doc_obligatoire, uploaded_by=admin_user
+        )
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"dossier_complet": "false"})
+        assert not any(e["id"] == str(employee.id) for e in resp.data["results"])
+
+    def test_filter_type_manquant_excludes_employee_who_has_the_type(
+        self, admin_user, employee, type_doc_facultatif
+    ):
+        EmployeeDocument.objects.create(
+            employee=employee, type_doc=type_doc_facultatif, uploaded_by=admin_user
+        )
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"type_manquant": type_doc_facultatif.code})
+        assert not any(e["id"] == str(employee.id) for e in resp.data["results"])
+
+    def test_filter_type_manquant_includes_employee_missing_the_type(
+        self, admin_user, employee, type_doc_facultatif
+    ):
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"type_manquant": type_doc_facultatif.code})
+        assert any(e["id"] == str(employee.id) for e in resp.data["results"])
+
 
 class TestEmployeeCreateView:
     def _payload(self):
@@ -129,6 +182,41 @@ class TestEmployeeDetailView:
         client = auth_client(consultant_user)
         resp = client.patch(employee_url(employee.pk), {"nom": "Durand"}, format="json")
         assert resp.status_code == 403
+
+    def test_patch_service_logs_transfer_detail(self, admin_user, employee, departement):
+        """Changer le service d'un employé (transfert) doit apparaître
+        dans l'audit log avec l'ancien et le nouveau nom de service."""
+        from employees.models import Service
+        from audit.models import AuditLog
+        nouveau_service = Service.objects.create(nom="Comptabilité", departement=departement)
+        ancien_service_nom = employee.service.nom
+        client = auth_client(admin_user)
+        resp = client.patch(
+            employee_url(employee.pk), {"service": str(nouveau_service.id)}, format="json"
+        )
+        assert resp.status_code == 200
+        log = AuditLog.objects.filter(
+            action=AuditLog.Action.MODIFY_EMP, target_id=str(employee.pk)
+        ).order_by('-timestamp').first()
+        assert log is not None
+        assert log.details.get("transfer", {}).get("service") == {
+            "de": ancien_service_nom,
+            "vers": "Comptabilité",
+        }
+        # Un champ non modifié ne doit pas apparaître dans "transfer".
+        assert "direction" not in log.details.get("transfer", {})
+
+    def test_patch_without_org_change_has_no_transfer_detail(self, admin_user, employee):
+        """Une modification qui ne touche pas l'affectation organisationnelle
+        (ex: juste le nom) ne doit pas produire de clé 'transfer'."""
+        from audit.models import AuditLog
+        client = auth_client(admin_user)
+        resp = client.patch(employee_url(employee.pk), {"nom": "Martin"}, format="json")
+        assert resp.status_code == 200
+        log = AuditLog.objects.filter(
+            action=AuditLog.Action.MODIFY_EMP, target_id=str(employee.pk)
+        ).order_by('-timestamp').first()
+        assert "transfer" not in log.details
 
     def test_admin_delete_soft_deletes(self, admin_user, employee):
         client = auth_client(admin_user)

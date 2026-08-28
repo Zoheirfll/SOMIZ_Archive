@@ -438,6 +438,17 @@ const Employees = () => {
   const statut = searchParams.get("statut") || "";
   const page = parseInt(searchParams.get("page") || "1", 10);
   const ordering = searchParams.get("ordering") || "nom";
+  const dossierComplet = searchParams.get("dossier_complet");
+  const typeManquant = searchParams.get("type_manquant") || "";
+  const [typeManquantLabel, setTypeManquantLabel] = useState("");
+
+  const clearCompletudeFilter = () => setSearchParams((p) => {
+    const n = new URLSearchParams(p);
+    n.delete("dossier_complet");
+    n.delete("type_manquant");
+    n.set("page", "1");
+    return n;
+  }, { replace: true });
 
   const setSearch = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); if (val) n.set("q", val); else n.delete("q"); n.set("page", "1"); return n; }, { replace: true });
   const setStatut = (val) => setSearchParams((p) => { const n = new URLSearchParams(p); if (val) n.set("statut", val); else n.delete("statut"); n.set("page", "1"); return n; }, { replace: true });
@@ -527,6 +538,8 @@ const Employees = () => {
       if (search) params.q = search;
       if (statut) params.statut = statut;
       if (ordering) params.ordering = ordering;
+      if (dossierComplet !== null) params.dossier_complet = dossierComplet;
+      if (typeManquant) params.type_manquant = typeManquant;
       if (orgFilter) params[orgFilter.type] = orgFilter.id;
       else if (selectedService) params.service = selectedService.id;
       else if (selectedDepartement) params.departement = selectedDepartement.id;
@@ -537,7 +550,24 @@ const Employees = () => {
       setTotalPages(Math.ceil((response.data.count || 0) / PAGE_SIZE));
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, [view, search, statut, page, ordering, selectedService, selectedDepartement, selectedDirection, orgFilter]);
+  }, [view, search, statut, page, ordering, dossierComplet, typeManquant, selectedService, selectedDepartement, selectedDirection, orgFilter]);
+
+  // Arrivée depuis le dashboard (?dossier_complet=... ou ?type_manquant=...)
+  // — bascule directement sur la liste, comme pour les liens Organigramme.
+  useEffect(() => {
+    if (dossierComplet !== null || typeManquant) setView("employees");
+  }, [dossierComplet, typeManquant]);
+
+  useEffect(() => {
+    if (!typeManquant) { setTypeManquantLabel(""); return; }
+    api.get("/ref/types-documents/")
+      .then((r) => {
+        const list = r.data.results || r.data;
+        const t = list.find((x) => x.code === typeManquant);
+        setTypeManquantLabel(t ? t.nom : typeManquant);
+      })
+      .catch(() => setTypeManquantLabel(typeManquant));
+  }, [typeManquant]);
 
   useEffect(() => {
     if (view !== "employees") return;
@@ -1038,6 +1068,49 @@ const Employees = () => {
           )}
         </div>
       </div>
+
+      {/* Chip filtre complétude (arrivée depuis le dashboard) */}
+      {(dossierComplet !== null || typeManquant) && (
+        <div
+          className="anim-slide-down"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            background: theme.primaryBg,
+            border: `1px solid ${theme.primaryBorder}`,
+            borderRadius: 20,
+            padding: "6px 8px 6px 14px",
+            marginBottom: 16,
+            fontSize: 13,
+            color: theme.primary,
+            fontWeight: 600,
+            fontFamily: theme.fontFamily,
+          }}
+        >
+          {typeManquant
+            ? `Manque : ${typeManquantLabel || "…"}`
+            : dossierComplet === "true"
+              ? "Dossiers complets"
+              : "Dossiers incomplets"}
+          <button
+            type="button"
+            onClick={clearCompletudeFilter}
+            style={{
+              background: "none",
+              border: "none",
+              color: theme.primary,
+              cursor: "pointer",
+              fontSize: 16,
+              lineHeight: 1,
+              padding: "2px 4px",
+            }}
+            aria-label="Effacer le filtre"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Barre actions bulk */}
       {someSelected && user?.role === "ADMIN" && (

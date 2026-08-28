@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import api from "../services/api";
 
 const AuthContext = createContext(null);
@@ -11,9 +11,8 @@ export const AuthProvider = ({ children }) => {
   const [authenticated, setAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
-  useEffect(() => {
-    // Vérifier la session via le cookie (invisible JS)
-    api.get("/auth/me/")
+  const refreshUser = useCallback(() => {
+    return api.get("/auth/me/")
       .then((res) => {
         setUser(res.data);
         setAuthenticated(true);
@@ -23,9 +22,13 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setAuthenticated(false);
         sessionStorage.removeItem("user");
-      })
-      .finally(() => setAuthChecked(true));
+      });
   }, []);
+
+  useEffect(() => {
+    // Vérifier la session via le cookie (invisible JS)
+    refreshUser().finally(() => setAuthChecked(true));
+  }, [refreshUser]);
 
   const loginSuccess = (userData) => {
     setUser(userData);
@@ -39,7 +42,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, authenticated, authChecked, loginSuccess, logoutSuccess }}>
+    <AuthContext.Provider value={{ user, authenticated, authChecked, loginSuccess, logoutSuccess, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

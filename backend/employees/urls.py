@@ -6,6 +6,7 @@ from employees.views import (
     EmployeePhotoView,
     EmployeeChampsPersonnalisesView,
     DocumentListUploadView,
+    ScanImportView,
     DocumentViewerView,
     FileViewerView,
     FileDetailView,
@@ -17,10 +18,12 @@ from employees.views import (
     ContratDocumentListUploadView,
 )
 from employees.import_views import EmployeeImportView, EmployeeImportTemplateView
+from employees.grh_integration import GRHEmployeeSyncView
 
 urlpatterns = [
     # Employés
     path('employees/', EmployeeListCreateView.as_view(), name='employee-list'),
+    path('employees/grh-sync/', GRHEmployeeSyncView.as_view(), name='employee-grh-sync'),
     path('employees/search/', employee_search, name='employee-search'),
     path('employees/import/', EmployeeImportView.as_view(), name='employee-import'),
     path('employees/import/template/', EmployeeImportTemplateView.as_view(), name='employee-import-template'),
@@ -34,6 +37,7 @@ urlpatterns = [
 
     # Documents (sous-ressource d'un employé)
     path('employees/<str:emp_id>/documents/', DocumentListUploadView.as_view(), name='doc-list-upload'),
+    path('employees/<str:emp_id>/documents/scan-import/', ScanImportView.as_view(), name='doc-scan-import'),
 
     # Contrats (sous-ressource d'un employé)
     path('employees/<str:emp_id>/contrats/', ContratListCreateView.as_view(), name='contrat-list'),

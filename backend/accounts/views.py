@@ -149,6 +149,7 @@ class LoginView(APIView):
                 'nom': user.nom,
                 'prenom': user.prenom,
                 'role': user.role,
+                'needs_consent': not bool(user.consent_loi1807_accepted_at),
             }
         })
         _set_auth_cookies(request, response, refresh.access_token, refresh)
@@ -156,7 +157,10 @@ class LoginView(APIView):
 
 
 class LogoutView(APIView):
-    """POST /api/auth/logout/ — Blackliste le refresh token et efface les cookies."""
+    """POST /api/auth/logout/ — Blackliste le refresh token et efface les cookies.
+    Reste accessible même sans consentement Loi 18-07 (un utilisateur bloqué
+    doit pouvoir se déconnecter) — permission_classes explicite ci-dessous
+    écrase HasConsented du défaut global."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -174,7 +178,11 @@ class LogoutView(APIView):
 
 
 class UserMeView(APIView):
-    """GET /api/auth/me/ — Infos de l'utilisateur connecté."""
+    """GET /api/auth/me/ — Infos de l'utilisateur connecté.
+    Reste accessible même sans consentement Loi 18-07 (le frontend doit
+    pouvoir lire needs_consent sans être lui-même bloqué par un 403) —
+    permission_classes explicite ci-dessous écrase HasConsented du défaut
+    global."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -185,7 +193,26 @@ class UserMeView(APIView):
             'full_name': user.full_name,
             'role': user.role,
             'is_admin': user.is_admin,
+            'needs_consent': not bool(user.consent_loi1807_accepted_at),
         })
+
+
+class ConsentView(APIView):
+    """
+    POST /api/auth/consent/
+    Enregistre le consentement Loi 18-07 de l'utilisateur connecté.
+    Accessible même sans consentement préalable (sinon impossible de
+    jamais consentir) — permission_classes explicite écrase HasConsented
+    du défaut global.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request.user.consent_loi1807_accepted_at = timezone.now()
+        request.user.save(update_fields=['consent_loi1807_accepted_at'])
+        AuditLog.log(request, AuditLog.Action.CONSENT, target=request.user)
+        return Response({'message': 'Consentement enregistré.'})
+
 
 class ChangePasswordView(APIView):
     """

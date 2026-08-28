@@ -173,7 +173,7 @@ describe("ContratDetail — documents", () => {
   test("affiche la taille du fichier dans le viewer", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getAllByText(/200 Ko/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/0\.20 Mo/).length).toBeGreaterThan(0);
     });
   });
 

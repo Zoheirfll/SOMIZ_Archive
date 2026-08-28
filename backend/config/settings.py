@@ -13,6 +13,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+# Secret partagé avec le GRH pour vérifier la signature HMAC des webhooks
+# de synchronisation employé (voir employees/grh_integration.py). Pas de
+# valeur par défaut en dehors des tests — doit être défini explicitement
+# dans .env avant d'activer l'intégration en prod.
+GRH_WEBHOOK_SECRET = config('GRH_WEBHOOK_SECRET', default='dev-only-change-me')
+
 # Intranet uniquement — adapter selon l'IP/le nom d'hôte du serveur SOMIZ.
 # ALLOWED_HOSTS ne supporte PAS la notation CIDR (ex: 192.168.1.0/24) : Django
 # ne fait que des correspondances exactes ou par sous-domaine (préfixe ".").
@@ -150,6 +156,7 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
+        'accounts.permissions.HasConsented',
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 25,
@@ -161,6 +168,7 @@ REST_FRAMEWORK = {
         'anon': '10/min',        # Login attempts limités
         'user': '200/min',       # Usage normal
         'consultation': '30/min', # Vues de documents — ralentit l'exfiltration en masse
+        'grh_sync': '120/min',   # Webhook GRH — sert de filet de sécurité, pas de limite fonctionnelle
     },
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',

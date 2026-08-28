@@ -28,6 +28,9 @@ PyJWT==2.13.0
 # Fichiers & images
 Pillow==12.3.0
 
+# Découpage PDF (scan/import)
+pypdf==5.1.0
+
 # Validation MIME réelle (Windows)
 python-magic-bin==0.4.14
 # Validation MIME réelle (Linux/macOS) — décommenter si Linux :

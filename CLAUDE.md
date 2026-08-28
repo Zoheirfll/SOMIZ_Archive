@@ -19,6 +19,7 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 4. **`frontend/src/App.js`** — routes et structure de navigation
 5. **`backend/employees/models.py`** — modèles de données (Direction, Departement, Service, Employé, Contrat, Document)
 6. **`securite.md`** (racine) — journal des correctifs de sécurité, à jour à chaque changement touchant l'auth, les permissions ou la suppression de données
+7. **`GRH_INTEGRATION.md`** (racine) — intégration entrante GRH → SOMIZ (synchronisation employés via webhook signé HMAC), voir aussi `docs/GRH_INTEGRATION_SPEC.md` (spec à transmettre à l'équipe GRH). **Non branché en production** : le code existe (`backend/employees/grh_integration.py`, route `/api/employees/grh-sync/`, tests), mais rien n'a encore été validé/activé côté GRH — ne pas considérer cette intégration comme active tant que `GRH_INTEGRATION.md` (section "Ce qui reste à faire") n'est pas soldée
 
 ---
 
@@ -265,6 +266,44 @@ Un script one-off pour purger les fichiers orphelins de `backend/media/employees
 
 ---
 
+## Rafraîchissement de données après action — pas de flash "page qui recharge" (2026-08-27)
+
+Une page de détail (`EmployeeDetail.jsx`, `ContratDetail.jsx`) ou de liste
+avec panneau ouvert (`Users.jsx`, `Parametres.jsx`) a typiquement un
+`fetch*()` qui fait `setLoading(true)` avant l'appel API, avec un
+early-return `if (loading) return <div>Chargement...</div>` (ou un
+skeleton) qui remplace tout le contenu tant que `loading` est vrai. Ce
+`fetch*()` est appelé une première fois au montage (`useEffect`), **et**
+réutilisé après chaque action mutante (renommer, supprimer, upload,
+modifier, activer/désactiver, import CSV) pour rafraîchir les données
+affichées. Si l'appel post-action refait `setLoading(true)`, toute la page
+se démonte brièvement (perte du scroll, du fichier/onglet sélectionné, du
+viewer ouvert) — visuellement indiscernable d'un rechargement de page,
+alors qu'aucun `window.location.reload()` n'est en cause.
+
+**Convention** : tout `fetch*()` de ce genre doit accepter un paramètre
+`silent` (dernier argument, défaut `false`) qui saute `setLoading(true)`/
+`setLoading(false)` (et toute réinitialisation de sélection qui va avec,
+ex. re-sélection du premier document) quand `true`. Seul l'appel initial
+au montage reste non-silencieux ; tous les rafraîchissements déclenchés
+par une action mutante doivent passer `fetch*(true)` (ou
+`fetch*(..., true)` si la fonction a déjà des paramètres, voir
+`Parametres.jsx#fetchTab`).
+
+- Déjà appliqué à : `EmployeeDetail.jsx#fetchEmployee`,
+  `ContratDetail.jsx#fetchContrat`, `Users.jsx#fetchUsers`,
+  `Parametres.jsx#fetchTab`.
+- Ne s'applique **pas** aux listes qui rechargent normalement sur
+  changement de filtre/page (ex. `Employees.jsx#fetchEmployees` sur
+  `useEffect([search, page, ...])`) — ce loading-là est attendu, tant
+  qu'il ne démonte pas un panneau/une sélection sans rapport ouverte
+  ailleurs sur la page.
+- Toute nouvelle page de détail avec actions mutantes (renommer,
+  supprimer, modifier...) qui rafraîchit ses données doit suivre ce
+  pattern dès l'écriture, pas après coup.
+
+---
+
 ## Gestion des utilisateurs — suppression de compte (2026-07-24)
 
 `UserUpdateView` (`accounts/admin_views.py`) est passée de `UpdateAPIView` à `RetrieveUpdateDestroyAPIView` — `DELETE /api/admin-users/{id}/` supprime définitivement un compte (hard delete, ADMIN only), avec garde-fous dans `perform_destroy` :
@@ -278,6 +317,149 @@ Le formulaire de création (`/users`) inclut directement la section "Périmètre
 ## Import CSV employés — champs additionnels (2026-07-24)
 
 `EmployeeImportView.OPTIONAL_COLS` inclut désormais `rib`, `numero_secu_sociale`, `groupe_sanguin`, `nin` (mêmes noms de colonnes que les champs modèle). Le template téléchargeable (`EmployeeImportTemplateView`) et la liste de colonnes affichée sur `/import` (`frontend/src/pages/Import.jsx`) ont été mis à jour en conséquence.
+
+---
+
+## Scanner et import complet — documents scannés (2026-08-27/28)
+
+Bouton **"Scanner un dossier"** sur la fiche employé (`EmployeeDetail.jsx`,
+sidebar Documents, à côté de "Ajouter un document") : permet d'importer en
+une seule opération un lot de fichiers scannés (PDF multi-pages et/ou
+images) et de répartir leurs pages entre plusieurs types de documents, au
+lieu d'uploader chaque document séparément. **Toujours attaché au dossier
+général de l'employé** — jamais à un contrat spécifique (un contrat a sa
+propre page dédiée, `ContratDetail.jsx`, pour ses documents ; voir aussi
+ci-dessous "Ajouter un document" qui a le même comportement).
+
+- Backend : `POST /api/employees/{id}/documents/scan-import/`
+  (`ScanImportView`, `employees/views.py`, ADMIN only). Reçoit `files`
+  (multipart, fichiers uniques) + `plan` (JSON décrivant des groupes
+  `{type_doc, parts: [{file_index, pages}|{file_index, is_image}]}`).
+  Un fichier PDF entièrement couvert par une seule part est réutilisé tel
+  quel (pas de ré-encodage) ; sinon `pypdf` (`employees/pdf_utils.py`,
+  `extract_pdf_pages`/`pdf_page_count`) découpe les pages demandées. Un
+  groupe qui échoue (page hors limites, etc.) n'annule pas les autres —
+  réponse `{created: [...], failed: [...]}`.
+- **Nom de fichier** : garde le nom du fichier scanné original (cohérent
+  avec l'upload normal, traçabilité si le même type est réimporté plus
+  tard) — une part obtenue par découpage de pages ajoute juste la plage
+  entre parenthèses (`_scan_import_file_name()`, ex. `"scan (p2).pdf"`).
+  Ne **pas** renommer d'après le type de document ici (essayé puis
+  abandonné : perd la diversité/traçabilité entre imports successifs).
+- Frontend : `components/ScanImportModal.jsx` — pdf.js (`react-pdf`, déjà
+  utilisé par `SecureDocViewer`) génère une grille de miniatures. Chaque
+  page est **glissée-déposée** (`draggable`) sur un "dossier" 📁 (un par
+  type de document, barre au-dessus de la grille) pour l'assigner — pas de
+  select+bouton "Assigner". Clic sur une page = bascule sa sélection
+  seule (pas de sélection auto de tout le fichier) ; Shift-clic = plage ;
+  double-clic = sélectionne tout le fichier source d'un coup ; cliquer un
+  dossier avec des pages sélectionnées les assigne aussi (sans drag).
+- **`EmployeeDocument.save()` — bug de versioning corrigé** (découvert en
+  testant cette feature) : la condition `if not self.pk:` pour détecter
+  une insertion ne fonctionnait jamais, car `id` a un
+  `default=uuid.uuid4` (le pk est déjà rempli à l'instanciation, avant le
+  premier `save()`) — la logique de versioning (un nouvel upload du même
+  type désactive l'ancien) ne se déclenchait donc jamais. Corrigé avec
+  `self._state.adding` (le bon test pour un modèle à PK UUID avec
+  default). Affecte tout le code existant qui crée un `EmployeeDocument`,
+  pas seulement le scan-import.
+- **Piège Content-Length** : `EmployeeDocumentFile.file_size` doit être la
+  taille du fichier réellement enregistré (`file_to_save.size`), jamais
+  celle du fichier source original avant découpage — sinon
+  `FileViewerView` envoie un `Content-Length` trop grand par rapport aux
+  octets transmis, et le navigateur reste bloqué à attendre indéfiniment
+  ("Chargement..." qui ne finit jamais) sur les pages extraites d'un PDF.
+- **"Ajouter un document" (upload classique) ne s'attribue plus au contrat
+  sélectionné** : avant, avec un contrat actif dans la sidebar, l'upload
+  partait vers `/contrats/{id}/documents/` ; désormais toujours
+  `/employees/{id}/documents/` (le pill de contrat ne sert plus qu'à
+  filtrer l'affichage, pas à choisir la destination d'un nouvel upload) —
+  comportement volontairement aligné sur "Scanner un dossier".
+- Taille de fichier affichée en **Mo** (pas Ko brut) via `formatSizeMo()`
+  (dupliqué dans `EmployeeDetail.jsx`/`ContratDetail.jsx`, même pattern que
+  `stripExt`), accompagnée de la date/heure d'upload (`formatDateTime()`,
+  `EmployeeDocumentFile.uploaded_at`) — affiché à **un seul endroit** (en-tête
+  du viewer, span de droite) pour éviter la répétition.
+- Bouton "étiquette" (`TagIcon`, `components/icons.jsx`) à côté du crayon
+  de renommage manuel : renomme le fichier sélectionné d'après le libellé
+  de son type de document en un clic (`handleAutoRenameFile`).
+- Sidebar Documents élargie 300px → 340px (icônes d'action 12px → 16px)
+  pour laisser la place aux 3 boutons par fichier (renommer d'après le
+  type, renommer manuellement, supprimer).
+
+---
+
+## Transferts d'employé — historique + confirmation (2026-08-28)
+
+Déplacer un employé d'un service à un autre se fait via le formulaire
+d'édition existant (`/employees/:id/modifier`, cascade
+Direction→Département→Service/Cellule) — pas de flux dédié.
+
+- `EmployeeDetailView.perform_update` (`employees/views.py`) capture les
+  libellés de `TRANSFER_FIELDS = ['direction', 'departement', 'service',
+  'cellule']` **avant** `serializer.save()` (il mute l'instance en place,
+  donc illisible après coup) et ajoute une clé `transfer` au détail JSON
+  de l'entrée d'audit `MODIFY_EMP` existante pour chaque champ
+  effectivement modifié : `{champ: {de: ancien_nom, vers: nouveau_nom}}`.
+  Pas de nouveau type d'action — réutilise l'audit log existant.
+- Frontend `AuditLogs.jsx` : colonne "Détails" affichant ce transfert de
+  façon lisible (`formatTransfer()`, ex. `"Service : Paie → Comptabilité"`).
+- Frontend `EmployeeForm.jsx` : avant d'enregistrer, si la Direction/le
+  Département/le Service/la Cellule ont changé par rapport à la valeur
+  chargée (`originalAffectation`, snapshot pris dans `fetchEmployee`), une
+  modale `useConfirm()` récapitule chaque changement et bloque la
+  sauvegarde tant qu'elle n'est pas validée.
+- **Bug corrigé en même temps** : en mode édition, Département/Service (et
+  toute liste filtrée par cascade) pouvaient rester bloqués sur
+  "-- Sélectionner --" au chargement, obligeant à tout resélectionner
+  manuellement. Deux causes combinées dans `EmployeeForm.jsx` : (1)
+  `fetchEmployee()` appelait `setDepartementsFiltres((dept) =>
+  dept.filter(...))` avec un updater fonctionnel qui lit l'**ancien état**
+  de `departementsFiltres` (vide au chargement), pas la liste complète des
+  départements ; (2) l'effet de secours qui recalcule ces listes quand les
+  référentiels arrivent n'avait pas `form.direction`/`form.departement`
+  dans ses dépendances, donc ne se redéclenchait jamais si les référentiels
+  arrivaient *avant* les données de l'employé. `fetchEmployee()` et
+  `fetchReferentiels()` partent en parallèle au montage — l'ordre d'arrivée
+  n'est pas garanti, donc l'effet doit réagir aux deux.
+
+---
+
+## Consentement Loi 18-07 (2026-08-27)
+
+Tout accès à SOMIZ (ADMIN comme CONSULTANT, y compris les comptes créés
+avant ce chantier) est bloqué tant que l'utilisateur n'a pas explicitement
+consenti au traitement des données personnelles conformément à la Loi
+n°18-07. Consentement unique à vie par compte (pas de versionnage du
+texte) — spec complète : `docs/superpowers/specs/2026-08-27-consentement-loi1807-design.md`.
+
+- `User.consent_loi1807_accepted_at` (`accounts/models.py`, `DateTimeField`
+  `null=True`) — `null` = jamais consenti.
+- `POST /api/auth/consent/` (`ConsentView`, `accounts/views.py`) enregistre
+  la date et journalise `AuditLog.Action.CONSENT`. `LoginView`/`UserMeView`
+  exposent `needs_consent: bool` dans leur réponse.
+- **Le blocage réel est intégré dans `IsAdmin`/`IsAdminOrConsultant`**
+  (`accounts/permissions.py`), pas seulement dans
+  `REST_FRAMEWORK['DEFAULT_PERMISSION_CLASSES']` — piège identifié en
+  cours d'implémentation : la quasi-totalité des vues métier déclarent
+  `permission_classes` explicitement, ce qui **remplace** entièrement le
+  défaut global DRF plutôt que de s'y ajouter. Une permission `HasConsented`
+  ajoutée seulement au défaut global n'aurait donc protégé que les vues
+  sans `permission_classes` propre (voir `securite.md` point 27). Toute
+  nouvelle permission "transversale" censée s'appliquer à toute l'API doit
+  être vérifiée de la même façon (test d'intégration sur une vraie route
+  métier, pas seulement sur le défaut global).
+- Frontend : page `/consentement` (`frontend/src/pages/Consentement.jsx`)
+  — texte structuré comme un **engagement de confidentialité sur les
+  données d'autrui** (et non "vos données personnelles") : la plupart des
+  comptes consultent des données d'employés tiers (un directeur voit toute
+  son équipe, un chef de département/service ses subordonnés, un cadre
+  restreint à un type de document — ex. Sécurité Sociale — le voit pour
+  l'ensemble du personnel indépendamment du périmètre organisationnel,
+  voir section Scoping). `ProtectedRoute.jsx` redirige systématiquement
+  vers `/consentement` si `user.needs_consent` est vrai (sauf sur la page
+  elle-même) ; `AuthContext.refreshUser()` recharge `needs_consent` après
+  acceptation.
 
 ---
 
@@ -393,6 +575,7 @@ pas utilisables directement pour les changements de layout structurels
 | Route | Page | Accès |
 |---|---|---|
 | `/login` | Login | Public |
+| `/consentement` | Consentement Loi 18-07 (bloquant si non consenti) | Tous (authentifié) |
 | `/employees` | Liste employés (drill-down Direction→Dept→Service→Employé) | Tous |
 | `/employees/nouveau` | Créer employé | ADMIN |
 | `/employees/:id` | Détail employé + documents + contrats | Tous |
@@ -429,6 +612,7 @@ DELETE /api/employees/<uuid>/
 ```
 GET  /api/employees/<uuid>/documents/
 POST /api/employees/<uuid>/documents/
+POST /api/employees/<uuid>/documents/scan-import/
 GET  /api/contrats/<uuid>/
 PATCH /api/contrats/<uuid>/
 ```

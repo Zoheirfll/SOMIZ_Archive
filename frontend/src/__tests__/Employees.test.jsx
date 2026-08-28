@@ -230,7 +230,7 @@ describe("Employees — liste des employés", () => {
   test("clic Voir → navigue vers la fiche détail", async () => {
     await goToEmployeesListAndWait();
     fireEvent.click(screen.getByText("Voir →"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees/emp-1");
+    expect(mockNavigate).toHaveBeenCalledWith("/employees/EMP-001");
   });
 
   test("clic Nouvel employé navigue vers /employees/nouveau (ADMIN)", async () => {
@@ -299,5 +299,89 @@ describe("Employees — bulk actions", () => {
     await waitFor(() => {
       expect(screen.queryByText(/employé\(s\) sélectionné/)).not.toBeInTheDocument();
     });
+  });
+});
+
+// ─── Tests : Filtre complétude (arrivée depuis le dashboard) ────────────────
+
+const mockTypeDoc = { id: "type-1", code: "CIN", nom: "Carte Nationale" };
+
+const renderPageAtRoute = (route, role = "ADMIN") => {
+  useAuth.mockReturnValue({ user: { role, username: "admin" } });
+  return render(
+    <MemoryRouter initialEntries={[route]}>
+      <Employees />
+    </MemoryRouter>
+  );
+};
+
+const setupCompletudeRoute = (employees = [makeEmployee("emp-1")]) => {
+  api.get.mockImplementation((url) => {
+    if (url.includes("/ref/types-documents/")) return Promise.resolve({ data: [mockTypeDoc] });
+    if (url.includes("/employees/"))           return Promise.resolve(mockEmployeesResponse(employees));
+    return Promise.resolve({ data: [] });
+  });
+};
+
+describe("Employees — filtre complétude (arrivée depuis le dashboard)", () => {
+  test("?type_manquant=CIN bascule directement sur la liste employés", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?type_manquant=CIN");
+    jest.runAllTimers();
+    expect(await screen.findByText("EMP-001")).toBeInTheDocument();
+  });
+
+  test("?type_manquant=CIN appelle /employees/ avec le paramètre type_manquant", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?type_manquant=CIN");
+    jest.runAllTimers();
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        "/employees/",
+        expect.objectContaining({ params: expect.objectContaining({ type_manquant: "CIN" }) })
+      );
+    });
+  });
+
+  test("?type_manquant=CIN affiche un chip avec le libellé résolu via /ref/types-documents/", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?type_manquant=CIN");
+    jest.runAllTimers();
+    expect(await screen.findByText("Manque : Carte Nationale")).toBeInTheDocument();
+  });
+
+  test("?dossier_complet=true affiche le chip Dossiers complets et transmet le paramètre", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?dossier_complet=true");
+    jest.runAllTimers();
+    expect(await screen.findByText("Dossiers complets")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        "/employees/",
+        expect.objectContaining({ params: expect.objectContaining({ dossier_complet: "true" }) })
+      );
+    });
+  });
+
+  test("?dossier_complet=false affiche le chip Dossiers incomplets", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?dossier_complet=false");
+    jest.runAllTimers();
+    expect(await screen.findByText("Dossiers incomplets")).toBeInTheDocument();
+  });
+
+  test("clic sur ✕ efface le filtre et fait disparaître le chip", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?dossier_complet=true");
+    jest.runAllTimers();
+    fireEvent.click(await screen.findByLabelText("Effacer le filtre"));
+    await waitFor(() => {
+      expect(screen.queryByText("Dossiers complets")).not.toBeInTheDocument();
+    });
+  });
+
+  test("sans filtre complétude, aucun chip n'est affiché", async () => {
+    await goToEmployeesListAndWait("ADMIN");
+    expect(screen.queryByLabelText("Effacer le filtre")).not.toBeInTheDocument();
   });
 });
