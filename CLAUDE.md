@@ -19,6 +19,7 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 4. **`frontend/src/App.js`** — routes et structure de navigation
 5. **`backend/employees/models.py`** — modèles de données (Direction, Departement, Service, Employé, Contrat, Document)
 6. **`securite.md`** (racine) — journal des correctifs de sécurité, à jour à chaque changement touchant l'auth, les permissions ou la suppression de données
+7. **`GRH_INTEGRATION.md`** (racine) — intégration entrante GRH → SOMIZ (synchronisation employés via webhook signé HMAC), voir aussi `docs/GRH_INTEGRATION_SPEC.md` (spec à transmettre à l'équipe GRH). **Non branché en production** : le code existe (`backend/employees/grh_integration.py`, route `/api/employees/grh-sync/`, tests), mais rien n'a encore été validé/activé côté GRH — ne pas considérer cette intégration comme active tant que `GRH_INTEGRATION.md` (section "Ce qui reste à faire") n'est pas soldée
 
 ---
 
@@ -281,6 +282,44 @@ Le formulaire de création (`/users`) inclut directement la section "Périmètre
 
 ---
 
+## Consentement Loi 18-07 (2026-08-27)
+
+Tout accès à SOMIZ (ADMIN comme CONSULTANT, y compris les comptes créés
+avant ce chantier) est bloqué tant que l'utilisateur n'a pas explicitement
+consenti au traitement des données personnelles conformément à la Loi
+n°18-07. Consentement unique à vie par compte (pas de versionnage du
+texte) — spec complète : `docs/superpowers/specs/2026-08-27-consentement-loi1807-design.md`.
+
+- `User.consent_loi1807_accepted_at` (`accounts/models.py`, `DateTimeField`
+  `null=True`) — `null` = jamais consenti.
+- `POST /api/auth/consent/` (`ConsentView`, `accounts/views.py`) enregistre
+  la date et journalise `AuditLog.Action.CONSENT`. `LoginView`/`UserMeView`
+  exposent `needs_consent: bool` dans leur réponse.
+- **Le blocage réel est intégré dans `IsAdmin`/`IsAdminOrConsultant`**
+  (`accounts/permissions.py`), pas seulement dans
+  `REST_FRAMEWORK['DEFAULT_PERMISSION_CLASSES']` — piège identifié en
+  cours d'implémentation : la quasi-totalité des vues métier déclarent
+  `permission_classes` explicitement, ce qui **remplace** entièrement le
+  défaut global DRF plutôt que de s'y ajouter. Une permission `HasConsented`
+  ajoutée seulement au défaut global n'aurait donc protégé que les vues
+  sans `permission_classes` propre (voir `securite.md` point 27). Toute
+  nouvelle permission "transversale" censée s'appliquer à toute l'API doit
+  être vérifiée de la même façon (test d'intégration sur une vraie route
+  métier, pas seulement sur le défaut global).
+- Frontend : page `/consentement` (`frontend/src/pages/Consentement.jsx`)
+  — texte structuré comme un **engagement de confidentialité sur les
+  données d'autrui** (et non "vos données personnelles") : la plupart des
+  comptes consultent des données d'employés tiers (un directeur voit toute
+  son équipe, un chef de département/service ses subordonnés, un cadre
+  restreint à un type de document — ex. Sécurité Sociale — le voit pour
+  l'ensemble du personnel indépendamment du périmètre organisationnel,
+  voir section Scoping). `ProtectedRoute.jsx` redirige systématiquement
+  vers `/consentement` si `user.needs_consent` est vrai (sauf sur la page
+  elle-même) ; `AuthContext.refreshUser()` recharge `needs_consent` après
+  acceptation.
+
+---
+
 ## Design System (v2 — actuel)
 
 Le design a été entièrement refondu. Chaque page suit ce pattern :
@@ -393,6 +432,7 @@ pas utilisables directement pour les changements de layout structurels
 | Route | Page | Accès |
 |---|---|---|
 | `/login` | Login | Public |
+| `/consentement` | Consentement Loi 18-07 (bloquant si non consenti) | Tous (authentifié) |
 | `/employees` | Liste employés (drill-down Direction→Dept→Service→Employé) | Tous |
 | `/employees/nouveau` | Créer employé | ADMIN |
 | `/employees/:id` | Détail employé + documents + contrats | Tous |
