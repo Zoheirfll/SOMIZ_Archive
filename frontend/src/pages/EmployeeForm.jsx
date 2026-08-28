@@ -222,17 +222,10 @@ const EmployeeForm = () => {
         setChampsValues(values);
       }
 
-      // Pré-filtrer départements et services
-      if (emp.direction) {
-        setDepartementsFiltres((dept) =>
-          dept.filter((d) => d.direction === emp.direction),
-        );
-      }
-      if (emp.departement) {
-        setServicesFiltres((srv) =>
-          srv.filter((s) => s.departement === emp.departement),
-        );
-      }
+      // Le pré-filtrage des départements/services est géré par l'effet
+      // ci-dessous (déclenché par form.direction/form.departement) — il
+      // se déclenche quel que soit l'ordre d'arrivée entre cet appel et
+      // fetchReferentiels().
     } catch (err) {
       console.error(err);
     } finally {
@@ -252,7 +245,12 @@ const EmployeeForm = () => {
         services.filter((s) => s.departement === form.departement),
       );
     }
-  }, [departements, services]);
+    // form.direction/form.departement dans les deps : fetchEmployee() et
+    // fetchReferentiels() partent en parallèle au montage, donc cet effet
+    // doit aussi se redéclencher quand le formulaire se remplit après que
+    // les référentiels sont déjà arrivés (sinon les listes filtrées
+    // restent vides et l'utilisateur doit tout resélectionner).
+  }, [departements, services, form.direction, form.departement]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });

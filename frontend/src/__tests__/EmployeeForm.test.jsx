@@ -175,6 +175,33 @@ describe("EmployeeForm — rendu édition", () => {
       expect(screen.getByDisplayValue("Dupont")).toBeInTheDocument();
     });
   });
+
+  test("pré-remplit Département et Service même si les référentiels arrivent après les données employé", async () => {
+    // Reproduit la race condition : fetchEmployee() (résout vite) et
+    // fetchReferentiels() (résout avec un délai) partent en parallèle au
+    // montage — le formulaire doit quand même finir par afficher le bon
+    // département/service une fois les deux arrivés, plutôt que rester
+    // bloqué sur "-- Sélectionner --".
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/directions/")) {
+        return new Promise((resolve) => setTimeout(() => resolve({ data: mockRefs.directions }), 10));
+      }
+      if (url.includes("/ref/departements/")) {
+        return new Promise((resolve) => setTimeout(() => resolve({ data: mockRefs.departements }), 10));
+      }
+      if (url.includes("/ref/services/")) {
+        return new Promise((resolve) => setTimeout(() => resolve({ data: mockRefs.services }), 10));
+      }
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
+    renderEdit();
+    await screen.findByDisplayValue("Dupont");
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("RH")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Paie")).toBeInTheDocument();
+    });
+  });
 });
 
 describe("EmployeeForm — référentiels", () => {
