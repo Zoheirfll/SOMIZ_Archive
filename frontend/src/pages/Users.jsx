@@ -286,7 +286,7 @@ const Users = () => {
       });
       setMessage({ type: "success", text: "Périmètre mis à jour." });
       setScopeModal(null);
-      fetchUsers();
+      fetchUsers(true);
     } catch (err) {
       setMessage({ type: "error", text: err.response?.data?.error || "Erreur lors de la mise à jour du périmètre." });
     } finally {
@@ -295,15 +295,15 @@ const Users = () => {
     }
   };
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  const fetchUsers = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/admin-users/");
       setUsers(response.data.results || response.data);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -362,7 +362,7 @@ const Users = () => {
       setShowForm(false);
       setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
-      fetchUsers();
+      fetchUsers(true);
     } catch (err) {
       const data = err.response?.data;
       if (data) setErrors(data);
@@ -376,7 +376,7 @@ const Users = () => {
   const toggleActive = async (user) => {
     try {
       await api.patch(`/admin-users/${user.id}/`, { is_active: !user.is_active });
-      fetchUsers();
+      fetchUsers(true);
     } catch (err) {
       console.error(err);
     }
@@ -387,7 +387,7 @@ const Users = () => {
     try {
       await api.delete(`/admin-users/${targetUser.id}/`);
       setMessage({ type: "success", text: `Compte "${targetUser.username}" supprimé.` });
-      fetchUsers();
+      fetchUsers(true);
     } catch (err) {
       const data = err.response?.data;
       const text =

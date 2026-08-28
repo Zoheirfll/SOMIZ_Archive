@@ -1,7 +1,7 @@
 # SOMIZ — Journal de vérification sécurité
 
 Suivi des points de sécurité vérifiés à la demande, un par un.
-Dernière mise à jour : 2026-07-25.
+Dernière mise à jour : 2026-08-28.
 
 ---
 
@@ -521,6 +521,79 @@ Les migrations en production seraient alors lancées avec un compte séparé (ou
 **Correctif appliqué** : le contrôle de consentement est intégré directement dans `IsAdmin.has_permission()` et `IsAdminOrConsultant.has_permission()` (`accounts/permissions.py`) — les deux classes de permission réellement utilisées par toutes les vues métier — plutôt que dans une classe séparée comptant sur le défaut global. `HasConsented` reste définie et branchée dans `DEFAULT_PERMISSION_CLASSES` pour couvrir les futures vues qui n'en déclareraient pas explicitement, mais ce n'est plus le mécanisme de protection principal. Vérifié par `TestHasConsentedIntegration` (bloque `/api/employees/` sans consentement, autorise `logout`/`me`/`consent`) et par la suite complète (236/236 tests backend au vert).
 
 **Verdict : faille de conception trouvée avant merge (blocage non appliqué aux vues métier réelles) grâce aux tests d'intégration prévus au plan, corrigée en déplaçant le contrôle dans les classes de permission effectivement utilisées partout.**
+
+---
+
+## 28. Audit du chantier GRH sync, "Scanner un dossier", transferts d'employé, et re-vérification des fichiers frontend non commités (2026-08-28) — ⚠️ Failles trouvées, non corrigées (en attente de validation)
+
+**Périmètre vérifié** : `backend/employees/grh_integration.py` (nouveau, jamais audité), `backend/employees/urls.py` (route `grh-sync/`), `backend/tests/test_grh_integration.py`, `GRH_INTEGRATION.md`/`docs/GRH_INTEGRATION_SPEC.md` ; `ScanImportView`/`_scan_import_file_name()` (`employees/views.py`), `employees/pdf_utils.py`, sérializers scan-import (`employees/serializers.py`) ; `EmployeeDetailView.perform_update`/`TRANSFER_FIELDS` (`employees/views.py`) ; `git diff HEAD` complet sur `ContratDetail.jsx`, `Dashboard.jsx`, `EmployeeDetail.jsx`, `Employees.jsx`, `Organigramme.jsx`, `Parametres.jsx`, `Users.jsx`.
+
+### 1. Intégration GRH (`grh_integration.py`) — sain sur l'essentiel, 3 failles + 1 point Info
+
+**Sain** : signature HMAC-SHA256 comparée en temps constant (`hmac.compare_digest`) ; requête non signée rejetée en `401` avant toute écriture ; référentiels inconnus rejetés en `400` (pas de FK silencieusement nulle) ; idempotence propre (`update_or_create` sur `matricule`) ; journalisation systématique (`CREATE_EMP`/`MODIFY_EMP`, `details.source='GRH_SYNC'`) ; `AllowAny` cohérent (appel serveur-à-serveur, la vérification HMAC fait office d'authentification — le consentement Loi 18-07 ne s'applique pas, il n'y a pas d'utilisateur humain derrière) ; route bien placée avant `employees/<str:pk>/` ; ne crée jamais de compte `User` ni de document (périmètre restreint volontairement).
+
+**⚠️ Faille 1 (Moyenne) — Pas de protection anti-rejeu.** La signature HMAC ne porte que sur le corps, sans timestamp/nonce. Une requête interceptée reste rejouable indéfiniment. Impact atténué aujourd'hui par l'idempotence, mais deviendrait exploitable si un champ type `statut`/`date_sortie` piloté par le GRH était ajouté un jour (rejouer un vieux payload pourrait réactiver un employé désactivé côté SOMIZ). *Correctif proposé* : header `X-GRH-Timestamp`, fenêtre ±5 min, timestamp inclus dans le message signé (pattern Stripe/GitHub webhooks).
+
+**⚠️ Faille 2 (Moyenne) — Aucune gestion d'exception autour de `update_or_create()`.** `matricule`/dates non validés en longueur/format avant l'upsert DB — une valeur malformée (bug GRH, ou payload forgé si le secret fuit) lève une exception non rattrapée (500 non géré). Même classe de faille que le point 8 (import CSV), pas encore appliquée ici (fichier postérieur au correctif). *Correctif proposé* : `try/except Exception` + `logger.exception()` + réponse générique (jamais `str(e)`), pattern déjà en place ailleurs.
+
+**⚠️ Faille 3 (Faible) — Endpoint entièrement non throttlé (`throttle_classes = []`).** Justifié par un usage serveur-à-serveur en rafale, mais l'endpoint est `AllowAny` et donc accessible réseau — impact DoS réel très faible (HMAC bloque toute écriture), mais rupture non documentée avec la politique globale (tout le reste de l'API a au moins le throttle `anon` 10/min). *Correctif proposé* : scope `ScopedRateThrottle` dédié généreux (ex. `grh_sync: 120/min`) plutôt qu'une désactivation totale.
+
+**Point Info, non bloquant** : `GRH_WEBHOOK_SECRET` a un défaut faible codé en dur (`dev-only-change-me`), contrairement à `SECRET_KEY`/`DB_PASSWORD` qui n'ont aucun défaut (point 3). Risque mitigé tant que l'intégration reste non branchée en production (voir `GRH_INTEGRATION.md`), mais à traiter avant activation réelle (retirer le défaut, ou lever `ImproperlyConfigured` si `DEBUG=False` et secret encore par défaut).
+
+### 2. Scan-import — sain
+
+`ScanImportView`/sérializers réutilisent le même contrôle MIME par lecture d'octets que l'upload classique (pas de chemin parallèle contournant le point 7), `file_index` borné et vérifié contre le nombre de fichiers réels, plages de pages validées contre le nombre réel de pages (`PdfExtractionError` proprement rattrapée), plafond de 100 pages par import (anti-DoS mémoire pypdf), `permission_classes = [IsAdmin]`, chaque groupe dans son propre `transaction.atomic()`, échec d'un groupe n'annule pas les autres, traçabilité `AuditLog.Action.UPLOAD` (`details.via='scan_import'`). Aucun chemin disque construit à partir d'une entrée utilisateur — `_safe_path_segment()` (point 7) reste le seul point de génération de chemin, non contourné.
+
+**Point mineur (Info)** : pas de plafond de taille cumulée sur un même import (jusqu'à ~20 fichiers × 20 Mo). Chaque fichier reste individuellement plafonné ; ADMIN-only ; non bloquant.
+
+### 3. Transferts d'employé — sain
+
+Capture `old_affectation` faite avant `serializer.save()` (pas de contournement possible côté client). Seuls des libellés (noms Direction/Département/Service/Cellule) exposés dans `details.transfer` — aucune donnée personnelle sensible (pas de salaire, NIN, RIB).
+
+### 4. Fichiers frontend non commités — aucune régression
+
+`ContratDetail.jsx`, `EmployeeDetail.jsx`, `Parametres.jsx`, `Users.jsx` : uniquement le pattern `silent`/`fetch*(true)` documenté dans `CLAUDE.md`, aucun nouvel appel API. `Dashboard.jsx`/`Employees.jsx` : nouveaux filtres `dossier_complet`/`type_manquant`, appliqués côté backend **après** `employee_scope_q()` dans `EmployeeListCreateView.get_queryset()` — scoping CONSULTANT intact sur cette nouvelle voie. `Organigramme.jsx` : refonte visuelle (drill-down horizontal) réutilisant la même logique `isAccessible()`/`accessibleDirIds` déjà auditée au point 24 — pas de changement de calcul d'accessibilité. Aucun `dangerouslySetInnerHTML`/`innerHTML`/`eval` introduit, aucun nouveau `no_log`.
+
+**Verdict : 3 failles réelles dans `grh_integration.py` (rejeu — Moyenne ; exception non gérée — Moyenne ; absence de throttle — Faible) + 1 point Info (secret par défaut faible) ; scan-import, transferts d'employé et diffs frontend sains, aucune correction nécessaire de ce côté. Correctifs GRH non appliqués — en attente de validation utilisateur.**
+
+---
+
+## 29. Re-vérification complète des points 1 à 27 (2026-08-28) — ⚠️ 1 régression mineure trouvée et confirmée hors-git
+
+**Demande** : repasser sur tous les points précédents suite aux chantiers menés depuis le 2026-07-25 (scoping types de documents, sous-dossiers, champs personnalisés, colonnes configurables, photo employé, suppression définitive documents, renommage fichier, responsivité mobile, consentement Loi 18-07, scan-import, transferts d'employé).
+
+**Méthode** : relecture directe du code actuel (pas des résumés) + greps ciblés sur les motifs déjà identifiés comme sensibles dans ce document, pour chacun des points 1-27.
+
+**Résultat point par point :**
+
+| # | Point | Statut |
+|---|---|---|
+| 1 | XSS | ✅ Intact |
+| 2 | Rate limiting (Redis) | ✅ Intact |
+| 3 | Secrets en dur | ✅ Intact |
+| 4 | Authentification manquante | ✅ Intact — toutes les nouvelles vues (`EmployeePhotoView`, `EmployeeChampsPersonnalisesView`, `ScanImportView`, `FileDetailView`, `GRHEmployeeSyncView`) déclarent `permission_classes`/`get_permissions()` explicitement |
+| 5 | Mots de passe | ✅ Intact |
+| 6 | IDOR / `no_log` | ✅ Intact — grep `no_log` : zéro résultat |
+| 7 | Fichiers média / path traversal | ✅ Intact — le scan-import ne contourne pas `_safe_path_segment()` |
+| 8 | Input validation (CSV) | ✅ Intact |
+| 9 | Variables d'environnement | ⚠️ **Régression trouvée** (voir détail ci-dessous) |
+| 10 | Dépendances vulnérables | 🔄 Non re-scanné (`pip-audit`/`npm audit` non relancés dans cette passe — à refaire si souhaité) |
+| 11 | CSRF / CORS | ✅ Intact — `GRHEmployeeSyncView` (`AllowAny` + HMAC) est hors périmètre CSRF par nature (pas de cookie/session), ne contourne rien sur les vues authentifiées |
+| 12 | Logs / session / fuite d'exceptions | ✅ Intact |
+| 13 | SSRF / race conditions | ✅ Intact — `select_for_update()` toujours en place ; point mineur : `pdf_utils.py` relaie le message d'exception `pypdf` (pas une trace Python brute) dans `failed[].error`, vue ADMIN-only, non bloquant |
+| 14 | Rate-limiting consultation | ✅ Intact |
+| 15–17, 19, 22, 23 | Infra / charge / MFA / DB privileges / backups / supply chain | ✅ Sans objet, aucun changement d'infra |
+| 18 | Timing attack login | ✅ Intact |
+| 20 | Purge RGPD | ✅ Intact |
+| 21 | En-têtes de sécurité | ✅ Intact |
+| 24 | Scoping CONSULTANT | ✅ **Reconfirmé en détail** — le modèle a évolué (3 FK simples → M2M multi-niveaux `scope_directions/poles/departements/services/cellules` + dimension indépendante `scope_types_documents`, voir CLAUDE.md), mais tous les points d'entrée listés dans CLAUDE.md appliquent bien les deux dimensions, y compris les vues introduites depuis (`EmployeePhotoView`, `ScanImportView`, `FileDetailView`) |
+| 25 | Collision code champ personnalisé | ✅ Intact |
+| 26 | Méta-point | ✅ Sans objet |
+| 27 | Consentement Loi 18-07 | ✅ Intact — `IsAdmin`/`IsAdminOrConsultant` vérifient toujours `consent_loi1807_accepted_at` ; aucune vue métier récente n'a de `permission_classes` custom contournant ce contrôle (`GRHEmployeeSyncView` en `AllowAny` est un webhook, pas un utilisateur humain — hors périmètre par nature) |
+
+**⚠️ Régression trouvée — Point 9 (`frontend/.env`)** : `DANGEROUSLY_DISABLE_HOST_CHECK=true` est de nouveau présent dans `frontend/.env`, alors qu'il avait été explicitement retiré au point 9. Ce fichier est gitignoré (jamais tracké, confirmé via `git log --all`) — le retrait initial n'a donc laissé aucune trace versionnée, et sa réapparition ne peut venir que d'une réédition locale (manuelle ou régénérée), pas d'un rollback git. `frontend/.env.example` (committé) reste correct — seul le fichier réel local a dérivé. **Sévérité faible** : réglage du serveur de dev CRA uniquement, sans effet en build de production ; risque réel seulement si `npm start` est exposé au-delà de `localhost` (ex. ngrok, cas déjà discuté au point 9).
+
+**Verdict global : 24 des 25 points substantiels reconfirmés intacts sans régression. Une régression réelle trouvée (point 9, sévérité faible, hors du contrôle git) — en attente de confirmation utilisateur (usage ngrok toujours actif ?) avant de la retirer à nouveau. Une évolution notable du scoping CONSULTANT documentée (toujours correctement appliquée, périmètre élargi depuis la rédaction initiale du point 24).**
 
 ---
 

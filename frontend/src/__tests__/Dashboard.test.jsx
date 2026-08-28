@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -150,5 +150,36 @@ describe("Dashboard — labels StatCard", () => {
     expect(screen.getByText("Dossiers complets")).toBeInTheDocument();
     expect(screen.getByText("Taux de complétude")).toBeInTheDocument();
     expect(screen.getByText("Total documents")).toBeInTheDocument();
+  });
+});
+
+describe("Dashboard — navigation vers /employees (complétude cliquable)", () => {
+  test("clic sur un type de document navigue vers /employees?type_manquant=<code>", async () => {
+    api.get.mockResolvedValue({ data: mockStats });
+    renderPage("ADMIN");
+    fireEvent.click(await screen.findByText("Carte Nationale"));
+    expect(mockNavigate).toHaveBeenCalledWith("/employees?type_manquant=CIN");
+  });
+
+  test("clic sur la carte Dossiers complets navigue vers /employees?dossier_complet=true", async () => {
+    api.get.mockResolvedValue({ data: mockStats });
+    renderPage("ADMIN");
+    fireEvent.click(await screen.findByText("Dossiers complets"));
+    expect(mockNavigate).toHaveBeenCalledWith("/employees?dossier_complet=true");
+  });
+
+  test("clic sur le lien 'incomplets' navigue vers /employees?dossier_complet=false (sans déclencher le clic de la carte)", async () => {
+    api.get.mockResolvedValue({ data: mockStats });
+    renderPage("ADMIN");
+    fireEvent.click(await screen.findByText(/incomplets/));
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith("/employees?dossier_complet=false");
+  });
+
+  test("le lien 'incomplets' n'est pas affiché s'il n'y a aucun employé actif", async () => {
+    api.get.mockResolvedValue({ data: { ...mockStats, employes_actifs: 0 } });
+    renderPage("ADMIN");
+    await waitFor(() => screen.getByText("Aucun employé dans la base"));
+    expect(screen.queryByText(/incomplets/)).not.toBeInTheDocument();
   });
 });

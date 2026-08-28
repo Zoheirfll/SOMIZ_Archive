@@ -182,15 +182,15 @@ const EmployeeDetail = () => {
     }
   };
 
-  const fetchEmployee = async () => {
-    setLoading(true);
+  const fetchEmployee = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get(`/employees/${id}/`);
       setEmployee(response.data);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -207,7 +207,7 @@ const EmployeeDetail = () => {
       await api.post(`/employees/${id}/photo/`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      await fetchEmployee();
+      await fetchEmployee(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -366,7 +366,7 @@ const EmployeeDetail = () => {
         type: "success",
         text: `${files.length} fichier(s) uploadé(s) avec succès.`,
       });
-      fetchEmployee();
+      fetchEmployee(true);
       fetchContrats();
     } catch (err) {
       setMessage({
@@ -390,7 +390,7 @@ const EmployeeDetail = () => {
         setSelectedFile(null);
         setDocUrl(null);
       }
-      fetchEmployee();
+      fetchEmployee(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {
@@ -409,7 +409,7 @@ const EmployeeDetail = () => {
     try {
       await api.patch(`/files/${file.id}/`, { file_name: newName });
       setMessage({ type: "success", text: "Fichier renommé." });
-      fetchEmployee();
+      fetchEmployee(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -432,7 +432,7 @@ const EmployeeDetail = () => {
     try {
       await api.patch(`/files/${file.id}/`, { file_name: newName });
       setMessage({ type: "success", text: "Fichier renommé." });
-      fetchEmployee();
+      fetchEmployee(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -460,7 +460,7 @@ const EmployeeDetail = () => {
         setSelectedFile(null);
         setDocUrl(null);
       }
-      fetchEmployee();
+      fetchEmployee(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {
@@ -1554,7 +1554,7 @@ const EmployeeDetail = () => {
                               type: "success",
                               text: `${doc.label} uploadé avec succès.`,
                             });
-                            fetchEmployee();
+                            fetchEmployee(true);
                           } catch (err) {
                             setMessage({
                               type: "error",
@@ -1904,7 +1904,7 @@ const EmployeeDetail = () => {
           typesDocumentsList={typesDocumentsList}
           onClose={() => setShowScanImport(false)}
           onImported={() => {
-            fetchEmployee();
+            fetchEmployee(true);
             fetchContrats();
           }}
         />

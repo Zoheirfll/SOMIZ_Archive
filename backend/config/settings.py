@@ -168,6 +168,7 @@ REST_FRAMEWORK = {
         'anon': '10/min',        # Login attempts limités
         'user': '200/min',       # Usage normal
         'consultation': '30/min', # Vues de documents — ralentit l'exfiltration en masse
+        'grh_sync': '120/min',   # Webhook GRH — sert de filet de sécurité, pas de limite fonctionnelle
     },
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',

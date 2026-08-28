@@ -266,6 +266,44 @@ Un script one-off pour purger les fichiers orphelins de `backend/media/employees
 
 ---
 
+## Rafraîchissement de données après action — pas de flash "page qui recharge" (2026-08-27)
+
+Une page de détail (`EmployeeDetail.jsx`, `ContratDetail.jsx`) ou de liste
+avec panneau ouvert (`Users.jsx`, `Parametres.jsx`) a typiquement un
+`fetch*()` qui fait `setLoading(true)` avant l'appel API, avec un
+early-return `if (loading) return <div>Chargement...</div>` (ou un
+skeleton) qui remplace tout le contenu tant que `loading` est vrai. Ce
+`fetch*()` est appelé une première fois au montage (`useEffect`), **et**
+réutilisé après chaque action mutante (renommer, supprimer, upload,
+modifier, activer/désactiver, import CSV) pour rafraîchir les données
+affichées. Si l'appel post-action refait `setLoading(true)`, toute la page
+se démonte brièvement (perte du scroll, du fichier/onglet sélectionné, du
+viewer ouvert) — visuellement indiscernable d'un rechargement de page,
+alors qu'aucun `window.location.reload()` n'est en cause.
+
+**Convention** : tout `fetch*()` de ce genre doit accepter un paramètre
+`silent` (dernier argument, défaut `false`) qui saute `setLoading(true)`/
+`setLoading(false)` (et toute réinitialisation de sélection qui va avec,
+ex. re-sélection du premier document) quand `true`. Seul l'appel initial
+au montage reste non-silencieux ; tous les rafraîchissements déclenchés
+par une action mutante doivent passer `fetch*(true)` (ou
+`fetch*(..., true)` si la fonction a déjà des paramètres, voir
+`Parametres.jsx#fetchTab`).
+
+- Déjà appliqué à : `EmployeeDetail.jsx#fetchEmployee`,
+  `ContratDetail.jsx#fetchContrat`, `Users.jsx#fetchUsers`,
+  `Parametres.jsx#fetchTab`.
+- Ne s'applique **pas** aux listes qui rechargent normalement sur
+  changement de filtre/page (ex. `Employees.jsx#fetchEmployees` sur
+  `useEffect([search, page, ...])`) — ce loading-là est attendu, tant
+  qu'il ne démonte pas un panneau/une sélection sans rapport ouverte
+  ailleurs sur la page.
+- Toute nouvelle page de détail avec actions mutantes (renommer,
+  supprimer, modifier...) qui rafraîchit ses données doit suivre ce
+  pattern dès l'écriture, pas après coup.
+
+---
+
 ## Gestion des utilisateurs — suppression de compte (2026-07-24)
 
 `UserUpdateView` (`accounts/admin_views.py`) est passée de `UpdateAPIView` à `RetrieveUpdateDestroyAPIView` — `DELETE /api/admin-users/{id}/` supprime définitivement un compte (hard delete, ADMIN only), avec garde-fous dans `perform_destroy` :

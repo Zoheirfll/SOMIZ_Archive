@@ -108,7 +108,7 @@ const ContratDetail = () => {
       await api.patch(`/contrats/${id}/`, payload);
       setMessage({ type: "success", text: "Contrat modifié avec succès." });
       setEditing(false);
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       const detail = err.response?.data?.numero_contrat?.[0] || "Erreur lors de la modification.";
       setMessage({ type: "error", text: detail });
@@ -141,12 +141,12 @@ const ContratDetail = () => {
     }
   };
 
-  const fetchContrat = async () => {
-    setLoading(true);
+  const fetchContrat = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await api.get(`/contrats/${id}/`);
       setContrat(response.data);
-      if (response.data.documents?.length > 0) {
+      if (!silent && response.data.documents?.length > 0) {
         const firstDoc = response.data.documents[0];
         setSelectedDoc(firstDoc);
         if (firstDoc.fichiers?.length > 0) loadFile(firstDoc.fichiers[0]);
@@ -154,7 +154,7 @@ const ContratDetail = () => {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -242,7 +242,7 @@ const ContratDetail = () => {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setMessage({ type: "success", text: `${files.length} fichier(s) uploadé(s) avec succès.` });
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({ type: "error", text: err.response?.data?.files?.[0] || "Erreur lors de l'upload." });
     } finally {
@@ -259,7 +259,7 @@ const ContratDetail = () => {
       await api.delete(`/files/${file.id}/`);
       setMessage({ type: "success", text: "Fichier supprimé." });
       if (selectedFile?.id === file.id) { setSelectedFile(null); setDocUrl(null); }
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {
@@ -278,7 +278,7 @@ const ContratDetail = () => {
     try {
       await api.patch(`/files/${file.id}/`, { file_name: newName });
       setMessage({ type: "success", text: "Fichier renommé." });
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -301,7 +301,7 @@ const ContratDetail = () => {
     try {
       await api.patch(`/files/${file.id}/`, { file_name: newName });
       setMessage({ type: "success", text: "Fichier renommé." });
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({
         type: "error",
@@ -320,7 +320,7 @@ const ContratDetail = () => {
       await api.delete(`/documents/${doc.id}/`);
       setMessage({ type: "success", text: "Document supprimé." });
       if (selectedDoc?.id === doc.id) { setSelectedDoc(null); setSelectedFile(null); setDocUrl(null); }
-      fetchContrat();
+      fetchContrat(true);
     } catch (err) {
       setMessage({ type: "error", text: "Erreur lors de la suppression." });
     } finally {

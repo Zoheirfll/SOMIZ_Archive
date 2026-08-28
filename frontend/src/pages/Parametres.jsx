@@ -437,8 +437,8 @@ const Parametres = () => {
     } catch {}
   };
 
-  const fetchTab = async (tab, pageNum = 1, q = "") => {
-    setLoading(true);
+  const fetchTab = async (tab, pageNum = 1, q = "", silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params = { page: pageNum };
       if (q) params.q = q;
@@ -458,7 +458,7 @@ const Parametres = () => {
     } catch (err) {
       showMessage("error", "Impossible de charger les données.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -477,7 +477,7 @@ const Parametres = () => {
     try {
       await api.delete(`/ref/${activeTab}/${item.id}/`);
       showMessage("success", "Supprimé avec succès.");
-      fetchTab(activeTab, page, search);
+      fetchTab(activeTab, page, search, true);
     } catch (err) {
       const serverError = err.response?.data?.error;
       showMessage(
@@ -501,7 +501,7 @@ const Parametres = () => {
         { headers: { "Content-Type": "multipart/form-data" } },
       );
       setImportResult(response.data);
-      fetchTab(activeTab, page, search);
+      fetchTab(activeTab, page, search, true);
       fetchDirections();
       fetchPoles();
       fetchDepartements();
@@ -540,7 +540,7 @@ const Parametres = () => {
         showMessage("success", "Modifié avec succès.");
       }
       setModal(null);
-      fetchTab(activeTab, page, search);
+      fetchTab(activeTab, page, search, true);
       fetchDirections();
       fetchPoles();
       fetchDepartements();

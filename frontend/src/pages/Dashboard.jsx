@@ -184,14 +184,37 @@ const Dashboard = () => {
             icon={<IconUsers />}
             className="anim-slide-up delay-1"
           />
-          <StatCard
-            label="Dossiers complets"
-            value={countDossiers ?? 0}
-            sub={`sur ${total} employés`}
-            color={theme.primary}
-            icon={<IconCheckCircle />}
-            className="anim-slide-up delay-2"
-          />
+          <div
+            onClick={() => navigate("/employees?dossier_complet=true")}
+            style={{ cursor: "pointer" }}
+          >
+            <StatCard
+              label="Dossiers complets"
+              value={countDossiers ?? 0}
+              sub={
+                <>
+                  sur {total} employés
+                  {stats?.employes_actifs > 0 && (
+                    <>
+                      {" · "}
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate("/employees?dossier_complet=false");
+                        }}
+                        style={{ color: theme.warning, textDecoration: "underline" }}
+                      >
+                        {total - (stats?.dossiers_complets ?? 0)} incomplets
+                      </span>
+                    </>
+                  )}
+                </>
+              }
+              color={theme.primary}
+              icon={<IconCheckCircle />}
+              className="anim-slide-up delay-2"
+            />
+          </div>
           <StatCard
             label="Taux de complétude"
             value={total > 0 ? `${countTaux ?? stats?.taux_completude_global}%` : "N/A"}
@@ -245,7 +268,12 @@ const Dashboard = () => {
               </h2>
               {stats?.completude_par_type &&
                 Object.entries(stats.completude_par_type).map(([code, data]) => (
-                  <div key={code} style={{ marginBottom: 16 }}>
+                  <div
+                    key={code}
+                    onClick={() => navigate(`/employees?type_manquant=${encodeURIComponent(code)}`)}
+                    title={`Voir les employés sans « ${data.label} »`}
+                    style={{ marginBottom: 16, cursor: "pointer" }}
+                  >
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                       <span style={{ color: theme.text, fontSize: 13 }}>
                         {data.required && (
