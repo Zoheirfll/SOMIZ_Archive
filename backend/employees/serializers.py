@@ -379,14 +379,18 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         qs = obj.documents_actifs
         request = self.context.get('request')
         if request:
-            qs = qs.filter(request.user.document_type_scope_q())
+            type_ids = request.user.accessible_type_doc_ids_for_employee(obj)
+            if type_ids is not None:
+                qs = qs.filter(type_doc_id__in=type_ids)
         return EmployeeDocumentSerializer(qs, many=True).data
 
     def get_documents_manquants(self, obj):
         tous = TypeDocument.objects.filter(is_active=True, sous_types__isnull=True)
         request = self.context.get('request')
         if request:
-            tous = tous.filter(id__in=request.user.accessible_types_documents_qs())
+            type_ids = request.user.accessible_type_doc_ids_for_employee(obj)
+            if type_ids is not None:
+                tous = tous.filter(id__in=type_ids)
         presents = set(
             obj.documents.filter(is_active=True).values_list('type_doc_id', flat=True)
         )

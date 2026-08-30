@@ -437,11 +437,11 @@ class DocumentListUploadView(APIView):
         employee = self._get_employee(emp_id)
         if not request.user.can_access_employee(employee):
             raise Http404("Employé introuvable.")
-        docs = EmployeeDocument.objects.filter(
-            employee=employee, is_active=True
-        ).filter(request.user.document_type_scope_q()).select_related(
-            'uploaded_by', 'type_doc'
-        ).prefetch_related('fichiers')
+        docs = EmployeeDocument.objects.filter(employee=employee, is_active=True)
+        type_ids = request.user.accessible_type_doc_ids_for_employee(employee)
+        if type_ids is not None:
+            docs = docs.filter(type_doc_id__in=type_ids)
+        docs = docs.select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
         serializer = EmployeeDocumentSerializer(docs, many=True)
         return Response(serializer.data)
 
@@ -631,9 +631,7 @@ class FileViewerView(APIView):
         except EmployeeDocumentFile.DoesNotExist:
             raise Http404
 
-        if not request.user.can_access_employee(file_obj.document.employee):
-            raise Http404
-        if not request.user.can_access_document_type(file_obj.document.type_doc_id):
+        if not request.user.can_access_document(file_obj.document.employee, file_obj.document.type_doc_id):
             raise Http404
 
         if not file_obj.file or not os.path.exists(file_obj.file.path):
@@ -747,9 +745,7 @@ class DocumentViewerView(APIView):
         except EmployeeDocument.DoesNotExist:
             raise Http404("Document introuvable.")
 
-        if not request.user.can_access_employee(doc.employee):
-            raise Http404("Document introuvable.")
-        if not request.user.can_access_document_type(doc.type_doc_id):
+        if not request.user.can_access_document(doc.employee, doc.type_doc_id):
             raise Http404("Document introuvable.")
 
         # Le fichier physique vit sur EmployeeDocumentFile (un document peut
@@ -926,11 +922,11 @@ class ContratDocumentListUploadView(APIView):
         contrat = get_object_or_404(Contrat.objects.select_related('employee'), pk=contrat_id)
         if not request.user.can_access_employee(contrat.employee):
             raise Http404
-        docs = EmployeeDocument.objects.filter(
-            contrat=contrat, is_active=True
-        ).filter(request.user.document_type_scope_q()).select_related(
-            'uploaded_by', 'type_doc'
-        ).prefetch_related('fichiers')
+        docs = EmployeeDocument.objects.filter(contrat=contrat, is_active=True)
+        type_ids = request.user.accessible_type_doc_ids_for_employee(contrat.employee, contrat_scope=True)
+        if type_ids is not None:
+            docs = docs.filter(type_doc_id__in=type_ids)
+        docs = docs.select_related('uploaded_by', 'type_doc').prefetch_related('fichiers')
         serializer = EmployeeDocumentSerializer(docs, many=True)
         return Response(serializer.data)
 

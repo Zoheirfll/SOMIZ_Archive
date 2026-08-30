@@ -256,7 +256,7 @@ class TestGrantIntegrationInViews:
         resp = client.get(f"/api/employees/{employee.id}/")
         assert resp.status_code == 200
         assert len(resp.data['documents']) == 1
-        assert resp.data['documents'][0]['type_doc'] == str(type_doc_obligatoire.id)
+        assert resp.data['documents'][0]['type_doc'] == type_doc_obligatoire.id
 
     def test_contrat_documents_not_shown_via_partial_dossier_grant(
         self, scoped_consultant, employee, other_service, type_doc_obligatoire, type_contrat
