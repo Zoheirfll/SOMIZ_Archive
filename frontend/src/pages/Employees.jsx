@@ -100,6 +100,22 @@ const IconCellule = ({ size = 32 }) => (
   </svg>
 );
 
+const IconSection = ({ size = 32 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 3l9 5-9 5-9-5 9-5z" />
+    <path d="M3 13l9 5 9-5" />
+  </svg>
+);
+
 const IconUsers = ({ size = 24, color = "currentColor" }) => (
   <svg
     width={size}
@@ -537,8 +553,10 @@ const Employees = () => {
   const [departements, setDepartements] = useState([]);
   const [departementsDePole, setDepartementsDePole] = useState([]);
   const [cellulesDirection, setCellulesDirection] = useState([]);
+  const [sectionsDirection, setSectionsDirection] = useState([]);
   const [services, setServices] = useState([]);
   const [cellulesDepartement, setCellulesDepartement] = useState([]);
+  const [sectionsDepartement, setSectionsDepartement] = useState([]);
   const [hierarchyLoading, setHierarchyLoading] = useState(false);
   const [hierarchyKey, setHierarchyKey] = useState(0);
 
@@ -693,7 +711,7 @@ const Employees = () => {
     const fetch = async () => {
       setHierarchyLoading(true);
       try {
-        const [deptRes, poleRes, celRes] = await Promise.all([
+        const [deptRes, poleRes, celRes, secRes] = await Promise.all([
           api.get("/ref/departements/", {
             params: { direction: selectedDirection.id },
           }),
@@ -703,14 +721,19 @@ const Employees = () => {
           api.get("/ref/cellules/", {
             params: { direction: selectedDirection.id },
           }),
+          api.get("/ref/sections/", {
+            params: { direction: selectedDirection.id },
+          }),
         ]);
         setDepartements(deptRes.data.results || deptRes.data);
         setPoles(poleRes.data.results || poleRes.data);
         setCellulesDirection(celRes.data.results || celRes.data);
+        setSectionsDirection(secRes.data.results || secRes.data);
       } catch {
         setDepartements([]);
         setPoles([]);
         setCellulesDirection([]);
+        setSectionsDirection([]);
       } finally {
         setHierarchyLoading(false);
       }
@@ -741,19 +764,24 @@ const Employees = () => {
     const fetch = async () => {
       setHierarchyLoading(true);
       try {
-        const [srvRes, celRes] = await Promise.all([
+        const [srvRes, celRes, secRes] = await Promise.all([
           api.get("/ref/services/", {
             params: { departement: selectedDepartement.id },
           }),
           api.get("/ref/cellules/", {
             params: { departement: selectedDepartement.id },
           }),
+          api.get("/ref/sections/", {
+            params: { departement: selectedDepartement.id },
+          }),
         ]);
         setServices(srvRes.data.results || srvRes.data);
         setCellulesDepartement(celRes.data.results || celRes.data);
+        setSectionsDepartement(secRes.data.results || secRes.data);
       } catch {
         setServices([]);
         setCellulesDepartement([]);
+        setSectionsDepartement([]);
       } finally {
         setHierarchyLoading(false);
       }
@@ -836,7 +864,8 @@ const Employees = () => {
     const serviceId = searchParams.get("service");
     const poleId = searchParams.get("pole");
     const celluleId = searchParams.get("cellule");
-    if (!directionId && !departementId && !serviceId && !poleId && !celluleId)
+    const sectionId = searchParams.get("section");
+    if (!directionId && !departementId && !serviceId && !poleId && !celluleId && !sectionId)
       return;
     (async () => {
       try {
@@ -846,6 +875,9 @@ const Employees = () => {
         } else if (celluleId) {
           const res = await api.get(`/ref/cellules/${celluleId}/`);
           setOrgFilter({ type: "cellule", id: celluleId, nom: res.data.nom });
+        } else if (sectionId) {
+          const res = await api.get(`/ref/sections/${sectionId}/`);
+          setOrgFilter({ type: "section", id: sectionId, nom: res.data.nom });
         } else if (departementId) {
           const res = await api.get(`/ref/departements/${departementId}/`);
           setSelectedDepartement(res.data);
@@ -904,6 +936,12 @@ const Employees = () => {
   };
   const selectCellule = (cellule) => {
     setOrgFilter({ type: "cellule", id: cellule.id, nom: cellule.nom });
+    setView("employees");
+    setPage(1);
+    setHierarchyKey((k) => k + 1);
+  };
+  const selectSection = (section) => {
+    setOrgFilter({ type: "section", id: section.id, nom: section.nom });
     setView("employees");
     setPage(1);
     setHierarchyKey((k) => k + 1);
@@ -1043,7 +1081,7 @@ const Employees = () => {
         ]
       : []),
     ...(selectedService ? [{ label: selectedService.nom, onClick: null }] : []),
-    ...(orgFilter?.type === "cellule"
+    ...(orgFilter && (orgFilter.type === "cellule" || orgFilter.type === "section")
       ? [{ label: orgFilter.nom, onClick: null }]
       : []),
     ...(view === "employees" && !selectedService && !orgFilter
@@ -1138,6 +1176,15 @@ const Employees = () => {
         countKey: "nb_employes",
         onSelect: selectCellule,
       },
+      section: {
+        color: "#0369a1",
+        gradient:
+          "linear-gradient(135deg, #082f49 0%, #0369a1 60%, #0ea5e9 100%)",
+        icon: <IconSection size={28} />,
+        countLabel: "employé(s)",
+        countKey: "nb_employes",
+        onSelect: selectSection,
+      },
     };
 
     const configs = {
@@ -1153,6 +1200,7 @@ const Employees = () => {
           if (d.nb_departements) parts.push(`${d.nb_departements} départ.`);
           if (d.nb_poles) parts.push(`${d.nb_poles} pôle(s)`);
           if (d.nb_cellules) parts.push(`${d.nb_cellules} cellule(s)`);
+          if (d.nb_sections) parts.push(`${d.nb_sections} section(s)`);
           return {
             ...d,
             __type: "direction",
@@ -1181,6 +1229,7 @@ const Employees = () => {
                 .filter((d) => !d.pole)
                 .map((d) => ({ ...d, __type: "departement" })),
               ...cellulesDirection.map((c) => ({ ...c, __type: "cellule" })),
+              ...sectionsDirection.map((s) => ({ ...s, __type: "section" })),
             ],
           },
       services: {
@@ -1190,6 +1239,7 @@ const Employees = () => {
         items: [
           ...services.map((s) => ({ ...s, __type: "service" })),
           ...cellulesDepartement.map((c) => ({ ...c, __type: "cellule" })),
+          ...sectionsDepartement.map((s) => ({ ...s, __type: "section" })),
         ],
       },
     };
@@ -1375,7 +1425,7 @@ const Employees = () => {
               fontFamily: theme.fontFamily,
             }}
           >
-            Filtré par {orgFilter.type === "pole" ? "pôle" : "cellule"} :{" "}
+            Filtré par {orgFilter.type === "pole" ? "pôle" : orgFilter.type === "section" ? "section" : "cellule"} :{" "}
             <strong>{orgFilter.nom}</strong>
           </span>
           <button
