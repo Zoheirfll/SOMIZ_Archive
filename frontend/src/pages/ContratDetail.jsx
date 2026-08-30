@@ -48,6 +48,27 @@ const formatDateTime = (isoString) => {
   });
 };
 
+// Regroupe les documents actifs par type de document — depuis que
+// l'historique est conservé (2026-08-30), plusieurs versions actives du
+// même type peuvent coexister. La plus récente reste le document affiché
+// normalement ; les versions antérieures sont attachées en `__history`
+// (triées décroissant) et affichées via un lien "Historique" repliable.
+const groupDocsByVersion = (docs) => {
+  const groups = new Map();
+  docs.forEach((d) => {
+    const key = d.type_doc;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  });
+  const primary = [];
+  groups.forEach((arr) => {
+    const sorted = [...arr].sort((a, b) => b.version - a.version);
+    const [current, ...history] = sorted;
+    primary.push({ ...current, __history: history });
+  });
+  return primary;
+};
+
 const ContratDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -58,6 +79,9 @@ const ContratDetail = () => {
 
   const [contrat, setContrat] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  // Ids des documents dont l'historique (versions antérieures conservées)
+  // est déplié dans la sidebar — replié par défaut.
+  const [expandedHistory, setExpandedHistory] = useState(() => new Set());
   const [selectedFile, setSelectedFile] = useState(null);
   const [docUrl, setDocUrl] = useState(null);
   const [docLoading, setDocLoading] = useState(false);
@@ -146,10 +170,13 @@ const ContratDetail = () => {
     try {
       const response = await api.get(`/contrats/${id}/`);
       setContrat(response.data);
-      if (!silent && response.data.documents?.length > 0) {
-        const firstDoc = response.data.documents[0];
-        setSelectedDoc(firstDoc);
-        if (firstDoc.fichiers?.length > 0) loadFile(firstDoc.fichiers[0]);
+      if (!silent) {
+        const grouped = groupDocsByVersion(response.data.documents || []);
+        if (grouped.length > 0) {
+          const firstDoc = grouped[0];
+          setSelectedDoc(firstDoc);
+          if (firstDoc.fichiers?.length > 0) loadFile(firstDoc.fichiers[0]);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -205,27 +232,49 @@ const ContratDetail = () => {
     return { ordered, headerBefore, groupEnd };
   };
 
-  const categoryHeaderStyle = {
-    marginTop: 8,
-    padding: "7px 16px",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "#FFFBEB",
-    border: "1px solid #FDE68A",
-    borderBottom: "none",
-    borderRadius: "8px 8px 0 0",
-    color: theme.warning,
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
+  // Chaque dossier/sous-dossier est teinté avec la couleur configurée sur
+  // son TypeDocument (voir couleur/TYPE_DOCUMENT_DEFAULT_PALETTE côté
+  // backend) — fond + bordures dérivés de cette couleur.
+  const hexToRgba = (hex, alpha) => {
+    if (!hex) return null;
+    const clean = hex.replace("#", "");
+    const r = parseInt(clean.substring(0, 2), 16);
+    const g = parseInt(clean.substring(2, 4), 16);
+    const b = parseInt(clean.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  const categoryRowExtraStyle = {
-    background: "#FFFDF7",
-    borderRight: "1px solid #FDE68A",
+  const FALLBACK_FOLDER_COLOR = theme.warning;
+
+  const folderHeaderStyle = (couleur) => {
+    const c = couleur || FALLBACK_FOLDER_COLOR;
+    return {
+      marginTop: 8,
+      padding: "7px 16px",
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      background: hexToRgba(c, 0.12),
+      border: `1px solid ${hexToRgba(c, 0.35)}`,
+      borderBottom: "none",
+      borderRadius: "8px 8px 0 0",
+      color: c,
+      fontSize: 11,
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "0.04em",
+    };
   };
+
+  const folderRowExtraStyle = (couleur) => {
+    const c = couleur || FALLBACK_FOLDER_COLOR;
+    return {
+      background: hexToRgba(c, 0.05),
+      borderRight: `1px solid ${hexToRgba(c, 0.35)}`,
+    };
+  };
+
+  const folderRowBorder = (couleur) => `1px solid ${hexToRgba(couleur || FALLBACK_FOLDER_COLOR, 0.35)}`;
 
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -344,7 +393,7 @@ const ContratDetail = () => {
   const statutStyle = STATUT_COLORS[contrat.statut] || STATUT_COLORS.actif;
 
   const { ordered: presentOrdered, headerBefore: presentHeaders, groupEnd: presentGroupEnd } =
-    groupDocsByParent(contrat.documents || [], (d) => d.type_document_parent);
+    groupDocsByParent(groupDocsByVersion(contrat.documents || []), (d) => d.type_document_parent);
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -388,12 +437,12 @@ const ContratDetail = () => {
               <span style={{ background: statutStyle.bg, border: `1px solid ${statutStyle.border}`, color: statutStyle.color, borderRadius: 20, padding: "6px 16px", fontSize: 13, fontWeight: 700 }}>
                 {statutStyle.label}
               </span>
-              {user?.role === "ADMIN" && !editing && (
+              {["ADMIN", "SUPERADMIN"].includes(user?.role) && !editing && (
                 <button onClick={handleEditOpen} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   <PencilIcon size={13} /> Modifier
                 </button>
               )}
-              {user?.role === "ADMIN" && (
+              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <button onClick={() => navigate(`/employees/${employeeSlug(contrat)}?tab=contrats`)} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   + Nouveau contrat
                 </button>
@@ -542,17 +591,19 @@ const ContratDetail = () => {
             {presentOrdered.map((doc) => (
               <div key={doc.id}>
               {presentHeaders.has(doc) && (
-                <div style={categoryHeaderStyle}>📁 {presentHeaders.get(doc)}</div>
+                <div style={folderHeaderStyle(doc.couleur)}>
+                  📁 {presentHeaders.get(doc)}
+                </div>
               )}
               <div style={{
-                borderBottom: `1px solid ${doc.type_document_parent ? "#FDE68A" : theme.border}`,
-                borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : "transparent"}`,
-                ...(doc.type_document_parent ? categoryRowExtraStyle : {}),
+                borderBottom: doc.type_document_parent ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
+                borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : (doc.couleur || "transparent")}`,
+                ...(doc.type_document_parent ? folderRowExtraStyle(doc.couleur) : {}),
                 background: selectedDoc?.id === doc.id
                   ? theme.primaryBg
-                  : doc.type_document_parent ? "#FFFDF7" : "transparent",
+                  : hexToRgba(doc.couleur, doc.type_document_parent ? 0.05 : 0.045) || "transparent",
                 ...(presentGroupEnd.has(doc)
-                  ? { borderRadius: "0 0 8px 8px", borderBottom: "1px solid #FDE68A", marginBottom: 10 }
+                  ? { borderRadius: "0 0 8px 8px", borderBottom: folderRowBorder(doc.couleur), marginBottom: 10 }
                   : {}),
               }}>
                 <div
@@ -563,11 +614,11 @@ const ContratDetail = () => {
                   }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ color: theme.text, fontSize: 13, fontWeight: 600 }}>
+                    <div style={{ color: theme.text, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
                       {typesDocuments[doc.type_document] || doc.type_document}
                     </div>
                   </div>
-                  {user?.role === "ADMIN" && (
+                  {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                     <button
                       onClick={(e) => handleDeleteDoc(doc, e)}
                       title="Supprimer ce document"
@@ -615,7 +666,7 @@ const ContratDetail = () => {
                             </div>
                           </div>
                         </div>
-                        {user?.role === "ADMIN" && (
+                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                           <div style={{ display: "flex", gap: 6 }}>
                           <button
                             onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
@@ -663,6 +714,76 @@ const ContratDetail = () => {
                   </div>
                 )}
               </div>
+
+              {/* Historique — versions antérieures conservées (2026-08-30),
+                  repliées par défaut, consultables/supprimables une par une. */}
+              {doc.__history?.length > 0 && (
+                <div style={{ borderTop: `1px dashed ${theme.border}`, background: theme.bg }}>
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedHistory((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(doc.id)) next.delete(doc.id);
+                        else next.add(doc.id);
+                        return next;
+                      });
+                    }}
+                    style={{
+                      padding: "6px 16px 6px 24px",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      color: theme.textSecondary,
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    🕘 Historique ({doc.__history.length} version{doc.__history.length > 1 ? "s" : ""} antérieure{doc.__history.length > 1 ? "s" : ""}) {expandedHistory.has(doc.id) ? "▲" : "▼"}
+                  </div>
+                  {expandedHistory.has(doc.id) && doc.__history.map((h) => (
+                    <div
+                      key={h.id}
+                      onClick={() => handleSelectDoc(h)}
+                      style={{
+                        padding: "6px 16px 6px 34px",
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        background: selectedDoc?.id === h.id ? theme.primaryBg : "transparent",
+                        borderLeft: `3px solid ${selectedDoc?.id === h.id ? theme.primary : "transparent"}`,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, color: theme.textMuted }}>
+                        v{h.version} · {formatDateTime(h.uploaded_at)}
+                        {h.file_size_kb ? ` · ${formatSizeMo(h.file_size_kb)}` : ""}
+                      </div>
+                      {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
+                        <button
+                          onClick={(e) => handleDeleteDoc(h, e)}
+                          title="Supprimer cette version"
+                          aria-label="Supprimer cette version"
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: theme.danger,
+                            cursor: "pointer",
+                            display: "flex",
+                            padding: "2px 4px",
+                            opacity: 0.5,
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                          onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
+                        >
+                          <TrashIcon size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               </div>
             ))}
 
@@ -673,7 +794,7 @@ const ContratDetail = () => {
             )}
 
             {/* Upload ADMIN */}
-            {user?.role === "ADMIN" && (
+            {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
               <div style={{
                 padding: 16, borderTop: `1px solid ${theme.border}`, background: theme.bg,
               }}>
@@ -759,7 +880,7 @@ const ContratDetail = () => {
                       >
                         {stripExt(selectedFile.file_name)}
                       </span>
-                      {user?.role === "ADMIN" && (
+                      {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                         <button
                           onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
                           title="Renommer d'après le type de document"
@@ -774,7 +895,7 @@ const ContratDetail = () => {
                           <TagIcon size={16} />
                         </button>
                       )}
-                      {user?.role === "ADMIN" && (
+                      {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                         <button
                           onClick={(e) => handleRenameFile(selectedFile, e)}
                           title="Renommer ce fichier"

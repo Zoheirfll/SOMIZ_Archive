@@ -43,6 +43,28 @@ const formatDateTime = (isoString) => {
   });
 };
 
+// Regroupe les documents actifs par (type de document, contrat) — depuis
+// que l'historique est conservé (2026-08-30), plusieurs versions actives
+// du même type peuvent coexister. La version la plus récente reste le
+// document affiché normalement dans la liste ; les versions antérieures
+// sont attachées en `__history` (triées décroissant) et affichées via un
+// lien "Historique" repliable sous la ligne principale.
+const groupDocsByVersion = (docs) => {
+  const groups = new Map();
+  docs.forEach((d) => {
+    const key = `${d.type_doc}-${d.contrat || ""}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  });
+  const primary = [];
+  groups.forEach((arr) => {
+    const sorted = [...arr].sort((a, b) => b.version - a.version);
+    const [current, ...history] = sorted;
+    primary.push({ ...current, __history: history });
+  });
+  return primary;
+};
+
 const EmployeeDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -59,6 +81,9 @@ const EmployeeDetail = () => {
     searchParams.get("tab") || "dossier",
   );
   const [selectedDoc, setSelectedDoc] = useState(null);
+  // Ids des documents dont l'historique (versions antérieures conservées)
+  // est déplié dans la sidebar — replié par défaut.
+  const [expandedHistory, setExpandedHistory] = useState(() => new Set());
   const [selectedFile, setSelectedFile] = useState(null);
   const [docUrl, setDocUrl] = useState(null);
   const [docLoading, setDocLoading] = useState(false);
@@ -250,8 +275,10 @@ const EmployeeDetail = () => {
   // d'un ancien contrat alors que l'onglet du contrat récent est actif.
   useEffect(() => {
     if (!employee) return;
-    const filtered = (employee.documents || []).filter(
-      (doc) => !doc.contrat || doc.contrat === selectedContratId,
+    const filtered = groupDocsByVersion(
+      (employee.documents || []).filter(
+        (doc) => !doc.contrat || doc.contrat === selectedContratId,
+      ),
     );
     if (filtered.length > 0) {
       setSelectedDoc(filtered[0]);
@@ -313,31 +340,50 @@ const EmployeeDetail = () => {
     return { orderMap, headerBefore, groupEnd };
   };
 
-  // "Boîte" de catégorie : fond ambré continu + bordure gauche/droite sur
-  // l'en-tête ET chaque ligne du groupe (via categoryRowStyle ci-dessous),
-  // pour que la catégorie se lise comme un vrai dossier distinct plutôt que
-  // de se fondre avec les éléments non groupés au-dessus/en-dessous.
-  const categoryHeaderStyle = {
-    marginTop: 8,
-    padding: "7px 16px",
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "#FFFBEB",
-    border: "1px solid #FDE68A",
-    borderBottom: "none",
-    borderRadius: "8px 8px 0 0",
-    color: theme.warning,
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
+  // Chaque dossier/sous-dossier est teinté avec la couleur configurée sur
+  // son TypeDocument (voir couleur/TYPE_DOCUMENT_DEFAULT_PALETTE côté
+  // backend) — fond + bordures dérivés de cette couleur, pas juste une
+  // pastille, pour que le "dossier" entier se lise avec sa couleur.
+  const hexToRgba = (hex, alpha) => {
+    if (!hex) return null;
+    const clean = hex.replace("#", "");
+    const r = parseInt(clean.substring(0, 2), 16);
+    const g = parseInt(clean.substring(2, 4), 16);
+    const b = parseInt(clean.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  const categoryRowExtraStyle = {
-    background: "#FFFDF7",
-    borderRight: "1px solid #FDE68A",
+  const FALLBACK_FOLDER_COLOR = theme.warning;
+
+  const folderHeaderStyle = (couleur) => {
+    const c = couleur || FALLBACK_FOLDER_COLOR;
+    return {
+      marginTop: 8,
+      padding: "7px 16px",
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      background: hexToRgba(c, 0.12),
+      border: `1px solid ${hexToRgba(c, 0.35)}`,
+      borderBottom: "none",
+      borderRadius: "8px 8px 0 0",
+      color: c,
+      fontSize: 11,
+      fontWeight: 700,
+      textTransform: "uppercase",
+      letterSpacing: "0.04em",
+    };
   };
+
+  const folderRowExtraStyle = (couleur) => {
+    const c = couleur || FALLBACK_FOLDER_COLOR;
+    return {
+      background: hexToRgba(c, 0.05),
+      borderRight: `1px solid ${hexToRgba(c, 0.35)}`,
+    };
+  };
+
+  const folderRowBorder = (couleur) => `1px solid ${hexToRgba(couleur || FALLBACK_FOLDER_COLOR, 0.35)}`;
 
   // Upload multiple fichiers
   const handleUpload = async (e) => {
@@ -495,6 +541,7 @@ const EmployeeDetail = () => {
     },
     { label: "Date de naissance", value: employee.date_naissance || "—" },
     { label: "Date de recrutement", value: employee.date_embauche || "—" },
+    { label: "Date de fin de contrat", value: employee.date_fin_contrat || "—" },
     { label: "Statut", value: employee.statut, badge: true },
     { label: "Direction", value: employee.direction_nom || "—" },
     { label: "Département", value: employee.departement_nom || "—" },
@@ -511,8 +558,10 @@ const EmployeeDetail = () => {
     })),
   ];
 
-  const documentsAffiches = (employee.documents || []).filter(
-    (doc) => !doc.contrat || doc.contrat === selectedContratId,
+  const documentsAffiches = groupDocsByVersion(
+    (employee.documents || []).filter(
+      (doc) => !doc.contrat || doc.contrat === selectedContratId,
+    ),
   );
 
   const { orderMap: docOrderMap, headerBefore: docHeaderBefore, groupEnd: docGroupEnd } =
@@ -532,7 +581,7 @@ const EmployeeDetail = () => {
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
               <EmployeeAvatar employee={employee} size={96} fontSize={32} light shape="square" />
-              {user?.role === "ADMIN" && (
+              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <label
                   aria-label="Changer la photo"
                   style={{
@@ -588,7 +637,7 @@ const EmployeeDetail = () => {
                 </div>
                 <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{employee.taux_completude}%</span>
               </div>
-              {user?.role === "ADMIN" && (
+              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <button onClick={() => navigate(`/employees/${id}/modifier`)} className="btn-lift" style={{ marginTop: 10, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                   Modifier
                 </button>
@@ -733,7 +782,7 @@ const EmployeeDetail = () => {
               >
                 Contrats de {employee.prenom} {employee.nom}
               </span>
-              {user?.role === "ADMIN" && (
+              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <button
                   onClick={() => {
                     if (!showNewContratForm) {
@@ -1257,18 +1306,20 @@ const EmployeeDetail = () => {
               {documentsAffiches.map((doc) => (
                 <div key={doc.id} style={{ order: docOrderMap.get(`p-${doc.id}`) ?? 0 }}>
                 {docHeaderBefore.get(`p-${doc.id}`) && (
-                  <div style={categoryHeaderStyle}>📁 {docHeaderBefore.get(`p-${doc.id}`)}</div>
+                  <div style={folderHeaderStyle(doc.couleur)}>
+                    📁 {docHeaderBefore.get(`p-${doc.id}`)}
+                  </div>
                 )}
                 <div
                   style={{
-                    borderBottom: `1px solid ${doc.type_document_parent ? "#FDE68A" : theme.border}`,
-                    borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : "transparent"}`,
-                    ...(doc.type_document_parent ? categoryRowExtraStyle : {}),
+                    borderBottom: doc.type_document_parent ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
+                    borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : (doc.couleur || "transparent")}`,
+                    ...(doc.type_document_parent ? folderRowExtraStyle(doc.couleur) : {}),
                     background: selectedDoc?.id === doc.id
                       ? theme.primaryBg
-                      : doc.type_document_parent ? "#FFFDF7" : "transparent",
+                      : hexToRgba(doc.couleur, doc.type_document_parent ? 0.05 : 0.045) || "transparent",
                     ...(docGroupEnd.has(`p-${doc.id}`)
-                      ? { borderRadius: "0 0 8px 8px", borderBottom: "1px solid #FDE68A", marginBottom: 10 }
+                      ? { borderRadius: "0 0 8px 8px", borderBottom: folderRowBorder(doc.couleur), marginBottom: 10 }
                       : {}),
                   }}
                 >
@@ -1308,7 +1359,7 @@ const EmployeeDetail = () => {
                         })()}
                       </div>
                     </div>
-                    {user?.role === "ADMIN" && (
+                    {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                       <button
                         onClick={(e) => handleDeleteDoc(doc, e)}
                         title="Supprimer ce document"
@@ -1390,7 +1441,7 @@ const EmployeeDetail = () => {
                               </div>
                             </div>
                           </div>
-                          {user?.role === "ADMIN" && (
+                          {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                             <div style={{ display: "flex", gap: 6 }}>
                             <button
                               onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
@@ -1458,6 +1509,76 @@ const EmployeeDetail = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Historique — versions antérieures conservées (2026-08-30),
+                    repliées par défaut, consultables/supprimables une par une. */}
+                {doc.__history?.length > 0 && (
+                  <div style={{ borderTop: `1px dashed ${theme.border}`, background: theme.bg }}>
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedHistory((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(doc.id)) next.delete(doc.id);
+                          else next.add(doc.id);
+                          return next;
+                        });
+                      }}
+                      style={{
+                        padding: "6px 16px 6px 24px",
+                        cursor: "pointer",
+                        fontSize: 11,
+                        color: theme.textSecondary,
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      🕘 Historique ({doc.__history.length} version{doc.__history.length > 1 ? "s" : ""} antérieure{doc.__history.length > 1 ? "s" : ""}) {expandedHistory.has(doc.id) ? "▲" : "▼"}
+                    </div>
+                    {expandedHistory.has(doc.id) && doc.__history.map((h) => (
+                      <div
+                        key={h.id}
+                        onClick={() => handleSelectDoc(h)}
+                        style={{
+                          padding: "6px 16px 6px 34px",
+                          cursor: "pointer",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          background: selectedDoc?.id === h.id ? theme.primaryBg : "transparent",
+                          borderLeft: `3px solid ${selectedDoc?.id === h.id ? theme.primary : "transparent"}`,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, color: theme.textMuted }}>
+                          v{h.version} · {formatDateTime(h.uploaded_at)}
+                          {h.file_size_kb ? ` · ${formatSizeMo(h.file_size_kb)}` : ""}
+                        </div>
+                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
+                          <button
+                            onClick={(e) => handleDeleteDoc(h, e)}
+                            title="Supprimer cette version"
+                            aria-label="Supprimer cette version"
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: theme.danger,
+                              cursor: "pointer",
+                              display: "flex",
+                              padding: "2px 4px",
+                              opacity: 0.5,
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
+                          >
+                            <TrashIcon size={13} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 </div>
               ))}
 
@@ -1465,24 +1586,27 @@ const EmployeeDetail = () => {
               {(employee.documents_manquants || []).map((doc) => (
                 <div key={doc.code} style={{ order: docOrderMap.get(`m-${doc.code}`) ?? 0 }}>
                 {docHeaderBefore.get(`m-${doc.code}`) && (
-                  <div style={categoryHeaderStyle}>📁 {docHeaderBefore.get(`m-${doc.code}`)}</div>
+                  <div style={folderHeaderStyle(doc.couleur)}>
+                    📁 {docHeaderBefore.get(`m-${doc.code}`)}
+                  </div>
                 )}
                 <div
                   style={{
                     padding: "10px 16px",
-                    borderBottom: `1px solid ${doc.parent_nom ? "#FDE68A" : theme.border}`,
+                    borderBottom: doc.parent_nom ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
+                    borderLeft: `3px solid ${doc.couleur || "transparent"}`,
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    ...(doc.parent_nom ? categoryRowExtraStyle : {}),
-                    background: doc.parent_nom ? "#FFFDF7" : "#FAFAFA",
+                    ...(doc.parent_nom ? folderRowExtraStyle(doc.couleur) : {}),
+                    background: hexToRgba(doc.couleur, doc.parent_nom ? 0.05 : 0.035) || "#FAFAFA",
                     ...(docGroupEnd.has(`m-${doc.code}`)
-                      ? { borderRadius: "0 0 8px 8px", borderBottom: "1px solid #FDE68A", marginBottom: 10 }
+                      ? { borderRadius: "0 0 8px 8px", borderBottom: folderRowBorder(doc.couleur), marginBottom: 10 }
                       : {}),
                   }}
                 >
                   <div>
-                    <div style={{ color: theme.textMuted, fontSize: 13 }}>
+                    <div style={{ color: theme.textMuted, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
                       {doc.required && (
                         <span style={{ color: theme.danger, marginRight: 4 }}>
                           *
@@ -1501,7 +1625,7 @@ const EmployeeDetail = () => {
                       Non uploadé
                     </div>
                   </div>
-                  {user?.role === "ADMIN" && (
+                  {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                     <label
                       title={`Uploader ${doc.label}`}
                       aria-label={`Uploader ${doc.label}`}
@@ -1576,7 +1700,7 @@ const EmployeeDetail = () => {
               ))}
 
               {/* Upload ADMIN */}
-              {user?.role === "ADMIN" && (
+              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <div
                   style={{
                     order: 999999,
@@ -1756,7 +1880,7 @@ const EmployeeDetail = () => {
                         >
                           {stripExt(selectedFile.file_name)}
                         </span>
-                        {user?.role === "ADMIN" && (
+                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                           <button
                             onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
                             title="Renommer d'après le type de document"
@@ -1776,7 +1900,7 @@ const EmployeeDetail = () => {
                             <TagIcon size={16} />
                           </button>
                         )}
-                        {user?.role === "ADMIN" && (
+                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                           <button
                             onClick={(e) => handleRenameFile(selectedFile, e)}
                             title="Renommer ce fichier"
