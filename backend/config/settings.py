@@ -182,6 +182,12 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     config('INTRANET_URL', default='http://192.168.1.100'),
 ]
+# Tunnel ngrok temporaire (dev/démo) — optionnel, absent en prod. L'URL change
+# à chaque nouveau tunnel gratuit ; mettre à jour NGROK_URL dans .env plutôt
+# que de modifier ce fichier.
+_ngrok_url = config('NGROK_URL', default='')
+if _ngrok_url:
+    CORS_ALLOWED_ORIGINS.append(_ngrok_url)
 # Django exige que l'origine du front soit explicitement de confiance pour
 # accepter les requêtes POST/PATCH/DELETE cross-origin protégées par CSRF.
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS

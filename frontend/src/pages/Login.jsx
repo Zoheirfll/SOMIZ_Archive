@@ -61,97 +61,102 @@ const Login = () => {
     >
       {/* Left panel — brand */}
       {!isMobile && (
-      <div
-        style={{
-          width: "45%",
-          background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 48,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        {/* Decorative circles */}
         <div
           style={{
-            position: "absolute",
-            top: -80,
-            right: -80,
-            width: 300,
-            height: 300,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.04)",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: -60,
-            left: -60,
-            width: 240,
-            height: 240,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.04)",
-          }}
-        />
-        <div
-          data-testid="hero-decor"
-          style={{
-            position: "absolute",
-            top: -40,
-            right: 40,
-            width: 160,
-            height: 160,
-            borderRadius: "50%",
-            background: "rgba(251,191,36,0.12)",
-          }}
-        />
-
-        {/* Logo mark */}
-        <div
-          style={{
-            width: 80,
-            height: 80,
-            background: "rgba(255,255,255,0.12)",
-            border: "2px solid rgba(255,255,255,0.25)",
-            borderRadius: 24,
+            width: "45%",
+            background:
+              "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: 24,
+            padding: 48,
+            position: "relative",
+            overflow: "hidden",
           }}
         >
-          <span style={{ fontSize: 36, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em" }}>S</span>
-        </div>
+          {/* Decorative circles */}
+          <div
+            style={{
+              position: "absolute",
+              top: -80,
+              right: -80,
+              width: 300,
+              height: 300,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.04)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              bottom: -60,
+              left: -60,
+              width: 240,
+              height: 240,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.04)",
+            }}
+          />
+          <div
+            data-testid="hero-decor"
+            style={{
+              position: "absolute",
+              top: -40,
+              right: 40,
+              width: 160,
+              height: 160,
+              borderRadius: "50%",
+              background: "rgba(251,191,36,0.12)",
+            }}
+          />
 
-        <div
-          style={{
-            color: "#ffffff",
-            fontWeight: 800,
-            fontSize: 28,
-            letterSpacing: "-0.03em",
-            marginBottom: 12,
-            textAlign: "center",
-          }}
-        >
-          SOMIZ
-        </div>
-        <div
-          style={{
-            color: "rgba(255,255,255,0.6)",
-            fontSize: 14,
-            textAlign: "center",
-            lineHeight: 1.6,
-            maxWidth: 260,
-          }}
-        >
-          Système d'Archivage des Dossiers des Ressources Humaines
-        </div>
+          {/* Logo mark */}
+          <div
+            style={{
+              width: 80,
+              height: 80,
+              background: "rgba(255,255,255,0.12)",
+              border: "2px solid rgba(255,255,255,0.25)",
+              borderRadius: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 24,
+              overflow: "hidden",
+            }}
+          >
+            <img
+              src="/logo_somiz.png"
+              alt="SOMIZ"
+              style={{ width: 56, height: 56, objectFit: "contain" }}
+            />
+          </div>
 
-      </div>
+          <div
+            style={{
+              color: "#ffffff",
+              fontWeight: 800,
+              fontSize: 28,
+              letterSpacing: "-0.03em",
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
+            SOMIZ
+          </div>
+          <div
+            style={{
+              color: "rgba(255,255,255,0.6)",
+              fontSize: 14,
+              textAlign: "center",
+              lineHeight: 1.6,
+              maxWidth: 260,
+            }}
+          >
+            Système d'Archivage des Dossiers des Ressources Humaines
+          </div>
+        </div>
       )}
 
       {/* Right panel — form */}
@@ -212,9 +217,9 @@ const Login = () => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                placeholder="votre.identifiant"
                 className="input-focus"
                 style={inputStyle}
-                placeholder="votre.identifiant"
               />
             </div>
 
@@ -236,14 +241,18 @@ const Login = () => {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••"
                   className="input-focus"
                   style={{ ...inputStyle, paddingRight: 44 }}
-                  placeholder="••••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  aria-label={
+                    showPassword
+                      ? "Masquer le mot de passe"
+                      : "Afficher le mot de passe"
+                  }
                   style={{
                     position: "absolute",
                     right: 12,

@@ -180,7 +180,7 @@ describe("Sécurité — Import", () => {
   test("CONSULTANT ne voit pas le bouton Lancer l'import", async () => {
     useAuth.mockReturnValue({ user: { role: "CONSULTANT" }, authenticated: true, authChecked: true });
     render(<MemoryRouter><Import /></MemoryRouter>);
-    await waitFor(() => screen.getByText(/Import CSV/i));
+    await waitFor(() => screen.getByText(/Import employés/i));
     expect(screen.queryByRole("button", { name: /lancer l'import|importer/i })).not.toBeInTheDocument();
   });
 });

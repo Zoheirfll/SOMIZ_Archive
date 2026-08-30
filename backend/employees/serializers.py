@@ -348,7 +348,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             'id', 'matricule', 'nom', 'prenom',
-            'date_naissance', 'date_embauche', 'statut', 'has_photo',
+            'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut', 'has_photo',
             'direction', 'direction_nom',
             'departement', 'departement_nom',
             'service', 'service_nom',
@@ -412,7 +412,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             'id', 'matricule', 'nom', 'prenom',
-            'date_naissance', 'date_embauche', 'statut',
+            'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut',
             'direction', 'departement', 'service', 'cellule',
             'poste', 'type_contrat', 'categorie',
         ]

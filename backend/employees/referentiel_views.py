@@ -7,6 +7,7 @@ import os
 from django.conf import settings
 from django.db import transaction
 from rest_framework import generics, serializers, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
 from audit.models import AuditLog
@@ -18,6 +19,24 @@ from employees.models import (
     ChampPersonnalise, SystemFieldLabel,
     Pole, Cellule,
 )
+
+
+class ReferentielPagination(PageNumberPagination):
+    """Les référentiels ont deux usages distincts : tableau CRUD paginé
+    (`/parametres`, qui envoie explicitement `?page=`) et dropdowns/cascades
+    (formulaire employé, filtres...) qui s'attendent à recevoir la liste
+    complète en un seul appel. Sans `?page=` dans la requête, on désactive
+    la pagination (retourne tout) plutôt que de tronquer silencieusement à
+    PAGE_SIZE=25 — c'est ce qui rendait certains postes impossibles à
+    sélectionner dans la liste déroulante "Fonction" (au-delà des 25
+    premiers, triés par nom)."""
+
+    page_size = 25
+
+    def paginate_queryset(self, queryset, request, view=None):
+        if 'page' not in request.query_params:
+            return None
+        return super().paginate_queryset(queryset, request, view)
 
 
 class TypeDocumentDestroyMixin:
@@ -181,10 +200,17 @@ class CategorieSerializer(serializers.ModelSerializer):
 
 class ReferentielSearchMixin:
     """Filtre la queryset sur ?q= (recherche nom/code, insensible à la casse).
-    Appliqué avant pagination — recherche donc sur l'ensemble des données,
-    pas seulement la page courante affichée côté frontend."""
+
+    pagination_class = ReferentielPagination : ces référentiels sont des listes de sélection
+    (dropdowns, cascades Direction→Département→Service...) que le frontend
+    charge intégralement et filtre côté client — avec la pagination DRF par
+    défaut (PAGE_SIZE=25), toute liste dépassant 25 lignes (ex. Postes) était
+    tronquée silencieusement (`pos.data.results` ne contenait que la 1ère
+    page), rendant certains éléments impossibles à sélectionner dans les
+    formulaires."""
 
     search_fields = ['nom', 'code']
+    pagination_class = ReferentielPagination
 
     def filter_search(self, qs):
         q = self.request.query_params.get('q', '').strip()
@@ -394,6 +420,7 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
 
 class TypeDocumentListCreateView(generics.ListCreateAPIView):
     serializer_class = TypeDocumentSerializer
+    pagination_class = ReferentielPagination
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
@@ -438,6 +465,7 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
 
 class ChampPersonnaliseListCreateView(generics.ListCreateAPIView):
     serializer_class = ChampPersonnaliseSerializer
+    pagination_class = ReferentielPagination
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     queryset = ChampPersonnalise.objects.all()

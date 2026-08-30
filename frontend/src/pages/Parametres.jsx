@@ -522,7 +522,7 @@ const Parametres = () => {
       const url = URL.createObjectURL(response.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `template_${tab}.csv`;
+      a.download = `template_${tab}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -1845,14 +1845,14 @@ const Parametres = () => {
                 <div>
                   <div style={{ marginBottom: 8, display: "flex", justifyContent: "center", color: theme.textMuted }}><FolderIcon size={28} /></div>
                   <div style={{ color: theme.text, fontSize: 14 }}>
-                    Cliquez pour choisir un fichier CSV
+                    Cliquez pour choisir un fichier Excel (.xlsx) ou CSV
                   </div>
                 </div>
               )}
               <input
                 id="ref-csv-input"
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx"
                 onChange={(e) => setImportFile(e.target.files[0])}
                 style={{ display: "none" }}
               />

@@ -37,9 +37,9 @@ beforeEach(() => {
 });
 
 describe("Import — rendu", () => {
-  test("affiche le titre Import CSV", () => {
+  test("affiche le titre Import employés", () => {
     renderPage();
-    expect(screen.getByText(/Import CSV/i)).toBeInTheDocument();
+    expect(screen.getByText(/Import employés/i)).toBeInTheDocument();
   });
 
   test("affiche le bouton Télécharger le template", () => {
@@ -87,7 +87,7 @@ describe("Import — drag & drop", () => {
       });
     }
     // Vérification que le composant ne crashe pas
-    expect(screen.getByText(/Import CSV/i)).toBeInTheDocument();
+    expect(screen.getByText(/Import employés/i)).toBeInTheDocument();
   });
 });
 

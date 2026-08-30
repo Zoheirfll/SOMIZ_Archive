@@ -265,6 +265,7 @@ class Employee(models.Model):
     prenom = models.CharField(max_length=100)
     date_naissance = models.DateField(null=True, blank=True)
     date_embauche = models.DateField(null=True, blank=True, verbose_name="Date de recrutement")
+    date_fin_contrat = models.DateField(null=True, blank=True, verbose_name="Date de fin de contrat")
     statut = models.CharField(max_length=20, choices=Statut.choices, default=Statut.ACTIF)
 
     photo = models.ImageField(upload_to=employee_photo_upload_path, null=True, blank=True, verbose_name="Photo")

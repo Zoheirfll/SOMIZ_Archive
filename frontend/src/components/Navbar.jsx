@@ -67,24 +67,17 @@ const Navbar = () => {
     >
       {/* Logo */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div
+        <img
+          src="/logo_somiz.png"
+          alt="SOMIZ"
           style={{
-            background: "linear-gradient(135deg, #052e16 0%, #166534 100%)",
-            borderRadius: 10,
             width: 38,
             height: 38,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 18,
-            fontWeight: 900,
-            color: "#fff",
-            letterSpacing: "-0.02em",
+            borderRadius: 10,
+            objectFit: "contain",
             flexShrink: 0,
           }}
-        >
-          S
-        </div>
+        />
         {!isMobile && (
           <div>
             <div style={{ color: theme.text, fontWeight: 800, fontSize: 15, lineHeight: 1, letterSpacing: "-0.02em" }}>

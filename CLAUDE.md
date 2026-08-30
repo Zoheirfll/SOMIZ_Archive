@@ -320,6 +320,32 @@ Le formulaire de création (`/users`) inclut directement la section "Périmètre
 
 ---
 
+## Import employés/référentiels — template en .xlsx (2026-08-30)
+
+Les templates téléchargeables (`EmployeeImportTemplateView`,
+`ReferentielImportTemplateView`, `backend/employees/import_views.py`) sont
+distribués en **.xlsx** (via `openpyxl`), plus en `.csv`. Raison : un CSV
+`;`-délimité édité dans Excel puis ré-enregistré (`Ctrl+S`, garder le
+format `.csv`) peut perdre son délimiteur au prochain enregistrement
+(dépend des paramètres régionaux Windows/Excel de l'admin, et de la
+présence du délimiteur dans une valeur non échappée) — à la réouverture,
+toute la ligne retombe dans une seule colonne. Un classeur `.xlsx` a des
+colonnes réelles, structurellement insensible à ce problème.
+
+- `EmployeeImportView`/`ReferentielImportView` (upload) acceptent toujours
+  **les deux formats**, `.csv` (délimiteur `;` ou `,` auto-détecté, comme
+  avant) et `.xlsx` — via l'helper commun `_read_rows(file)`
+  (`import_views.py`) qui retourne `(fieldnames, liste de dict)` quel que
+  soit le format d'entrée, pour que le reste de la logique d'import
+  (validation, résolution des référentiels, création en masse) reste
+  identique.
+- Frontend (`Import.jsx`, `Parametres.jsx`) : `accept=".csv,.xlsx"` sur les
+  inputs fichier, extension `.xlsx` sur le fichier téléchargé et sur le nom
+  proposé au drop.
+- Nouvelle dépendance backend : `openpyxl` (`requirements.txt`).
+
+---
+
 ## Scanner et import complet — documents scannés (2026-08-27/28)
 
 Bouton **"Scanner un dossier"** sur la fiche employé (`EmployeeDetail.jsx`,

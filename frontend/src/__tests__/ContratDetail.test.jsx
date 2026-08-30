@@ -158,7 +158,7 @@ describe("ContratDetail — fil d'ariane", () => {
     await waitFor(() => screen.getAllByText(/MAT-0042/));
     const empBtn = screen.getByRole("button", { name: /MAT-0042/ });
     fireEvent.click(empBtn);
-    expect(mockNavigate).toHaveBeenCalledWith("/employees/emp-uuid");
+    expect(mockNavigate).toHaveBeenCalledWith("/employees/MAT-0042");
   });
 });
 

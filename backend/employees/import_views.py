@@ -5,6 +5,7 @@ Import CSV des employés en masse
 import csv
 import io
 import logging
+import openpyxl
 from django.conf import settings
 from django.db import transaction
 from rest_framework.views import APIView
@@ -18,6 +19,51 @@ from employees.models import (
 )
 
 logger = logging.getLogger('audit')
+
+
+def _read_rows(file):
+    """Lit un fichier .csv ou .xlsx et retourne (fieldnames, liste de dict).
+    Le .xlsx évite toute la classe de bugs liée au délimiteur/ré-enregistrement
+    d'un CSV dans Excel (colonnes réelles, pas de texte à ré-interpréter)."""
+    if file.name.lower().endswith('.xlsx'):
+        wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
+        ws = wb.active
+        rows_iter = ws.iter_rows(values_only=True)
+        try:
+            header_row = next(rows_iter)
+        except StopIteration:
+            return None, []
+        fieldnames = [str(h).strip() if h is not None else '' for h in header_row]
+        rows = []
+        for raw_row in rows_iter:
+            if raw_row is None or all(v is None for v in raw_row):
+                continue
+            row = {}
+            for key, value in zip(fieldnames, raw_row):
+                if not key:
+                    continue
+                if value is None:
+                    row[key] = ''
+                elif hasattr(value, 'isoformat'):  # date/datetime
+                    row[key] = value.isoformat()[:10]
+                else:
+                    row[key] = str(value)
+            rows.append(row)
+        return fieldnames, rows
+
+    # CSV
+    try:
+        content = file.read().decode('utf-8-sig')  # utf-8-sig gère le BOM Excel
+    except UnicodeDecodeError:
+        file.seek(0)
+        content = file.read().decode('latin-1')  # Fallback pour Excel français
+
+    sample = content[:1024]
+    delimiter = ';' if sample.count(';') > sample.count(',') else ','
+    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+    if not reader.fieldnames:
+        return None, []
+    return list(reader.fieldnames), list(reader)
 
 
 def _check_csv_size(file):
@@ -61,9 +107,9 @@ class EmployeeImportView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not file.name.endswith('.csv'):
+        if not (file.name.lower().endswith('.csv') or file.name.lower().endswith('.xlsx')):
             return Response(
-                {'error': 'Le fichier doit être au format CSV.'},
+                {'error': 'Le fichier doit être au format CSV ou Excel (.xlsx).'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -71,32 +117,23 @@ class EmployeeImportView(APIView):
         if size_error:
             return size_error
 
-        # Lire le fichier
         try:
-            content = file.read().decode('utf-8-sig')  # utf-8-sig gère le BOM Excel
-        except UnicodeDecodeError:
-            try:
-                file.seek(0)
-                content = file.read().decode('latin-1')  # Fallback pour Excel français
-            except Exception:
-                return Response(
-                    {'error': 'Encodage du fichier non supporté. Utilisez UTF-8.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-        # Détecter automatiquement le séparateur
-        sample = content[:1024]
-        delimiter = ';' if sample.count(';') > sample.count(',') else ','
-        reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
-
-        # Vérifier les colonnes obligatoires
-        if not reader.fieldnames:
+            fieldnames, rows = _read_rows(file)
+        except Exception:
+            logger.exception("Échec de la lecture du fichier d'import employés.")
             return Response(
-                {'error': 'Fichier CSV vide ou mal formaté.'},
+                {'error': "Fichier illisible. Vérifiez le format (CSV ou .xlsx) et l'encodage."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        cols = {c.strip().lower() for c in reader.fieldnames}
+        # Vérifier les colonnes obligatoires
+        if not fieldnames:
+            return Response(
+                {'error': 'Fichier vide ou mal formaté.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        cols = {c.strip().lower() for c in fieldnames}
         missing = self.REQUIRED_COLS - cols
         if missing:
             return Response(
@@ -128,7 +165,7 @@ class EmployeeImportView(APIView):
         erreurs = []
         a_creer = []
 
-        for num_ligne, row in enumerate(reader, start=2):
+        for num_ligne, row in enumerate(rows, start=2):
             # Nettoyer les clés et valeurs
             row = {k.strip().lower(): (v or '').strip() for k, v in row.items() if k}
             ligne_erreurs = []
@@ -283,43 +320,56 @@ class EmployeeImportView(APIView):
 class EmployeeImportTemplateView(APIView):
     """
     GET /api/employees/import/template/
-    Retourne un fichier CSV template à télécharger.
+    Retourne un fichier .xlsx template a telecharger.
+
+    Distribue en .xlsx (plus en .csv) : un CSV edite dans Excel puis
+    re-enregistre peut perdre son delimiteur (depend des parametres
+    regionaux Windows/Excel de l'admin) et retomber en une seule colonne a
+    la reouverture -- un classeur Excel a des colonnes reelles et n'a pas ce
+    probleme. L'import (EmployeeImportView) accepte toujours les deux
+    formats, .csv et .xlsx.
     """
     permission_classes = [IsAdmin]
 
     def get(self, request):
         from django.http import HttpResponse
 
-        response = HttpResponse(content_type='text/csv; charset=utf-8')
-        response['Content-Disposition'] = 'attachment; filename="template_import_employes.csv"'
-
-        # BOM pour Excel
-        response.write('\ufeff')
-
-        # Colonnes des champs personnalisés actifs — dynamiques, voir
+        # Colonnes des champs personnalises actifs -- dynamiques, voir
         # champs_actifs dans EmployeeImportView.post().
         champs_codes = list(
             ChampPersonnalise.objects.filter(is_active=True).values_list('code', flat=True)
         )
 
-        writer = csv.writer(response, delimiter=';')
-        writer.writerow([
+        headers = [
             'matricule', 'numero_contrat', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'statut',
             'direction', 'departement', 'service',
             'poste', 'type_contrat', 'categorie',
             *[c.lower() for c in champs_codes],
-        ])
-        # Exemple
-        writer.writerow([
+        ]
+        exemple = [
             '024141', '024141', 'FILALI', 'Zoheir',
             '2002-03-22', '2026-01-20', 'actif',
-            'Direction Générale', 'DAP', 'Service Paie',
+            'Direction Generale', 'DAP', 'Service Paie',
             'Cadre', 'CDI', '',
             *(['' for _ in champs_codes]),
-        ])
+        ]
 
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Employes'
+        ws.append(headers)
+        ws.append(exemple)
+        for col_idx, header in enumerate(headers, start=1):
+            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max(len(header) + 2, 14)
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="template_import_employes.xlsx"'
+        wb.save(response)
         return response
+
 
 class ReferentielImportView(APIView):
     """
@@ -381,27 +431,26 @@ class ReferentielImportView(APIView):
         if not file:
             return Response({'error': 'Aucun fichier fourni.'}, status=400)
 
-        if not file.name.endswith('.csv'):
-            return Response({'error': 'Format CSV requis.'}, status=400)
+        if not (file.name.lower().endswith('.csv') or file.name.lower().endswith('.xlsx')):
+            return Response({'error': 'Format CSV ou Excel (.xlsx) requis.'}, status=400)
 
         size_error = _check_csv_size(file)
         if size_error:
             return size_error
 
         try:
-            content = file.read().decode('utf-8-sig')
-        except UnicodeDecodeError:
-            file.seek(0)
-            content = file.read().decode('latin-1')
+            fieldnames, rows = _read_rows(file)
+        except Exception:
+            logger.exception("Échec de la lecture du fichier d'import référentiel (%s).", model)
+            return Response(
+                {'error': "Fichier illisible. Vérifiez le format (CSV ou .xlsx) et l'encodage."},
+                status=400
+            )
 
-        sample = content[:1024]
-        delimiter = ';' if sample.count(';') > sample.count(',') else ','
-        reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
-
-        if not reader.fieldnames:
+        if not fieldnames:
             return Response({'error': 'Fichier vide ou mal formaté.'}, status=400)
 
-        cols = {c.strip().lower() for c in reader.fieldnames}
+        cols = {c.strip().lower() for c in fieldnames}
         missing = config['required'] - cols
         if missing:
             return Response(
@@ -423,7 +472,7 @@ class ReferentielImportView(APIView):
         a_creer = []
         resultats = []
 
-        for num_ligne, row in enumerate(reader, start=2):
+        for num_ligne, row in enumerate(rows, start=2):
             row = {k.strip().lower(): (v or '').strip() for k, v in row.items() if k}
             ligne_erreurs = []
 
@@ -503,7 +552,7 @@ class ReferentielImportView(APIView):
 class ReferentielImportTemplateView(APIView):
     """
     GET /api/ref/import/{model}/template/
-    Retourne le template CSV pour le modèle.
+    Retourne le template .xlsx pour le modele (accepte aussi .csv en import).
     """
     permission_classes = [IsAdmin]
 
@@ -538,15 +587,21 @@ class ReferentielImportTemplateView(APIView):
         from django.http import HttpResponse
 
         if model not in self.TEMPLATES:
-            return Response({'error': f'Modèle inconnu : {model}'}, status=400)
+            return Response({'error': f'Modele inconnu : {model}'}, status=400)
 
         config = self.TEMPLATES[model]
-        response = HttpResponse(content_type='text/csv; charset=utf-8')
-        response['Content-Disposition'] = f'attachment; filename="template_{model}.csv"'
-        response.write('\ufeff')
 
-        writer = csv.writer(response, delimiter=';')
-        writer.writerow(config['headers'])
-        writer.writerow(config['example'])
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = model[:31]
+        ws.append(config['headers'])
+        ws.append(config['example'])
+        for col_idx, header in enumerate(config['headers'], start=1):
+            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max(len(header) + 2, 14)
 
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="template_{model}.xlsx"'
+        wb.save(response)
         return response

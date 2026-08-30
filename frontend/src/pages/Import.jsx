@@ -39,7 +39,7 @@ const Import = () => {
     e.preventDefault();
     setDragOver(false);
     const f = e.dataTransfer.files[0];
-    if (f && f.name.endsWith(".csv")) setFile(f);
+    if (f && (f.name.endsWith(".csv") || f.name.endsWith(".xlsx"))) setFile(f);
   };
 
   const handleImport = async () => {
@@ -72,7 +72,7 @@ const Import = () => {
       const url = URL.createObjectURL(response.data);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "template_import_employes.csv";
+      a.download = "template_import_employes.xlsx";
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -113,10 +113,10 @@ const Import = () => {
                 letterSpacing: "-0.02em",
               }}
             >
-              Import CSV
+              Import employés
             </h1>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
-              Importez vos employés en masse depuis un fichier CSV
+              Importez vos employés en masse depuis un fichier Excel (.xlsx) ou CSV
             </div>
           </div>
           <button
@@ -346,14 +346,14 @@ const Import = () => {
                   marginTop: 8,
                 }}
               >
-                Format accepté : .csv uniquement
+                Formats acceptés : .xlsx (recommandé) ou .csv
               </div>
             </div>
           )}
           <input
             id="csv-input"
             type="file"
-            accept=".csv"
+            accept=".csv,.xlsx"
             onChange={handleFileChange}
             style={{ display: "none" }}
           />

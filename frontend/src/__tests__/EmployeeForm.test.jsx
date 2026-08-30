@@ -215,9 +215,13 @@ describe("EmployeeForm — référentiels", () => {
 
   test("charge et affiche les postes", async () => {
     renderCreate();
-    await waitFor(() => {
-      expect(screen.getByText("Ingénieur")).toBeInTheDocument();
-    });
+    await waitFor(() => screen.getByText("Fonction"));
+    const posteInput = screen
+      .getByText("Fonction")
+      .closest("div")
+      .querySelector("input");
+    fireEvent.focus(posteInput);
+    expect(screen.getByText("Ingénieur")).toBeInTheDocument();
   });
 });
 

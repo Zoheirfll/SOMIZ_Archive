@@ -9,6 +9,7 @@ import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
 import { useConfirm } from "../components/ConfirmDialog";
+import SearchableSelect from "../components/SearchableSelect";
 
 const Field = ({ label, required, children }) => (
   <div style={{ marginBottom: 18 }}>
@@ -119,6 +120,7 @@ const EmployeeForm = () => {
   const [form, setForm] = useState({
     matricule: "",
     numero_contrat: "",
+    date_fin_contrat: "",
     nom: "",
     prenom: "",
     date_naissance: "",
@@ -181,7 +183,9 @@ const EmployeeForm = () => {
       setPostes(pos.data.results || pos.data);
       setTypesContrat(tc.data.results || tc.data);
       setCategories(cat.data.results || cat.data);
-      setChampsDefinitions((champs.data.results || champs.data).filter((c) => c.is_active));
+      setChampsDefinitions(
+        (champs.data.results || champs.data).filter((c) => c.is_active),
+      );
     } catch (err) {
       console.error(err);
     }
@@ -197,6 +201,7 @@ const EmployeeForm = () => {
         prenom: emp.prenom || "",
         date_naissance: emp.date_naissance || "",
         date_embauche: emp.date_embauche || "",
+        date_fin_contrat: emp.date_fin_contrat || "",
         statut: emp.statut || "actif",
         direction: emp.direction || "",
         departement: emp.departement || "",
@@ -259,7 +264,13 @@ const EmployeeForm = () => {
 
   const handleDirectionChange = (e) => {
     const dirId = e.target.value;
-    setForm({ ...form, direction: dirId, departement: "", service: "", cellule: "" });
+    setForm({
+      ...form,
+      direction: dirId,
+      departement: "",
+      service: "",
+      cellule: "",
+    });
     setDepartementsFiltres(departements.filter((d) => d.direction === dirId));
     setServicesFiltres([]);
   };
@@ -287,7 +298,12 @@ const EmployeeForm = () => {
   // Nom lisible d'une Direction/Département/Service/Cellule à partir de son id.
   const affectationLabel = (field, valueId) => {
     if (!valueId) return "Aucun(e)";
-    const listByField = { direction: directions, departement: departements, service: services, cellule: cellules };
+    const listByField = {
+      direction: directions,
+      departement: departements,
+      service: services,
+      cellule: cellules,
+    };
     const found = (listByField[field] || []).find((r) => r.id === valueId);
     return found?.nom || "?";
   };
@@ -301,15 +317,23 @@ const EmployeeForm = () => {
     }
 
     if (isEdit && originalAffectation) {
-      const changedFields = ["direction", "departement", "service", "cellule"].filter(
-        (field) => (form[field] || "") !== (originalAffectation[field] || "")
+      const changedFields = [
+        "direction",
+        "departement",
+        "service",
+        "cellule",
+      ].filter(
+        (field) => (form[field] || "") !== (originalAffectation[field] || ""),
       );
       if (changedFields.length > 0) {
         const summary = changedFields
-          .map((field) => `${affectationLabel(field, originalAffectation[field])} → ${affectationLabel(field, form[field])}`)
+          .map(
+            (field) =>
+              `${affectationLabel(field, originalAffectation[field])} → ${affectationLabel(field, form[field])}`,
+          )
           .join("\n");
         const confirmed = await confirm(
-          `Cette modification déplace l'employé :\n\n${summary}\n\nConfirmer le transfert ?`
+          `Cette modification déplace l'employé :\n\n${summary}\n\nConfirmer le transfert ?`,
         );
         if (!confirmed) return;
       }
@@ -317,6 +341,7 @@ const EmployeeForm = () => {
 
     // Nettoyer les champs vides — exclure numero_contrat du payload employé
     const { numero_contrat, ...formWithoutContrat } = form;
+    const date_fin_contrat = form.date_fin_contrat;
     const payload = {};
     Object.entries(formWithoutContrat).forEach(([k, v]) => {
       payload[k] = v === "" ? null : v;
@@ -337,7 +362,9 @@ const EmployeeForm = () => {
           await api.post(`/employees/${employeeId}/contrats/`, {
             numero_contrat: numero_contrat.trim(),
             statut: "actif",
+            ...(form.type_contrat ? { type_contrat: form.type_contrat } : {}),
             ...(form.date_embauche ? { date_debut: form.date_embauche } : {}),
+            ...(date_fin_contrat ? { date_fin: date_fin_contrat } : {}),
           });
         }
         setMessage({ type: "success", text: "Employé créé avec succès." });
@@ -421,7 +448,11 @@ const EmployeeForm = () => {
 
       <div
         className="anim-fade-in"
-        style={{ padding: isMobile ? "16px" : "32px", maxWidth: 900, margin: "0 auto" }}
+        style={{
+          padding: isMobile ? "16px" : "32px",
+          maxWidth: 900,
+          margin: "0 auto",
+        }}
       >
         {/* Back button */}
         <button
@@ -526,6 +557,17 @@ const EmployeeForm = () => {
                 </Select>
               </Field>
 
+              {(form.statut === "archive" || form.statut === "demobilise") && (
+                  <Field label="Date de fin de contrat">
+                    <Input
+                      type="date"
+                      name="date_fin_contrat"
+                      value={form.date_fin_contrat}
+                      onChange={handleChange}
+                    />
+                  </Field>
+                )}
+
               <Field label="Nom" required>
                 <Input
                   name="nom"
@@ -575,7 +617,6 @@ const EmployeeForm = () => {
                   onChange={handleChange}
                 />
               </Field>
-
             </div>
           </div>
 
@@ -671,54 +712,36 @@ const EmployeeForm = () => {
               </Field>
 
               <Field label="Fonction">
-                <Select
+                <SearchableSelect
                   name="poste"
                   value={form.poste || ""}
                   onChange={handleChange}
-                >
-                  <option value="">-- Sélectionner --</option>
-                  {postes
+                  options={postes
                     .filter((p) => p.is_active)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nom}
-                      </option>
-                    ))}
-                </Select>
+                    .map((p) => ({ value: p.id, label: p.nom }))}
+                />
               </Field>
 
               <Field label="Type de contrat">
-                <Select
+                <SearchableSelect
                   name="type_contrat"
                   value={form.type_contrat || ""}
                   onChange={handleChange}
-                >
-                  <option value="">-- Sélectionner --</option>
-                  {typesContrat
+                  options={typesContrat
                     .filter((t) => t.is_active)
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.nom}
-                      </option>
-                    ))}
-                </Select>
+                    .map((t) => ({ value: t.id, label: t.nom }))}
+                />
               </Field>
 
               <Field label="Catégorie">
-                <Select
+                <SearchableSelect
                   name="categorie"
                   value={form.categorie || ""}
                   onChange={handleChange}
-                >
-                  <option value="">-- Sélectionner --</option>
-                  {categories
+                  options={categories
                     .filter((c) => c.is_active)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nom}
-                      </option>
-                    ))}
-                </Select>
+                    .map((c) => ({ value: c.id, label: c.nom }))}
+                />
               </Field>
             </div>
           </div>
@@ -746,7 +769,10 @@ const EmployeeForm = () => {
                       }
                       value={champsValues[champ.id] || ""}
                       onChange={(e) =>
-                        setChampsValues({ ...champsValues, [champ.id]: e.target.value })
+                        setChampsValues({
+                          ...champsValues,
+                          [champ.id]: e.target.value,
+                        })
                       }
                     />
                   </Field>

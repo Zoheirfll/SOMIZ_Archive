@@ -319,7 +319,7 @@ class TestReferentielListScoping:
         client = auth_client(scoped_consultant)
         resp = client.get("/api/ref/directions/")
         assert resp.status_code == 200
-        noms = [d["nom"] for d in (resp.data.get("results") or resp.data)]
+        noms = [d["nom"] for d in (resp.data if isinstance(resp.data, list) else resp.data.get("results"))]
         assert direction.nom in noms
         assert other_direction.nom not in noms
 
@@ -329,7 +329,7 @@ class TestReferentielListScoping:
         client = auth_client(consultant_user)
         resp = client.get("/api/ref/directions/")
         assert resp.status_code == 200
-        noms = [d["nom"] for d in (resp.data.get("results") or resp.data)]
+        noms = [d["nom"] for d in (resp.data if isinstance(resp.data, list) else resp.data.get("results"))]
         assert direction.nom in noms
         assert other_direction.nom in noms
 
@@ -337,7 +337,7 @@ class TestReferentielListScoping:
         client = auth_client(admin_user)
         resp = client.get("/api/ref/directions/")
         assert resp.status_code == 200
-        noms = [d["nom"] for d in (resp.data.get("results") or resp.data)]
+        noms = [d["nom"] for d in (resp.data if isinstance(resp.data, list) else resp.data.get("results"))]
         assert direction.nom in noms
         assert other_direction.nom in noms
 
@@ -348,7 +348,7 @@ class TestReferentielListScoping:
         client = auth_client(scoped_consultant)
         resp = client.get("/api/ref/departements/")
         assert resp.status_code == 200
-        noms = [d["nom"] for d in (resp.data.get("results") or resp.data)]
+        noms = [d["nom"] for d in (resp.data if isinstance(resp.data, list) else resp.data.get("results"))]
         assert departement.nom in noms
         assert other_departement.nom not in noms
 
@@ -359,6 +359,6 @@ class TestReferentielListScoping:
         client = auth_client(scoped_consultant)
         resp = client.get("/api/ref/services/")
         assert resp.status_code == 200
-        noms = [s["nom"] for s in (resp.data.get("results") or resp.data)]
+        noms = [s["nom"] for s in (resp.data if isinstance(resp.data, list) else resp.data.get("results"))]
         assert service.nom in noms
         assert other_service.nom not in noms
