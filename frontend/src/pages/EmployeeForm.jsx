@@ -130,6 +130,7 @@ const EmployeeForm = () => {
     departement: "",
     service: "",
     cellule: "",
+    section: "",
     poste: "",
     type_contrat: "",
     categorie: "",
@@ -147,6 +148,7 @@ const EmployeeForm = () => {
   const [services, setServices] = useState([]);
   const [servicesFiltres, setServicesFiltres] = useState([]);
   const [cellules, setCellules] = useState([]);
+  const [sections, setSections] = useState([]);
   const [postes, setPostes] = useState([]);
   const [typesContrat, setTypesContrat] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -166,11 +168,12 @@ const EmployeeForm = () => {
 
   const fetchReferentiels = async () => {
     try {
-      const [dir, dept, srv, cel, pos, tc, cat, champs] = await Promise.all([
+      const [dir, dept, srv, cel, sec, pos, tc, cat, champs] = await Promise.all([
         api.get("/ref/directions/"),
         api.get("/ref/departements/"),
         api.get("/ref/services/"),
         api.get("/ref/cellules/"),
+        api.get("/ref/sections/"),
         api.get("/ref/postes/"),
         api.get("/ref/types-contrat/"),
         api.get("/ref/categories/"),
@@ -180,6 +183,7 @@ const EmployeeForm = () => {
       setDepartements(dept.data.results || dept.data);
       setServices(srv.data.results || srv.data);
       setCellules(cel.data.results || cel.data);
+      setSections(sec.data.results || sec.data);
       setPostes(pos.data.results || pos.data);
       setTypesContrat(tc.data.results || tc.data);
       setCategories(cat.data.results || cat.data);
@@ -207,6 +211,7 @@ const EmployeeForm = () => {
         departement: emp.departement || "",
         service: emp.service || "",
         cellule: emp.cellule || "",
+        section: emp.section || "",
         poste: emp.poste || "",
         type_contrat: emp.type_contrat || "",
         categorie: emp.categorie || "",
@@ -217,6 +222,7 @@ const EmployeeForm = () => {
         departement: newForm.departement,
         service: newForm.service,
         cellule: newForm.cellule,
+        section: newForm.section,
       });
 
       if (emp.champs_personnalises) {
@@ -270,6 +276,7 @@ const EmployeeForm = () => {
       departement: "",
       service: "",
       cellule: "",
+      section: "",
     });
     setDepartementsFiltres(departements.filter((d) => d.direction === dirId));
     setServicesFiltres([]);
@@ -277,7 +284,7 @@ const EmployeeForm = () => {
 
   const handleDepartementChange = (e) => {
     const deptId = e.target.value;
-    setForm({ ...form, departement: deptId, service: "", cellule: "" });
+    setForm({ ...form, departement: deptId, service: "", cellule: "", section: "" });
     setServicesFiltres(services.filter((s) => s.departement === deptId));
   };
 
@@ -303,6 +310,7 @@ const EmployeeForm = () => {
       departement: departements,
       service: services,
       cellule: cellules,
+      section: sections,
     };
     const found = (listByField[field] || []).find((r) => r.id === valueId);
     return found?.nom || "?";
@@ -322,6 +330,7 @@ const EmployeeForm = () => {
         "departement",
         "service",
         "cellule",
+        "section",
       ].filter(
         (field) => (form[field] || "") !== (originalAffectation[field] || ""),
       );
@@ -557,16 +566,14 @@ const EmployeeForm = () => {
                 </Select>
               </Field>
 
-              {(form.statut === "archive" || form.statut === "demobilise") && (
-                  <Field label="Date de fin de contrat">
-                    <Input
-                      type="date"
-                      name="date_fin_contrat"
-                      value={form.date_fin_contrat}
-                      onChange={handleChange}
-                    />
-                  </Field>
-                )}
+              <Field label="Date de fin de contrat">
+                <Input
+                  type="date"
+                  name="date_fin_contrat"
+                  value={form.date_fin_contrat}
+                  onChange={handleChange}
+                />
+              </Field>
 
               <Field label="Nom" required>
                 <Input
@@ -690,7 +697,7 @@ const EmployeeForm = () => {
                   name="cellule"
                   value={form.cellule || ""}
                   onChange={(e) =>
-                    setForm({ ...form, cellule: e.target.value, service: "" })
+                    setForm({ ...form, cellule: e.target.value, service: "", section: "" })
                   }
                   disabled={!form.direction}
                 >
@@ -706,6 +713,32 @@ const EmployeeForm = () => {
                     .map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.nom}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
+
+              <Field label="Section (alternative au Service)">
+                <Select
+                  name="section"
+                  value={form.section || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, section: e.target.value, service: "", cellule: "" })
+                  }
+                  disabled={!form.direction}
+                >
+                  <option value="">-- Aucune --</option>
+                  {sections
+                    .filter(
+                      (s) =>
+                        s.is_active &&
+                        (form.departement
+                          ? s.departement === form.departement
+                          : s.direction === form.direction),
+                    )
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nom}
                       </option>
                     ))}
                 </Select>
@@ -759,22 +792,38 @@ const EmployeeForm = () => {
               >
                 {champsDefinitions.map((champ) => (
                   <Field key={champ.id} label={champ.nom}>
-                    <Input
-                      type={
-                        champ.type_champ === "nombre"
-                          ? "number"
-                          : champ.type_champ === "date"
-                            ? "date"
-                            : "text"
-                      }
-                      value={champsValues[champ.id] || ""}
-                      onChange={(e) =>
-                        setChampsValues({
-                          ...champsValues,
-                          [champ.id]: e.target.value,
-                        })
-                      }
-                    />
+                    {champ.type_champ === "booleen" ? (
+                      <Select
+                        value={champsValues[champ.id] || ""}
+                        onChange={(e) =>
+                          setChampsValues({
+                            ...champsValues,
+                            [champ.id]: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">-- Sélectionner --</option>
+                        <option value="oui">Oui</option>
+                        <option value="non">Non</option>
+                      </Select>
+                    ) : (
+                      <Input
+                        type={
+                          champ.type_champ === "nombre"
+                            ? "number"
+                            : champ.type_champ === "date"
+                              ? "date"
+                              : "text"
+                        }
+                        value={champsValues[champ.id] || ""}
+                        onChange={(e) =>
+                          setChampsValues({
+                            ...champsValues,
+                            [champ.id]: e.target.value,
+                          })
+                        }
+                      />
+                    )}
                   </Field>
                 ))}
               </div>
