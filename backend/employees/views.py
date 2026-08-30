@@ -1015,9 +1015,10 @@ def employee_search(request):
     ).filter(
         Q(nom__icontains=q) |
         Q(prenom__icontains=q) |
-        Q(matricule__icontains=q),
+        Q(matricule__icontains=q) |
+        Q(contrats__numero_contrat__icontains=q),
         statut=Employee.Statut.ACTIF
-    ).filter(request.user.employee_scope_q())[:10]
+    ).filter(request.user.employee_scope_q()).distinct()[:10]
 
     context = {
         'types_total': TypeDocument.objects.filter(is_active=True, sous_types__isnull=True).count(),

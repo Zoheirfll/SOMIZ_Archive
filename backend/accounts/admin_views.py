@@ -23,7 +23,9 @@ class UserSerializer(serializers.ModelSerializer):
     employee_grants_count = serializers.SerializerMethodField()
 
     def get_employee_grants_count(self, obj):
-        return obj.employee_grants.count()
+        # Nombre d'EMPLOYÉS distincts avec un grant, pas de lignes (un
+        # employé peut avoir plusieurs lignes, une par type de document).
+        return obj.employee_grants.values('employee_id').distinct().count()
 
     def get_scope_directions_nom(self, obj):
         return list(obj.scope_directions.values_list('nom', flat=True))

@@ -102,7 +102,7 @@ const Users = () => {
 
   // Périmètre "employés spécifiques" — grants ponctuels indépendants du
   // périmètre organisationnel (voir docs/superpowers/specs/2026-08-30-perimetre-employes-specifiques-design.md).
-  const [employeeGrants, setEmployeeGrants] = useState([]); // [{employee, employee_nom, employee_prenom, employee_matricule, type_doc, type_doc_nom}]
+  const [employeeGrants, setEmployeeGrants] = useState([]); // [{employee, employee_nom, employee_prenom, employee_matricule, type_docs: []}]
   const [grantSearch, setGrantSearch] = useState("");
   const [grantSearchResults, setGrantSearchResults] = useState([]);
   const [grantSearchLoading, setGrantSearchLoading] = useState(false);
@@ -137,7 +137,26 @@ const Users = () => {
     setGrantSearch("");
     setGrantSearchResults([]);
     api.get(`/admin-users/${u.id}/employee-grants/`)
-      .then((res) => setEmployeeGrants(res.data.grants || []))
+      .then((res) => {
+        // L'API renvoie une ligne par (employé, type de document) — un
+        // employé en "dossier complet" a une ligne unique type_doc=null.
+        // On regroupe ici en une entrée par employé, type_docs = liste des
+        // types autorisés (vide = dossier complet).
+        const byEmployee = new Map();
+        (res.data.grants || []).forEach((row) => {
+          if (!byEmployee.has(row.employee)) {
+            byEmployee.set(row.employee, {
+              employee: row.employee,
+              employee_nom: row.employee_nom,
+              employee_prenom: row.employee_prenom,
+              employee_matricule: row.employee_matricule,
+              type_docs: [],
+            });
+          }
+          if (row.type_doc) byEmployee.get(row.employee).type_docs.push(row.type_doc);
+        });
+        setEmployeeGrants(Array.from(byEmployee.values()));
+      })
       .catch(() => {});
   };
 
@@ -299,7 +318,11 @@ const Users = () => {
           scope_types_documents: scopeForm.types_documents,
         }),
         api.put(`/admin-users/${scopeModal.id}/employee-grants/`, {
-          grants: employeeGrants.map((g) => ({ employee: g.employee, type_doc: g.type_doc })),
+          grants: employeeGrants.flatMap((g) =>
+            g.type_docs.length === 0
+              ? [{ employee: g.employee, type_doc: null }]
+              : g.type_docs.map((typeDocId) => ({ employee: g.employee, type_doc: typeDocId }))
+          ),
         }),
       ]);
       setMessage({ type: "success", text: "Périmètre mis à jour." });
@@ -328,6 +351,11 @@ const Users = () => {
     return () => clearTimeout(timeout);
   }, [grantSearch]);
 
+  // Un employé peut être limité à PLUSIEURS types de documents à la fois
+  // (ex. "Contrat de travail" + "Carte chifa") — type_docs=[] signifie
+  // "dossier complet" (aucune restriction), sinon la liste des types
+  // autorisés pour cet employé. Le backend stocke un EmployeeAccessGrant
+  // par (employé, type) — voir handleSaveScope pour l'aplatissement.
   const addEmployeeGrant = (employee) => {
     setEmployeeGrants((prev) => {
       if (prev.some((g) => g.employee === employee.id)) return prev;
@@ -338,8 +366,7 @@ const Users = () => {
           employee_nom: employee.nom,
           employee_prenom: employee.prenom,
           employee_matricule: employee.matricule,
-          type_doc: null,
-          type_doc_nom: null,
+          type_docs: [],
         },
       ];
     });
@@ -351,11 +378,21 @@ const Users = () => {
     setEmployeeGrants((prev) => prev.filter((g) => g.employee !== employeeId));
   };
 
-  const setGrantTypeDoc = (employeeId, typeDocId, typeDocNom) => {
+  const setGrantFullDossier = (employeeId) => {
     setEmployeeGrants((prev) =>
-      prev.map((g) =>
-        g.employee === employeeId ? { ...g, type_doc: typeDocId, type_doc_nom: typeDocNom } : g
-      )
+      prev.map((g) => (g.employee === employeeId ? { ...g, type_docs: [] } : g))
+    );
+  };
+
+  const toggleGrantTypeDoc = (employeeId, typeDocId) => {
+    setEmployeeGrants((prev) =>
+      prev.map((g) => {
+        if (g.employee !== employeeId) return g;
+        const next = g.type_docs.includes(typeDocId)
+          ? g.type_docs.filter((id) => id !== typeDocId)
+          : [...g.type_docs, typeDocId];
+        return { ...g, type_docs: next };
+      })
     );
   };
 
@@ -838,7 +875,8 @@ const Users = () => {
                         const svcNoms = u.scope_services_nom || [];
                         const celNoms = u.scope_cellules_nom || [];
                         const typeNoms = u.scope_types_documents_nom || [];
-                        if (dirNoms.length === 0 && poleNoms.length === 0 && deptNoms.length === 0 && svcNoms.length === 0 && celNoms.length === 0 && typeNoms.length === 0) {
+                        const grantsCount = u.employee_grants_count || 0;
+                        if (dirNoms.length === 0 && poleNoms.length === 0 && deptNoms.length === 0 && svcNoms.length === 0 && celNoms.length === 0 && typeNoms.length === 0 && grantsCount === 0) {
                           return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Aucun (accès complet)</span>;
                         }
                         const scopePill = (label, count, fullList, color) => (
@@ -869,6 +907,7 @@ const Users = () => {
                             {svcNoms.length > 0 && scopePill("Services", svcNoms.length, svcNoms, "#6d28d9")}
                             {celNoms.length > 0 && scopePill("Cellules", celNoms.length, celNoms, "#b45309")}
                             {typeNoms.length > 0 && scopePill("Types de doc.", typeNoms.length, typeNoms, "#b45309")}
+                            {grantsCount > 0 && scopePill("Employés spécifiques", grantsCount, ["voir détail dans Périmètre"], "#be185d")}
                           </div>
                         );
                       })()}
@@ -1305,14 +1344,14 @@ const Users = () => {
             <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 8 }}>
               <label style={{ ...labelStyle, marginBottom: 6 }}>Employés spécifiques</label>
               <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
-                Accès ponctuel à un employé précis, en plus (union) du périmètre ci-dessus — dossier complet ou un seul type de document.
+                Accès ponctuel à un employé précis, en plus (union) du périmètre ci-dessus — dossier complet ou un ou plusieurs types de documents. Les types déjà couverts par le périmètre global "Types de documents" apparaissent cochés automatiquement.
               </div>
               <div style={{ position: "relative", marginBottom: 10 }}>
                 <input
                   type="text"
                   value={grantSearch}
                   onChange={(e) => setGrantSearch(e.target.value)}
-                  placeholder="Rechercher un employé (nom, prénom, matricule)…"
+                  placeholder="Rechercher un employé (nom, prénom, matricule, n° contrat)…"
                   className="input-focus"
                   style={{
                     width: "100%",
@@ -1385,28 +1424,53 @@ const Users = () => {
                           Retirer
                         </button>
                       </div>
-                      <select
-                        value={g.type_doc || ""}
-                        onChange={(e) => {
-                          const id = e.target.value || null;
-                          const t = typesDocuments.find((td) => td.id === id);
-                          setGrantTypeDoc(g.employee, id, t ? t.nom : null);
-                        }}
-                        style={{
-                          width: "100%",
-                          border: `1.5px solid ${theme.border}`,
-                          borderRadius: 8,
-                          padding: "6px 8px",
-                          fontSize: 12,
-                          fontFamily: "inherit",
-                          color: theme.text,
-                        }}
-                      >
-                        <option value="">Dossier complet</option>
-                        {typesDocuments.filter((t) => !t.is_categorie).map((t) => (
-                          <option key={t.id} value={t.id}>{t.nom}</option>
-                        ))}
-                      </select>
+                      <div style={{
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 8,
+                        maxHeight: 130,
+                        overflowY: "auto",
+                        padding: "6px 8px",
+                        background: theme.surface,
+                      }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12, fontWeight: 700, color: theme.text, cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={g.type_docs.length === 0}
+                            onChange={() => setGrantFullDossier(g.employee)}
+                          />
+                          Dossier complet
+                        </label>
+                        <div style={{ borderTop: `1px solid ${theme.border}`, margin: "4px 0" }} />
+                        {typesDocuments.filter((t) => !t.is_categorie).map((t) => {
+                          // Un type déjà couvert par le périmètre global "Types
+                          // de documents" (section ci-dessus) n'a pas besoin
+                          // d'être re-coché ici — on l'affiche coché et non
+                          // modifiable pour que l'admin voie tout de suite
+                          // qu'il est déjà accessible, sans double-saisie.
+                          const coveredByGlobalScope =
+                            scopeForm.types_documents.length === 0 || scopeForm.types_documents.includes(t.id);
+                          return (
+                            <label
+                              key={t.id}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12,
+                                color: coveredByGlobalScope ? theme.textMuted : theme.text,
+                                cursor: coveredByGlobalScope ? "default" : "pointer",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={coveredByGlobalScope || g.type_docs.includes(t.id)}
+                                disabled={coveredByGlobalScope}
+                                onChange={() => toggleGrantTypeDoc(g.employee, t.id)}
+                              />
+                              {t.parent_nom && <span style={{ color: theme.textMuted, fontSize: 11 }}>↳</span>}
+                              {t.nom}
+                              {coveredByGlobalScope && <span style={{ fontStyle: "italic" }}>(périmètre global)</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                   ))}
                 </div>

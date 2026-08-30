@@ -247,6 +247,33 @@ class TestEmployeeSearch:
         resp = client.get(SEARCH_URL, {"q": "test"})
         assert resp.status_code == 401
 
+    def test_search_by_numero_contrat(self, admin_user, employee, type_contrat):
+        from employees.models import Contrat
+        Contrat.objects.create(
+            employee=employee, type_contrat=type_contrat,
+            numero_contrat="CTR-2026-0042", date_debut="2026-01-01",
+        )
+        client = auth_client(admin_user)
+        resp = client.get(SEARCH_URL, {"q": "2026-0042"})
+        assert resp.status_code == 200
+        assert any(e["id"] == str(employee.id) for e in resp.data)
+
+    def test_search_no_duplicate_rows_with_multiple_contrats(self, admin_user, employee, type_contrat):
+        from employees.models import Contrat
+        Contrat.objects.create(
+            employee=employee, type_contrat=type_contrat,
+            numero_contrat="CTR-A", date_debut="2025-01-01", date_fin="2025-12-31",
+        )
+        Contrat.objects.create(
+            employee=employee, type_contrat=type_contrat,
+            numero_contrat="CTR-B", date_debut="2026-01-01",
+        )
+        client = auth_client(admin_user)
+        resp = client.get(SEARCH_URL, {"q": "Du"})
+        assert resp.status_code == 200
+        ids = [e["id"] for e in resp.data]
+        assert ids.count(str(employee.id)) == 1
+
 
 class TestBulkDeleteView:
     BULK_URL = "/api/employees/bulk-delete/"

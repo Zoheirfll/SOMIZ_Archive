@@ -203,6 +203,24 @@ class TestEmployeeGrantsEndpoint:
         resp = client.get(f"/api/admin-users/{scoped_consultant.id}/employee-grants/")
         assert resp.status_code == 403
 
+    def test_admin_can_set_multiple_type_grants_for_same_employee(
+        self, admin_user, scoped_consultant, employee, other_service, type_doc_obligatoire, type_doc_facultatif
+    ):
+        scoped_consultant.scope_services.set([other_service])
+        client = auth_client(admin_user)
+        resp = client.put(
+            f"/api/admin-users/{scoped_consultant.id}/employee-grants/",
+            {"grants": [
+                {"employee": str(employee.id), "type_doc": str(type_doc_obligatoire.id)},
+                {"employee": str(employee.id), "type_doc": str(type_doc_facultatif.id)},
+            ]},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.data
+        assert len(resp.data["grants"]) == 2
+        ids = scoped_consultant.accessible_type_doc_ids_for_employee(employee)
+        assert ids == {type_doc_obligatoire.id, type_doc_facultatif.id}
+
     def test_get_lists_current_grants(self, admin_user, scoped_consultant, employee, type_doc_obligatoire):
         EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire)
         client = auth_client(admin_user)
@@ -303,6 +321,18 @@ class TestUserSerializerGrantsCount:
         client = auth_client(admin_user)
         resp = client.get("/api/admin-users/")
         assert resp.status_code == 200
+        results = resp.data.get('results', resp.data)
+        row = next(u for u in results if u['id'] == str(scoped_consultant.id))
+        assert row['employee_grants_count'] == 1
+
+    def test_grants_count_is_distinct_employees_not_rows(
+        self, admin_user, scoped_consultant, employee, type_doc_obligatoire, type_doc_facultatif
+    ):
+        """Un employé avec 2 grants de type différent ne compte que pour 1."""
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire)
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, type_doc=type_doc_facultatif)
+        client = auth_client(admin_user)
+        resp = client.get("/api/admin-users/")
         results = resp.data.get('results', resp.data)
         row = next(u for u in results if u['id'] == str(scoped_consultant.id))
         assert row['employee_grants_count'] == 1
