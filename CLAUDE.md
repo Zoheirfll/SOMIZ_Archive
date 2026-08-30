@@ -140,6 +140,35 @@ accessible.
 - Un grant ne peut jamais référencer un `TypeDocument` catégorie
   (`is_categorie`), même garde-fou que le reste du système.
 
+### Référentiel "Section" (2026-08-30)
+
+En plus de `Cellule`, un nouveau référentiel indépendant `Section` existe
+— même règle de rattachement : exactement une Direction OU un Département
+(jamais un Service, jamais les deux), avec ses propres employés
+(`Employee.section`). **Coexiste** avec `Cellule` (les deux référentiels
+sont indépendants, un Département peut avoir des Cellules ET des
+Sections) — pas de fusion, pas de migration de données.
+
+- `Employee` : `service`, `cellule` et `section` sont mutuellement
+  exclusifs côté formulaire (`EmployeeForm.jsx`, chaque `<select>` vide
+  les deux autres à la sélection) et côté backend
+  (`EmployeeCreateUpdateSerializer.validate()` aligne
+  direction/departement sur la Cellule ou la Section choisie et vide les
+  deux autres champs) — pas de contrainte DB stricte (comme
+  service/cellule déjà avant ce chantier).
+- Scoping : `User.scope_sections` (M2M), `accessible_sections_qs()`,
+  intégré dans `employee_scope_q()`/`can_access_employee()`/
+  `accessible_directions_qs()`/`accessible_departements_qs()` exactement
+  comme Cellule.
+- CRUD : `/ref/sections/`, `/ref/sections/<uuid:pk>/` — onglet "Sections"
+  dans `/parametres`, mêmes fonctionnalités que "Cellules" (import
+  CSV/xlsx, suppression en masse, tri).
+- `/employees` (drill-down) et `/organigramme` : cartes/nœuds Section au
+  même niveau que Cellule (sous Direction ou Département).
+- `/users` (modale Périmètre) : section "Sections" dans la cascade
+  organisationnelle, même pattern Tout/Aucun/OR (Direction OU Département)
+  que Cellule.
+
 ---
 
 ## Hiérarchie des types de documents — sous-dossiers (2026-07-24)
