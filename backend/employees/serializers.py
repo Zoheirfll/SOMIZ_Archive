@@ -48,13 +48,14 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
     file_size_kb = serializers.FloatField(read_only=True)
     nb_fichiers = serializers.IntegerField(read_only=True)
     fichiers = EmployeeDocumentFileSerializer(many=True, read_only=True)
+    couleur = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeDocument
         fields = [
             'id', 'type_doc', 'type_doc_id',
             'type_document', 'type_document_label', 'type_document_parent', 'obligatoire',
-            'ordre', 'type_ordre', 'nb_fichiers', 'file_size_kb', 'fichiers',
+            'ordre', 'type_ordre', 'nb_fichiers', 'file_size_kb', 'fichiers', 'couleur',
             'version', 'is_active', 'contrat',
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
             'notes',
@@ -63,6 +64,10 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
 
     def get_type_document_parent(self, obj):
         return obj.type_doc.parent.nom if obj.type_doc.parent_id else None
+
+    def get_couleur(self, obj):
+        t = obj.type_doc
+        return t.couleur or (t.parent.couleur if t.parent_id else '') or None
 
     def get_ordre(self, obj):
         t = obj.type_doc
@@ -282,6 +287,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     service_nom = serializers.CharField(source='service.nom', read_only=True)
     cellule_nom = serializers.CharField(source='cellule.nom', read_only=True, default=None)
+    section_nom = serializers.CharField(source='section.nom', read_only=True, default=None)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
@@ -293,7 +299,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'matricule', 'numero_contrat_actif', 'nom', 'prenom',
             'date_naissance', 'date_embauche',
-            'direction_nom', 'departement_nom', 'service_nom', 'cellule_nom',
+            'direction_nom', 'departement_nom', 'service_nom', 'cellule_nom', 'section_nom',
             'poste_nom', 'type_contrat_nom', 'categorie_nom', 'has_photo',
             'statut', 'dossier_complet', 'taux_completude', 'nb_documents',
             'champs_personnalises',
@@ -338,6 +344,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     service_nom = serializers.CharField(source='service.nom', read_only=True)
     cellule_nom = serializers.CharField(source='cellule.nom', read_only=True, default=None)
+    section_nom = serializers.CharField(source='section.nom', read_only=True, default=None)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
@@ -353,6 +360,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'departement', 'departement_nom',
             'service', 'service_nom',
             'cellule', 'cellule_nom',
+            'section', 'section_nom',
             'poste', 'poste_nom',
             'type_contrat', 'type_contrat_nom',
             'categorie', 'categorie_nom',
@@ -404,6 +412,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'parent_nom': t.parent.nom if t.parent_id else None,
             'ordre': t.parent.ordre if t.parent_id else t.ordre,
             'type_ordre': t.ordre,
+            'couleur': t.couleur or (t.parent.couleur if t.parent_id else '') or None,
         }
         for t in manquants
     ]
@@ -417,7 +426,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut',
-            'direction', 'departement', 'service', 'cellule',
+            'direction', 'departement', 'service', 'cellule', 'section',
             'poste', 'type_contrat', 'categorie',
         ]
         read_only_fields = ['id']
@@ -431,17 +440,30 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         return value.strip().capitalize()
 
     def validate(self, attrs):
-        # Une Cellule est rattachée à une Direction OU un Département — on
-        # aligne automatiquement direction/departement/service de l'employé
-        # sur celui de la Cellule choisie, pour que le scoping CONSULTANT
-        # (basé sur ces champs) continue de fonctionner sans modification.
+        # Une Cellule/Section est rattachée à une Direction OU un
+        # Département — on aligne automatiquement direction/departement de
+        # l'employé sur celui choisi, et on vide les deux autres champs
+        # d'affectation terminale (service/cellule/section sont mutuellement
+        # exclusifs), pour que le scoping CONSULTANT (basé sur ces champs)
+        # continue de fonctionner sans modification.
         cellule = attrs.get('cellule', getattr(self.instance, 'cellule', None))
+        section = attrs.get('section', getattr(self.instance, 'section', None))
         if cellule is not None:
             attrs['service'] = None
+            attrs['section'] = None
             if cellule.departement_id:
                 attrs['departement'] = cellule.departement
                 attrs['direction'] = cellule.departement.direction
             else:
                 attrs['departement'] = None
                 attrs['direction'] = cellule.direction
+        elif section is not None:
+            attrs['service'] = None
+            attrs['cellule'] = None
+            if section.departement_id:
+                attrs['departement'] = section.departement
+                attrs['direction'] = section.departement.direction
+            else:
+                attrs['departement'] = None
+                attrs['direction'] = section.direction
         return attrs

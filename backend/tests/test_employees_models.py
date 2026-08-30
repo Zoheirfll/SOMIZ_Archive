@@ -291,3 +291,36 @@ class TestSectionModel:
     def test_str_shows_parent(self, departement):
         s = Section.objects.create(nom="Section Paie", departement=departement)
         assert str(s) == f"{departement.nom} → Section Paie"
+
+
+class TestEmployeeCreateUpdateSerializerSection:
+    def test_section_aligns_direction_departement_and_clears_service_cellule(
+        self, employee, departement
+    ):
+        from employees.serializers import EmployeeCreateUpdateSerializer
+        section = Section.objects.create(nom="Section Paie", departement=departement)
+        serializer = EmployeeCreateUpdateSerializer(
+            instance=employee, data={'section': str(section.id)}, partial=True
+        )
+        assert serializer.is_valid(), serializer.errors
+        emp = serializer.save()
+        assert emp.section_id == section.id
+        assert emp.departement_id == departement.id
+        assert emp.direction_id == departement.direction_id
+        assert emp.service_id is None
+        assert emp.cellule_id is None
+
+    def test_cellule_still_clears_section(self, employee, departement):
+        from employees.models import Cellule
+        from employees.serializers import EmployeeCreateUpdateSerializer
+        section = Section.objects.create(nom="Section Paie", departement=departement)
+        employee.section = section
+        employee.save()
+        cellule = Cellule.objects.create(nom="Cellule Test", departement=departement)
+        serializer = EmployeeCreateUpdateSerializer(
+            instance=employee, data={'cellule': str(cellule.id)}, partial=True
+        )
+        assert serializer.is_valid(), serializer.errors
+        emp = serializer.save()
+        assert emp.cellule_id == cellule.id
+        assert emp.section_id is None
