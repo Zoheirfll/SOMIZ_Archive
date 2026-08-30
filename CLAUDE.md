@@ -101,18 +101,24 @@ sélection = accès non restreint (même règle que les 3 champs ci-dessus).
 
 En plus des deux périmètres ci-dessus, un CONSULTANT peut recevoir un
 accès ponctuel à un ou plusieurs **employés précis**
-(`EmployeeAccessGrant`, `user` + `employee` + `type_doc` optionnel) —
-combiné en **OU** avec le périmètre organisationnel (l'employé devient
-visible en plus de son périmètre normal, pas à la place). Deux niveaux de
-grant :
-- `type_doc=None` — dossier complet de cet employé (documents + contrats).
-- `type_doc=<X>` — uniquement les documents de ce type, dans le dossier
-  général de l'employé (jamais les documents de contrat — un grant
-  dossier complet est nécessaire pour couvrir aussi les contrats).
+(`EmployeeAccessGrant`, `user` + `employee` + `type_doc` optionnel — une
+ligne par `(employé, type)`) — combiné en **OU** avec le périmètre
+organisationnel (l'employé devient visible en plus de son périmètre
+normal, pas à la place). Deux niveaux de grant, par employé :
+- Aucune ligne `type_doc` (ou toutes retirées) — dossier complet de cet
+  employé (documents + contrats).
+- Une ou plusieurs lignes `type_doc=<X>` — uniquement les documents de ces
+  types précis, dans le dossier général de l'employé (jamais les
+  documents de contrat — un grant dossier complet est nécessaire pour
+  couvrir aussi les contrats).
 
 Contrairement au périmètre "types de documents" global, ces grants sont
 **indépendants** de `scope_types_documents` — un grant ponctuel donne
 accès même si ce type n'est pas dans le périmètre global de l'utilisateur.
+Un type déjà couvert par le périmètre global n'a pas besoin d'un grant
+séparé — l'UI l'affiche automatiquement coché (non modifiable) dans la
+liste par employé, pour éviter toute confusion sur ce qui est déjà
+accessible.
 
 - `User.accessible_type_doc_ids_for_employee(employee, contrat_scope=False)`
   — `None` (tous les types visibles) ou `set` d'ids de `TypeDocument`
@@ -123,8 +129,14 @@ accès même si ce type n'est pas dans le périmètre global de l'utilisateur.
   — équivalent objet-par-objet, combine `can_access_employee()` (étendu
   pour inclure les employés avec grant) et la méthode ci-dessus.
 - UI : même modale "Périmètre" (`/users`), section "Employés spécifiques"
-  — recherche + liste avec un sélecteur "Dossier complet"/type précis par
-  ligne. `GET/PUT /api/admin-users/<id>/employee-grants/` (ADMIN only).
+  — recherche (nom, prénom, matricule, **n° contrat** — `employee_search`
+  cherche aussi sur `contrats__numero_contrat`) + liste à cocher
+  "Dossier complet" / un-ou-plusieurs types par employé.
+  `GET/PUT /api/admin-users/<id>/employee-grants/` (ADMIN only, PUT
+  remplace l'ensemble des lignes de ce compte). Badge "Employés
+  spécifiques" dans la colonne Périmètre de `/users`
+  (`UserSerializer.employee_grants_count`, nombre d'employés distincts —
+  pas de lignes de grant).
 - Un grant ne peut jamais référencer un `TypeDocument` catégorie
   (`is_categorie`), même garde-fou que le reste du système.
 
