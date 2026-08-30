@@ -37,12 +37,18 @@ const LEVEL = {
     bg: "#FFFBEB",
     border: "#FDE68A",
   },
+  section: {
+    label: "Section",
+    color: "#0369a1",
+    bg: "#F0F9FF",
+    border: "#BAE6FD",
+  },
 };
 
 const CHILD_LABEL = {
-  direction: "département/pôle/cellule",
+  direction: "département/pôle/cellule/section",
   pole: "département(s)",
-  departement: "service/cellule",
+  departement: "service/cellule/section",
 };
 
 const ArrowRightIcon = ({ color }) => (
@@ -173,11 +179,13 @@ const Organigramme = () => {
   const [departements, setDepartements] = useState([]);
   const [services, setServices] = useState([]);
   const [cellules, setCellules] = useState([]);
+  const [sections, setSections] = useState([]);
   const [accessibleDirIds, setAccessibleDirIds] = useState(null);
   const [accessiblePoleIds, setAccessiblePoleIds] = useState(null);
   const [accessibleDeptIds, setAccessibleDeptIds] = useState(null);
   const [accessibleSvcIds, setAccessibleSvcIds] = useState(null);
   const [accessibleCelIds, setAccessibleCelIds] = useState(null);
+  const [accessibleSecIds, setAccessibleSecIds] = useState(null);
   const [loading, setLoading] = useState(true);
   // Chemin depuis la racine SOMIZ jusqu'à l'écran courant, ex.
   // [{id, level: "direction", nom}, {id, level: "departement", nom}].
@@ -208,28 +216,32 @@ const Organigramme = () => {
       try {
         // Arbre complet (?all=1 ignore le périmètre CONSULTANT côté backend)
         // + listes scopées, pour déterminer ce qui reste accessible.
-        const [dir, pol, dept, srv, cel, scopedDir, scopedPol, scopedDept, scopedSrv, scopedCel] = await Promise.all([
+        const [dir, pol, dept, srv, cel, sec, scopedDir, scopedPol, scopedDept, scopedSrv, scopedCel, scopedSec] = await Promise.all([
           fetchAllPages("/ref/directions/?all=1"),
           fetchAllPages("/ref/poles/?all=1"),
           fetchAllPages("/ref/departements/?all=1"),
           fetchAllPages("/ref/services/?all=1"),
           fetchAllPages("/ref/cellules/?all=1"),
+          fetchAllPages("/ref/sections/?all=1"),
           fetchAllPages("/ref/directions/"),
           fetchAllPages("/ref/poles/"),
           fetchAllPages("/ref/departements/"),
           fetchAllPages("/ref/services/"),
           fetchAllPages("/ref/cellules/"),
+          fetchAllPages("/ref/sections/"),
         ]);
         setDirections(dir.filter((d) => d.is_active));
         setPoles(pol.filter((p) => p.is_active));
         setDepartements(dept.filter((d) => d.is_active));
         setServices(srv.filter((s) => s.is_active));
         setCellules(cel.filter((c) => c.is_active));
+        setSections(sec.filter((s) => s.is_active));
         setAccessibleDirIds(new Set(scopedDir.map((d) => d.id)));
         setAccessiblePoleIds(new Set(scopedPol.map((p) => p.id)));
         setAccessibleDeptIds(new Set(scopedDept.map((d) => d.id)));
         setAccessibleSvcIds(new Set(scopedSrv.map((s) => s.id)));
         setAccessibleCelIds(new Set(scopedCel.map((c) => c.id)));
+        setAccessibleSecIds(new Set(scopedSec.map((s) => s.id)));
       } catch (err) {
         console.error(err);
       } finally {
@@ -249,6 +261,7 @@ const Organigramme = () => {
           .filter((d) => d.direction === node.id && !d.pole)
           .map((d) => ({ ...d, level: "departement" })),
         ...cellules.filter((c) => c.direction === node.id).map((c) => ({ ...c, level: "cellule" })),
+        ...sections.filter((s) => s.direction === node.id).map((s) => ({ ...s, level: "section" })),
       ];
     }
     if (level === "pole") {
@@ -258,6 +271,7 @@ const Organigramme = () => {
       return [
         ...services.filter((s) => s.departement === node.id).map((s) => ({ ...s, level: "service" })),
         ...cellules.filter((c) => c.departement === node.id).map((c) => ({ ...c, level: "cellule" })),
+        ...sections.filter((s) => s.departement === node.id).map((s) => ({ ...s, level: "section" })),
       ];
     }
     return [];
@@ -272,6 +286,7 @@ const Organigramme = () => {
     if (level === "departement") return accessibleDeptIds.has(node.id);
     if (level === "service") return accessibleSvcIds.has(node.id);
     if (level === "cellule") return accessibleCelIds.has(node.id);
+    if (level === "section") return accessibleSecIds.has(node.id);
     return true;
   };
 
@@ -282,6 +297,7 @@ const Organigramme = () => {
       departement: "departement",
       service: "service",
       cellule: "cellule",
+      section: "section",
     };
     navigate(`/employees?${paramByLevel[level]}=${node.id}`);
   };
