@@ -101,6 +101,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         'employees.Cellule', blank=True, related_name='scoped_users',
         verbose_name="Périmètre — Cellules"
     )
+    scope_sections = models.ManyToManyField(
+        'employees.Section', blank=True, related_name='scoped_users',
+        verbose_name="Périmètre — Sections"
+    )
     # Périmètre indépendant : restreint les TYPES de documents visibles,
     # combiné en ET avec le périmètre organisationnel ci-dessus (un
     # CONSULTANT restreint aux deux ne voit que les documents des types
@@ -138,17 +142,18 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.role == self.Role.CONSULTANT
 
     def _scope_ids(self):
-        """(direction_ids, pole_ids, departement_ids, service_ids, cellule_ids)
-        sélectionnés — sets vides si aucune restriction (ADMIN, ou CONSULTANT
-        sans périmètre assigné)."""
+        """(direction_ids, pole_ids, departement_ids, service_ids,
+        cellule_ids, section_ids) sélectionnés — sets vides si aucune
+        restriction (ADMIN, ou CONSULTANT sans périmètre assigné)."""
         if self.is_admin or not self.pk:
-            return set(), set(), set(), set(), set()
+            return set(), set(), set(), set(), set(), set()
         return (
             set(self.scope_directions.values_list('id', flat=True)),
             set(self.scope_poles.values_list('id', flat=True)),
             set(self.scope_departements.values_list('id', flat=True)),
             set(self.scope_services.values_list('id', flat=True)),
             set(self.scope_cellules.values_list('id', flat=True)),
+            set(self.scope_sections.values_list('id', flat=True)),
         )
 
     @property
@@ -156,8 +161,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         """True si ce compte est restreint à un périmètre organisationnel."""
         if self.is_admin or not self.pk:
             return False
-        d, pol, dep, s, cel = self._scope_ids()
-        return bool(d or pol or dep or s or cel)
+        d, pol, dep, s, cel, sec = self._scope_ids()
+        return bool(d or pol or dep or s or cel or sec)
 
     def _granted_employee_ids(self):
         """IDs des employés avec au moins un EmployeeAccessGrant pour ce
@@ -171,8 +176,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         """employee_scope_q() sans les grants ponctuels — périmètre
         organisationnel seul. Utilisé en interne par
         accessible_type_doc_ids_for_employee()."""
-        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
-        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
             return Q()
         q = Q()
         if direction_ids:
@@ -185,6 +190,8 @@ class User(AbstractBaseUser, PermissionsMixin):
             q |= Q(**{f'{prefix}service_id__in': service_ids})
         if cellule_ids:
             q |= Q(**{f'{prefix}cellule_id__in': cellule_ids})
+        if section_ids:
+            q |= Q(**{f'{prefix}section_id__in': section_ids})
         return q
 
     def employee_scope_q(self, prefix=''):
@@ -207,8 +214,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def _org_can_access_employee(self, employee):
         """can_access_employee() sans les grants ponctuels."""
-        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
-        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
             return True
         return (
             employee.direction_id in direction_ids
@@ -216,6 +223,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             or employee.departement_id in departement_ids
             or employee.service_id in service_ids
             or employee.cellule_id in cellule_ids
+            or employee.section_id in section_ids
         )
 
     def can_access_employee(self, employee):
@@ -230,8 +238,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         """Directions visibles pour ce compte (ex. filtre de la page Employés).
         Non restreint pour ADMIN ou CONSULTANT sans périmètre."""
         from employees.models import Direction
-        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
-        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
             return Direction.objects.all()
         return Direction.objects.filter(
             Q(id__in=direction_ids)
@@ -240,13 +248,15 @@ class User(AbstractBaseUser, PermissionsMixin):
             | Q(departements__services__id__in=service_ids)
             | Q(cellules__id__in=cellule_ids)
             | Q(departements__cellules__id__in=cellule_ids)
+            | Q(sections__id__in=section_ids)
+            | Q(departements__sections__id__in=section_ids)
         ).distinct()
 
     def accessible_poles_qs(self):
         """Pôles visibles pour ce compte."""
         from employees.models import Pole
-        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
-        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
             return Pole.objects.all()
         return Pole.objects.filter(
             Q(direction_id__in=direction_ids)
@@ -258,8 +268,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_departements_qs(self):
         """Départements visibles pour ce compte."""
         from employees.models import Departement
-        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
-        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
             return Departement.objects.all()
         return Departement.objects.filter(
             Q(direction_id__in=direction_ids)
@@ -267,13 +277,14 @@ class User(AbstractBaseUser, PermissionsMixin):
             | Q(id__in=departement_ids)
             | Q(services__id__in=service_ids)
             | Q(cellules__id__in=cellule_ids)
+            | Q(sections__id__in=section_ids)
         ).distinct()
 
     def accessible_services_qs(self):
         """Services visibles pour ce compte."""
         from employees.models import Service
-        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
-        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
             return Service.objects.all()
         return Service.objects.filter(
             Q(departement__direction_id__in=direction_ids)
@@ -285,13 +296,25 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_cellules_qs(self):
         """Cellules visibles pour ce compte."""
         from employees.models import Cellule
-        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
-        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
             return Cellule.objects.all()
         return Cellule.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(departement_id__in=departement_ids)
             | Q(id__in=cellule_ids)
+        ).distinct()
+
+    def accessible_sections_qs(self):
+        """Sections visibles pour ce compte."""
+        from employees.models import Section
+        direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
+        if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
+            return Section.objects.all()
+        return Section.objects.filter(
+            Q(direction_id__in=direction_ids)
+            | Q(departement_id__in=departement_ids)
+            | Q(id__in=section_ids)
         ).distinct()
 
     def _type_doc_scope_ids(self):

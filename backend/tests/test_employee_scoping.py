@@ -14,7 +14,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from employees.models import Direction, Departement, Service, EmployeeDocument
+from employees.models import Direction, Departement, Service, EmployeeDocument, Section
 
 pytestmark = pytest.mark.django_db
 
@@ -362,3 +362,23 @@ class TestReferentielListScoping:
         noms = [s["nom"] for s in (resp.data if isinstance(resp.data, list) else resp.data.get("results"))]
         assert service.nom in noms
         assert other_service.nom not in noms
+
+
+class TestSectionScoping:
+    def test_consultant_matching_section_scope(self, scoped_consultant, employee):
+        section = Section.objects.create(nom="Section Test", direction=employee.direction)
+        employee.section = section
+        employee.service = None
+        employee.save()
+        scoped_consultant.scope_sections.set([section])
+        assert scoped_consultant.can_access_employee(employee) is True
+
+    def test_consultant_mismatched_section_scope(self, scoped_consultant, employee, direction):
+        other_direction = Direction.objects.create(nom="Direction Section Autre", code="DSA")
+        section = Section.objects.create(nom="Section Autre", direction=other_direction)
+        scoped_consultant.scope_sections.set([section])
+        assert scoped_consultant.can_access_employee(employee) is False
+
+    def test_accessible_sections_qs_unrestricted_by_default(self, consultant_user):
+        Section.objects.create(nom="Section X", direction=Direction.objects.create(nom="Dir X", code="DX"))
+        assert consultant_user.accessible_sections_qs().count() == Section.objects.count()
