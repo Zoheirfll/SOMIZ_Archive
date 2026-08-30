@@ -413,6 +413,14 @@ Suite du chantier ci-dessus (`ReferentielImportView`/`ReferentielImportTemplateV
   hiérarchie catégorie/sous-type, type de champ), n'affichent plus du tout
   les boutons Template/Import plutôt que d'échouer silencieusement
   (`IMPORT_UNSUPPORTED_TABS`).
+- **Bug corrigé au passage — badge "N employé(s)" manquant sur les cartes
+  Service** (`/employees`, vue drill-down Direction→Département→Service) :
+  `ServiceSerializer` (`referentiel_views.py`) n'exposait pas `nb_employes`
+  (contrairement à `CelluleSerializer`, qui l'a toujours eu), alors que le
+  frontend (`Employees.jsx`, `TYPE_META.service.countKey`) l'attendait
+  déjà — le badge de comptage restait donc silencieusement vide sur les
+  cartes Service uniquement (Cellule l'affichait correctement). Ajouté
+  `nb_employes = SerializerMethodField()` (même pattern que Cellule).
 
 ---
 

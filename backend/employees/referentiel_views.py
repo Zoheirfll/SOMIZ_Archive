@@ -150,9 +150,15 @@ class DepartementSerializer(serializers.ModelSerializer):
 class ServiceSerializer(serializers.ModelSerializer):
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     direction_nom = serializers.CharField(source='departement.direction.nom', read_only=True)
+    nb_employes = serializers.SerializerMethodField()
     class Meta:
         model = Service
-        fields = ['id', 'departement', 'departement_nom', 'direction_nom', 'nom', 'code', 'description', 'is_active']
+        fields = [
+            'id', 'departement', 'departement_nom', 'direction_nom',
+            'nom', 'code', 'description', 'is_active', 'nb_employes',
+        ]
+    def get_nb_employes(self, obj):
+        return obj.employees.count()
 
 
 class CelluleSerializer(serializers.ModelSerializer):
