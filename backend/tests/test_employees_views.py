@@ -66,6 +66,17 @@ class TestEmployeeListView:
         resp = client.get(EMPLOYEES_URL, {"statut": "archive"})
         assert any(e["statut"] == "archive" for e in resp.data["results"])
 
+    def test_filter_by_section(self, admin_user, employee, direction):
+        from employees.models import Section
+        section = Section.objects.create(nom="Section Filtre", direction=direction)
+        employee.section = section
+        employee.service = None
+        employee.save()
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"section": str(section.id)})
+        assert resp.status_code == 200
+        assert any(e["id"] == str(employee.id) for e in resp.data["results"])
+
     def test_filter_dossier_complet_true_excludes_incomplet(
         self, admin_user, employee, type_doc_obligatoire
     ):

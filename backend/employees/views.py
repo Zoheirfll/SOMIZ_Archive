@@ -91,7 +91,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         ).order_by('-date_debut', '-id')
 
         qs = Employee.objects.select_related(
-            'direction', 'departement', 'service', 'cellule', 'poste', 'type_contrat'
+            'direction', 'departement', 'service', 'cellule', 'section', 'poste', 'type_contrat'
         ).prefetch_related(
             'valeurs_personnalisees__champ'
         ).filter(self.request.user.employee_scope_q()).annotate(
@@ -144,6 +144,9 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         cellule = self.request.query_params.get('cellule')
         if cellule:
             qs = qs.filter(cellule=cellule)
+        section = self.request.query_params.get('section')
+        if section:
+            qs = qs.filter(section=section)
         if statut:
             qs = qs.filter(statut=statut)
 
@@ -242,7 +245,7 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     # Champs d'affectation organisationnelle — un changement sur l'un
     # d'eux constitue un "transfert" tracé séparément dans le détail de
     # l'audit log (voir perform_update), en plus du diff générique.
-    TRANSFER_FIELDS = ['direction', 'departement', 'service', 'cellule']
+    TRANSFER_FIELDS = ['direction', 'departement', 'service', 'cellule', 'section']
 
     def perform_update(self, serializer):
         instance = serializer.instance
