@@ -346,6 +346,76 @@ colonnes réelles, structurellement insensible à ce problème.
 
 ---
 
+## Import référentiels — Pôles/Cellules, désambiguïsation, suppression et tri en masse (2026-08-30)
+
+Suite du chantier ci-dessus (`ReferentielImportView`/`ReferentielImportTemplateView`,
+`backend/employees/import_views.py`) :
+
+- **`poles` et `cellules` ajoutés à l'import** — les deux référentiels
+  avaient leur propre onglet dans `/parametres` mais aucun support côté
+  `ReferentielImportView.MODELS`/`ReferentielImportTemplateView.TEMPLATES` :
+  cliquer "Template" sur ces onglets renvoyait une erreur 400 "Modèle
+  inconnu" (bug latent signalé par l'utilisateur : "le template de cellule
+  ne se télécharge pas"). `poles` suit exactement le même schéma que
+  `departements` (`nom` + `direction` obligatoires, `unique_together`
+  direction+nom). `cellules` : `nom` obligatoire, et **au moins une** des
+  colonnes `direction`/`departement` doit être renseignée (jamais aucune
+  des deux) — reflète `Cellule.clean()` (rattachée à exactement une
+  Direction OU un Département, jamais les deux en base).
+- **Désambiguïsation du nom de département** (`services` et `cellules`) —
+  `Departement.nom` n'est unique qu'au sein de sa Direction
+  (`unique_together`), donc deux départements de directions différentes
+  peuvent porter le même nom. `resoudre_departement()` dans
+  `ReferentielImportView.post()` résout par nom seul si un seul département
+  porte ce nom ; sinon bloque avec une erreur explicite demandant de
+  remplir la colonne `direction` (optionnelle) pour trancher. **Piège
+  corrigé en cours d'implémentation** : sur `cellules`, la colonne
+  `direction` sert à *deux* usages différents selon le contexte — le parent
+  direct de la Cellule (si `departement` est vide) OU juste la
+  désambiguïsation du département (si `departement` est rempli). Une
+  première version traitait "les deux colonnes remplies" comme une erreur
+  ("Cellule rattachée à Direction ET Département"), ce qui rendait la
+  désambiguïsation elle-même impossible à exprimer — corrigé : `departement`
+  rempli prime toujours, `direction` n'est alors qu'une aide de résolution,
+  jamais un second parent.
+- **Doublons scopés à leur parent** — `departements`/`services`/`cellules`
+  n'ont pas de nom globalement unique (contrairement à
+  `directions`/`postes`/`types-contrat`/`categories`) ; la détection de
+  doublon dans l'import compare désormais `(parent_id, nom)` et non plus
+  `nom` seul (l'ancien code aurait bloqué à tort la création d'un
+  "Service Paie" dans un département différent d'un "Service Paie"
+  existant ailleurs).
+- **Suppression en masse** — `POST /api/ref/bulk-delete/{model}/` (body
+  `{"ids": [...]}`, `ReferentielBulkDeleteView`, ADMIN only, max 500 ids/
+  requête) sur tous les référentiels de `/parametres` (y compris
+  `types-documents`, qui réutilise la même logique de purge que la
+  suppression unitaire — factorisée dans `_delete_type_document()`).
+  Traite chaque id indépendamment (un Pôle avec départements rattachés
+  reste bloqué sans faire échouer le reste du lot) et retourne
+  `{nb_supprimes, nb_erreurs, erreurs: [{id, nom, erreur}]}`. Frontend
+  (`Parametres.jsx`) : cases à cocher par ligne (`RefTable`, absentes sur
+  les lignes `system: true`) + case "tout sélectionner" dans l'en-tête,
+  bouton rouge "Supprimer la sélection (N)" qui n'apparaît que si au moins
+  un élément est coché, avec confirmation (`useConfirm()`).
+- **Tri par colonne** — clic sur un en-tête de `RefTable` trie les lignes
+  affichées (asc/desc, indicateur ▲/▼), tri client-side sur la page
+  courante (pas de nouveau paramètre serveur). Désactivé sur
+  `types-documents` (hiérarchie catégorie/sous-type imposée) et
+  `champs-personnalises` (champs système toujours en tête) — géré par le
+  flag `sortableTab` dans `Parametres.jsx`, et par colonne via
+  `column.sortable === false` (utilisé pour la colonne pseudo-champ
+  "Rattachée à" de `cellules`, qui n'a pas de clé réelle sur l'objet).
+- **Colonnes obligatoires/optionnelles affichées dans la modale d'import**
+  de `/parametres` (`REF_COLUMNS_INFO` dans `Parametres.jsx`), même principe
+  que la page `/import` employés — évite à l'admin de deviner le format du
+  fichier. Les onglets `types-documents`/`champs-personnalises`, qui n'ont
+  jamais eu de support d'import référentiel générique (trop spécifiques :
+  hiérarchie catégorie/sous-type, type de champ), n'affichent plus du tout
+  les boutons Template/Import plutôt que d'échouer silencieusement
+  (`IMPORT_UNSUPPORTED_TABS`).
+
+---
+
 ## Scanner et import complet — documents scannés (2026-08-27/28)
 
 Bouton **"Scanner un dossier"** sur la fiche employé (`EmployeeDetail.jsx`,

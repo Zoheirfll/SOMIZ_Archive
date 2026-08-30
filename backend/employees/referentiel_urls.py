@@ -11,6 +11,7 @@ from employees.referentiel_views import (
     TypeDocumentListCreateView, TypeDocumentDetailView,
     ChampPersonnaliseListCreateView, ChampPersonnaliseDetailView,
     SystemFieldLabelListView, SystemFieldLabelUpdateView,
+    ReferentielBulkDeleteView,
 )
 
 urlpatterns = [
@@ -36,4 +37,5 @@ urlpatterns = [
     path('champs-personnalises/<uuid:pk>/', ChampPersonnaliseDetailView.as_view()),
     path('system-field-labels/', SystemFieldLabelListView.as_view()),
     path('system-field-labels/<str:code>/', SystemFieldLabelUpdateView.as_view()),
+    path('bulk-delete/<str:model>/', ReferentielBulkDeleteView.as_view()),
 ]

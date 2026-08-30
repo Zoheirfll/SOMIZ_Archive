@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { theme } from "../styles/theme";
@@ -131,7 +131,14 @@ const labelStyle = {
 
 // ─── TABLEAU GÉNÉRIQUE ────────────────────────────────────────────────────────
 
-const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, isAdmin }) => (
+const RefTable = ({
+  items, columns, onEdit, onDelete, onRenameSystem, loading, isAdmin,
+  sortConfig, onSort,
+  selectedIds, onToggleSelect, onToggleSelectAll,
+}) => {
+  const selectableItems = items.filter((i) => !i.system);
+  const allSelected = selectableItems.length > 0 && selectableItems.every((i) => selectedIds?.has(i.id));
+  return (
   <div
     style={{
       background: theme.surface,
@@ -161,9 +168,27 @@ const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, i
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ background: theme.primaryBg }}>
+            {isAdmin && onToggleSelectAll && (
+              <th
+                style={{
+                  padding: "11px 12px",
+                  borderBottom: `2px solid ${theme.primaryBorder}`,
+                  width: 36,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => onToggleSelectAll(selectableItems)}
+                  aria-label="Tout sélectionner"
+                  style={{ cursor: "pointer" }}
+                />
+              </th>
+            )}
             {columns.map((c) => (
               <th
                 key={c.key}
+                onClick={c.sortable === false || !onSort ? undefined : () => onSort(c.key)}
                 style={{
                   padding: "11px 16px",
                   textAlign: "left",
@@ -173,9 +198,14 @@ const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, i
                   textTransform: "uppercase",
                   letterSpacing: "0.05em",
                   borderBottom: `2px solid ${theme.primaryBorder}`,
+                  cursor: c.sortable === false || !onSort ? "default" : "pointer",
+                  userSelect: "none",
                 }}
               >
                 {c.label}
+                {onSort && c.sortable !== false && sortConfig?.key === c.key && (
+                  <span style={{ marginLeft: 4 }}>{sortConfig.dir === "asc" ? "▲" : "▼"}</span>
+                )}
               </th>
             ))}
             {isAdmin && (
@@ -211,6 +241,19 @@ const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, i
                       : idx % 2 === 0 ? theme.surface : "#FAFBFC",
               }}
             >
+              {isAdmin && onToggleSelect && (
+                <td style={{ padding: "11px 12px" }}>
+                  {!item.system && (
+                    <input
+                      type="checkbox"
+                      checked={!!selectedIds?.has(item.id)}
+                      onChange={() => onToggleSelect(item.id)}
+                      aria-label={`Sélectionner ${item.nom}`}
+                      style={{ cursor: "pointer" }}
+                    />
+                  )}
+                </td>
+              )}
               {columns.map((c) => (
                 <td
                   key={c.key}
@@ -306,7 +349,8 @@ const RefTable = ({ items, columns, onEdit, onDelete, onRenameSystem, loading, i
       </div>
     )}
   </div>
-);
+  );
+};
 
 // ─── ONGLETS ──────────────────────────────────────────────────────────────────
 
@@ -322,6 +366,36 @@ const TABS = [
   { key: "types-documents", label: "Types de documents" },
   { key: "champs-personnalises", label: "Champs personnalisés" },
 ];
+
+// Tabs sans import/template CSV-XLSX côté backend (ReferentielImportView) —
+// "types-documents" a une hiérarchie catégorie/sous-type et
+// "champs-personnalises" un type de champ, tous deux trop spécifiques pour
+// le mécanisme générique d'import référentiel. Masquer les boutons
+// Template/Import plutôt que de les laisser échouer avec une erreur.
+const IMPORT_UNSUPPORTED_TABS = new Set(["types-documents", "champs-personnalises"]);
+
+// Colonnes obligatoires/optionnelles par onglet — reflète exactement
+// ReferentielImportView.MODELS (backend/employees/import_views.py), affiché
+// dans la modale d'import pour que l'admin sache quoi remplir sans deviner
+// (même principe que Import.jsx pour l'import employés).
+const REF_COLUMNS_INFO = {
+  directions: { obligatoires: ["nom"], optionnelles: ["code", "description"] },
+  poles: { obligatoires: ["nom", "direction"], optionnelles: ["code", "description"] },
+  departements: { obligatoires: ["nom", "direction"], optionnelles: ["code", "description"] },
+  services: {
+    obligatoires: ["nom", "departement"],
+    optionnelles: ["code", "direction", "description"],
+    note: '"direction" ne sert qu\'à lever l\'ambiguïté si plusieurs départements portent le même nom.',
+  },
+  cellules: {
+    obligatoires: ["nom"],
+    optionnelles: ["code", "direction", "departement", "description"],
+    note: 'Au moins une des deux colonnes "direction" ou "departement" doit être remplie par ligne. Si "departement" est rempli, "direction" devient facultative et sert seulement à lever l\'ambiguïté si plusieurs départements portent ce nom.',
+  },
+  postes: { obligatoires: ["nom"], optionnelles: ["code", "description"] },
+  "types-contrat": { obligatoires: ["nom"], optionnelles: ["description"] },
+  categories: { obligatoires: ["nom"], optionnelles: ["description"] },
+};
 
 // Champs "système" de la fiche employé — pilotent le scoping/périmètre RGPD,
 // l'archivage, la recherche ou la logique métier (voir CLAUDE.md). Affichés
@@ -366,6 +440,9 @@ const Parametres = () => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageMeta, setPageMeta] = useState({ count: 0, next: null, previous: null });
+  const [sortConfig, setSortConfig] = useState({ key: null, dir: "asc" });
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Données des référentiels pour les selects
   const [directions, setDirections] = useState([]);
@@ -381,6 +458,8 @@ const Parametres = () => {
     setSearchInput("");
     setSearch("");
     setPage(1);
+    setSortConfig({ key: null, dir: "asc" });
+    setSelectedIds(new Set());
   }, [activeTab]);
 
   useEffect(() => {
@@ -393,6 +472,7 @@ const Parametres = () => {
 
   useEffect(() => {
     fetchTab(activeTab, page, search);
+    setSelectedIds(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, page, search]);
 
@@ -486,6 +566,57 @@ const Parametres = () => {
       );
     }
   };
+  const handleSort = (key) => {
+    setSortConfig((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" },
+    );
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (selectableItems) => {
+    setSelectedIds((prev) => {
+      const allSelected = selectableItems.length > 0 && selectableItems.every((i) => prev.has(i.id));
+      if (allSelected) return new Set();
+      return new Set(selectableItems.map((i) => i.id));
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!(await confirm(`Supprimer les ${ids.length} éléments sélectionnés ?`))) return;
+    setBulkDeleting(true);
+    try {
+      const response = await api.post(`/ref/bulk-delete/${activeTab}/`, { ids });
+      const { nb_supprimes, nb_erreurs, erreurs } = response.data;
+      if (nb_erreurs > 0) {
+        const detail = erreurs.slice(0, 3).map((e) => `"${e.nom}" : ${e.erreur}`).join(" — ");
+        showMessage(
+          "error",
+          `${nb_supprimes} supprimé(s), ${nb_erreurs} échec(s) — ${detail}`,
+        );
+      } else {
+        showMessage("success", `${nb_supprimes} élément(s) supprimé(s).`);
+      }
+      setSelectedIds(new Set());
+      fetchTab(activeTab, page, search, true);
+    } catch (err) {
+      showMessage("error", err.response?.data?.error || "Échec de la suppression en masse.");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const handleImportFile = async () => {
     if (!importFile || !importModal) return;
     setImporting(true);
@@ -590,6 +721,11 @@ const Parametres = () => {
     return ordered;
   };
 
+  // Le tri par colonne (clic sur l'en-tête) ne s'applique pas aux onglets à
+  // ordre imposé : hiérarchie catégorie/sous-type pour "types-documents",
+  // champs système toujours en tête pour "champs-personnalises".
+  const sortableTab = activeTab !== "types-documents" && activeTab !== "champs-personnalises";
+
   const items =
     activeTab === "types-documents"
       ? sortTypesDocumentsHierarchy(data[activeTab] || [])
@@ -599,6 +735,22 @@ const Parametres = () => {
             ...(data[activeTab] || []),
           ]
         : data[activeTab] || [];
+
+  const sortedItems = useMemo(() => {
+    if (!sortableTab || !sortConfig.key) return items;
+    const dir = sortConfig.dir === "asc" ? 1 : -1;
+    return [...items].sort((a, b) => {
+      const av = a[sortConfig.key];
+      const bv = b[sortConfig.key];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      if (typeof av === "boolean" && typeof bv === "boolean") return (av === bv ? 0 : av ? -1 : 1) * dir;
+      return String(av).localeCompare(String(bv), "fr", { sensitivity: "base" }) * dir;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, sortConfig, sortableTab]);
 
   // ─── Colonnes par onglet ───────────────────────────────────────────────────
 
@@ -733,6 +885,7 @@ const Parametres = () => {
           {
             key: "rattachement",
             label: "Rattachée à",
+            sortable: false,
             render: (i) =>
               i.direction_nom
                 ? `Direction : ${i.direction_nom}`
@@ -1648,42 +1801,66 @@ const Parametres = () => {
               </div>
               {isAdmin && (
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => handleDownloadRefTemplate(activeTab)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      background: theme.primaryBg,
-                      border: `1px solid ${theme.primaryBorder}`,
-                      color: theme.primary,
-                      borderRadius: 8,
-                      padding: "8px 14px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <DownloadIcon size={13} /> Template
-                  </button>
-                  <button
-                    onClick={() => {
-                      setImportModal({ tab: activeTab });
-                      setImportFile(null);
-                      setImportResult(null);
-                    }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      background: theme.primaryBg,
-                      border: `1px solid ${theme.primaryBorder}`,
-                      color: theme.primary,
-                      borderRadius: 8,
-                      padding: "8px 14px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <UploadIcon size={13} /> Import CSV
-                  </button>
+                  {selectedIds.size > 0 && (
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={bulkDeleting}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        background: theme.dangerBg,
+                        border: `1px solid ${theme.dangerBorder}`,
+                        color: theme.danger,
+                        borderRadius: 8,
+                        padding: "8px 14px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: bulkDeleting ? "not-allowed" : "pointer",
+                        opacity: bulkDeleting ? 0.6 : 1,
+                      }}
+                    >
+                      <TrashIcon size={13} /> Supprimer la sélection ({selectedIds.size})
+                    </button>
+                  )}
+                  {!IMPORT_UNSUPPORTED_TABS.has(activeTab) && (
+                    <>
+                      <button
+                        onClick={() => handleDownloadRefTemplate(activeTab)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          background: theme.primaryBg,
+                          border: `1px solid ${theme.primaryBorder}`,
+                          color: theme.primary,
+                          borderRadius: 8,
+                          padding: "8px 14px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <DownloadIcon size={13} /> Template
+                      </button>
+                      <button
+                        onClick={() => {
+                          setImportModal({ tab: activeTab });
+                          setImportFile(null);
+                          setImportResult(null);
+                        }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          background: theme.primaryBg,
+                          border: `1px solid ${theme.primaryBorder}`,
+                          color: theme.primary,
+                          borderRadius: 8,
+                          padding: "8px 14px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <UploadIcon size={13} /> Import (CSV/XLSX)
+                      </button>
+                    </>
+                  )}
                   <button
                     onClick={openAdd}
                     style={{
@@ -1705,13 +1882,18 @@ const Parametres = () => {
             </div>
 
             <RefTable
-              items={items}
+              items={sortedItems}
               columns={getColumns()}
               onEdit={openEdit}
               onDelete={handleDelete}
               onRenameSystem={activeTab === "champs-personnalises" ? handleRenameSystemField : undefined}
               loading={loading}
               isAdmin={isAdmin}
+              sortConfig={sortableTab ? sortConfig : null}
+              onSort={sortableTab ? handleSort : null}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onToggleSelectAll={toggleSelectAll}
             />
 
             {(pageMeta.next || pageMeta.previous) && (
@@ -1803,13 +1985,43 @@ const Parametres = () => {
             <h2
               style={{
                 color: theme.text,
-                margin: "0 0 20px",
+                margin: "0 0 12px",
                 fontSize: 16,
                 fontWeight: 800,
               }}
             >
-              Import CSV — {TABS.find((t) => t.key === importModal.tab)?.label}
+              Import — {TABS.find((t) => t.key === importModal.tab)?.label}
             </h2>
+
+            {/* Colonnes obligatoires/optionnelles — voir REF_COLUMNS_INFO,
+                reflète ReferentielImportView.MODELS côté backend */}
+            {REF_COLUMNS_INFO[importModal.tab] && (
+              <div
+                style={{
+                  background: theme.bg,
+                  border: `1px solid ${theme.primaryBorder}`,
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 16,
+                  fontSize: 12,
+                  color: theme.textSecondary,
+                }}
+              >
+                <div style={{ marginBottom: 4 }}>
+                  <strong style={{ color: theme.danger }}>Obligatoire :</strong>{" "}
+                  {REF_COLUMNS_INFO[importModal.tab].obligatoires.join(", ")}
+                </div>
+                <div>
+                  <strong style={{ color: theme.primary }}>Optionnel :</strong>{" "}
+                  {REF_COLUMNS_INFO[importModal.tab].optionnelles.join(", ")}
+                </div>
+                {REF_COLUMNS_INFO[importModal.tab].note && (
+                  <div style={{ marginTop: 6, fontStyle: "italic" }}>
+                    {REF_COLUMNS_INFO[importModal.tab].note}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Zone dépôt */}
             <div

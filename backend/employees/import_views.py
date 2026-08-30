@@ -13,8 +13,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from accounts.permissions import IsAdmin
 from employees.models import (
-    Employee, Direction, Departement,
-    Service, Poste, TypeContrat, Categorie, Contrat,
+    Employee, Direction, Pole, Departement,
+    Service, Cellule, Poste, TypeContrat, Categorie, Contrat,
     ChampPersonnalise, EmployeeChampValeur,
 )
 
@@ -374,8 +374,8 @@ class EmployeeImportTemplateView(APIView):
 class ReferentielImportView(APIView):
     """
     POST /api/ref/import/{model}/
-    Importe un référentiel depuis un CSV.
-    model : directions, departements, services, postes, types-contrat, categories
+    Importe un referentiel depuis un fichier CSV ou Excel (.xlsx).
+    model : directions, poles, departements, services, cellules, postes, types-contrat, categories
     """
     permission_classes = [IsAdmin]
 
@@ -384,44 +384,65 @@ class ReferentielImportView(APIView):
             'model': Direction,
             'required': {'nom'},
             'optional': {'code', 'description'},
-            'unique_field': 'nom',
+        },
+        'poles': {
+            'model': Pole,
+            'required': {'nom', 'direction'},
+            'optional': {'code', 'description'},
         },
         'departements': {
             'model': Departement,
             'required': {'nom', 'direction'},
             'optional': {'code', 'description'},
-            'unique_field': 'nom',
         },
         'services': {
             'model': Service,
             'required': {'nom', 'departement'},
-            'optional': {'code', 'description'},
-            'unique_field': 'nom',
+            # 'direction' optionnelle : le nom d'un Departement n'est unique
+            # qu'au sein de sa Direction (unique_together), donc deux
+            # Departements de Directions differentes peuvent porter le meme
+            # nom. Si la colonne 'direction' est renseignee, elle sert a
+            # lever cette ambiguite ; sinon le departement n'est resolu par
+            # son seul nom que s'il est le seul a porter ce nom.
+            'optional': {'code', 'direction', 'description'},
+        },
+        'cellules': {
+            'model': Cellule,
+            'required': {'nom'},
+            # Une Cellule est rattachee a exactement une Direction OU un
+            # Departement en base (Cellule.clean()), mais dans le CSV
+            # 'direction' est aussi utilisee pour lever l'ambiguite du nom
+            # de departement (comme pour les Services ci-dessus) : si
+            # 'departement' est rempli, il devient le parent et 'direction'
+            # ne sert que de desambiguisation (les deux colonnes remplies
+            # simultanement ne sont donc PAS une erreur). Aucune des deux
+            # colonnes n'est a elle seule obligatoire, mais l'une des deux
+            # doit etre renseignee sur chaque ligne (verifie a l'execution,
+            # pas dans 'required' qui ne sait exprimer que des colonnes
+            # toujours obligatoires).
+            'optional': {'code', 'direction', 'departement', 'description'},
         },
         'postes': {
             'model': Poste,
             'required': {'nom'},
             'optional': {'code', 'description'},
-            'unique_field': 'nom',
         },
         'types-contrat': {
             'model': TypeContrat,
             'required': {'nom'},
             'optional': {'description'},
-            'unique_field': 'nom',
         },
         'categories': {
             'model': Categorie,
             'required': {'nom'},
             'optional': {'description'},
-            'unique_field': 'nom',
         },
     }
 
     def post(self, request, model):
         if model not in self.MODELS:
             return Response(
-                {'error': f'Modèle inconnu : {model}'},
+                {'error': f'Modele inconnu : {model}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -441,14 +462,14 @@ class ReferentielImportView(APIView):
         try:
             fieldnames, rows = _read_rows(file)
         except Exception:
-            logger.exception("Échec de la lecture du fichier d'import référentiel (%s).", model)
+            logger.exception("Echec de la lecture du fichier d'import referentiel (%s).", model)
             return Response(
-                {'error': "Fichier illisible. Vérifiez le format (CSV ou .xlsx) et l'encodage."},
+                {'error': "Fichier illisible. Verifiez le format (CSV ou .xlsx) et l'encodage."},
                 status=400
             )
 
         if not fieldnames:
-            return Response({'error': 'Fichier vide ou mal formaté.'}, status=400)
+            return Response({'error': 'Fichier vide ou mal formate.'}, status=400)
 
         cols = {c.strip().lower() for c in fieldnames}
         missing = config['required'] - cols
@@ -458,15 +479,65 @@ class ReferentielImportView(APIView):
                 status=400
             )
 
-        # Cache référentiels parents
+        # Cache referentiels parents
         directions_cache = {d.nom.upper(): d for d in Direction.objects.all()}
-        departements_cache = {d.nom.upper(): d for d in Departement.objects.all()}
+        # Departements groupes par nom (un nom n'est unique qu'au sein
+        # d'une Direction, unique_together, voir models.py) : necessaire
+        # pour detecter l'ambiguite quand 'direction' n'est pas precisee
+        # sur une ligne de service/cellule.
+        departements_par_nom = {}
+        departements_par_cle = {}
+        for d in Departement.objects.select_related('direction').all():
+            departements_par_nom.setdefault(d.nom.upper(), []).append(d)
+            departements_par_cle[(d.direction.nom.upper(), d.nom.upper())] = d
 
-        # Noms existants pour détecter doublons
+        def resoudre_departement(row, ligne_erreurs, label='Departement'):
+            """Resout un Departement par 'departement' (+ 'direction'
+            optionnelle pour lever l'ambiguite). Retourne None et ajoute une
+            erreur a ligne_erreurs si non trouve/ambigu."""
+            dept_nom = row.get('departement', '').strip().upper()
+            if not dept_nom:
+                return None
+            dir_nom = row.get('direction', '').strip().upper()
+            if dir_nom:
+                dept = departements_par_cle.get((dir_nom, dept_nom))
+                if not dept:
+                    ligne_erreurs.append(
+                        f'{label} "{row.get("departement")}" introuvable sous la direction "{row.get("direction")}"'
+                    )
+                return dept
+            matches = departements_par_nom.get(dept_nom, [])
+            if not matches:
+                ligne_erreurs.append(f'{label} "{row.get("departement")}" introuvable')
+                return None
+            if len(matches) > 1:
+                ligne_erreurs.append(
+                    f'Plusieurs departements nommes "{row.get("departement")}" existent, precisez la colonne "direction"'
+                )
+                return None
+            return matches[0]
+
         ModelClass = config['model']
-        existants = set(
-            ModelClass.objects.values_list('nom', flat=True)
-        )
+
+        # Existants pour detecter les doublons : le nom est globalement
+        # unique pour directions/postes/types-contrat/categories, mais
+        # scope a son parent pour departements (direction+nom, unique en
+        # base) et services (departement+nom, unique en base) ; pour
+        # cellules (pas de contrainte unique en base), on applique la meme
+        # regle scopee par coherence avec le reste du referentiel.
+        if model == 'poles':
+            existants = {(p.direction_id, p.nom.upper()) for p in Pole.objects.all()}
+        elif model == 'departements':
+            existants = {(d.direction_id, d.nom.upper()) for d in Departement.objects.all()}
+        elif model == 'services':
+            existants = {(s.departement_id, s.nom.upper()) for s in Service.objects.all()}
+        elif model == 'cellules':
+            existants = {
+                (c.direction_id, c.departement_id, c.nom.upper())
+                for c in Cellule.objects.all()
+            }
+        else:
+            existants = {(None, n.upper()) for n in ModelClass.objects.values_list('nom', flat=True)}
 
         erreurs = []
         a_creer = []
@@ -479,43 +550,70 @@ class ReferentielImportView(APIView):
             nom = row.get('nom', '').strip()
             if not nom:
                 ligne_erreurs.append("Nom manquant")
-            elif nom.upper() in {e.upper() for e in existants}:
-                ligne_erreurs.append(f'"{nom}" existe déjà')
 
             code = row.get('code', '')
             description = row.get('description', '')
 
-            # Résolution parent pour départements
             direction = None
-            if model == 'departements':
+            departement = None
+
+            if model in ('poles', 'departements'):
                 dir_nom = row.get('direction', '').upper()
                 direction = directions_cache.get(dir_nom)
                 if not dir_nom:
                     ligne_erreurs.append("Direction manquante")
                 elif not direction:
                     ligne_erreurs.append(f'Direction "{row.get("direction")}" introuvable')
+                cle_doublon = (direction.id if direction else None, nom.upper())
 
-            # Résolution parent pour services
-            departement = None
-            if model == 'services':
-                dept_nom = row.get('departement', '').upper()
-                departement = departements_cache.get(dept_nom)
-                if not dept_nom:
-                    ligne_erreurs.append("Département manquant")
-                elif not departement:
-                    ligne_erreurs.append(f'Département "{row.get("departement")}" introuvable')
+            elif model == 'services':
+                if not row.get('departement', '').strip():
+                    ligne_erreurs.append("Departement manquant")
+                departement = resoudre_departement(row, ligne_erreurs)
+                cle_doublon = (departement.id if departement else None, nom.upper())
+
+            elif model == 'cellules':
+                # 'direction' est a la fois : (a) le parent direct de la
+                # Cellule quand 'departement' est vide, et (b) simplement une
+                # aide de desambiguisation du departement quand 'departement'
+                # est rempli (meme colonne, deux usages — voir
+                # resoudre_departement) : les deux colonnes remplies en meme
+                # temps n'est donc PAS une erreur, seule 'departement' vide
+                # ET 'direction' vide (aucun parent du tout) en est une.
+                a_departement = bool(row.get('departement', '').strip())
+                a_direction = bool(row.get('direction', '').strip())
+                if a_departement:
+                    departement = resoudre_departement(row, ligne_erreurs, label='Departement')
+                elif a_direction:
+                    dir_nom = row.get('direction', '').strip().upper()
+                    direction = directions_cache.get(dir_nom)
+                    if not direction:
+                        ligne_erreurs.append(f'Direction "{row.get("direction")}" introuvable')
+                else:
+                    ligne_erreurs.append('Direction ou Departement requis (exactement un des deux)')
+                cle_doublon = (
+                    direction.id if direction else None,
+                    departement.id if departement else None,
+                    nom.upper(),
+                )
+
+            else:
+                cle_doublon = (None, nom.upper())
+
+            if nom and cle_doublon in existants:
+                ligne_erreurs.append(f'"{nom}" existe deja a cet emplacement')
 
             if ligne_erreurs:
                 erreurs.append({
                     'ligne': num_ligne,
-                    'nom': nom or '—',
+                    'nom': nom or '\u2014',
                     'erreurs': ligne_erreurs,
                 })
                 continue
 
-            existants.add(nom.upper())
+            existants.add(cle_doublon)
 
-            # Construire l'objet selon le modèle
+            # Construire l'objet selon le modele
             kwargs = {'nom': nom, 'description': description}
             if code:
                 kwargs['code'] = code
@@ -534,9 +632,9 @@ class ReferentielImportView(APIView):
                     ModelClass.objects.bulk_create(a_creer, batch_size=500)
                     nb_crees = len(a_creer)
             except Exception:
-                logger.exception("Échec de l'import CSV référentiel (%s).", model)
+                logger.exception("Echec de l'import referentiel (%s).", model)
                 return Response(
-                    {'error': "Erreur lors de l'import. Vérifiez le format du fichier ou contactez un administrateur."},
+                    {'error': "Erreur lors de l'import. Verifiez le format du fichier ou contactez un administrateur."},
                     status=500
                 )
 
@@ -559,23 +657,39 @@ class ReferentielImportTemplateView(APIView):
     TEMPLATES = {
         'directions': {
             'headers': ['nom', 'code', 'description'],
-            'example': ['Direction Générale', 'DG', 'Direction principale'],
+            'example': ['Direction Generale', 'DG', 'Direction principale'],
+        },
+        'poles': {
+            'headers': ['nom', 'code', 'direction', 'description'],
+            'example': ['Pole Machines Tournantes', 'PMT', 'Direction Generale', ''],
         },
         'departements': {
             'headers': ['nom', 'code', 'direction', 'description'],
-            'example': ['DAP', 'DAP', 'Direction Générale', 'Département Administration du Personnel'],
+            'example': ['DAP', 'DAP', 'Direction Generale', 'Departement Administration du Personnel'],
         },
         'services': {
-            'headers': ['nom', 'code', 'departement', 'description'],
-            'example': ['Service Paie', 'SP', 'DAP', ''],
+            'headers': ['nom', 'code', 'departement', 'direction', 'description'],
+            # 'direction' optionnelle — utile seulement si plusieurs
+            # departements du referentiel partagent le meme nom (voir
+            # ReferentielImportView.MODELS['services']).
+            'example': ['Service Paie', 'SP', 'DAP', '', ''],
+        },
+        'cellules': {
+            'headers': ['nom', 'code', 'direction', 'departement', 'description'],
+            # Au moins une des deux colonnes direction/departement doit etre
+            # renseignee par ligne ; si 'departement' est rempli, 'direction'
+            # devient facultative et sert seulement a lever l'ambiguite si
+            # plusieurs departements portent ce nom — voir
+            # ReferentielImportView.MODELS['cellules'].
+            'example': ['Cellule Oeuvres Sociales', 'COS', '', 'DAP', ''],
         },
         'postes': {
             'headers': ['nom', 'code', 'description'],
-            'example': ['Ingénieur principal', 'ING-P', ''],
+            'example': ['Ingenieur principal', 'ING-P', ''],
         },
         'types-contrat': {
             'headers': ['nom', 'description'],
-            'example': ['CDI', 'Contrat à durée indéterminée'],
+            'example': ['CDI', 'Contrat a duree indeterminee'],
         },
         'categories': {
             'headers': ['nom', 'description'],

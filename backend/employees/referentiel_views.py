@@ -39,49 +39,58 @@ class ReferentielPagination(PageNumberPagination):
         return super().paginate_queryset(queryset, request, view)
 
 
-class TypeDocumentDestroyMixin:
-    """Un TypeDocument reste bloqué (PROTECT) tant que des EmployeeDocument le
-    référencent, même ceux déjà archivés (is_active=False) par un admin. On ne
-    bloque réellement que s'il reste des documents ACTIFS ; les archivés sont
-    purgés définitivement (fichiers + lignes) avant la suppression, avec trace
-    d'audit — ils sont déjà hors du dossier employé, donc sans valeur légale
-    à conserver une fois le type lui-même supprimé."""
+def _delete_type_document(request, instance):
+    """Supprime un TypeDocument avec ses règles propres — factorisé pour être
+    réutilisé par la suppression unitaire (TypeDocumentDestroyMixin) et la
+    suppression en masse (ReferentielBulkDeleteView). Un TypeDocument reste
+    bloqué (PROTECT) tant que des EmployeeDocument le référencent, même ceux
+    déjà archivés (is_active=False) par un admin. On ne bloque réellement que
+    s'il reste des documents ACTIFS ; les archivés sont purgés définitivement
+    (fichiers + lignes) avant la suppression, avec trace d'audit — ils sont
+    déjà hors du dossier employé, donc sans valeur légale à conserver une
+    fois le type lui-même supprimé.
 
+    Retourne un message d'erreur (str) si la suppression est bloquée, sinon
+    None (l'instance a bien été supprimée)."""
+    actifs = instance.documents.filter(is_active=True).count()
+    if actifs > 0:
+        return "Impossible de supprimer — des documents actifs utilisent encore ce type."
+
+    archives = EmployeeDocument.objects.filter(type_doc=instance, is_active=False)
+    nb_archives = archives.count()
+    if nb_archives:
+        file_paths = list(
+            EmployeeDocumentFile.objects.filter(document__in=archives)
+            .values_list('file', flat=True)
+        )
+        with transaction.atomic():
+            archives.delete()
+            AuditLog.log(
+                request, AuditLog.Action.DELETE_DOC,
+                target=instance,
+                details={'purge_documents_archives': nb_archives},
+            )
+            instance.delete()
+        for path in file_paths:
+            if path:
+                full_path = os.path.join(settings.MEDIA_ROOT, path)
+                if os.path.isfile(full_path):
+                    try:
+                        os.remove(full_path)
+                    except OSError:
+                        pass
+        return None
+
+    instance.delete()
+    return None
+
+
+class TypeDocumentDestroyMixin:
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        actifs = instance.documents.filter(is_active=True).count()
-        if actifs > 0:
-            return Response(
-                {"error": "Impossible de supprimer — des documents actifs utilisent encore ce type."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        archives = EmployeeDocument.objects.filter(type_doc=instance, is_active=False)
-        nb_archives = archives.count()
-        if nb_archives:
-            file_paths = list(
-                EmployeeDocumentFile.objects.filter(document__in=archives)
-                .values_list('file', flat=True)
-            )
-            with transaction.atomic():
-                archives.delete()
-                AuditLog.log(
-                    request, AuditLog.Action.DELETE_DOC,
-                    target=instance,
-                    details={'purge_documents_archives': nb_archives},
-                )
-                instance.delete()
-            for path in file_paths:
-                if path:
-                    full_path = os.path.join(settings.MEDIA_ROOT, path)
-                    if os.path.isfile(full_path):
-                        try:
-                            os.remove(full_path)
-                        except OSError:
-                            pass
-            return Response(status=status.HTTP_204_NO_CONTENT)
-
-        instance.delete()
+        erreur = _delete_type_document(request, instance)
+        if erreur:
+            return Response({"error": erreur}, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -511,3 +520,81 @@ class SystemFieldLabelUpdateView(APIView):
             code=code, defaults={'label': label}
         )
         return Response(SystemFieldLabelSerializer(obj).data)
+
+
+class ReferentielBulkDeleteView(APIView):
+    """
+    POST /api/ref/bulk-delete/{model}/
+    Body : {"ids": ["<uuid>", ...]}
+    Supprime plusieurs éléments d'un référentiel en une seule requête
+    (bouton "Supprimer la sélection" de /parametres). Réutilise exactement
+    les mêmes règles de protection que la suppression individuelle
+    (DetailView.destroy) pour chaque modèle — un Pôle avec des départements
+    rattachés, un TypeDocument avec des documents actifs, restent bloqués
+    ligne par ligne plutôt que d'échouer tout le lot.
+    """
+    permission_classes = [IsAdmin]
+
+    MODELS = {
+        'directions': Direction,
+        'poles': Pole,
+        'departements': Departement,
+        'services': Service,
+        'cellules': Cellule,
+        'postes': Poste,
+        'types-contrat': TypeContrat,
+        'categories': Categorie,
+        'types-documents': TypeDocument,
+        'champs-personnalises': ChampPersonnalise,
+    }
+
+    MAX_IDS = 500
+
+    def post(self, request, model):
+        if model not in self.MODELS:
+            return Response({'error': f'Modèle inconnu : {model}'}, status=400)
+
+        ids = request.data.get('ids')
+        if not isinstance(ids, list) or not ids:
+            return Response({'error': 'Aucun élément sélectionné.'}, status=400)
+        if len(ids) > self.MAX_IDS:
+            return Response(
+                {'error': f'Trop d\'éléments sélectionnés (maximum {self.MAX_IDS} par lot).'},
+                status=400,
+            )
+
+        ModelClass = self.MODELS[model]
+        objets = {str(o.pk): o for o in ModelClass.objects.filter(pk__in=ids)}
+
+        nb_supprimes = 0
+        erreurs = []
+
+        for id_ in ids:
+            instance = objets.get(str(id_))
+            if not instance:
+                erreurs.append({'id': id_, 'nom': '—', 'erreur': 'Introuvable'})
+                continue
+
+            if model == 'poles' and instance.departements.exists():
+                erreurs.append({
+                    'id': id_, 'nom': instance.nom,
+                    'erreur': 'Des départements sont encore rattachés à ce Pôle.',
+                })
+                continue
+
+            if model == 'types-documents':
+                erreur = _delete_type_document(request, instance)
+                if erreur:
+                    erreurs.append({'id': id_, 'nom': instance.nom, 'erreur': erreur})
+                else:
+                    nb_supprimes += 1
+                continue
+
+            instance.delete()
+            nb_supprimes += 1
+
+        return Response({
+            'nb_supprimes': nb_supprimes,
+            'nb_erreurs': len(erreurs),
+            'erreurs': erreurs,
+        })
