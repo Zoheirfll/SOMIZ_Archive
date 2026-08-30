@@ -159,15 +159,18 @@ class User(AbstractBaseUser, PermissionsMixin):
         d, pol, dep, s, cel = self._scope_ids()
         return bool(d or pol or dep or s or cel)
 
-    def employee_scope_q(self, prefix=''):
-        """
-        Q object à appliquer sur un queryset Employee (ou tout modèle relié à
-        Employee via `prefix`, ex. prefix='employee__' pour un queryset
-        Contrat) pour restreindre au périmètre de cet utilisateur — union de
-        toutes les directions/pôles/départements/services/cellules
-        sélectionnés. Q() vide = accès non restreint (ADMIN, ou CONSULTANT
-        sans périmètre assigné — comportement historique préservé).
-        """
+    def _granted_employee_ids(self):
+        """IDs des employés avec au moins un EmployeeAccessGrant pour ce
+        compte (dossier complet ou type précis confondus) — set vide si
+        aucun grant ou pour ADMIN."""
+        if self.is_admin or not self.pk:
+            return set()
+        return set(self.employee_grants.values_list('employee_id', flat=True))
+
+    def _org_employee_scope_q(self, prefix=''):
+        """employee_scope_q() sans les grants ponctuels — périmètre
+        organisationnel seul. Utilisé en interne par
+        accessible_type_doc_ids_for_employee()."""
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
             return Q()
@@ -184,9 +187,26 @@ class User(AbstractBaseUser, PermissionsMixin):
             q |= Q(**{f'{prefix}cellule_id__in': cellule_ids})
         return q
 
-    def can_access_employee(self, employee):
-        """Vérification objet-par-objet équivalente à employee_scope_q(),
-        pour les vues qui font un get_object() plutôt qu'un filter()."""
+    def employee_scope_q(self, prefix=''):
+        """
+        Q object à appliquer sur un queryset Employee (ou tout modèle relié à
+        Employee via `prefix`, ex. prefix='employee__' pour un queryset
+        Contrat) pour restreindre au périmètre de cet utilisateur — union du
+        périmètre organisationnel (directions/pôles/départements/services/
+        cellules) ET des employés ayant un accès ponctuel accordé
+        (EmployeeAccessGrant, voir _granted_employee_ids). Q() vide = accès
+        non restreint (ADMIN, ou CONSULTANT sans périmètre ni grant —
+        comportement historique préservé).
+        """
+        q = self._org_employee_scope_q(prefix=prefix)
+        granted_ids = self._granted_employee_ids()
+        if not granted_ids:
+            return q
+        grant_q = Q(**{f'{prefix}id__in': granted_ids})
+        return q | grant_q if q.children else grant_q
+
+    def _org_can_access_employee(self, employee):
+        """can_access_employee() sans les grants ponctuels."""
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids):
             return True
@@ -197,6 +217,14 @@ class User(AbstractBaseUser, PermissionsMixin):
             or employee.service_id in service_ids
             or employee.cellule_id in cellule_ids
         )
+
+    def can_access_employee(self, employee):
+        """Vérification objet-par-objet équivalente à employee_scope_q() :
+        périmètre organisationnel OU accès ponctuel accordé pour cet
+        employé précis."""
+        if self._org_can_access_employee(employee):
+            return True
+        return employee.id in self._granted_employee_ids()
 
     def accessible_directions_qs(self):
         """Directions visibles pour ce compte (ex. filtre de la page Employés).
@@ -296,6 +324,56 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not type_ids:
             return True
         return type_doc_id in type_ids
+
+    def _granted_type_doc_ids_for_employee(self, employee_id):
+        """(full_dossier: bool, type_doc_ids: set) pour un employé donné.
+        full_dossier=True si un grant type_doc=None existe (couvre tout,
+        type_doc_ids est alors ignorable)."""
+        if self.is_admin or not self.pk:
+            return True, set()
+        rows = list(self.employee_grants.filter(employee_id=employee_id).values_list('type_doc_id', flat=True))
+        if any(r is None for r in rows):
+            return True, set()
+        return False, set(rows)
+
+    def accessible_type_doc_ids_for_employee(self, employee, contrat_scope=False):
+        """
+        IDs des TypeDocument visibles pour CET employé précis, en tenant
+        compte du périmètre organisationnel + type global (comme
+        document_type_scope_q()) ET des grants ponctuels
+        (EmployeeAccessGrant) pour cet employé. Retourne None = tous les
+        types visibles (pas de restriction), sinon un set d'ids (peut être
+        vide = aucun document visible pour cet employé).
+
+        contrat_scope=True : ignore les grants type_doc précis (qui ne
+        couvrent que le dossier général, jamais les documents de contrat) —
+        seul un grant dossier complet (type_doc=None) ou le périmètre
+        global s'applique alors.
+        """
+        if self.is_admin:
+            return None
+        org_ok = self._org_can_access_employee(employee)
+        global_type_ids = self._type_doc_scope_ids()
+        full, grant_type_ids = self._granted_type_doc_ids_for_employee(employee.id)
+        if full:
+            return None
+        if org_ok and not global_type_ids:
+            return None
+        allowed = set(global_type_ids) if org_ok else set()
+        if not contrat_scope:
+            allowed |= grant_type_ids
+        return allowed
+
+    def can_access_document(self, employee, type_doc_id, contrat_scope=False):
+        """Vérification objet-par-objet combinant can_access_employee() et
+        accessible_type_doc_ids_for_employee() — à utiliser à la place du
+        couple can_access_employee()+can_access_document_type() partout où
+        les grants ponctuels doivent s'appliquer (accès à un document
+        précis)."""
+        if not self.can_access_employee(employee):
+            return False
+        ids = self.accessible_type_doc_ids_for_employee(employee, contrat_scope=contrat_scope)
+        return ids is None or type_doc_id in ids
 
     def accessible_types_documents_qs(self):
         """Types de documents visibles pour ce compte."""
