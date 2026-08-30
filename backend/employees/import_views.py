@@ -14,7 +14,7 @@ from rest_framework import status
 from accounts.permissions import IsAdmin
 from employees.models import (
     Employee, Direction, Pole, Departement,
-    Service, Cellule, Poste, TypeContrat, Categorie, Contrat,
+    Service, Cellule, Section, Poste, TypeContrat, Categorie, Contrat,
     ChampPersonnalise, EmployeeChampValeur,
 )
 
@@ -422,6 +422,14 @@ class ReferentielImportView(APIView):
             # toujours obligatoires).
             'optional': {'code', 'direction', 'departement', 'description'},
         },
+        'sections': {
+            'model': Section,
+            'required': {'nom'},
+            # Memes regles que 'cellules' (voir commentaire ci-dessus) :
+            # 'direction' sert a la fois de parent direct (departement vide)
+            # et de desambiguisation (departement rempli).
+            'optional': {'code', 'direction', 'departement', 'description'},
+        },
         'postes': {
             'model': Poste,
             'required': {'nom'},
@@ -531,10 +539,10 @@ class ReferentielImportView(APIView):
             existants = {(d.direction_id, d.nom.upper()) for d in Departement.objects.all()}
         elif model == 'services':
             existants = {(s.departement_id, s.nom.upper()) for s in Service.objects.all()}
-        elif model == 'cellules':
+        elif model in ('cellules', 'sections'):
             existants = {
                 (c.direction_id, c.departement_id, c.nom.upper())
-                for c in Cellule.objects.all()
+                for c in ModelClass.objects.all()
             }
         else:
             existants = {(None, n.upper()) for n in ModelClass.objects.values_list('nom', flat=True)}
@@ -572,9 +580,9 @@ class ReferentielImportView(APIView):
                 departement = resoudre_departement(row, ligne_erreurs)
                 cle_doublon = (departement.id if departement else None, nom.upper())
 
-            elif model == 'cellules':
+            elif model in ('cellules', 'sections'):
                 # 'direction' est a la fois : (a) le parent direct de la
-                # Cellule quand 'departement' est vide, et (b) simplement une
+                # Cellule/Section quand 'departement' est vide, et (b) simplement une
                 # aide de desambiguisation du departement quand 'departement'
                 # est rempli (meme colonne, deux usages — voir
                 # resoudre_departement) : les deux colonnes remplies en meme
@@ -682,6 +690,10 @@ class ReferentielImportTemplateView(APIView):
             # plusieurs departements portent ce nom — voir
             # ReferentielImportView.MODELS['cellules'].
             'example': ['Cellule Oeuvres Sociales', 'COS', '', 'DAP', ''],
+        },
+        'sections': {
+            'headers': ['nom', 'code', 'direction', 'departement', 'description'],
+            'example': ['Section Controle Qualite', 'SCQ', '', 'DAP', ''],
         },
         'postes': {
             'headers': ['nom', 'code', 'description'],
