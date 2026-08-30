@@ -597,6 +597,46 @@ Capture `old_affectation` faite avant `serializer.save()` (pas de contournement 
 
 ---
 
+## 30. Périmètre ponctuel employés spécifiques (`EmployeeAccessGrant`, 2026-08-30)
+
+**Contexte** : nouveau canal d'accès CONSULTANT — `EmployeeAccessGrant`
+(`user` + `employee` + `type_doc` optionnel) permet à un ADMIN d'accorder
+un accès ponctuel à un employé précis (dossier complet ou un seul type de
+document), en plus (union) du périmètre organisationnel existant. Voir
+CLAUDE.md, section "Périmètre ponctuel — employés spécifiques".
+
+**Vérification** :
+- Gestion (`GET`/`PUT /api/admin-users/<id>/employee-grants/`) strictement
+  `permission_classes = [IsAdmin]` — un CONSULTANT ne peut ni lire ni
+  modifier les grants, y compris les siens (`test_consultant_forbidden`).
+- N'étend que la **portée** du scoping employé/document existant —
+  n'ajoute aucun nouveau bypass des vérifications de rôle
+  (`IsAdmin`/`IsAdminOrConsultant`) ni du consentement Loi 18-07 (point
+  27) : `can_access_employee()`/`accessible_type_doc_ids_for_employee()`
+  restent appelées après ces contrôles dans chaque vue, jamais à la place.
+- Toute modification de grants est tracée dans l'audit log
+  (`AuditLog.Action.MODIFY_USER`, `details.action='employee_grants'`),
+  même pattern que les autres changements de périmètre
+  (`UserUpdateView.perform_update`).
+- `EmployeeAccessGrantSerializer.validate_type_doc()` refuse un
+  `type_doc` catégorie (`is_categorie`) — cohérent avec le garde-fou
+  déjà en place pour `scope_types_documents` (point 25, collision de
+  code) et pour l'import CSV.
+- Un grant `type_doc` précis n'élargit l'accès qu'au dossier général
+  (`EmployeeDocument.contrat=None`) — vérifié explicitement
+  (`test_contrat_documents_not_shown_via_partial_dossier_grant`), pour
+  éviter qu'un grant destiné à un seul type de document du dossier
+  général ne fuite vers les documents de contrat.
+- 27 tests dédiés (`backend/tests/test_employee_access_grants.py`),
+  suite complète (263 tests) sans régression sur le scoping existant
+  (`test_employee_scoping.py`, `test_accounts_models.py`).
+
+**Verdict : sain.** Nouveau canal d'accès correctement isolé derrière
+`IsAdmin` pour sa gestion, n'introduit aucun contournement des contrôles
+d'authentification/consentement existants, tracé en audit.
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_
