@@ -360,6 +360,7 @@ const TABS = [
   { key: "departements", label: "Départements" },
   { key: "services", label: "Services" },
   { key: "cellules", label: "Cellules" },
+  { key: "sections", label: "Sections" },
   { key: "postes", label: "Postes" },
   { key: "types-contrat", label: "Types de contrat" },
   { key: "categories", label: "Catégories" },
@@ -388,6 +389,11 @@ const REF_COLUMNS_INFO = {
     note: '"direction" ne sert qu\'à lever l\'ambiguïté si plusieurs départements portent le même nom.',
   },
   cellules: {
+    obligatoires: ["nom"],
+    optionnelles: ["code", "direction", "departement", "description"],
+    note: 'Au moins une des deux colonnes "direction" ou "departement" doit être remplie par ligne. Si "departement" est rempli, "direction" devient facultative et sert seulement à lever l\'ambiguïté si plusieurs départements portent ce nom.',
+  },
+  sections: {
     obligatoires: ["nom"],
     optionnelles: ["code", "direction", "departement", "description"],
     note: 'Au moins une des deux colonnes "direction" ou "departement" doit être remplie par ligne. Si "departement" est rempli, "direction" devient facultative et sert seulement à lever l\'ambiguïté si plusieurs départements portent ce nom.',
@@ -918,6 +924,46 @@ const Parametres = () => {
             ),
           },
         ];
+      case "sections":
+        return [
+          { key: "nom", label: "Nom", bold: true },
+          { key: "code", label: "Code", mono: true, primary: true },
+          {
+            key: "rattachement",
+            label: "Rattachée à",
+            sortable: false,
+            render: (i) =>
+              i.direction_nom
+                ? `Direction : ${i.direction_nom}`
+                : `Département : ${i.departement_nom}`,
+          },
+          {
+            key: "nb_employes",
+            label: "Employés",
+            render: (i) => (
+              <Badge count={i.nb_employes} color={theme.primary} />
+            ),
+          },
+          {
+            key: "is_active",
+            label: "Statut",
+            render: (i) => (
+              <span
+                style={{
+                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
+                  color: i.is_active ? theme.primary : theme.danger,
+                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {i.is_active ? "Actif" : "Inactif"}
+              </span>
+            ),
+          },
+        ];
       case "postes":
         return [
           { key: "nom", label: "Intitulé", bold: true },
@@ -991,11 +1037,29 @@ const Parametres = () => {
               i.parent_nom ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 22 }}>
                   <span style={{ color: theme.textMuted, fontSize: 13 }}>↳</span>
+                  {i.couleur && (
+                    <span
+                      style={{
+                        width: 10, height: 10, borderRadius: "50%",
+                        background: i.couleur, border: `1px solid ${theme.border}`,
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
                   <span>{i.nom}</span>
                 </div>
               ) : (
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {i.is_categorie && <span title="Catégorie">📁</span>}
+                  {i.couleur && (
+                    <span
+                      style={{
+                        width: 10, height: 10, borderRadius: "50%",
+                        background: i.couleur, border: `1px solid ${theme.border}`,
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
                   <span style={{ fontWeight: 700 }}>{i.nom}</span>
                 </div>
               ),
@@ -1436,6 +1500,101 @@ const Parametres = () => {
         );
       }
 
+      case "sections": {
+        const rattachement = form.departement ? "departement" : "direction";
+        return (
+          <>
+            <label style={labelStyle}>
+              Rattachée à <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  checked={rattachement === "direction"}
+                  onChange={() => setForm({ ...form, direction: form.direction || "", departement: "" })}
+                />
+                Une Direction
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  checked={rattachement === "departement"}
+                  onChange={() => setForm({ ...form, departement: form.departement || "", direction: "" })}
+                />
+                Un Département
+              </label>
+            </div>
+            {rattachement === "direction" ? (
+              <select
+                name="direction"
+                value={form.direction || ""}
+                onChange={handleChange}
+                className="input-focus" style={inputStyle}
+              >
+                <option value="">-- Sélectionner une Direction --</option>
+                {directions.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nom}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select
+                name="departement"
+                value={form.departement || ""}
+                onChange={handleChange}
+                className="input-focus" style={inputStyle}
+              >
+                <option value="">-- Sélectionner un Département --</option>
+                {departements.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nom} ({d.direction_nom})
+                  </option>
+                ))}
+              </select>
+            )}
+            <label style={labelStyle}>
+              Nom <span style={{ color: theme.danger }}>*</span>
+            </label>
+            <input
+              name="nom"
+              value={form.nom || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="Section Contrôle Qualité"
+            />
+            <label style={labelStyle}>Code</label>
+            <input
+              name="code"
+              value={form.code || ""}
+              onChange={handleChange}
+              className="input-focus" style={inputStyle}
+              placeholder="SCQ"
+            />
+            <label style={labelStyle}>Description</label>
+            <textarea
+              name="description"
+              value={form.description || ""}
+              onChange={handleChange}
+              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+            />
+            <label style={labelStyle}>Statut</label>
+            <select
+              name="is_active"
+              value={form.is_active ?? true}
+              onChange={(e) =>
+                setForm({ ...form, is_active: e.target.value === "true" })
+              }
+              className="input-focus" style={inputStyle}
+            >
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+          </>
+        );
+      }
+
       case "postes":
         return (
           <>
@@ -1592,6 +1751,35 @@ const Parametres = () => {
               </div>
             )}
 
+            <label style={labelStyle}>Couleur (optionnel)</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input
+                type="color"
+                value={form.couleur || "#166534"}
+                onChange={(e) => setForm({ ...form, couleur: e.target.value })}
+                style={{ width: 40, height: 34, padding: 2, border: `1px solid ${theme.border}`, borderRadius: 8, cursor: "pointer" }}
+              />
+              <input
+                name="couleur"
+                value={form.couleur || ""}
+                onChange={handleChange}
+                placeholder="#166534"
+                className="input-focus" style={{ ...inputStyle, flex: 1 }}
+              />
+              {form.couleur && (
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, couleur: "" })}
+                  style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4, marginBottom: 12 }}>
+              Colore le dossier/sous-dossier dans la sidebar Documents de la fiche employé. Un sous-type sans couleur propre hérite de la couleur de sa catégorie.
+            </div>
+
             <label style={labelStyle}>Statut</label>
             <select
               name="is_active"
@@ -1642,6 +1830,7 @@ const Parametres = () => {
               <option value="texte">Texte</option>
               <option value="nombre">Nombre</option>
               <option value="date">Date</option>
+              <option value="booleen">Booléen (Oui/Non)</option>
             </select>
 
             <label style={labelStyle}>Ordre d'affichage</label>
