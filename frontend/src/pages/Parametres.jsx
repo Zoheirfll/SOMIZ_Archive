@@ -436,6 +436,12 @@ const Parametres = () => {
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(null); // { mode: 'add'|'edit', item: {} }
   const [form, setForm] = useState({});
+  // Choix "Une Direction"/"Un Département" pour Cellules/Sections — état
+  // séparé du formulaire car form.departement="" (après avoir vidé le
+  // champ pour basculer sur Direction) est aussi falsy que "jamais
+  // renseigné", donc dériver le choix depuis form.departement empêchait
+  // de revenir sur "Un Département" une fois vidé.
+  const [rattachementChoice, setRattachementChoice] = useState("direction");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [importModal, setImportModal] = useState(null); // { tab: 'directions' }
@@ -550,11 +556,13 @@ const Parametres = () => {
 
   const openAdd = () => {
     setForm({});
+    setRattachementChoice("direction");
     setModal({ mode: "add" });
   };
 
   const openEdit = (item) => {
     setForm({ ...item });
+    setRattachementChoice(item.departement ? "departement" : "direction");
     setModal({ mode: "edit", item });
   };
 
@@ -1406,7 +1414,7 @@ const Parametres = () => {
         );
 
       case "cellules": {
-        const rattachement = form.departement ? "departement" : "direction";
+        const rattachement = rattachementChoice;
         return (
           <>
             <label style={labelStyle}>
@@ -1417,7 +1425,10 @@ const Parametres = () => {
                 <input
                   type="radio"
                   checked={rattachement === "direction"}
-                  onChange={() => setForm({ ...form, direction: form.direction || "", departement: "" })}
+                  onChange={() => {
+                    setRattachementChoice("direction");
+                    setForm({ ...form, direction: form.direction || "", departement: "" });
+                  }}
                 />
                 Une Direction
               </label>
@@ -1425,7 +1436,10 @@ const Parametres = () => {
                 <input
                   type="radio"
                   checked={rattachement === "departement"}
-                  onChange={() => setForm({ ...form, departement: form.departement || "", direction: "" })}
+                  onChange={() => {
+                    setRattachementChoice("departement");
+                    setForm({ ...form, departement: form.departement || "", direction: "" });
+                  }}
                 />
                 Un Département
               </label>
@@ -1501,7 +1515,7 @@ const Parametres = () => {
       }
 
       case "sections": {
-        const rattachement = form.departement ? "departement" : "direction";
+        const rattachement = rattachementChoice;
         return (
           <>
             <label style={labelStyle}>
@@ -1512,7 +1526,10 @@ const Parametres = () => {
                 <input
                   type="radio"
                   checked={rattachement === "direction"}
-                  onChange={() => setForm({ ...form, direction: form.direction || "", departement: "" })}
+                  onChange={() => {
+                    setRattachementChoice("direction");
+                    setForm({ ...form, direction: form.direction || "", departement: "" });
+                  }}
                 />
                 Une Direction
               </label>
@@ -1520,7 +1537,10 @@ const Parametres = () => {
                 <input
                   type="radio"
                   checked={rattachement === "departement"}
-                  onChange={() => setForm({ ...form, departement: form.departement || "", direction: "" })}
+                  onChange={() => {
+                    setRattachementChoice("departement");
+                    setForm({ ...form, departement: form.departement || "", direction: "" });
+                  }}
                 />
                 Un Département
               </label>
