@@ -167,6 +167,48 @@ class Cellule(models.Model):
             )
 
 
+class Section(models.Model):
+    """
+    Unité terminale (contient des employés, comme un Service ou une
+    Cellule) rattachée directement à une Direction OU à un Département —
+    jamais à un Service. Exactement un des deux champs
+    `direction`/`departement` doit être renseigné (validé côté serializer
+    et en base via `clean()`). Référentiel indépendant de Cellule — les
+    deux coexistent, un Département peut avoir des Cellules ET des
+    Sections.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    direction = models.ForeignKey(
+        Direction, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='sections', verbose_name="Direction"
+    )
+    departement = models.ForeignKey(
+        Departement, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='sections', verbose_name="Département"
+    )
+    nom = models.CharField(max_length=150, verbose_name="Nom")
+    code = models.CharField(max_length=20, blank=True, verbose_name="Code")
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'sections'
+        verbose_name = "Section"
+        ordering = ['nom']
+
+    def __str__(self):
+        parent = self.direction.nom if self.direction_id else self.departement.nom
+        return f"{parent} → {self.nom}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if bool(self.direction_id) == bool(self.departement_id):
+            raise ValidationError(
+                "Une Section doit être rattachée à exactement une Direction OU un Département."
+            )
+
+
 class Poste(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=150, unique=True, verbose_name="Intitulé")
@@ -290,6 +332,10 @@ class Employee(models.Model):
     )
     cellule = models.ForeignKey(
         Cellule, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='employees'
+    )
+    section = models.ForeignKey(
+        Section, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='employees'
     )
     poste = models.ForeignKey(

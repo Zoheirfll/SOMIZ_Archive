@@ -4,9 +4,10 @@ Couvre : Employee, EmployeeDocument (versioning), EmployeeDocumentFile, TypeDocu
 """
 
 import pytest
+from django.core.exceptions import ValidationError
 from employees.models import (
     Employee, EmployeeDocument, EmployeeDocumentFile,
-    TypeDocument, Direction, Departement, Service, Contrat
+    TypeDocument, Direction, Departement, Service, Contrat, Section
 )
 
 pytestmark = pytest.mark.django_db
@@ -270,3 +271,23 @@ class TestReferentials:
     def test_service_str(self, service):
         assert "RH" in str(service)
         assert "Paie" in str(service)
+
+
+class TestSectionModel:
+    def test_clean_rejects_both_direction_and_departement(self, direction, departement):
+        s = Section(nom="Section Test", direction=direction, departement=departement)
+        with pytest.raises(ValidationError):
+            s.clean()
+
+    def test_clean_rejects_neither(self):
+        s = Section(nom="Section Test")
+        with pytest.raises(ValidationError):
+            s.clean()
+
+    def test_clean_accepts_direction_only(self, direction):
+        s = Section(nom="Section Test", direction=direction)
+        s.clean()  # ne lève pas
+
+    def test_str_shows_parent(self, departement):
+        s = Section.objects.create(nom="Section Paie", departement=departement)
+        assert str(s) == f"{departement.nom} → Section Paie"
