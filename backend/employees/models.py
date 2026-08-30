@@ -642,3 +642,39 @@ class EmployeeDocumentFile(models.Model):
     @property
     def file_size_kb(self):
         return round(self.file_size / 1024, 1) if self.file_size else None
+
+
+class EmployeeAccessGrant(models.Model):
+    """
+    Périmètre CONSULTANT ponctuel — donne accès à UN employé précis, en plus
+    (union) du périmètre organisationnel de l'utilisateur (voir
+    User.employee_scope_q()). type_doc=None = dossier complet de cet
+    employé ; type_doc=<X> = uniquement les documents de ce type, dans le
+    dossier général de l'employé (jamais les documents de contrat — un
+    grant "dossier complet" est nécessaire pour couvrir aussi les
+    contrats).
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='employee_grants'
+    )
+    employee = models.ForeignKey(
+        'Employee', on_delete=models.CASCADE, related_name='access_grants'
+    )
+    type_doc = models.ForeignKey(
+        'TypeDocument', null=True, blank=True, on_delete=models.CASCADE
+    )
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+        related_name='+'
+    )
+    granted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'employee', 'type_doc')
+        verbose_name = "Accès employé spécifique"
+        verbose_name_plural = "Accès employés spécifiques"
+
+    def __str__(self):
+        cible = self.type_doc.nom if self.type_doc_id else "dossier complet"
+        return f"{self.user.username} → {self.employee.matricule} ({cible})"
