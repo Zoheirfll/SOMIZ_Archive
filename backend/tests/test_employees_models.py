@@ -72,11 +72,15 @@ class TestEmployeeDocumentVersioning:
         assert doc.version == 1
         assert doc.is_active is True
 
-    def test_second_upload_creates_version_2_and_deactivates_v1(
+    def test_second_upload_creates_version_2_and_keeps_v1_active(
         self, employee, admin_user, type_doc_obligatoire
     ):
-        # Le PK étant un UUID généré avant save(), on simule la logique de versioning
-        # en construisant les objets comme le fait la vue (instance sans pk)
+        # Historique conservé (2026-08-30) : un nouvel upload du même type
+        # n'écrase/ne désactive plus l'ancien — les deux versions restent
+        # actives, seule la suppression manuelle explicite (DocumentDeleteView)
+        # les retire. Le PK étant un UUID généré avant save(), on simule la
+        # logique de versioning en construisant les objets comme le fait la
+        # vue (instance sans pk).
         doc1 = EmployeeDocument(
             employee=employee,
             type_doc=type_doc_obligatoire,
@@ -97,7 +101,25 @@ class TestEmployeeDocumentVersioning:
         doc2.refresh_from_db()
         assert doc2.version == 2
         assert doc2.is_active is True
-        assert doc1.is_active is False
+        assert doc1.is_active is True
+
+    def test_third_upload_increments_from_highest_active_version(
+        self, employee, admin_user, type_doc_obligatoire
+    ):
+        doc1 = EmployeeDocument(employee=employee, type_doc=type_doc_obligatoire, uploaded_by=admin_user)
+        doc1.pk = None
+        doc1.save()
+        doc2 = EmployeeDocument(employee=employee, type_doc=type_doc_obligatoire, uploaded_by=admin_user)
+        doc2.pk = None
+        doc2.save()
+        doc3 = EmployeeDocument(employee=employee, type_doc=type_doc_obligatoire, uploaded_by=admin_user)
+        doc3.pk = None
+        doc3.save()
+
+        assert doc3.version == 3
+        assert EmployeeDocument.objects.filter(
+            employee=employee, type_doc=type_doc_obligatoire, is_active=True
+        ).count() == 3
 
     def test_different_type_docs_dont_interfere(
         self, employee, admin_user, type_doc_obligatoire, type_doc_facultatif
@@ -217,7 +239,7 @@ class TestContratModel:
 
         doc1.refresh_from_db()
         assert doc2.version == 2
-        assert doc1.is_active is False
+        assert doc1.is_active is True
 
     def test_versioning_independent_between_contrats(self, employee, type_contrat, admin_user, type_doc_obligatoire):
         contrat_a = Contrat.objects.create(

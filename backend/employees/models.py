@@ -255,6 +255,14 @@ class Categorie(models.Model):
     def __str__(self):
         return self.nom
 
+# Palette fixe assignée automatiquement aux TypeDocument sans couleur propre
+# (voir TypeDocument.save()) — cyclique, l'ordre n'a pas d'autre signification.
+TYPE_DOCUMENT_DEFAULT_PALETTE = [
+    '#166534', '#1e40af', '#6d28d9', '#b45309', '#be123c',
+    '#0f766e', '#a16207', '#4338ca', '#15803d', '#c2410c',
+]
+
+
 class TypeDocument(models.Model):
     """
     Peut être soit une CATÉGORIE (parent=None, sert juste à regrouper
@@ -275,6 +283,10 @@ class TypeDocument(models.Model):
     obligatoire = models.BooleanField(default=False, verbose_name="Obligatoire")
     is_active = models.BooleanField(default=True, verbose_name="Actif")
     ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
+    couleur = models.CharField(
+        max_length=7, blank=True, verbose_name="Couleur",
+        help_text="Code hexadécimal (ex. #166534) — assignée automatiquement à la création si non renseignée"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -284,6 +296,15 @@ class TypeDocument(models.Model):
 
     def __str__(self):
         return f"{self.nom} {'*' if self.obligatoire else ''}"
+
+    def save(self, *args, **kwargs):
+        # UUID pk déjà rempli à l'instanciation (default=uuid.uuid4) —
+        # self._state.adding est le seul test fiable pour détecter une
+        # vraie insertion (voir même piège corrigé sur EmployeeDocument).
+        if self._state.adding and not self.couleur:
+            n = TypeDocument.objects.count()
+            self.couleur = TYPE_DOCUMENT_DEFAULT_PALETTE[n % len(TYPE_DOCUMENT_DEFAULT_PALETTE)]
+        super().save(*args, **kwargs)
 
     @property
     def is_categorie(self):
@@ -396,16 +417,25 @@ class Employee(models.Model):
         return round(presents / total * 100)
 
     def sync_statut_from_dernier_contrat(self):
-        """Le statut de l'employé suit celui de son contrat le plus récent —
-        "le plus récent" = le plus grand N° de contrat (tri alphanumérique
-        décroissant sur numero_contrat, pas la date de création) — appelé
-        après chaque création/modification/suppression de contrat. Un
-        employé sans contrat garde son statut tel quel (pas de contrat =
-        rien à synchroniser)."""
+        """Le statut et la date de fin de contrat de l'employé suivent ceux
+        de son contrat le plus récent — "le plus récent" = le plus grand
+        N° de contrat (tri alphanumérique décroissant sur numero_contrat,
+        pas la date de création) — appelé après chaque
+        création/modification/suppression de contrat. Un employé sans
+        contrat garde ses valeurs telles quelles (pas de contrat = rien à
+        synchroniser)."""
         dernier = self.contrats.order_by('-numero_contrat').first()
-        if dernier and dernier.statut != self.statut:
+        if not dernier:
+            return
+        update_fields = []
+        if dernier.statut != self.statut:
             self.statut = dernier.statut
-            self.save(update_fields=['statut'])
+            update_fields.append('statut')
+        if dernier.date_fin != self.date_fin_contrat:
+            self.date_fin_contrat = dernier.date_fin
+            update_fields.append('date_fin_contrat')
+        if update_fields:
+            self.save(update_fields=update_fields)
 
 
 # ─── CHAMPS PERSONNALISÉS ──────────────────────────────────────────────────────
@@ -420,6 +450,7 @@ class ChampPersonnalise(models.Model):
         TEXTE = 'texte', 'Texte'
         NOMBRE = 'nombre', 'Nombre'
         DATE = 'date', 'Date'
+        BOOLEEN = 'booleen', 'Booléen (Oui/Non)'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=100, verbose_name="Nom")
@@ -631,9 +662,18 @@ class EmployeeDocument(models.Model):
         if self._state.adding:
             # transaction.atomic + select_for_update : sans ça, deux uploads
             # concurrents du même type de document pour le même employé
-            # peuvent tous les deux lire "aucun actif" et créer deux documents
-            # actifs en parallèle (race condition sur l'invariant "un seul
-            # document actif par type").
+            # peuvent tous les deux lire "aucune version" et attribuer le
+            # même numéro de version en parallèle.
+            #
+            # Historique conservé (2026-08-30) : un nouvel upload du même
+            # type ne désactive plus l'ancien — les deux (ou plus) restent
+            # `is_active=True`, seule la `version` les distingue. L'ancien
+            # comportement (désactivation automatique) purgeait
+            # silencieusement l'historique ; désormais une version
+            # antérieure ne disparaît que par suppression manuelle
+            # explicite (voir DocumentDeleteView). Le frontend regroupe les
+            # versions actives d'un même type et n'affiche la version la
+            # plus récente en avant (les autres en historique repliable).
             with transaction.atomic():
                 existing = EmployeeDocument.objects.select_for_update().filter(
                     employee=self.employee,
@@ -643,12 +683,6 @@ class EmployeeDocument(models.Model):
                 ).order_by('-version').first()
                 if existing:
                     self.version = existing.version + 1
-                    EmployeeDocument.objects.filter(
-                        employee=self.employee,
-                        contrat=self.contrat,
-                        type_doc=self.type_doc,
-                        is_active=True
-                    ).update(is_active=False)
                 super().save(*args, **kwargs)
         else:
             super().save(*args, **kwargs)

@@ -272,7 +272,9 @@ class TestScanImportView:
         assert resp.status_code == 201
         docs = EmployeeDocument.objects.filter(employee=employee, type_doc=type_doc)
         assert docs.count() == 2
-        assert docs.get(is_active=True).version == 2
+        # Historique conservé (2026-08-30) : les deux versions restent actives.
+        assert docs.filter(is_active=True).count() == 2
+        assert docs.order_by('-version').first().version == 2
 
     def test_one_group_failure_does_not_block_others(self, admin_user, employee):
         type_ok = TypeDocument.objects.create(nom="CV", code="CV", is_active=True)
