@@ -100,6 +100,13 @@ const Users = () => {
   const [scopeForm, setScopeForm] = useState({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
   const [savingScope, setSavingScope] = useState(false);
 
+  // Périmètre "employés spécifiques" — grants ponctuels indépendants du
+  // périmètre organisationnel (voir docs/superpowers/specs/2026-08-30-perimetre-employes-specifiques-design.md).
+  const [employeeGrants, setEmployeeGrants] = useState([]); // [{employee, employee_nom, employee_prenom, employee_matricule, type_doc, type_doc_nom}]
+  const [grantSearch, setGrantSearch] = useState("");
+  const [grantSearchResults, setGrantSearchResults] = useState([]);
+  const [grantSearchLoading, setGrantSearchLoading] = useState(false);
+
   useEffect(() => {
     fetchUsers();
     // ?all=1 — un compte ADMIN doit voir l'intégralité du référentiel pour
@@ -126,6 +133,12 @@ const Users = () => {
       cellules: u.scope_cellules || [],
       types_documents: u.scope_types_documents || [],
     });
+    setEmployeeGrants([]);
+    setGrantSearch("");
+    setGrantSearchResults([]);
+    api.get(`/admin-users/${u.id}/employee-grants/`)
+      .then((res) => setEmployeeGrants(res.data.grants || []))
+      .catch(() => {});
   };
 
   // Listes affichées en cascade : cocher une direction ne laisse apparaître
@@ -276,14 +289,19 @@ const Users = () => {
   const handleSaveScope = async () => {
     setSavingScope(true);
     try {
-      await api.patch(`/admin-users/${scopeModal.id}/`, {
-        scope_directions: scopeForm.directions,
-        scope_poles: scopeForm.poles,
-        scope_departements: scopeForm.departements,
-        scope_services: scopeForm.services,
-        scope_cellules: scopeForm.cellules,
-        scope_types_documents: scopeForm.types_documents,
-      });
+      await Promise.all([
+        api.patch(`/admin-users/${scopeModal.id}/`, {
+          scope_directions: scopeForm.directions,
+          scope_poles: scopeForm.poles,
+          scope_departements: scopeForm.departements,
+          scope_services: scopeForm.services,
+          scope_cellules: scopeForm.cellules,
+          scope_types_documents: scopeForm.types_documents,
+        }),
+        api.put(`/admin-users/${scopeModal.id}/employee-grants/`, {
+          grants: employeeGrants.map((g) => ({ employee: g.employee, type_doc: g.type_doc })),
+        }),
+      ]);
       setMessage({ type: "success", text: "Périmètre mis à jour." });
       setScopeModal(null);
       fetchUsers(true);
@@ -293,6 +311,52 @@ const Users = () => {
       setSavingScope(false);
       setTimeout(() => setMessage(null), 4000);
     }
+  };
+
+  useEffect(() => {
+    if (grantSearch.trim().length < 2) {
+      setGrantSearchResults([]);
+      return;
+    }
+    setGrantSearchLoading(true);
+    const timeout = setTimeout(() => {
+      api.get(`/employees/search/?q=${encodeURIComponent(grantSearch.trim())}`)
+        .then((res) => setGrantSearchResults(res.data || []))
+        .catch(() => setGrantSearchResults([]))
+        .finally(() => setGrantSearchLoading(false));
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [grantSearch]);
+
+  const addEmployeeGrant = (employee) => {
+    setEmployeeGrants((prev) => {
+      if (prev.some((g) => g.employee === employee.id)) return prev;
+      return [
+        ...prev,
+        {
+          employee: employee.id,
+          employee_nom: employee.nom,
+          employee_prenom: employee.prenom,
+          employee_matricule: employee.matricule,
+          type_doc: null,
+          type_doc_nom: null,
+        },
+      ];
+    });
+    setGrantSearch("");
+    setGrantSearchResults([]);
+  };
+
+  const removeEmployeeGrant = (employeeId) => {
+    setEmployeeGrants((prev) => prev.filter((g) => g.employee !== employeeId));
+  };
+
+  const setGrantTypeDoc = (employeeId, typeDocId, typeDocNom) => {
+    setEmployeeGrants((prev) =>
+      prev.map((g) =>
+        g.employee === employeeId ? { ...g, type_doc: typeDocId, type_doc_nom: typeDocNom } : g
+      )
+    );
   };
 
   const fetchUsers = async (silent = false) => {
@@ -1236,6 +1300,117 @@ const Users = () => {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 8 }}>
+              <label style={{ ...labelStyle, marginBottom: 6 }}>Employés spécifiques</label>
+              <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
+                Accès ponctuel à un employé précis, en plus (union) du périmètre ci-dessus — dossier complet ou un seul type de document.
+              </div>
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <input
+                  type="text"
+                  value={grantSearch}
+                  onChange={(e) => setGrantSearch(e.target.value)}
+                  placeholder="Rechercher un employé (nom, prénom, matricule)…"
+                  className="input-focus"
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    border: `1.5px solid ${theme.border}`,
+                    borderRadius: 10,
+                    padding: "9px 12px",
+                    fontSize: 13,
+                    fontFamily: "inherit",
+                    color: theme.text,
+                  }}
+                />
+                {grantSearch.trim().length >= 2 && (
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    zIndex: 10,
+                    background: theme.surface,
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 10,
+                    marginTop: 4,
+                    maxHeight: 180,
+                    overflowY: "auto",
+                    boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+                  }}>
+                    {grantSearchLoading ? (
+                      <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Recherche…</div>
+                    ) : grantSearchResults.length === 0 ? (
+                      <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Aucun résultat.</div>
+                    ) : (
+                      grantSearchResults.map((emp) => (
+                        <div
+                          key={emp.id}
+                          onClick={() => addEmployeeGrant(emp)}
+                          style={{ padding: "8px 12px", fontSize: 13, color: theme.text, cursor: "pointer" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = theme.bg)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        >
+                          {emp.prenom} {emp.nom} <span style={{ color: theme.textMuted }}>({emp.matricule})</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {employeeGrants.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {employeeGrants.map((g) => (
+                    <div
+                      key={g.employee}
+                      style={{
+                        border: `1px solid ${theme.border}`,
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        background: theme.bg,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>
+                          {g.employee_prenom} {g.employee_nom} <span style={{ color: theme.textMuted, fontWeight: 400 }}>({g.employee_matricule})</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeEmployeeGrant(g.employee)}
+                          style={{ background: "none", border: "none", color: theme.danger, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                        >
+                          Retirer
+                        </button>
+                      </div>
+                      <select
+                        value={g.type_doc || ""}
+                        onChange={(e) => {
+                          const id = e.target.value || null;
+                          const t = typesDocuments.find((td) => td.id === id);
+                          setGrantTypeDoc(g.employee, id, t ? t.nom : null);
+                        }}
+                        style={{
+                          width: "100%",
+                          border: `1.5px solid ${theme.border}`,
+                          borderRadius: 8,
+                          padding: "6px 8px",
+                          fontSize: 12,
+                          fontFamily: "inherit",
+                          color: theme.text,
+                        }}
+                      >
+                        <option value="">Dossier complet</option>
+                        {typesDocuments.filter((t) => !t.is_categorie).map((t) => (
+                          <option key={t.id} value={t.id}>{t.nom}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
