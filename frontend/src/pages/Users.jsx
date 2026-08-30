@@ -96,8 +96,9 @@ const Users = () => {
   const [departements, setDepartements] = useState([]);
   const [services, setServices] = useState([]);
   const [cellules, setCellules] = useState([]);
+  const [sections, setSections] = useState([]);
   const [typesDocuments, setTypesDocuments] = useState([]);
-  const [scopeForm, setScopeForm] = useState({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
+  const [scopeForm, setScopeForm] = useState({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [] });
   const [savingScope, setSavingScope] = useState(false);
 
   // Périmètre "employés spécifiques" — grants ponctuels indépendants du
@@ -118,6 +119,7 @@ const Users = () => {
     api.get("/ref/departements/?all=1").then((res) => setDepartements(res.data.results || res.data)).catch(() => {});
     api.get("/ref/services/?all=1").then((res) => setServices(res.data.results || res.data)).catch(() => {});
     api.get("/ref/cellules/?all=1").then((res) => setCellules(res.data.results || res.data)).catch(() => {});
+    api.get("/ref/sections/?all=1").then((res) => setSections(res.data.results || res.data)).catch(() => {});
     api.get("/ref/types-documents/").then((res) => {
       setTypesDocuments(sortTypesDocumentsHierarchy(res.data.results || res.data));
     }).catch(() => {});
@@ -131,6 +133,7 @@ const Users = () => {
       departements: u.scope_departements || [],
       services: u.scope_services || [],
       cellules: u.scope_cellules || [],
+      sections: u.scope_sections || [],
       types_documents: u.scope_types_documents || [],
     });
     setEmployeeGrants([]);
@@ -195,6 +198,16 @@ const Users = () => {
           (c.departement && scopeForm.departements.includes(c.departement))
         );
 
+  // Une Section suit exactement la même règle qu'une Cellule (rattachée à
+  // une Direction OU un Département, filtrage OR non exclusif).
+  const visibleSections =
+    scopeForm.directions.length === 0 && scopeForm.departements.length === 0
+      ? sections
+      : sections.filter((s) =>
+          (s.direction && scopeForm.directions.includes(s.direction)) ||
+          (s.departement && scopeForm.departements.includes(s.departement))
+        );
+
   const toggleDirection = (id) => {
     setScopeForm((prev) => {
       const nextDirections = prev.directions.includes(id)
@@ -220,7 +233,13 @@ const Users = () => {
         if (cel.departement) return stillVisibleDeps.includes(cel.departement);
         return nextDirections.length === 0 || nextDirections.includes(cel.direction);
       });
-      return { ...prev, directions: nextDirections, poles: nextPoles, departements: nextDepartements, services: nextServices, cellules: nextCellules };
+      const nextSections = prev.sections.filter((secId) => {
+        const sec = sections.find((s) => s.id === secId);
+        if (!sec) return false;
+        if (sec.departement) return stillVisibleDeps.includes(sec.departement);
+        return nextDirections.length === 0 || nextDirections.includes(sec.direction);
+      });
+      return { ...prev, directions: nextDirections, poles: nextPoles, departements: nextDepartements, services: nextServices, cellules: nextCellules, sections: nextSections };
     });
   };
 
@@ -255,6 +274,13 @@ const Users = () => {
     setScopeForm((prev) => {
       const next = prev.cellules.includes(id) ? prev.cellules.filter((x) => x !== id) : [...prev.cellules, id];
       return { ...prev, cellules: next };
+    });
+  };
+
+  const toggleSection = (id) => {
+    setScopeForm((prev) => {
+      const next = prev.sections.includes(id) ? prev.sections.filter((x) => x !== id) : [...prev.sections, id];
+      return { ...prev, sections: next };
     });
   };
 
@@ -315,6 +341,7 @@ const Users = () => {
           scope_departements: scopeForm.departements,
           scope_services: scopeForm.services,
           scope_cellules: scopeForm.cellules,
+          scope_sections: scopeForm.sections,
           scope_types_documents: scopeForm.types_documents,
         }),
         api.put(`/admin-users/${scopeModal.id}/employee-grants/`, {
@@ -456,13 +483,14 @@ const Users = () => {
           scope_departements: scopeForm.departements,
           scope_services: scopeForm.services,
           scope_cellules: scopeForm.cellules,
+          scope_sections: scopeForm.sections,
           scope_types_documents: scopeForm.types_documents,
         });
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
       setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", password: "", password2: "" });
-      setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
+      setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [] });
       fetchUsers(true);
     } catch (err) {
       const data = err.response?.data;
@@ -567,7 +595,7 @@ const Users = () => {
           {isAdmin && (
             <button
               onClick={() => {
-                if (!showForm) setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], types_documents: [] });
+                if (!showForm) setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [] });
                 setShowForm(!showForm);
               }}
               style={{
@@ -700,6 +728,7 @@ const Users = () => {
                     { level: "departements", label: "Départements", items: visibleDepartements, onToggle: toggleDepartement },
                     { level: "services", label: "Services", items: visibleServices, onToggle: toggleService },
                     { level: "cellules", label: "Cellules", items: visibleCellules, onToggle: toggleCellule },
+                    { level: "sections", label: "Sections", items: visibleSections, onToggle: toggleSection },
                     { level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument },
                   ].map(({ level, label, items, onToggle }) => (
                     <div key={level} style={{ marginBottom: 16 }}>
@@ -874,9 +903,10 @@ const Users = () => {
                         const deptNoms = u.scope_departements_nom || [];
                         const svcNoms = u.scope_services_nom || [];
                         const celNoms = u.scope_cellules_nom || [];
+                        const secNoms = u.scope_sections_nom || [];
                         const typeNoms = u.scope_types_documents_nom || [];
                         const grantsCount = u.employee_grants_count || 0;
-                        if (dirNoms.length === 0 && poleNoms.length === 0 && deptNoms.length === 0 && svcNoms.length === 0 && celNoms.length === 0 && typeNoms.length === 0 && grantsCount === 0) {
+                        if (dirNoms.length === 0 && poleNoms.length === 0 && deptNoms.length === 0 && svcNoms.length === 0 && celNoms.length === 0 && secNoms.length === 0 && typeNoms.length === 0 && grantsCount === 0) {
                           return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Aucun (accès complet)</span>;
                         }
                         const scopePill = (label, count, fullList, color) => (
@@ -906,6 +936,7 @@ const Users = () => {
                             {deptNoms.length > 0 && scopePill("Départements", deptNoms.length, deptNoms, "#1e40af")}
                             {svcNoms.length > 0 && scopePill("Services", svcNoms.length, svcNoms, "#6d28d9")}
                             {celNoms.length > 0 && scopePill("Cellules", celNoms.length, celNoms, "#b45309")}
+                            {secNoms.length > 0 && scopePill("Sections", secNoms.length, secNoms, "#0369a1")}
                             {typeNoms.length > 0 && scopePill("Types de doc.", typeNoms.length, typeNoms, "#b45309")}
                             {grantsCount > 0 && scopePill("Employés spécifiques", grantsCount, ["voir détail dans Périmètre"], "#be185d")}
                           </div>
@@ -1234,6 +1265,7 @@ const Users = () => {
               { level: "departements", label: "Départements", items: visibleDepartements, onToggle: toggleDepartement },
               { level: "services", label: "Services", items: visibleServices, onToggle: toggleService },
               { level: "cellules", label: "Cellules", items: visibleCellules, onToggle: toggleCellule },
+              { level: "sections", label: "Sections", items: visibleSections, onToggle: toggleSection },
             ].map(({ level, label, items, onToggle }) => (
               <div key={level} style={{ marginBottom: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>

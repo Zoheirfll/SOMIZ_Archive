@@ -19,6 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
     scope_departements_nom = serializers.SerializerMethodField()
     scope_services_nom = serializers.SerializerMethodField()
     scope_cellules_nom = serializers.SerializerMethodField()
+    scope_sections_nom = serializers.SerializerMethodField()
     scope_types_documents_nom = serializers.SerializerMethodField()
     employee_grants_count = serializers.SerializerMethodField()
 
@@ -42,6 +43,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_scope_cellules_nom(self, obj):
         return list(obj.scope_cellules.values_list('nom', flat=True))
 
+    def get_scope_sections_nom(self, obj):
+        return list(obj.scope_sections.values_list('nom', flat=True))
+
     def get_scope_types_documents_nom(self, obj):
         return list(obj.scope_types_documents.values_list('nom', flat=True))
 
@@ -54,6 +58,7 @@ class UserSerializer(serializers.ModelSerializer):
             'scope_departements', 'scope_departements_nom',
             'scope_services', 'scope_services_nom',
             'scope_cellules', 'scope_cellules_nom',
+            'scope_sections', 'scope_sections_nom',
             'scope_types_documents', 'scope_types_documents_nom',
             'employee_grants_count',
         ]
