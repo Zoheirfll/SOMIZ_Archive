@@ -4,6 +4,7 @@ CRUD pour les référentiels : Direction, Département, Service, Poste, TypeCont
 """
 
 import os
+import re
 from django.conf import settings
 from django.db import transaction
 from rest_framework import generics, serializers, status
@@ -17,7 +18,7 @@ from employees.models import (
     TypeContrat, Categorie, TypeDocument,
     EmployeeDocument, EmployeeDocumentFile,
     ChampPersonnalise, SystemFieldLabel,
-    Pole, Cellule,
+    Pole, Cellule, Section,
 )
 
 
@@ -100,11 +101,12 @@ class DirectionSerializer(serializers.ModelSerializer):
     nb_departements = serializers.SerializerMethodField()
     nb_poles = serializers.SerializerMethodField()
     nb_cellules = serializers.SerializerMethodField()
+    nb_sections = serializers.SerializerMethodField()
     class Meta:
         model = Direction
         fields = [
             'id', 'nom', 'code', 'description', 'is_active',
-            'nb_departements', 'nb_poles', 'nb_cellules',
+            'nb_departements', 'nb_poles', 'nb_cellules', 'nb_sections',
         ]
     def get_nb_departements(self, obj):
         # Total (directs + regroupes sous un Pole de cette Direction) —
@@ -115,6 +117,8 @@ class DirectionSerializer(serializers.ModelSerializer):
         return obj.poles.filter(is_active=True).count()
     def get_nb_cellules(self, obj):
         return obj.cellules.filter(is_active=True).count()
+    def get_nb_sections(self, obj):
+        return obj.sections.filter(is_active=True).count()
 
 
 class PoleSerializer(serializers.ModelSerializer):
@@ -355,6 +359,52 @@ class CelluleDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Cellule.objects.select_related('direction', 'departement')
 
 
+class SectionSerializer(serializers.ModelSerializer):
+    direction_nom = serializers.CharField(source='direction.nom', read_only=True, default=None)
+    departement_nom = serializers.CharField(source='departement.nom', read_only=True, default=None)
+    nb_employes = serializers.SerializerMethodField()
+    class Meta:
+        model = Section
+        fields = [
+            'id', 'direction', 'direction_nom', 'departement', 'departement_nom',
+            'nom', 'code', 'description', 'is_active', 'nb_employes',
+        ]
+    def get_nb_employes(self, obj):
+        return obj.employees.count()
+
+    def validate(self, attrs):
+        direction = attrs.get('direction', getattr(self.instance, 'direction', None))
+        departement = attrs.get('departement', getattr(self.instance, 'departement', None))
+        if bool(direction) == bool(departement):
+            raise serializers.ValidationError(
+                "Une Section doit être rattachée à exactement une Direction OU un Département."
+            )
+        return attrs
+
+
+class SectionListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+    serializer_class = SectionSerializer
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+    def get_queryset(self):
+        if self.request.query_params.get('all') == '1':
+            qs = Section.objects.select_related('direction', 'departement').all()
+        else:
+            qs = self.request.user.accessible_sections_qs().select_related('direction', 'departement')
+        direction = self.request.query_params.get('direction')
+        if direction:
+            qs = qs.filter(direction=direction)
+        departement = self.request.query_params.get('departement')
+        if departement:
+            qs = qs.filter(departement=departement)
+        return self.filter_search(qs)
+
+class SectionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = SectionSerializer
+    permission_classes = [IsAdmin]
+    queryset = Section.objects.select_related('direction', 'departement')
+
+
 class PosteListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = PosteSerializer
     def get_permissions(self):
@@ -402,7 +452,7 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = TypeDocument
         fields = [
-            'id', 'nom', 'code', 'obligatoire', 'is_active', 'ordre',
+            'id', 'nom', 'code', 'obligatoire', 'is_active', 'ordre', 'couleur',
             'nb_documents', 'parent', 'parent_nom', 'is_categorie',
         ]
     def get_nb_documents(self, obj):
@@ -417,6 +467,13 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
         if self.instance and self.instance.sous_types.exists():
             attrs['obligatoire'] = False
         return attrs
+
+    def validate_couleur(self, value):
+        if not value:
+            return value
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+            raise serializers.ValidationError("Couleur invalide — attendu un code hexadécimal, ex. #166534.")
+        return value.lower()
 
     def validate_parent(self, value):
         if value is None:
@@ -547,6 +604,7 @@ class ReferentielBulkDeleteView(APIView):
         'departements': Departement,
         'services': Service,
         'cellules': Cellule,
+        'sections': Section,
         'postes': Poste,
         'types-contrat': TypeContrat,
         'categories': Categorie,
