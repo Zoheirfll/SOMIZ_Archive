@@ -12,6 +12,8 @@ import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner,
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 
 // Nom de fichier sans l'extension — l'utilisateur voit "Acte de naissance",
@@ -575,7 +577,7 @@ const EmployeeDetail = () => {
       <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 20px" : "28px 32px 32px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <button onClick={() => navigate(-1)} style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer", marginBottom: 16, fontFamily: "inherit" }}>
+          <button onClick={() => navigate(-1)} title="Retour (Alt+←)" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer", marginBottom: 16, fontFamily: "inherit" }}>
             ← Retour
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
@@ -612,9 +614,12 @@ const EmployeeDetail = () => {
               )}
             </div>
             <div>
-              <h1 style={{ color: "#fff", fontWeight: 800, fontSize: 22, margin: 0, letterSpacing: "-0.02em" }}>
-                {employee.prenom} {employee.nom}
-              </h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <h1 style={{ color: "#fff", fontWeight: 800, fontSize: 22, margin: 0, letterSpacing: "-0.02em" }}>
+                  {employee.prenom} {employee.nom}
+                </h1>
+                <InfoNotice text={PAGE_NOTICES.employeeDetail} />
+              </div>
               <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, marginTop: 4, display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{employee.matricule}</span>
                 {contrats.length > 0 && (

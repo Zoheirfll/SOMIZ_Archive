@@ -6,6 +6,8 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 import "../styles/animations.css";
 
@@ -137,15 +139,19 @@ const Profil = () => {
         <HeroDecor />
         <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
-              Mon profil
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
+                Mon profil
+              </h1>
+              <InfoNotice text={PAGE_NOTICES.profil} />
+            </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
               Gérer vos informations et votre mot de passe
             </div>
           </div>
           <button
             onClick={() => navigate(-1)}
+            title="Retour (Alt+←)"
             style={{
               background: "rgba(255,255,255,0.12)",
               border: "1.5px solid rgba(255,255,255,0.25)",

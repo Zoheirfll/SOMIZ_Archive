@@ -5,6 +5,8 @@ import { theme } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES, FIELD_NOTICES } from "../config/notices";
 import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -62,7 +64,7 @@ const EyeIcon = ({ open }) => open ? (
 const Users = () => {
   const { user } = useAuth();
   const isMobile = useIsMobile();
-  const isAdmin = user?.role === "ADMIN";
+  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const { confirm, ConfirmDialog } = useConfirm();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -585,9 +587,12 @@ const Users = () => {
         <HeroDecor />
         <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
-              Gestion des utilisateurs
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
+                Gestion des utilisateurs
+              </h1>
+              <InfoNotice text={PAGE_NOTICES.users} />
+            </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
               Gérer les accès à SOMIZ
             </div>
@@ -1247,9 +1252,12 @@ const Users = () => {
             onClick={(e) => e.stopPropagation()}
           >
           <div style={{ padding: "32px 32px 0", overflowY: "auto", flex: 1 }}>
-            <h2 style={{ color: theme.text, margin: "0 0 6px", fontSize: 17, fontWeight: 800 }}>
-              Périmètre d'accès
-            </h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <h2 style={{ color: theme.text, margin: 0, fontSize: 17, fontWeight: 800 }}>
+                Périmètre d'accès
+              </h2>
+              <InfoNotice text={FIELD_NOTICES.users.perimetre} variant="field" />
+            </div>
             <div style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 20 }}>
               Compte :{" "}
               <strong style={{ color: theme.primary }}>{scopeModal.username}</strong>

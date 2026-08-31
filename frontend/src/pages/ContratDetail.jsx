@@ -9,6 +9,8 @@ import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Clipboar
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
 import { employeeSlug } from "../utils/employeeSlug";
@@ -428,7 +430,10 @@ const ContratDetail = () => {
                 <ClipboardIcon size={28} />
               </div>
               <div>
-                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Contrat</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Contrat</div>
+                  <InfoNotice text={PAGE_NOTICES.contratDetail} />
+                </div>
                 <div style={{ color: "#fff", fontWeight: 800, fontSize: 28, letterSpacing: "-0.02em", fontFamily: "monospace" }}>{contrat.numero_contrat}</div>
                 <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 14, marginTop: 4 }}>{contrat.employee_prenom || ""} {contrat.employee_nom} · {contrat.employee_matricule}</div>
               </div>

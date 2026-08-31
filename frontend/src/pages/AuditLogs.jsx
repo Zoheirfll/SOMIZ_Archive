@@ -6,7 +6,12 @@ import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
+import { useAuth } from "../context/AuthContext";
+import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 
 const ACTION_COLORS = {
   VIEW: theme.primary,
@@ -19,6 +24,7 @@ const ACTION_COLORS = {
   LOGIN: theme.primary,
   LOGOUT: theme.textSecondary,
   LOGIN_FAIL: theme.danger,
+  VIEW_AUDIT_LOG: theme.textSecondary,
 };
 
 // Champs d'affectation organisationnelle traçés par un transfert
@@ -49,17 +55,55 @@ const IconSearch = () => (
 );
 
 const AuditLogs = () => {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "SUPERADMIN";
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [scope, setScope] = useState("all");
   const [filters, setFilters] = useState({ user: "", action: "" });
+  const [filterableUsers, setFilterableUsers] = useState([]);
   const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchLogs();
   }, [page, filters]);
+
+  useEffect(() => {
+    fetchFilterableUsers();
+  }, []);
+
+  const { overrides: shortcutOverrides } = useKeyboardShortcutsHelp();
+  usePaginationShortcuts({
+    page,
+    totalPages,
+    onNext: () => setPage((p) => Math.min(totalPages, p + 1)),
+    onPrev: () => setPage((p) => Math.max(1, p - 1)),
+    comboNext: shortcutOverrides["pagination-next"] || "ArrowRight",
+    comboPrev: shortcutOverrides["pagination-prev"] || "ArrowLeft",
+  });
+
+  // Liste de comptes proposée dans le filtre "Utilisateur" — reflète
+  // exactement le périmètre appliqué côté serveur (AuditLogListView) :
+  // tous les comptes pour un SUPERADMIN, ou seulement soi-même + les
+  // CONSULTANT pour un ADMIN ordinaire — pour ne jamais proposer un
+  // utilisateur que le filtre ne pourrait de toute façon pas montrer.
+  const fetchFilterableUsers = async () => {
+    try {
+      const response = await api.get("/admin-users/");
+      const all = response.data.results || response.data;
+      const visible = isSuperAdmin
+        ? all
+        : all.filter((u) => u.role === "CONSULTANT" || u.username === user?.username);
+      setFilterableUsers(
+        [...visible].sort((a, b) => a.username.localeCompare(b.username)),
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -71,6 +115,7 @@ const AuditLogs = () => {
       setLogs(response.data.results);
       setTotal(response.data.total);
       setTotalPages(response.data.total_pages);
+      setScope(response.data.scope || "all");
     } catch (err) {
       console.error(err);
     } finally {
@@ -103,9 +148,12 @@ const AuditLogs = () => {
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
-              Journal d'audit
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
+                Journal d'audit
+              </h1>
+              <InfoNotice text={PAGE_NOTICES.audit} />
+            </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
               Traçabilité RGPD — toutes les actions sont enregistrées
             </div>
@@ -126,6 +174,21 @@ const AuditLogs = () => {
 
       <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
+        {scope === "own_and_consultants" && (
+          <div style={{
+            background: theme.primaryBg,
+            border: `1px solid ${theme.primaryBorder}`,
+            borderRadius: 10,
+            padding: "10px 16px",
+            marginBottom: 16,
+            color: theme.primary,
+            fontSize: 13,
+            fontWeight: 600,
+          }}>
+            Vous voyez vos propres actions et celles des comptes Consultant. Seul un Super-administrateur peut consulter le journal complet (y compris les autres Administrateurs).
+          </div>
+        )}
+
         {/* Filtres */}
         <div style={{
           background: theme.surface,
@@ -140,16 +203,24 @@ const AuditLogs = () => {
           boxShadow: theme.shadowMd,
         }}>
           <div style={{ position: "relative", flex: isMobile ? "1 1 100%" : 1, display: "flex", alignItems: "center" }}>
-            <span style={{ position: "absolute", left: 12, color: theme.textMuted, pointerEvents: "none", display: "flex" }}>
+            <span style={{ position: "absolute", left: 12, color: theme.textMuted, pointerEvents: "none", display: "flex", zIndex: 1 }}>
               <IconSearch />
             </span>
-            <input
+            <select
               name="user"
               value={filters.user}
               onChange={handleFilter}
-              placeholder="Filtrer par utilisateur..."
-              style={{ ...inputStyle, flex: 1, paddingLeft: 36 }}
-            />
+              style={{ ...inputStyle, flex: 1, paddingLeft: 36, cursor: "pointer" }}
+            >
+              <option value="">
+                {isSuperAdmin ? "Tous les utilisateurs" : "Vous + Consultants"}
+              </option>
+              {filterableUsers.map((u) => (
+                <option key={u.id} value={u.username}>
+                  {u.username} — {u.prenom} {u.nom} ({u.role === "CONSULTANT" ? "Consultant" : u.role === "SUPERADMIN" ? "Super-admin" : "Admin"})
+                </option>
+              ))}
+            </select>
           </div>
           <select
             name="action"

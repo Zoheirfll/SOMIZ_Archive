@@ -10,8 +10,13 @@ import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import { useConfirm } from "../components/ConfirmDialog";
+import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import useIsMobile from "../hooks/useIsMobile";
 import { employeeSlug } from "../utils/employeeSlug";
+import { slugify } from "../utils/slugify";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
@@ -618,6 +623,33 @@ const Employees = () => {
   const typeManquant = searchParams.get("type_manquant") || "";
   const [typeManquantLabel, setTypeManquantLabel] = useState("");
 
+  // Niveau du drill-down (Direction>Département>Service) synchronisé dans
+  // l'URL — chaque clic pousse une entrée d'historique (pas de replace),
+  // pour que le retour arrière navigateur / Alt+← redescende d'un niveau à
+  // la fois au lieu de sortir directement de la page (voir pushDrillParams).
+  // dir/dep/svc sont des slugs lisibles (nom, pas l'UUID interne) — ce ne
+  // sont pas des données personnelles (contrairement à employeeSlug), donc
+  // rien n'empêche de les afficher tels quels dans l'URL.
+  const drillLevel = searchParams.get("lvl") || "directions";
+  const drillDirSlug = searchParams.get("dir") || "";
+  const drillDepSlug = searchParams.get("dep") || "";
+  const drillSvcSlug = searchParams.get("svc") || "";
+
+  const pushDrillParams = (next) =>
+    setSearchParams((p) => {
+      const n = new URLSearchParams(p);
+      n.delete("lvl");
+      n.delete("dir");
+      n.delete("dep");
+      n.delete("svc");
+      if (next.lvl) n.set("lvl", next.lvl);
+      if (next.dir) n.set("dir", next.dir);
+      if (next.dep) n.set("dep", next.dep);
+      if (next.svc) n.set("svc", next.svc);
+      n.set("page", "1");
+      return n;
+    }); // pas de { replace: true } ici : on veut un empilement dans l'historique
+
   const clearCompletudeFilter = () =>
     setSearchParams(
       (p) => {
@@ -671,6 +703,16 @@ const Employees = () => {
       },
       { replace: true },
     );
+
+  const { overrides: shortcutOverrides } = useKeyboardShortcutsHelp();
+  usePaginationShortcuts({
+    page,
+    totalPages,
+    onNext: () => setPage((p) => Math.min(totalPages, p + 1)),
+    onPrev: () => setPage((p) => Math.max(1, p - 1)),
+    comboNext: shortcutOverrides["pagination-next"] || "ArrowRight",
+    comboPrev: shortcutOverrides["pagination-prev"] || "ArrowLeft",
+  });
 
   // Champ de recherche du tableau : ne déclenche la recherche qu'à la validation
   // (submit), pas à chaque frappe — même comportement que la barre du haut.
@@ -896,6 +938,89 @@ const Employees = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reconstruit l'état du drill-down (Direction>Département>Service) à
+  // partir de l'URL — se déclenche sur retour arrière navigateur / Alt+←
+  // (popstate change lvl/dir/dep/svc sans passer par selectDirection() etc.,
+  // qui ont déjà mis à jour l'état local avant de pousser ces mêmes params —
+  // dans ce cas les objets sélectionnés correspondent déjà et rien ne
+  // refetch). Ignoré si on arrive via un lien Organigramme (params distincts
+  // direction/departement/service/pole/cellule/section, gérés ci-dessus).
+  useEffect(() => {
+    if (
+      searchParams.get("direction") ||
+      searchParams.get("departement") ||
+      searchParams.get("service") ||
+      searchParams.get("pole") ||
+      searchParams.get("cellule") ||
+      searchParams.get("section")
+    ) {
+      return;
+    }
+
+    (async () => {
+      try {
+        let dirObj = selectedDirection;
+        let depObj = selectedDepartement;
+        let svcObj = selectedService;
+
+        if (drillLevel === "directions") {
+          dirObj = null;
+          depObj = null;
+          svcObj = null;
+        } else {
+          if (drillDirSlug && slugify(dirObj?.nom) !== drillDirSlug) {
+            // La liste complète des directions est déjà chargée au montage
+            // (voir fetch hierarchy ci-dessus) — pas d'appel réseau ici.
+            if (directions.length === 0) return; // pas encore chargée, on réessaiera (directions en dépendance)
+            dirObj = directions.find((d) => slugify(d.nom) === drillDirSlug) || null;
+          }
+          if (drillLevel === "departements" || !dirObj) {
+            depObj = null;
+            svcObj = null;
+          } else {
+            if (drillDepSlug && slugify(depObj?.nom) !== drillDepSlug) {
+              const res = await api.get(`/ref/departements/?direction=${dirObj.id}`);
+              const list = res.data.results || res.data;
+              depObj = list.find((d) => slugify(d.nom) === drillDepSlug) || null;
+            }
+            if (drillLevel === "services" || !depObj) {
+              svcObj = null;
+            } else if (drillLevel === "employees") {
+              if (drillSvcSlug) {
+                if (slugify(svcObj?.nom) !== drillSvcSlug) {
+                  const res = await api.get(`/ref/services/?departement=${depObj.id}`);
+                  const list = res.data.results || res.data;
+                  svcObj = list.find((s) => slugify(s.nom) === drillSvcSlug) || null;
+                }
+              } else {
+                svcObj = null;
+              }
+            }
+          }
+        }
+
+        if (
+          view === drillLevel &&
+          (dirObj?.id || null) === (selectedDirection?.id || null) &&
+          (depObj?.id || null) === (selectedDepartement?.id || null) &&
+          (svcObj?.id || null) === (selectedService?.id || null)
+        ) {
+          return; // déjà à jour (navigation vers l'avant via un clic)
+        }
+
+        setSelectedDirection(dirObj);
+        setSelectedDepartement(depObj);
+        setSelectedService(svcObj);
+        setOrgFilter(null);
+        setView(drillLevel);
+        setHierarchyKey((k) => k + 1);
+      } catch (err) {
+        console.error(err);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drillLevel, drillDirSlug, drillDepSlug, drillSvcSlug, directions]);
+
   // ─── Navigation ───────────────────────────────────────────────────────────
 
   const goToDirections = () => {
@@ -906,6 +1031,7 @@ const Employees = () => {
     setSelectedService(null);
     setOrgFilter(null);
     setHierarchyKey((k) => k + 1);
+    pushDrillParams({ lvl: "directions" });
   };
   const selectDirection = (dir) => {
     setSelectedDirection(dir);
@@ -915,6 +1041,7 @@ const Employees = () => {
     setOrgFilter(null);
     setView("departements");
     setHierarchyKey((k) => k + 1);
+    pushDrillParams({ lvl: "departements", dir: slugify(dir.nom) });
   };
   const selectPole = (pole) => {
     setSelectedPole(pole);
@@ -927,12 +1054,23 @@ const Employees = () => {
     setSelectedService(null);
     setView("services");
     setHierarchyKey((k) => k + 1);
+    pushDrillParams({
+      lvl: "services",
+      dir: slugify(selectedDirection?.nom),
+      dep: slugify(dept.nom),
+    });
   };
   const selectService = (svc) => {
     setSelectedService(svc);
     setView("employees");
     setPage(1);
     setHierarchyKey((k) => k + 1);
+    pushDrillParams({
+      lvl: "employees",
+      dir: slugify(selectedDirection?.nom),
+      dep: slugify(selectedDepartement?.nom),
+      svc: slugify(svc.nom),
+    });
   };
   const selectCellule = (cellule) => {
     setOrgFilter({ type: "cellule", id: cellule.id, nom: cellule.nom });
@@ -951,6 +1089,11 @@ const Employees = () => {
     setOrgFilter(null);
     setView("employees");
     setPage(1);
+    pushDrillParams({
+      lvl: "employees",
+      dir: slugify(selectedDirection?.nom),
+      dep: slugify(selectedDepartement?.nom),
+    });
   };
 
   // ─── Bulk actions ─────────────────────────────────────────────────────────
@@ -1044,6 +1187,7 @@ const Employees = () => {
                     setSelectedDepartement(null);
                     setSelectedService(null);
                     setHierarchyKey((k) => k + 1);
+                    pushDrillParams({ lvl: "departements", dir: slugify(selectedDirection.nom) });
                   }
                 : null,
           },
@@ -1060,6 +1204,7 @@ const Employees = () => {
                     setSelectedDepartement(null);
                     setSelectedService(null);
                     setHierarchyKey((k) => k + 1);
+                    pushDrillParams({ lvl: "departements", dir: slugify(selectedDirection?.nom) });
                   }
                 : null,
           },
@@ -1075,6 +1220,11 @@ const Employees = () => {
                     setView("services");
                     setSelectedService(null);
                     setHierarchyKey((k) => k + 1);
+                    pushDrillParams({
+                      lvl: "services",
+                      dir: slugify(selectedDirection?.nom),
+                      dep: slugify(selectedDepartement.nom),
+                    });
                   }
                 : null,
           },
@@ -1733,7 +1883,7 @@ const Employees = () => {
       )}
 
       {/* Barre actions bulk */}
-      {someSelected && user?.role === "ADMIN" && (
+      {someSelected && ["ADMIN", "SUPERADMIN"].includes(user?.role) && (
         <div
           className="anim-slide-down"
           style={{
@@ -1886,7 +2036,7 @@ const Employees = () => {
                     borderBottom: `2px solid ${theme.border}`,
                   }}
                 >
-                  {user?.role === "ADMIN" && (
+                  {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                     <th style={{ padding: "13px 16px", width: 40 }}>
                       <input
                         type="checkbox"
@@ -2040,7 +2190,7 @@ const Employees = () => {
                           : "#FAFBFC",
                     }}
                   >
-                    {user?.role === "ADMIN" && (
+                    {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                       <td
                         style={{ padding: "13px 16px" }}
                         onClick={(e) => {
@@ -2557,17 +2707,20 @@ const Employees = () => {
                 >
                   <IconUsers size={22} color="#fff" />
                 </div>
-                <h1
-                  style={{
-                    color: "#FFFFFF",
-                    margin: 0,
-                    fontSize: 26,
-                    fontWeight: 800,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  Dossiers Employés
-                </h1>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <h1
+                    style={{
+                      color: "#FFFFFF",
+                      margin: 0,
+                      fontSize: 26,
+                      fontWeight: 800,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    Dossiers Employés
+                  </h1>
+                  <InfoNotice text={PAGE_NOTICES.employees} />
+                </div>
               </div>
               <div
                 style={{
@@ -2656,7 +2809,7 @@ const Employees = () => {
                   Chercher
                 </button>
               </form>
-              {user?.role === "ADMIN" && (
+              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <>
                   <button
                     onClick={() => navigate("/import")}

@@ -7,6 +7,8 @@ import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES, FIELD_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 import { useConfirm } from "../components/ConfirmDialog";
 import SearchableSelect from "../components/SearchableSelect";
@@ -73,7 +75,7 @@ const Select = ({ children, className, ...props }) => (
   </select>
 );
 
-const SectionHeader = ({ label }) => (
+const SectionHeader = ({ label, notice }) => (
   <div
     style={{
       display: "flex",
@@ -102,6 +104,7 @@ const SectionHeader = ({ label }) => (
     >
       {label}
     </div>
+    <InfoNotice text={notice} variant="field" size={16} />
   </div>
 );
 
@@ -114,7 +117,7 @@ const EmployeeForm = () => {
   const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
-    if (user && user.role !== "ADMIN") navigate("/employees");
+    if (user && !["ADMIN", "SUPERADMIN"].includes(user.role)) navigate("/employees");
   }, [user, navigate]);
 
   const [form, setForm] = useState({
@@ -430,17 +433,20 @@ const EmployeeForm = () => {
       >
         <HeroDecor />
         <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <h1
-            style={{
-              color: "#FFFFFF",
-              margin: 0,
-              fontSize: 24,
-              fontWeight: 800,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {isEdit ? "Modifier l'employé" : "Nouvel employé"}
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h1
+              style={{
+                color: "#FFFFFF",
+                margin: 0,
+                fontSize: 24,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {isEdit ? "Modifier l'employé" : "Nouvel employé"}
+            </h1>
+            <InfoNotice text={PAGE_NOTICES.employeeForm} />
+          </div>
           <div
             style={{
               color: "rgba(255,255,255,0.6)",
@@ -629,7 +635,7 @@ const EmployeeForm = () => {
 
           {/* Section Organisation */}
           <div style={sectionCardStyle}>
-            <SectionHeader label="Organisation" />
+            <SectionHeader label="Organisation" notice={FIELD_NOTICES.employeeForm.affectationExclusive} />
             <div
               style={{
                 display: "grid",

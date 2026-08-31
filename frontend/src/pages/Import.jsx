@@ -7,11 +7,13 @@ import { useAuth } from "../context/AuthContext";
 import { CheckIcon, FolderIcon } from "../components/icons";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 
 const Import = () => {
   const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const isMobile = useIsMobile();
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -104,17 +106,20 @@ const Import = () => {
         <HeroDecor />
         <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1
-              style={{
-                color: "#FFFFFF",
-                margin: 0,
-                fontSize: 24,
-                fontWeight: 800,
-                letterSpacing: "-0.02em",
-              }}
-            >
-              Import employés
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h1
+                style={{
+                  color: "#FFFFFF",
+                  margin: 0,
+                  fontSize: 24,
+                  fontWeight: 800,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Import employés
+              </h1>
+              <InfoNotice text={PAGE_NOTICES.import} />
+            </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
               Importez vos employés en masse depuis un fichier Excel (.xlsx) ou CSV
             </div>

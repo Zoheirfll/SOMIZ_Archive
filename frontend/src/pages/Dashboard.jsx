@@ -8,6 +8,8 @@ import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 import useCountUp from "../hooks/useCountUp";
 import useIsMobile from "../hooks/useIsMobile";
 
@@ -101,7 +103,7 @@ const Dashboard = () => {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    if (user?.role !== "ADMIN") {
+    if (!["ADMIN", "SUPERADMIN"].includes(user?.role)) {
       navigate("/employees");
       return;
     }
@@ -159,9 +161,12 @@ const Dashboard = () => {
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
           <div>
-            <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
-              Tableau de bord
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
+                Tableau de bord
+              </h1>
+              <InfoNotice text={PAGE_NOTICES.dashboard} />
+            </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
               Vue d'ensemble des dossiers RH
             </div>
