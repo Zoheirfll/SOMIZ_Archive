@@ -206,6 +206,41 @@ max) et n'est jamais rattachable à un `EmployeeDocument`.
 
 ---
 
+## Champs cliquables vers le document source (2026-08-31)
+
+Sur la fiche employé, un champ du panneau "Informations" (ex. "Date de
+naissance") peut être associé à un type de document précis (ex. "Acte de
+naissance") : cliquer dessus bascule sur l'onglet "Dossier" et ouvre
+directement ce document — ou, s'il est manquant, scroll + surligne
+temporairement (2s) sa ligne dans la liste des documents manquants.
+
+- `TypeDocument.champ_source` (`CharField`, blank=True) — code d'un champ
+  système (`date_naissance`, `nin`...) ou d'un `ChampPersonnalise.code`.
+  Pas de FK, pas de contrainte d'unicité en base. Une catégorie
+  (`is_categorie`) ne peut jamais en avoir un —
+  `TypeDocumentSerializer.validate()` le force à vide dès que l'instance a
+  des `sous_types`, même garde-fou que pour `obligatoire`.
+- UI `/parametres` → "Types de documents" : select "Champ source"
+  (optionnel), options = les 12 champs de `SYSTEM_FIELDS` + les champs
+  personnalisés actifs (chargés une fois au montage de `Parametres.jsx`,
+  indépendamment de l'onglet actif).
+- `EmployeeDetail.jsx` : `champToDoc` (map `{champ_source → type_doc}`,
+  dérivée de `typesDocumentsList` déjà chargé) rend chaque `infoFields`
+  correspondant cliquable. `handleFieldClick(code)` cherche d'abord un
+  document présent (`documentsAffiches`, par `type_doc_id`) — sinon
+  cherche l'entrée `documents_manquants` correspondante (par `id`) et la
+  surligne via `missingRowRefs` (map de refs DOM indexée par `code`,
+  attachée aux lignes "manquant" existantes).
+- **Piège jsdom** : `Element.scrollIntoView` n'existe pas dans jsdom (tests
+  Jest) — l'appel doit être `?.scrollIntoView?.(...)`  (chaînage optionnel
+  sur la méthode elle-même, pas seulement sur l'élément), sinon une
+  `TypeError` différée (dans un `setTimeout`) fait planter toute la suite
+  de tests quand elle tourne aux côtés d'autres fichiers — confirmé en
+  observant le nombre de tests en échec passer de 55 (baseline connue,
+  pré-existante, sans rapport avec ce chantier) à 56 avant ce correctif.
+
+---
+
 ## Champs personnalisés — panneau "Informations" configurable (2026-07-25)
 
 Le panneau "Informations" de la fiche employé (`EmployeeDetail.jsx`) est
