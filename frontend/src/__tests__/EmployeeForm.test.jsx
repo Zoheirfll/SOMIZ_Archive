@@ -433,6 +433,44 @@ describe("EmployeeForm — soumission édition", () => {
     fireEvent.click(annulerButtons[annulerButtons.length - 1]);
     expect(api.patch).not.toHaveBeenCalled();
   });
+
+  test("changer la Fonction déclenche la modale de confirmation de transfert", async () => {
+    const refsWithSecondPoste = {
+      ...mockRefs,
+      postes: [
+        ...mockRefs.postes,
+        { id: "pos-2", nom: "Chef de service", is_active: true },
+      ],
+    };
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/directions/")) return Promise.resolve({ data: refsWithSecondPoste.directions });
+      if (url.includes("/ref/departements/")) return Promise.resolve({ data: refsWithSecondPoste.departements });
+      if (url.includes("/ref/services/")) return Promise.resolve({ data: refsWithSecondPoste.services });
+      if (url.includes("/ref/postes/")) return Promise.resolve({ data: refsWithSecondPoste.postes });
+      if (url.includes("/ref/cellules/")) return Promise.resolve({ data: [] });
+      if (url.includes("/ref/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
+    api.patch.mockResolvedValue({ data: mockEmployee });
+    renderEdit();
+    await screen.findByDisplayValue("Dupont");
+
+    const posteInput = await screen.findByDisplayValue("Ingénieur");
+    fireEvent.focus(posteInput);
+    fireEvent.mouseDown(await screen.findByText("Chef de service"));
+    fireEvent.click(screen.getByText(/Enregistrer les modifications/));
+
+    await screen.findByText(/Ingénieur → Chef de service/);
+    expect(api.patch).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Confirmer"));
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith(
+        "/employees/emp-uuid/",
+        expect.objectContaining({ poste: "pos-2" })
+      );
+    });
+  });
 });
 
 describe("EmployeeForm — validation champs", () => {

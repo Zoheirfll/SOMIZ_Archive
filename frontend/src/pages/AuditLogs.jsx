@@ -35,6 +35,8 @@ const TRANSFER_FIELD_LABELS = {
   service: "Service",
   cellule: "Cellule",
   section: "Section",
+  poste: "Fonction",
+  categorie: "Catégorie",
 };
 
 // Résume le detail JSON d'un transfert en une ligne lisible, ex.

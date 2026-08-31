@@ -226,6 +226,8 @@ const EmployeeForm = () => {
         service: newForm.service,
         cellule: newForm.cellule,
         section: newForm.section,
+        poste: newForm.poste,
+        categorie: newForm.categorie,
       });
 
       if (emp.champs_personnalises) {
@@ -314,6 +316,8 @@ const EmployeeForm = () => {
       service: services,
       cellule: cellules,
       section: sections,
+      poste: postes,
+      categorie: categories,
     };
     const found = (listByField[field] || []).find((r) => r.id === valueId);
     return found?.nom || "?";
@@ -334,6 +338,8 @@ const EmployeeForm = () => {
         "service",
         "cellule",
         "section",
+        "poste",
+        "categorie",
       ].filter(
         (field) => (form[field] || "") !== (originalAffectation[field] || ""),
       );
