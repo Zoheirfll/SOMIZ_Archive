@@ -51,6 +51,17 @@ const CHILD_LABEL = {
   departement: "service/cellule/section",
 };
 
+// Directeur (Direction/Pôle) ou Chef de <unité> (Département/Service/
+// Cellule/Section) — voir docs/superpowers/specs/2026-08-31-voie-hierarchique-design.md.
+const RESPONSABLE_ROLE = {
+  direction: "Directeur",
+  pole: "Directeur",
+  departement: "Chef de département",
+  service: "Chef de service",
+  cellule: "Chef de cellule",
+  section: "Chef de section",
+};
+
 const ArrowRightIcon = ({ color }) => (
   <svg
     width="14"
@@ -71,7 +82,7 @@ const ArrowRightIcon = ({ color }) => (
 // Cellule) dans l'écran drill-down. Le corps de la carte descend d'un
 // niveau (s'il a des enfants) ; le bouton flèche mène directement à la
 // liste des employés filtrée sur ce nœud.
-const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible }) => {
+const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible, responsableNom }) => {
   const s = LEVEL[level];
   const color = accessible ? s.color : "#64748B";
   const bg = accessible ? s.bg : "#F1F5F9";
@@ -120,6 +131,11 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
         {childCount != null && (
           <div style={{ color, fontSize: 11, fontWeight: 700, marginTop: 4 }}>
             {childCount} {CHILD_LABEL[level]}
+          </div>
+        )}
+        {responsableNom && (
+          <div style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4 }}>
+            {RESPONSABLE_ROLE[level]} : {responsableNom}
           </div>
         )}
         {!accessible && (
@@ -389,6 +405,7 @@ const Organigramme = () => {
                   onEnter={undefined}
                   onNavigate={() => navigateTo(current, current.level)}
                   accessible={isAccessible(current, current.level)}
+                  responsableNom={current.responsable_nom}
                 />
               ) : (
                 <div
@@ -439,6 +456,7 @@ const Organigramme = () => {
                           onEnter={() => enter(node)}
                           onNavigate={() => navigateTo(node, node.level)}
                           accessible={isAccessible(node, node.level)}
+                          responsableNom={node.responsable_nom}
                         />
                       </div>
                     );
