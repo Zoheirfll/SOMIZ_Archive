@@ -32,6 +32,7 @@ const mockFile = { id: "file-1", file_name: "cin_recto.pdf", mime_type: "applica
 const mockDoc = {
   id: "doc-1",
   type_document: "CIN",
+  type_doc_id: "type-1",
   is_active: true,
   fichiers: [mockFile],
   nb_fichiers: 1,
@@ -50,15 +51,21 @@ const mockEmployee = {
   poste_nom: "Ingénieur",
   type_contrat_nom: "CDI",
   categorie_nom: "Cadre",
+  date_naissance: "1990-01-01",
   date_embauche: "2020-06-01",
   taux_completude: 75,
   dossier_complet: false,
   documents: [mockDoc],
-  documents_manquants: [{ code: "DIPLOME", label: "Diplôme" }],
+  documents_manquants: [
+    { code: "DIPLOME", label: "Diplôme" },
+    { id: "type-3", code: "NIN_DOC", label: "Copie NIN" },
+  ],
+  champs_personnalises: [{ id: "cp-1", code: "nin", nom: "NIN", type_champ: "texte", valeur: "123456" }],
 };
 const mockTypes = [
-  { id: "type-1", code: "CIN", nom: "Carte Nationale", obligatoire: true },
-  { id: "type-2", code: "CV", nom: "CV", obligatoire: false },
+  { id: "type-1", code: "CIN", nom: "Carte Nationale", obligatoire: true, champ_source: "date_naissance" },
+  { id: "type-2", code: "CV", nom: "CV", obligatoire: false, champ_source: "" },
+  { id: "type-3", code: "NIN_DOC", nom: "Copie NIN", obligatoire: false, champ_source: "nin" },
 ];
 
 const renderPage = (role = "ADMIN") => {
@@ -833,5 +840,32 @@ describe("EmployeeDetail — onglet Carrière", () => {
     await waitFor(() => {
       expect(api.delete).toHaveBeenCalledWith("/historique/fonctions/h1/");
     });
+  });
+});
+
+describe("EmployeeDetail — champs cliquables vers le document source", () => {
+  test("cliquer un champ dont le document existe le sélectionne", async () => {
+    renderPage();
+    const champ = await screen.findByText("Date de naissance");
+    fireEvent.click(champ);
+    await waitFor(() => {
+      expect(screen.getAllByText(/Carte Nationale/).length).toBeGreaterThan(0);
+    });
+  });
+
+  test("cliquer un champ dont le document est manquant surligne la ligne manquante", async () => {
+    renderPage();
+    const champ = await screen.findByText("NIN");
+    fireEvent.click(champ);
+    await waitFor(() => {
+      expect(screen.getAllByText("Copie NIN").length).toBeGreaterThan(0);
+    });
+  });
+
+  test("cliquer un champ sans document lié ne fait rien de spécial", async () => {
+    renderPage();
+    const champ = await screen.findByText("Date de recrutement");
+    fireEvent.click(champ);
+    expect(screen.getByText("Date de recrutement")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
@@ -120,6 +120,8 @@ const EmployeeDetail = () => {
     date_debut: "",
     date_fin: "",
   });
+  const [highlightedMissingCode, setHighlightedMissingCode] = useState(null);
+  const missingRowRefs = useRef({});
 
   useEffect(() => {
     fetchTypesDocuments();
@@ -585,22 +587,23 @@ const EmployeeDetail = () => {
       value: `${employee.nom} ${employee.prenom}`,
       bold: true,
     },
-    { label: "Date de naissance", value: employee.date_naissance || "—" },
-    { label: "Date de recrutement", value: employee.date_embauche || "—" },
-    { label: "Date de fin de contrat", value: employee.date_fin_contrat || "—" },
-    { label: "Statut", value: employee.statut, badge: true },
-    { label: "Direction", value: employee.direction_nom || "—" },
-    { label: "Département", value: employee.departement_nom || "—" },
-    { label: "Service", value: employee.service_nom || "—" },
+    { label: "Date de naissance", value: employee.date_naissance || "—", code: "date_naissance" },
+    { label: "Date de recrutement", value: employee.date_embauche || "—", code: "date_embauche" },
+    { label: "Date de fin de contrat", value: employee.date_fin_contrat || "—", code: "date_fin_contrat" },
+    { label: "Statut", value: employee.statut, badge: true, code: "statut" },
+    { label: "Direction", value: employee.direction_nom || "—", code: "direction" },
+    { label: "Département", value: employee.departement_nom || "—", code: "departement" },
+    { label: "Service", value: employee.service_nom || "—", code: "service" },
     ...(employee.cellule_nom
-      ? [{ label: "Cellule", value: employee.cellule_nom }]
+      ? [{ label: "Cellule", value: employee.cellule_nom, code: "cellule" }]
       : []),
-    { label: "Fonction", value: employee.poste_nom || "—" },
-    { label: "Type de contrat", value: employee.type_contrat_nom || "—" },
-    { label: "Catégorie", value: employee.categorie_nom || "—" },
+    { label: "Fonction", value: employee.poste_nom || "—", code: "poste" },
+    { label: "Type de contrat", value: employee.type_contrat_nom || "—", code: "type_contrat" },
+    { label: "Catégorie", value: employee.categorie_nom || "—", code: "categorie" },
     ...(employee.champs_personnalises || []).map((c) => ({
       label: c.nom,
       value: c.valeur || "—",
+      code: c.code,
     })),
   ];
 
@@ -612,6 +615,33 @@ const EmployeeDetail = () => {
 
   const { orderMap: docOrderMap, headerBefore: docHeaderBefore, groupEnd: docGroupEnd } =
     buildDocOrder(documentsAffiches, employee.documents_manquants || []);
+
+  const champToDoc = {};
+  typesDocumentsList.forEach((t) => {
+    if (t.champ_source) champToDoc[t.champ_source] = t;
+  });
+
+  const handleFieldClick = (code) => {
+    const typeDoc = champToDoc[code];
+    if (!typeDoc) return;
+    setActiveTab("dossier");
+    const present = documentsAffiches.find((d) => d.type_doc_id === typeDoc.id);
+    if (present) {
+      handleSelectDoc(present);
+      return;
+    }
+    const manquant = (employee.documents_manquants || []).find((d) => d.id === typeDoc.id);
+    if (manquant) {
+      setHighlightedMissingCode(manquant.code);
+      setTimeout(() => {
+        missingRowRefs.current[manquant.code]?.scrollIntoView?.({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 50);
+      setTimeout(() => setHighlightedMissingCode(null), 2000);
+    }
+  };
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -722,12 +752,21 @@ const EmployeeDetail = () => {
             {infoFields.map((item) => (
               <div key={item.label}>
                 <div
+                  onClick={champToDoc[item.code] ? () => handleFieldClick(item.code) : undefined}
                   style={{
                     color: theme.textMuted,
                     fontSize: 11,
                     textTransform: "uppercase",
                     letterSpacing: "0.05em",
                     marginBottom: 4,
+                    ...(champToDoc[item.code]
+                      ? {
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          textDecorationStyle: "dotted",
+                          textDecorationColor: theme.textMuted,
+                        }
+                      : {}),
                   }}
                 >
                   {item.label}
@@ -2049,6 +2088,7 @@ const EmployeeDetail = () => {
                   </div>
                 )}
                 <div
+                  ref={(el) => { missingRowRefs.current[doc.code] = el; }}
                   style={{
                     padding: "10px 16px",
                     borderBottom: doc.parent_nom ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
@@ -2057,7 +2097,10 @@ const EmployeeDetail = () => {
                     justifyContent: "space-between",
                     alignItems: "center",
                     ...(doc.parent_nom ? folderRowExtraStyle(doc.couleur) : {}),
-                    background: hexToRgba(doc.couleur, doc.parent_nom ? 0.05 : 0.035) || "#FAFAFA",
+                    background: highlightedMissingCode === doc.code
+                      ? theme.primaryBg
+                      : (hexToRgba(doc.couleur, doc.parent_nom ? 0.05 : 0.035) || "#FAFAFA"),
+                    transition: "background 0.3s ease",
                     ...(docGroupEnd.has(`m-${doc.code}`)
                       ? { borderRadius: "0 0 8px 8px", borderBottom: folderRowBorder(doc.couleur), marginBottom: 10 }
                       : {}),
