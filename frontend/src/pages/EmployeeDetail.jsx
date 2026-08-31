@@ -1357,24 +1357,39 @@ const EmployeeDetail = () => {
                 >
                   {axe.title}
                 </div>
-                {axe.data.length === 0 && axe.currentValue && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "10px 14px",
-                      borderRadius: 8,
-                      marginBottom: 6,
-                      background: theme.primaryBg,
-                      border: `1px solid ${theme.primaryBorder}`,
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{axe.currentValue}</span>
-                    <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                      {employee.date_embauche || "?"} → en cours
-                    </span>
-                  </div>
-                )}
+                {(() => {
+                  const hasOpenPeriod = axe.data.some((p) => !p.date_fin);
+                  if (hasOpenPeriod || !axe.currentValue) return null;
+                  // Aucune période "en cours" (soit aucun historique du tout,
+                  // soit uniquement des périodes déjà closes) — on affiche
+                  // quand même la valeur actuelle connue de l'employé, avec
+                  // comme date de départ soit la fin de la dernière période
+                  // enregistrée, soit sa date de recrutement s'il n'y a
+                  // aucun historique.
+                  const dernierDateFin = axe.data.length
+                    ? [...axe.data].sort(
+                        (a, b) => new Date(b.date_fin || 0) - new Date(a.date_fin || 0),
+                      )[0].date_fin
+                    : null;
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        marginBottom: 6,
+                        background: theme.primaryBg,
+                        border: `1px solid ${theme.primaryBorder}`,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>{axe.currentValue}</span>
+                      <span style={{ fontSize: 12, color: theme.textSecondary }}>
+                        {dernierDateFin || employee.date_embauche || "?"} → en cours
+                      </span>
+                    </div>
+                  );
+                })()}
                 {axe.data.length === 0 && !axe.currentValue ? (
                   <div style={{ color: theme.textSecondary, fontSize: 13 }}>
                     Aucun historique renseigné.
