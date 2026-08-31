@@ -649,7 +649,12 @@ class SystemFieldLabel(models.Model):
     (structure, scoping, recherche, CSV import restent inchangés).
     """
     code = models.CharField(max_length=50, primary_key=True)
-    label = models.CharField(max_length=100)
+    label = models.CharField(max_length=100, blank=True, default='')
+    ordre = models.IntegerField(
+        null=True, blank=True, default=None,
+        verbose_name="Ordre d'affichage",
+        help_text="Position dans l'onglet Paramètres/Champs personnalisés, mélangée avec ChampPersonnalise.ordre. Null = ordre par défaut (position dans SYSTEM_FIELDS côté frontend).",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

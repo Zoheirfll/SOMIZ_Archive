@@ -526,17 +526,24 @@ const REF_COLUMNS_INFO = {
 // jamais modifiables/supprimables depuis cet écran (`system: true`).
 const SYSTEM_FIELDS = [
   { id: "sys-matricule", nom: "Matricule", code: "matricule", type_champ: "texte", system: true },
+  { id: "sys-numero_contrat", nom: "N° Contrat", code: "numero_contrat", type_champ: "texte", system: true },
   { id: "sys-nom", nom: "Nom", code: "nom", type_champ: "texte", system: true },
   { id: "sys-prenom", nom: "Prénom", code: "prenom", type_champ: "texte", system: true },
   { id: "sys-statut", nom: "Statut", code: "statut", type_champ: "texte", system: true },
   { id: "sys-direction", nom: "Direction", code: "direction", type_champ: "référentiel", system: true },
+  { id: "sys-pole", nom: "Pôle", code: "pole", type_champ: "référentiel", system: true },
   { id: "sys-departement", nom: "Département", code: "departement", type_champ: "référentiel", system: true },
+  { id: "sys-section", nom: "Section", code: "section", type_champ: "référentiel", system: true },
   { id: "sys-service", nom: "Service", code: "service", type_champ: "référentiel", system: true },
+  { id: "sys-cellule", nom: "Cellule", code: "cellule", type_champ: "référentiel", system: true },
   { id: "sys-poste", nom: "Fonction", code: "poste", type_champ: "référentiel", system: true },
   { id: "sys-type_contrat", nom: "Type de contrat", code: "type_contrat", type_champ: "référentiel", system: true },
   { id: "sys-categorie", nom: "Catégorie", code: "categorie", type_champ: "référentiel", system: true },
+  { id: "sys-echelle", nom: "Échelle", code: "echelle", type_champ: "référentiel", system: true },
   { id: "sys-date_naissance", nom: "Date de naissance", code: "date_naissance", type_champ: "date", system: true },
   { id: "sys-date_embauche", nom: "Date de recrutement", code: "date_embauche", type_champ: "date", system: true },
+  { id: "sys-date_debut_contrat", nom: "Date de début de contrat", code: "date_debut_contrat", type_champ: "date", system: true },
+  { id: "sys-date_fin_contrat", nom: "Date de fin de contrat", code: "date_fin_contrat", type_champ: "date", system: true },
 ];
 
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
@@ -548,6 +555,7 @@ const Parametres = () => {
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
   const [systemLabels, setSystemLabels] = useState({});
+  const [reorderingField, setReorderingField] = useState(null);
   const [activeTab, setActiveTab] = useState("directions");
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -628,12 +636,12 @@ const Parametres = () => {
     try {
       const r = await api.get("/ref/system-field-labels/");
       const list = r.data.results || r.data;
-      setSystemLabels(Object.fromEntries(list.map((l) => [l.code, l.label])));
+      setSystemLabels(Object.fromEntries(list.map((l) => [l.code, { label: l.label, ordre: l.ordre }])));
     } catch {}
   };
 
   const handleRenameSystemField = async (item) => {
-    const newLabel = await prompt("Nouveau libellé affiché :", systemLabels[item.code] || item.nom);
+    const newLabel = await prompt("Nouveau libellé affiché :", systemLabels[item.code]?.label || item.nom);
     if (newLabel === null) return;
     try {
       await api.put(`/ref/system-field-labels/${item.code}/`, { label: newLabel.trim() });
@@ -641,6 +649,45 @@ const Parametres = () => {
       fetchSystemLabels();
     } catch (err) {
       showMessage("error", "Impossible de mettre à jour le libellé.");
+    }
+  };
+
+  // Déplace un champ (système ou personnalisé) d'un cran dans l'onglet
+  // "Champs personnalisés" — réassigne un ordre séquentiel sur la liste
+  // fusionnée entière côté serveur (voir ChampsOrdreReorderView).
+  // `reorderingField` bloque les clics concurrents pendant la requête : sans
+  // ça, des clics rapides successifs sur ▲/▼ recalculent chacun leur ordre
+  // à partir du même `items` non encore rafraîchi (fetchSystemLabels/
+  // fetchTab ci-dessous ne sont pas attendus avant de réactiver le bouton),
+  // et la réponse la plus lente à revenir écrase les précédentes — l'ordre
+  // final observé peut alors n'avoir plus rien à voir avec les clics
+  // effectués (incident réel : un ordre personnalisé entièrement perdu
+  // après plusieurs clics rapides, retombé near-défaut).
+  const handleMoveField = async (item, direction) => {
+    if (reorderingField) return;
+    const itemKey = item.system ? `system:${item.code}` : `custom:${item.id}`;
+    setReorderingField(itemKey);
+    try {
+      const list = items;
+      const idx = list.findIndex((i) =>
+        item.system ? i.system && i.code === item.code : !i.system && i.id === item.id
+      );
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (idx === -1 || swapIdx < 0 || swapIdx >= list.length) return;
+      const newList = [...list];
+      [newList[idx], newList[swapIdx]] = [newList[swapIdx], newList[idx]];
+      const order = newList.map((i) =>
+        i.system ? { type: "system", code: i.code } : { type: "custom", id: i.id }
+      );
+      await api.put("/ref/champs-personnalises/reorder/", { order });
+      await Promise.all([
+        fetchSystemLabels(),
+        fetchTab("champs-personnalises", page, search, true),
+      ]);
+    } catch {
+      showMessage("error", "Impossible de réordonner ce champ.");
+    } finally {
+      setReorderingField(null);
     }
   };
 
@@ -873,7 +920,9 @@ const Parametres = () => {
 
   // Le tri par colonne (clic sur l'en-tête) ne s'applique pas aux onglets à
   // ordre imposé : hiérarchie catégorie/sous-type pour "types-documents",
-  // champs système toujours en tête pour "champs-personnalises".
+  // ordre géré par les flèches ↑/↓ pour "champs-personnalises" (système et
+  // personnalisés peuvent désormais être mélangés librement, voir
+  // handleMoveField).
   const sortableTab = activeTab !== "types-documents" && activeTab !== "champs-personnalises";
 
   const items =
@@ -881,9 +930,13 @@ const Parametres = () => {
       ? sortTypesDocumentsHierarchy(data[activeTab] || [])
       : activeTab === "champs-personnalises"
         ? [
-            ...SYSTEM_FIELDS.map((f) => ({ ...f, nom: systemLabels[f.code] || f.nom })),
+            ...SYSTEM_FIELDS.map((f, idx) => ({
+              ...f,
+              nom: systemLabels[f.code]?.label || f.nom,
+              ordre: systemLabels[f.code]?.ordre ?? idx * 10,
+            })),
             ...(data[activeTab] || []),
-          ]
+          ].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
         : data[activeTab] || [];
 
   const sortedItems = useMemo(() => {
@@ -1296,7 +1349,62 @@ const Parametres = () => {
               </span>
             ),
           },
-          { key: "ordre", label: "Ordre", render: (i) => (i.system ? "—" : i.ordre) },
+          {
+            key: "ordre",
+            label: "Ordre",
+            sortable: false,
+            render: (i) => {
+              const idx = items.findIndex((it) =>
+                i.system ? it.system && it.code === i.code : !it.system && it.id === i.id
+              );
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ color: theme.textSecondary, fontSize: 12, minWidth: 18, textAlign: "right" }}>
+                    {idx + 1}
+                  </span>
+                  {isAdmin && (() => {
+                    const busy = !!reorderingField;
+                    const upDisabled = idx <= 0 || busy;
+                    const downDisabled = idx >= items.length - 1 || busy;
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveField(i, "up")}
+                          disabled={upDisabled}
+                          title="Monter"
+                          aria-label={`Monter ${i.nom}`}
+                          style={{
+                            background: "none", border: "none", padding: 0,
+                            lineHeight: 1, fontSize: 10,
+                            color: upDisabled ? theme.textMuted : theme.primary,
+                            cursor: upDisabled ? "default" : "pointer",
+                          }}
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveField(i, "down")}
+                          disabled={downDisabled}
+                          title="Descendre"
+                          aria-label={`Descendre ${i.nom}`}
+                          style={{
+                            background: "none", border: "none", padding: 0,
+                            lineHeight: 1, fontSize: 10,
+                            color: downDisabled ? theme.textMuted : theme.primary,
+                            cursor: downDisabled ? "default" : "pointer",
+                          }}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            },
+          },
           {
             key: "is_active",
             label: "Statut",

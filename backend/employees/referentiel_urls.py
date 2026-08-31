@@ -13,6 +13,7 @@ from employees.referentiel_views import (
     TypeDocumentListCreateView, TypeDocumentDetailView,
     ChampPersonnaliseListCreateView, ChampPersonnaliseDetailView,
     SystemFieldLabelListView, SystemFieldLabelUpdateView,
+    ChampsOrdreReorderView,
     ReferentielBulkDeleteView,
 )
 
@@ -40,6 +41,7 @@ urlpatterns = [
     path('types-documents/', TypeDocumentListCreateView.as_view()),
     path('types-documents/<uuid:pk>/', TypeDocumentDetailView.as_view()),
     path('champs-personnalises/', ChampPersonnaliseListCreateView.as_view()),
+    path('champs-personnalises/reorder/', ChampsOrdreReorderView.as_view()),
     path('champs-personnalises/<uuid:pk>/', ChampPersonnaliseDetailView.as_view()),
     path('system-field-labels/', SystemFieldLabelListView.as_view()),
     path('system-field-labels/<str:code>/', SystemFieldLabelUpdateView.as_view()),

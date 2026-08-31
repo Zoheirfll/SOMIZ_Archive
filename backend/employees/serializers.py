@@ -345,6 +345,10 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     service_nom = serializers.CharField(source='service.nom', read_only=True)
     cellule_nom = serializers.CharField(source='cellule.nom', read_only=True, default=None)
     section_nom = serializers.CharField(source='section.nom', read_only=True, default=None)
+    # Employee n'a pas de FK directe vers Pole (voir CLAUDE.md, section
+    # Scoping) — uniquement via departement.pole, d'où l'absence de champ
+    # 'pole' id ici (juste le nom, pour affichage seul sur la fiche employé).
+    pole_nom = serializers.CharField(source='departement.pole.nom', read_only=True, default=None)
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
@@ -358,6 +362,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut', 'has_photo',
             'direction', 'direction_nom',
+            'pole_nom',
             'departement', 'departement_nom',
             'service', 'service_nom',
             'cellule', 'cellule_nom',
@@ -384,6 +389,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
                 'nom': c.nom,
                 'type_champ': c.type_champ,
                 'valeur': valeurs.get(c.id, ''),
+                'ordre': c.ordre,
             }
             for c in ChampPersonnalise.objects.filter(is_active=True)
         ]

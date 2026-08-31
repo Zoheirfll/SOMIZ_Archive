@@ -121,6 +121,7 @@ const EmployeeDetail = () => {
     date_fin: "",
   });
   const [highlightedMissingCode, setHighlightedMissingCode] = useState(null);
+  const [systemFieldOrder, setSystemFieldOrder] = useState({});
   const missingRowRefs = useRef({});
   const dossierSectionRef = useRef(null);
 
@@ -131,7 +132,33 @@ const EmployeeDetail = () => {
     fetchTypesContrat();
     fetchHistorique();
     fetchAxeReferentiels();
+    fetchSystemFieldOrder();
   }, [id]);
+
+  // Ordre des champs système (Matricule, Fonction...) tel que réglé dans
+  // Paramètres > Champs personnalisés (flèches ↑/↓, mélangé avec les
+  // champs personnalisés) — voir CLAUDE.md "Champs cliquables".
+  const fetchSystemFieldOrder = async () => {
+    try {
+      const r = await api.get("/ref/system-field-labels/");
+      const list = r.data.results || r.data;
+      setSystemFieldOrder(Object.fromEntries(list.map((l) => [l.code, l.ordre])));
+    } catch {}
+  };
+
+  // Doit rester identique à SYSTEM_FIELDS de Parametres.jsx (même ordre par
+  // défaut quand aucun réglage manuel n'a encore été fait).
+  const SYSTEM_FIELD_CODES_ORDER = [
+    "matricule", "numero_contrat", "nom", "prenom", "statut",
+    "direction", "pole", "departement", "section", "service", "cellule",
+    "poste", "type_contrat", "categorie", "echelle",
+    "date_naissance", "date_embauche", "date_debut_contrat", "date_fin_contrat",
+  ];
+  const defaultSystemOrdre = (code) => {
+    const idx = SYSTEM_FIELD_CODES_ORDER.indexOf(code);
+    return idx === -1 ? 0 : idx * 10;
+  };
+  const systemOrdre = (code) => systemFieldOrder[code] ?? defaultSystemOrdre(code);
 
   useEffect(() => {
     return () => {
@@ -576,37 +603,80 @@ const EmployeeDetail = () => {
 
   if (!employee) return null;
 
+  // "Nom & Prénom" (fusion de deux champs système "nom"+"prenom" — pas de
+  // ligne dédiée réordonnable seule dans SYSTEM_FIELDS) prend l'ordre de
+  // "nom". Pôle/Département/Section/Service/Cellule sont bien des
+  // SYSTEM_FIELDS réordonnables (voir Parametres.jsx), mais restent
+  // conditionnels ici — affichés seulement pour les employés qui en ont
+  // un(e) (un employé rattaché via Section/Cellule plutôt que Département/
+  // Service, ou sans Pôle, ne doit pas afficher de "—" trompeur). Échelle
+  // reste affichée systématiquement (comme Catégorie), "—" sinon — choix
+  // explicite de l'utilisateur.
+  const currentEchelleNom = Array.isArray(historiqueEchelles)
+    ? historiqueEchelles.find((p) => !p.date_fin)?.echelle_nom || null
+    : null;
+
   const infoFields = [
-    { label: "Matricule", value: employee.matricule, mono: true },
+    { label: "Matricule", value: employee.matricule, mono: true, sortKey: systemOrdre("matricule") },
     {
       label: "N° Contrat",
       value: contrats[0]?.numero_contrat || "—",
       mono: true,
+      code: "numero_contrat",
+      sortKey: systemOrdre("numero_contrat"),
     },
     {
       label: "Nom & Prénom",
       value: `${employee.nom} ${employee.prenom}`,
       bold: true,
+      sortKey: systemOrdre("nom"),
     },
-    { label: "Date de naissance", value: employee.date_naissance || "—", code: "date_naissance" },
-    { label: "Date de recrutement", value: employee.date_embauche || "—", code: "date_embauche" },
-    { label: "Date de fin de contrat", value: employee.date_fin_contrat || "—", code: "date_fin_contrat" },
-    { label: "Statut", value: employee.statut, badge: true, code: "statut" },
-    { label: "Direction", value: employee.direction_nom || "—", code: "direction" },
-    { label: "Département", value: employee.departement_nom || "—", code: "departement" },
-    { label: "Service", value: employee.service_nom || "—", code: "service" },
-    ...(employee.cellule_nom
-      ? [{ label: "Cellule", value: employee.cellule_nom, code: "cellule" }]
+    { label: "Date de naissance", value: employee.date_naissance || "—", code: "date_naissance", sortKey: systemOrdre("date_naissance") },
+    { label: "Date de recrutement", value: employee.date_embauche || "—", code: "date_embauche", sortKey: systemOrdre("date_embauche") },
+    {
+      label: "Date de début de contrat",
+      value: contrats[0]?.date_debut || "—",
+      code: "date_debut_contrat",
+      sortKey: systemOrdre("date_debut_contrat"),
+    },
+    {
+      label: "Date de fin de contrat",
+      value: employee.date_fin_contrat || "—",
+      code: "date_fin_contrat",
+      sortKey: systemOrdre("date_fin_contrat"),
+    },
+    { label: "Statut", value: employee.statut, badge: true, code: "statut", sortKey: systemOrdre("statut") },
+    { label: "Direction", value: employee.direction_nom || "—", code: "direction", sortKey: systemOrdre("direction") },
+    ...(employee.pole_nom
+      ? [{ label: "Pôle", value: employee.pole_nom, code: "pole", sortKey: systemOrdre("pole") }]
       : []),
-    { label: "Fonction", value: employee.poste_nom || "—", code: "poste" },
-    { label: "Type de contrat", value: employee.type_contrat_nom || "—", code: "type_contrat" },
-    { label: "Catégorie", value: employee.categorie_nom || "—", code: "categorie" },
+    ...(employee.departement_nom
+      ? [{ label: "Département", value: employee.departement_nom, code: "departement", sortKey: systemOrdre("departement") }]
+      : []),
+    ...(employee.section_nom
+      ? [{ label: "Section", value: employee.section_nom, code: "section", sortKey: systemOrdre("section") }]
+      : []),
+    ...(employee.service_nom
+      ? [{ label: "Service", value: employee.service_nom, code: "service", sortKey: systemOrdre("service") }]
+      : []),
+    ...(employee.cellule_nom
+      ? [{ label: "Cellule", value: employee.cellule_nom, code: "cellule", sortKey: systemOrdre("cellule") }]
+      : []),
+    { label: "Fonction", value: employee.poste_nom || "—", code: "poste", sortKey: systemOrdre("poste") },
+    { label: "Type de contrat", value: employee.type_contrat_nom || "—", code: "type_contrat", sortKey: systemOrdre("type_contrat") },
+    { label: "Catégorie", value: employee.categorie_nom || "—", code: "categorie", sortKey: systemOrdre("categorie") },
+    // Pas de champ Employee.echelle direct (voir CLAUDE.md "Historique de
+    // carrière") — valeur actuelle lue depuis la période ouverte de
+    // l'historique Échelle, comme dans l'onglet Carrière. Toujours
+    // affichée (comme Catégorie), "—" si aucune période saisie.
+    { label: "Échelle", value: currentEchelleNom || "—", code: "echelle", sortKey: systemOrdre("echelle") },
     ...(employee.champs_personnalises || []).map((c) => ({
       label: c.nom,
       value: c.valeur || "—",
       code: c.code,
+      sortKey: c.ordre ?? 0,
     })),
-  ];
+  ].sort((a, b) => a.sortKey - b.sortKey);
 
   const documentsAffiches = groupDocsByVersion(
     (employee.documents || []).filter(
@@ -768,13 +838,13 @@ const EmployeeDetail = () => {
                     gap: 4,
                     color: champToDoc[item.code] ? theme.primary : theme.textMuted,
                     fontSize: 11,
+                    fontWeight: 700,
                     textTransform: "uppercase",
                     letterSpacing: "0.05em",
                     marginBottom: 6,
                     ...(champToDoc[item.code]
                       ? {
                           cursor: "pointer",
-                          fontWeight: 700,
                           background: theme.primaryBg,
                           border: `1px solid ${theme.primaryBorder}`,
                           borderRadius: 6,

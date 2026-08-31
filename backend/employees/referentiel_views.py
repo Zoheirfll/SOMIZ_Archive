@@ -572,9 +572,9 @@ class TypeDocumentDetailView(TypeDocumentDestroyMixin, generics.RetrieveUpdateDe
 # écraserait silencieusement la colonne structurelle correspondante.
 RESERVED_CHAMP_CODES = {
     'matricule', 'numero_contrat', 'nom', 'prenom',
-    'date_naissance', 'date_embauche', 'statut',
-    'direction', 'departement', 'service',
-    'poste', 'type_contrat', 'categorie',
+    'date_naissance', 'date_embauche', 'date_debut_contrat', 'date_fin_contrat', 'statut',
+    'direction', 'pole', 'departement', 'section', 'service', 'cellule',
+    'poste', 'type_contrat', 'categorie', 'echelle',
 }
 
 
@@ -609,7 +609,7 @@ class ChampPersonnaliseDetailView(generics.RetrieveUpdateDestroyAPIView):
 class SystemFieldLabelSerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemFieldLabel
-        fields = ['code', 'label']
+        fields = ['code', 'label', 'ordre']
 
 
 class SystemFieldLabelListView(generics.ListAPIView):
@@ -634,12 +634,54 @@ class SystemFieldLabelUpdateView(APIView):
     def put(self, request, code):
         label = (request.data.get('label') or '').strip()
         if not label:
+            existing = SystemFieldLabel.objects.filter(code=code).first()
+            # Un ordre personnalisé (voir ChampsOrdreReorderView) doit survivre
+            # à une réinitialisation du libellé — seule la ligne entière est
+            # purgée quand plus rien de custom n'y est attaché.
+            if existing and existing.ordre is not None:
+                existing.label = ''
+                existing.save(update_fields=['label'])
+                return Response(SystemFieldLabelSerializer(existing).data)
             SystemFieldLabel.objects.filter(code=code).delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         obj, _ = SystemFieldLabel.objects.update_or_create(
             code=code, defaults={'label': label}
         )
         return Response(SystemFieldLabelSerializer(obj).data)
+
+
+class ChampsOrdreReorderView(APIView):
+    """
+    PUT /ref/champs-personnalises/reorder/ — réordonne en une seule requête
+    tous les champs de l'onglet Paramètres > "Champs personnalisés",
+    système et personnalisés mélangés (ADMIN only). Body :
+    {"order": [{"type": "system", "code": "matricule"}, {"type": "custom", "id": "<uuid>"}, ...]}
+    dans l'ordre final souhaité (liste complète) — réassigne un `ordre`
+    séquentiel (pas de round-trip diff avec l'ancien ordre).
+    """
+    permission_classes = [IsAdmin]
+
+    def put(self, request):
+        order = request.data.get('order') or []
+        for idx, entry in enumerate(order):
+            if not isinstance(entry, dict):
+                continue
+            ordre = idx * 10
+            if entry.get('type') == 'system':
+                code = entry.get('code')
+                if not code:
+                    continue
+                existing = SystemFieldLabel.objects.filter(code=code).first()
+                if existing:
+                    existing.ordre = ordre
+                    existing.save(update_fields=['ordre'])
+                else:
+                    SystemFieldLabel.objects.create(code=code, label='', ordre=ordre)
+            elif entry.get('type') == 'custom':
+                champ_id = entry.get('id')
+                if champ_id:
+                    ChampPersonnalise.objects.filter(id=champ_id).update(ordre=ordre)
+        return Response({'ok': True})
 
 
 class ReferentielBulkDeleteView(APIView):
