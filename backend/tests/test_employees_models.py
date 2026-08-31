@@ -62,6 +62,99 @@ class TestEmployeeModel:
         assert employee.statut == "archive"
 
 
+class TestVoieHierarchique:
+    def test_empty_without_responsables(self, employee):
+        assert employee.voie_hierarchique() == []
+
+    def test_chain_for_service_employee(self, employee, admin_user, direction, departement, service):
+        chef_service = Employee.objects.create(
+            matricule="CHEF-SVC", nom="Kader", prenom="Amina", created_by=admin_user
+        )
+        chef_dept = Employee.objects.create(
+            matricule="CHEF-DEPT", nom="Larbi", prenom="Yacine", created_by=admin_user
+        )
+        directeur = Employee.objects.create(
+            matricule="DIR", nom="Haddad", prenom="Karim", created_by=admin_user
+        )
+        service.responsable = chef_service
+        service.save()
+        departement.responsable = chef_dept
+        departement.save()
+        direction.responsable = directeur
+        direction.save()
+
+        chaine = employee.voie_hierarchique()
+
+        assert chaine == [
+            {
+                "role": "Chef de service", "employee_id": str(chef_service.id),
+                "nom": "Kader", "prenom": "Amina", "matricule": "CHEF-SVC", "has_photo": False,
+            },
+            {
+                "role": "Chef de département", "employee_id": str(chef_dept.id),
+                "nom": "Larbi", "prenom": "Yacine", "matricule": "CHEF-DEPT", "has_photo": False,
+            },
+            {
+                "role": "Directeur", "employee_id": str(directeur.id),
+                "nom": "Haddad", "prenom": "Karim", "matricule": "DIR", "has_photo": False,
+            },
+        ]
+
+    def test_level_without_responsable_is_omitted(self, employee, admin_user, direction):
+        directeur = Employee.objects.create(
+            matricule="DIR", nom="Haddad", prenom="Karim", created_by=admin_user
+        )
+        direction.responsable = directeur
+        direction.save()
+        # service/departement sans responsable renseigné
+
+        chaine = employee.voie_hierarchique()
+
+        assert chaine == [
+            {
+                "role": "Directeur", "employee_id": str(directeur.id),
+                "nom": "Haddad", "prenom": "Karim", "matricule": "DIR", "has_photo": False,
+            },
+        ]
+
+    def test_self_as_responsable_is_omitted(self, employee, service):
+        # L'employé est lui-même le chef de son propre service : ce niveau
+        # ne doit pas apparaître dans sa propre chaîne.
+        service.responsable = employee
+        service.save()
+
+        assert employee.voie_hierarchique() == []
+
+    def test_chain_for_cellule_attached_to_direction(self, admin_user, direction):
+        from employees.models import Cellule
+
+        cellule = Cellule.objects.create(nom="Cellule Audit", direction=direction)
+        directeur = Employee.objects.create(
+            matricule="DIR2", nom="Haddad", prenom="Karim", created_by=admin_user
+        )
+        direction.responsable = directeur
+        direction.save()
+        chef_cellule = Employee.objects.create(
+            matricule="CHEF-CEL", nom="Belkacem", prenom="Sofiane", created_by=admin_user
+        )
+        cellule.responsable = chef_cellule
+        cellule.save()
+        emp = Employee.objects.create(
+            matricule="EMP-CEL", nom="Ali", prenom="Nadia", cellule=cellule, created_by=admin_user
+        )
+
+        assert emp.voie_hierarchique() == [
+            {
+                "role": "Chef de cellule", "employee_id": str(chef_cellule.id),
+                "nom": "Belkacem", "prenom": "Sofiane", "matricule": "CHEF-CEL", "has_photo": False,
+            },
+            {
+                "role": "Directeur", "employee_id": str(directeur.id),
+                "nom": "Haddad", "prenom": "Karim", "matricule": "DIR2", "has_photo": False,
+            },
+        ]
+
+
 class TestEmployeeDocumentVersioning:
     def test_first_document_version_1(self, employee, admin_user, type_doc_obligatoire):
         doc = EmployeeDocument.objects.create(

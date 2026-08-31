@@ -350,6 +350,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
     has_photo = serializers.SerializerMethodField()
     champs_personnalises = serializers.SerializerMethodField()
+    voie_hierarchique = serializers.SerializerMethodField()
 
     class Meta:
         model = Employee
@@ -366,9 +367,13 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'categorie', 'categorie_nom',
             'dossier_complet', 'taux_completude',
             'documents', 'documents_manquants', 'champs_personnalises',
+            'voie_hierarchique',
             'created_by_name', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_voie_hierarchique(self, obj):
+        return obj.voie_hierarchique()
 
     def get_champs_personnalises(self, obj):
         valeurs = {v.champ_id: v.valeur for v in obj.valeurs_personnalisees.all()}

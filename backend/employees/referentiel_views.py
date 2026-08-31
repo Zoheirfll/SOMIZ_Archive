@@ -102,12 +102,16 @@ class DirectionSerializer(serializers.ModelSerializer):
     nb_poles = serializers.SerializerMethodField()
     nb_cellules = serializers.SerializerMethodField()
     nb_sections = serializers.SerializerMethodField()
+    responsable_nom = serializers.SerializerMethodField()
     class Meta:
         model = Direction
         fields = [
             'id', 'nom', 'code', 'description', 'is_active',
             'nb_departements', 'nb_poles', 'nb_cellules', 'nb_sections',
+            'responsable', 'responsable_nom',
         ]
+    def get_responsable_nom(self, obj):
+        return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
     def get_nb_departements(self, obj):
         # Total (directs + regroupes sous un Pole de cette Direction) —
         # inchange par l'ajout des Poles/Cellules, pour ne pas casser les
@@ -124,22 +128,34 @@ class DirectionSerializer(serializers.ModelSerializer):
 class PoleSerializer(serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     nb_departements = serializers.SerializerMethodField()
+    responsable_nom = serializers.SerializerMethodField()
     class Meta:
         model = Pole
-        fields = ['id', 'direction', 'direction_nom', 'nom', 'code', 'description', 'is_active', 'nb_departements']
+        fields = [
+            'id', 'direction', 'direction_nom', 'nom', 'code', 'description', 'is_active',
+            'nb_departements', 'responsable', 'responsable_nom',
+        ]
     def get_nb_departements(self, obj):
         return obj.departements.filter(is_active=True).count()
+    def get_responsable_nom(self, obj):
+        return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
 
 class DepartementSerializer(serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     pole_nom = serializers.CharField(source='pole.nom', read_only=True, default=None)
     nb_services = serializers.SerializerMethodField()
+    responsable_nom = serializers.SerializerMethodField()
     class Meta:
         model = Departement
-        fields = ['id', 'direction', 'direction_nom', 'pole', 'pole_nom', 'nom', 'code', 'description', 'is_active', 'nb_services']
+        fields = [
+            'id', 'direction', 'direction_nom', 'pole', 'pole_nom', 'nom', 'code', 'description', 'is_active',
+            'nb_services', 'responsable', 'responsable_nom',
+        ]
     def get_nb_services(self, obj):
         return obj.services.filter(is_active=True).count()
+    def get_responsable_nom(self, obj):
+        return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
     def validate(self, attrs):
         direction = attrs.get('direction', getattr(self.instance, 'direction', None))
@@ -155,28 +171,36 @@ class ServiceSerializer(serializers.ModelSerializer):
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     direction_nom = serializers.CharField(source='departement.direction.nom', read_only=True)
     nb_employes = serializers.SerializerMethodField()
+    responsable_nom = serializers.SerializerMethodField()
     class Meta:
         model = Service
         fields = [
             'id', 'departement', 'departement_nom', 'direction_nom',
             'nom', 'code', 'description', 'is_active', 'nb_employes',
+            'responsable', 'responsable_nom',
         ]
     def get_nb_employes(self, obj):
         return obj.employees.count()
+    def get_responsable_nom(self, obj):
+        return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
 
 class CelluleSerializer(serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True, default=None)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True, default=None)
     nb_employes = serializers.SerializerMethodField()
+    responsable_nom = serializers.SerializerMethodField()
     class Meta:
         model = Cellule
         fields = [
             'id', 'direction', 'direction_nom', 'departement', 'departement_nom',
             'nom', 'code', 'description', 'is_active', 'nb_employes',
+            'responsable', 'responsable_nom',
         ]
     def get_nb_employes(self, obj):
         return obj.employees.count()
+    def get_responsable_nom(self, obj):
+        return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
     def validate(self, attrs):
         direction = attrs.get('direction', getattr(self.instance, 'direction', None))
@@ -363,14 +387,18 @@ class SectionSerializer(serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True, default=None)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True, default=None)
     nb_employes = serializers.SerializerMethodField()
+    responsable_nom = serializers.SerializerMethodField()
     class Meta:
         model = Section
         fields = [
             'id', 'direction', 'direction_nom', 'departement', 'departement_nom',
             'nom', 'code', 'description', 'is_active', 'nb_employes',
+            'responsable', 'responsable_nom',
         ]
     def get_nb_employes(self, obj):
         return obj.employees.count()
+    def get_responsable_nom(self, obj):
+        return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
     def validate(self, attrs):
         direction = attrs.get('direction', getattr(self.instance, 'direction', None))

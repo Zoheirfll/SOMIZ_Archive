@@ -34,6 +34,10 @@ class Direction(models.Model):
     code = models.CharField(max_length=20, unique=True, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    responsable = models.ForeignKey(
+        "Employee", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+", verbose_name="Directeur"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -63,6 +67,10 @@ class Pole(models.Model):
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    responsable = models.ForeignKey(
+        "Employee", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+", verbose_name="Directeur"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -94,6 +102,10 @@ class Departement(models.Model):
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    responsable = models.ForeignKey(
+        "Employee", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+", verbose_name="Chef de département"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -116,6 +128,10 @@ class Service(models.Model):
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    responsable = models.ForeignKey(
+        "Employee", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+", verbose_name="Chef de service"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -148,6 +164,10 @@ class Cellule(models.Model):
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    responsable = models.ForeignKey(
+        "Employee", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+", verbose_name="Chef de cellule"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -190,6 +210,10 @@ class Section(models.Model):
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    responsable = models.ForeignKey(
+        "Employee", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+", verbose_name="Chef de section"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -494,6 +518,48 @@ class Employee(models.Model):
             'type_doc_id', flat=True
         ).distinct().count()
         return round(presents / total * 100)
+
+    def voie_hierarchique(self):
+        """
+        Chaîne des responsables au-dessus de l'unité de rattachement direct
+        de cet employé, jusqu'à la Direction incluse. Un niveau sans
+        responsable renseigné est omis (pas de "Non défini"), de même que
+        tout niveau dont le responsable EST cet employé lui-même — voir
+        docs/superpowers/specs/2026-08-31-voie-hierarchique-design.md.
+        """
+        units = []
+        if self.service_id:
+            units.append(("Chef de service", self.service))
+            units.append(("Chef de département", self.service.departement))
+            if self.service.departement.pole_id:
+                units.append(("Directeur", self.service.departement.pole))
+            units.append(("Directeur", self.service.departement.direction))
+        elif self.cellule_id or self.section_id:
+            unite = self.cellule if self.cellule_id else self.section
+            role = "Chef de cellule" if self.cellule_id else "Chef de section"
+            units.append((role, unite))
+            if unite.departement_id:
+                units.append(("Chef de département", unite.departement))
+                if unite.departement.pole_id:
+                    units.append(("Directeur", unite.departement.pole))
+                units.append(("Directeur", unite.departement.direction))
+            else:
+                units.append(("Directeur", unite.direction))
+
+        chaine = []
+        for role, unite in units:
+            responsable = unite.responsable
+            if responsable is None or responsable.id == self.id:
+                continue
+            chaine.append({
+                "role": role,
+                "employee_id": str(responsable.id),
+                "nom": responsable.nom,
+                "prenom": responsable.prenom,
+                "matricule": responsable.matricule,
+                "has_photo": bool(responsable.photo),
+            })
+        return chaine
 
     def sync_statut_from_dernier_contrat(self):
         """Le statut et la date de fin de contrat de l'employé suivent ceux
