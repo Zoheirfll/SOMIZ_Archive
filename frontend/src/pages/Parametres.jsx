@@ -7,8 +7,14 @@ import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon,
 import Skeleton from "../components/Skeleton";
 import PageBackground from "../components/PageBackground";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import useIsMobile from "../hooks/useIsMobile";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES, FIELD_NOTICES } from "../config/notices";
 import "../styles/animations.css";
+
+const PAGE_SIZE = 25;
 
 // ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
 
@@ -426,7 +432,7 @@ const SYSTEM_FIELDS = [
 
 const Parametres = () => {
   const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
@@ -481,6 +487,17 @@ const Parametres = () => {
     }, 300);
     return () => clearTimeout(t);
   }, [searchInput]);
+
+  const totalPages = Math.max(1, Math.ceil(pageMeta.count / PAGE_SIZE));
+  const { overrides: shortcutOverrides } = useKeyboardShortcutsHelp();
+  usePaginationShortcuts({
+    page,
+    totalPages,
+    onNext: () => setPage((p) => p + 1),
+    onPrev: () => setPage((p) => p - 1),
+    comboNext: shortcutOverrides["pagination-next"] || "ArrowRight",
+    comboPrev: shortcutOverrides["pagination-prev"] || "ArrowLeft",
+  });
 
   useEffect(() => {
     fetchTab(activeTab, page, search);
@@ -1886,21 +1903,31 @@ const Parametres = () => {
     }
   };
 
+  const tabFieldNotice =
+    activeTab === "cellules" || activeTab === "sections"
+      ? FIELD_NOTICES.parametres.cellulesEtSections
+      : activeTab === "types-documents"
+      ? FIELD_NOTICES.parametres.typesDocumentsCategories
+      : null;
+
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
       <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 28 }}>
-          <h1
-            style={{
-              color: theme.text,
-              margin: 0,
-              fontSize: 22,
-              fontWeight: 800,
-            }}
-          >
-            Paramètres
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h1
+              style={{
+                color: theme.text,
+                margin: 0,
+                fontSize: 22,
+                fontWeight: 800,
+              }}
+            >
+              Paramètres
+            </h1>
+            <InfoNotice text={PAGE_NOTICES.parametres} variant="field" />
+          </div>
           <div
             style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4 }}
           >
@@ -1989,6 +2016,7 @@ const Parametres = () => {
                 <div style={{ color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap" }}>
                   {pageMeta.count} élément(s)
                 </div>
+                <InfoNotice text={tabFieldNotice} variant="field" />
                 <input
                   type="text"
                   placeholder="Rechercher..."
