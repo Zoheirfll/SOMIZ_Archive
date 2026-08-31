@@ -122,6 +122,7 @@ const EmployeeDetail = () => {
   });
   const [highlightedMissingCode, setHighlightedMissingCode] = useState(null);
   const missingRowRefs = useRef({});
+  const dossierSectionRef = useRef(null);
 
   useEffect(() => {
     fetchTypesDocuments();
@@ -628,6 +629,12 @@ const EmployeeDetail = () => {
     const present = documentsAffiches.find((d) => d.type_doc_id === typeDoc.id);
     if (present) {
       handleSelectDoc(present);
+      setTimeout(() => {
+        dossierSectionRef.current?.scrollIntoView?.({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 50);
       return;
     }
     const manquant = (employee.documents_manquants || []).find((d) => d.id === typeDoc.id);
@@ -753,22 +760,30 @@ const EmployeeDetail = () => {
               <div key={item.label}>
                 <div
                   onClick={champToDoc[item.code] ? () => handleFieldClick(item.code) : undefined}
+                  title={champToDoc[item.code] ? `Voir le document : ${champToDoc[item.code].nom}` : undefined}
+                  className={champToDoc[item.code] ? "hover-lift" : undefined}
                   style={{
-                    color: theme.textMuted,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    color: champToDoc[item.code] ? theme.primary : theme.textMuted,
                     fontSize: 11,
                     textTransform: "uppercase",
                     letterSpacing: "0.05em",
-                    marginBottom: 4,
+                    marginBottom: 6,
                     ...(champToDoc[item.code]
                       ? {
                           cursor: "pointer",
-                          textDecoration: "underline",
-                          textDecorationStyle: "dotted",
-                          textDecorationColor: theme.textMuted,
+                          fontWeight: 700,
+                          background: theme.primaryBg,
+                          border: `1px solid ${theme.primaryBorder}`,
+                          borderRadius: 6,
+                          padding: "3px 7px",
                         }
                       : {}),
                   }}
                 >
+                  {champToDoc[item.code] && <span style={{ fontSize: 11 }}>🔗</span>}
                   {item.label}
                 </div>
                 {item.badge ? (
@@ -1728,6 +1743,7 @@ const EmployeeDetail = () => {
         {/* Documents + Viewer */}
         {activeTab === "dossier" && (
           <div
+            ref={dossierSectionRef}
             className="tab-content"
             style={{
               display: "grid",
