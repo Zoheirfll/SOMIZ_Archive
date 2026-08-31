@@ -1137,6 +1137,7 @@ const Parametres = () => {
         ];
       case "types-contrat":
       case "categories":
+      case "echelles":
         return [
           { key: "nom", label: "Nom", bold: true },
           { key: "description", label: "Description" },
@@ -1828,6 +1829,7 @@ const Parametres = () => {
 
       case "types-contrat":
       case "categories":
+      case "echelles":
         return (
           <>
             <label style={labelStyle}>
@@ -1841,6 +1843,8 @@ const Parametres = () => {
               placeholder={
                 activeTab === "types-contrat"
                   ? "CDI, CDD, Titulaire..."
+                  : activeTab === "echelles"
+                  ? "Échelle 10, Échelle 12..."
                   : "Cadre, Technicien..."
               }
             />

@@ -20,6 +20,18 @@ jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 jest.mock("../context/AuthContext", () => ({
   useAuth: () => ({ user: { role: "ADMIN", username: "admin" } }),
 }));
+jest.mock("../context/KeyboardShortcutsContext", () => ({
+  useKeyboardShortcutsHelp: () => ({
+    helpOpen: false,
+    openHelp: jest.fn(),
+    closeHelp: jest.fn(),
+    toggleHelp: jest.fn(),
+    overrides: {},
+    setOverride: jest.fn(),
+    resetOverride: jest.fn(),
+    resetAllOverrides: jest.fn(),
+  }),
+}));
 
 import api from "../services/api";
 import Parametres from "../pages/Parametres";
@@ -143,6 +155,30 @@ describe("Parametres — navigation onglets", () => {
         expect.stringContaining("/ref/types-documents/"),
         expect.anything()
       );
+    });
+  });
+
+  test("clic sur Échelles charge les échelles", async () => {
+    renderPage();
+    await waitFor(() => screen.getByText("Échelles"));
+    fireEvent.click(screen.getByText("Échelles"));
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        expect.stringContaining("/ref/echelles/"),
+        expect.anything()
+      );
+    });
+  });
+
+  test("affiche les échelles chargées", async () => {
+    api.get.mockResolvedValue({
+      data: { results: [makeItem("ech-1", "Échelle 10")] },
+    });
+    renderPage();
+    await waitFor(() => screen.getByText("Échelles"));
+    fireEvent.click(screen.getByText("Échelles"));
+    await waitFor(() => {
+      expect(screen.getByText("Échelle 10")).toBeInTheDocument();
     });
   });
 });
