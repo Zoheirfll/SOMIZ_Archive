@@ -24,7 +24,19 @@ class AuditLogSerializer(serializers.ModelSerializer):
 
 
 class AuditLogListView(APIView):
-    """GET /api/admin/audit-logs/?user=&action=&page="""
+    """GET /api/admin/audit-logs/?user=&action=&page=
+
+    Visibilité par rôle : un SUPERADMIN voit tout le journal, y compris
+    les actions des autres ADMIN/SUPERADMIN — c'est le seul rôle avec
+    cette visibilité totale, et chacune de ses consultations est elle-même
+    tracée (Action.VIEW_AUDIT_LOG) pour que ce pouvoir de surveillance
+    reste surveillable. Un ADMIN ordinaire voit SES PROPRES actions **et**
+    celles de tous les CONSULTANT (qu'il administre et dont il doit
+    pouvoir vérifier l'activité de consultation — traçabilité RGPD/Loi
+    18-07) — mais jamais celles d'un autre ADMIN ou d'un SUPERADMIN. Le
+    filtre `user` de la query string est appliqué uniquement DANS ce
+    périmètre pour un ADMIN (jamais un blanc-seing pour sortir de
+    own+CONSULTANT), pas seulement caché côté UI."""
     permission_classes = [IsAdmin]
 
     def get(self, request):
@@ -35,8 +47,16 @@ class AuditLogListView(APIView):
         action = request.query_params.get('action')
         target = request.query_params.get('target')
 
-        if user_q:
-            qs = qs.filter(username_snapshot__icontains=user_q)
+        if request.user.is_superadmin:
+            if user_q:
+                qs = qs.filter(username_snapshot__icontains=user_q)
+        else:
+            qs = qs.filter(
+                Q(user=request.user) | Q(user__role='CONSULTANT')
+            )
+            if user_q:
+                qs = qs.filter(username_snapshot__icontains=user_q)
+
         if action:
             qs = qs.filter(action=action)
         if target:
@@ -48,10 +68,17 @@ class AuditLogListView(APIView):
         total = qs.count()
         qs = qs[(page - 1) * size: page * size]
 
+        if request.user.is_superadmin:
+            AuditLog.log(
+                request, AuditLog.Action.VIEW_AUDIT_LOG,
+                details={'user': user_q, 'action': action, 'target': target, 'page': page},
+            )
+
         return Response({
             'total': total,
             'page': page,
             'total_pages': (total // size) + 1,
+            'scope': 'all' if request.user.is_superadmin else 'own_and_consultants',
             'results': AuditLogSerializer(qs, many=True).data,
         })
 

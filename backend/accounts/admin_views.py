@@ -64,6 +64,14 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'last_login']
 
+    def validate_role(self, value):
+        # Même règle qu'à la création — voir UserCreateSerializer.validate_role.
+        if value == 'SUPERADMIN':
+            raise serializers.ValidationError(
+                "Le rôle Super-administrateur ne peut pas être attribué depuis cette interface."
+            )
+        return value
+
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=10)
 
@@ -71,6 +79,19 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'nom', 'prenom', 'role', 'password']
         read_only_fields = ['id']
+
+    def validate_role(self, value):
+        # SUPERADMIN ne peut jamais être créé/attribué via l'API — un
+        # ADMIN ne doit pas pouvoir se promouvoir ni promouvoir quelqu'un
+        # d'autre. Uniquement via `manage.py shell` / accès direct base.
+        # Un compte déjà SUPERADMIN reste modifiable sur ses autres champs
+        # sans que ce garde-fou ne bloque (valeur inchangée).
+        already_superadmin = self.instance and self.instance.role == 'SUPERADMIN'
+        if value == 'SUPERADMIN' and not already_superadmin:
+            raise serializers.ValidationError(
+                "Le rôle Super-administrateur ne peut pas être attribué depuis cette interface."
+            )
+        return value
 
     def validate_password(self, value):
         # min_length=10 ci-dessus déjà couvert par MinimumLengthValidator, mais
@@ -96,7 +117,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 class UserListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAdmin]
-    queryset = User.objects.all().order_by('nom')
+
+    def get_queryset(self):
+        qs = User.objects.all().order_by('nom')
+        # Les comptes SUPERADMIN restent invisibles pour un ADMIN
+        # ordinaire — seul un SUPERADMIN peut les voir/gérer.
+        if not self.request.user.is_superadmin:
+            qs = qs.exclude(role='SUPERADMIN')
+        return qs
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -112,8 +140,16 @@ class UserListCreateView(generics.ListCreateAPIView):
 
 class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
-    queryset = User.objects.all()
     serializer_class = UserSerializer
+
+    def get_queryset(self):
+        qs = User.objects.all()
+        # Un ADMIN ordinaire ne peut ni voir ni modifier/supprimer un
+        # compte SUPERADMIN (404, pas 403 — pour ne même pas révéler son
+        # existence) — même garde-fou que UserListCreateView.
+        if not self.request.user.is_superadmin:
+            qs = qs.exclude(role='SUPERADMIN')
+        return qs
 
     def perform_update(self, serializer):
         target = self.get_object()

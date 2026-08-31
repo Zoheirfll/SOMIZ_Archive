@@ -9,7 +9,7 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   if (user?.needs_consent && location.pathname !== "/consentement") {
     return <Navigate to="/consentement" state={{ from: location.pathname }} replace />;
   }
-  if (adminOnly && user?.role !== "ADMIN") return <Navigate to="/employees" replace />;
+  if (adminOnly && !["ADMIN", "SUPERADMIN"].includes(user?.role)) return <Navigate to="/employees" replace />;
   return children;
 };
 

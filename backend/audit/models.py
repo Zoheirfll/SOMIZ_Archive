@@ -31,6 +31,7 @@ class AuditLog(models.Model):
         MODIFY_USER = 'MODIFY_USER', 'Modification utilisateur (rôle/statut)'
         DELETE_USER = 'DELETE_USER', 'Suppression utilisateur'
         CONSENT = 'CONSENT', 'Consentement Loi 18-07 accepté'
+        VIEW_AUDIT_LOG = 'VIEW_AUDIT_LOG', 'Consultation du journal d\'audit'
 
     # Pas de UUIDField ici — BIGSERIAL plus rapide pour les logs
     # (table peut atteindre des millions de lignes)

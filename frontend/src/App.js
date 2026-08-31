@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { KeyboardShortcutsProvider } from "./context/KeyboardShortcutsContext";
+import GlobalShortcuts from "./components/GlobalShortcuts";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Employees from "./pages/Employees";
@@ -18,7 +20,9 @@ import Consentement from "./pages/Consentement";
 function App() {
   return (
     <AuthProvider>
+      <KeyboardShortcutsProvider>
       <BrowserRouter>
+        <GlobalShortcuts />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -128,6 +132,7 @@ function App() {
           />
         </Routes>
       </BrowserRouter>
+      </KeyboardShortcutsProvider>
     </AuthProvider>
   );
 }

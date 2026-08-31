@@ -4,6 +4,8 @@ import { useAuth } from "../context/AuthContext";
 import { logout } from "../services/auth";
 import { theme } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
+import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
+import { KeyboardIcon } from "./icons";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -26,6 +28,7 @@ const Navbar = () => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { openHelp } = useKeyboardShortcutsHelp();
 
   const handleLogout = async () => {
     await logout();
@@ -41,7 +44,7 @@ const Navbar = () => {
     { path: "/users", label: "Utilisateurs", adminOnly: true },
     { path: "/parametres", label: "Paramètres", adminOnly: true },
     { path: "/audit", label: "Journal", adminOnly: true },
-  ].filter((item) => !item.adminOnly || user?.role === "ADMIN");
+  ].filter((item) => !item.adminOnly || ["ADMIN", "SUPERADMIN"].includes(user?.role));
 
   const goTo = (path) => {
     setDrawerOpen(false);
@@ -176,6 +179,38 @@ const Navbar = () => {
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
             </div>
+
+            <button
+              onClick={openHelp}
+              aria-label="Raccourcis clavier"
+              title="Raccourcis clavier (?)"
+              style={{
+                background: "transparent",
+                border: `1px solid ${theme.border}`,
+                color: theme.textSecondary,
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.15s",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = theme.primaryBg;
+                e.currentTarget.style.borderColor = theme.primaryBorder;
+                e.currentTarget.style.color = theme.primary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.borderColor = theme.border;
+                e.currentTarget.style.color = theme.textSecondary;
+              }}
+            >
+              <KeyboardIcon size={16} />
+            </button>
 
             <button
               onClick={handleLogout}
@@ -333,6 +368,31 @@ const Navbar = () => {
                 </button>
               );
             })}
+
+            <button
+              onClick={() => {
+                setDrawerOpen(false);
+                openHelp();
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                borderRadius: 8,
+                color: theme.textSecondary,
+                padding: "12px 14px",
+                textAlign: "left",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 500,
+                fontFamily: theme.fontFamily,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <KeyboardIcon size={15} />
+              Raccourcis clavier
+            </button>
 
             <button
               onClick={handleLogout}

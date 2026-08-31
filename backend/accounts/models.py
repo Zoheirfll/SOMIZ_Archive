@@ -37,6 +37,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     """
 
     class Role(models.TextChoices):
+        SUPERADMIN = 'SUPERADMIN', 'Super-administrateur'
         ADMIN = 'ADMIN', 'Administrateur'
         CONSULTANT = 'CONSULTANT', 'Consultant (lecture seule)'
 
@@ -135,7 +136,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def is_admin(self):
-        return self.role == self.Role.ADMIN
+        # SUPERADMIN a toujours les mêmes droits qu'un ADMIN (écriture,
+        # scoping non restreint, etc.) — voir is_superadmin pour la
+        # distinction supplémentaire (visibilité totale sur le journal
+        # d'audit, y compris les actions des autres ADMIN).
+        return self.role in (self.Role.ADMIN, self.Role.SUPERADMIN)
+
+    @property
+    def is_superadmin(self):
+        return self.role == self.Role.SUPERADMIN
 
     @property
     def is_consultant(self):

@@ -6,8 +6,23 @@ Application intranet pour centraliser et gérer les documents administratifs RH 
 Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 
 **Rôles utilisateurs :**
+- `SUPERADMIN` — mêmes droits qu'un ADMIN (`User.is_admin` renvoie `True` pour les deux), **plus** la visibilité complète sur `/audit` (voir ci-dessous). Ne peut être créé/attribué que via `manage.py shell`/accès direct base — jamais via l'UI ni l'API `/admin-users/` (`UserSerializer.validate_role`/`UserCreateSerializer.validate_role` rejettent toute tentative). Un ADMIN ordinaire ne voit même pas les comptes SUPERADMIN dans `/users` (404 sur leur id, exclus de la liste).
 - `ADMIN` — droits complets (lecture, écriture, suppression, import, configuration), toujours accès organisation-wide
 - `CONSULTANT` — lecture seule (pas de boutons d'action visibles), peut être restreint à un **périmètre organisationnel** (voir section Scoping ci-dessous) ou laissé sans restriction (comportement historique)
+
+### Journal d'audit — visibilité par rôle (2026-08-30)
+
+Un ADMIN ordinaire voit dans `/audit` **ses propres actions et celles de
+tous les comptes CONSULTANT** (qu'il administre — traçabilité RGPD/Loi
+18-07 sur ce qu'ils consultent), mais jamais celles d'un autre ADMIN ou
+d'un SUPERADMIN — le filtre `user` de la query string reste borné à ce
+périmètre côté serveur (`AuditLogListView`, `audit/views.py`), pas
+seulement masqué côté UI. Seul un `SUPERADMIN` voit le journal complet
+(toutes les actions, tous les comptes) ; chacune de ses consultations est
+elle-même tracée (`AuditLog.Action.VIEW_AUDIT_LOG`, détail : filtres
+utilisés) pour que ce pouvoir de surveillance reste lui-même auditable.
+Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
+`AuditLog`).
 
 ---
 
@@ -598,6 +613,82 @@ Direction→Département→Service/Cellule) — pas de flux dédié.
   arrivaient *avant* les données de l'employé. `fetchEmployee()` et
   `fetchReferentiels()` partent en parallèle au montage — l'ordre d'arrivée
   n'est pas garanti, donc l'effet doit réagir aux deux.
+
+---
+
+## Historique de carrière — Fonction/Catégorie/Échelle/Contrats (2026-08-31)
+
+En plus du transfert organisationnel (section ci-dessus), la fiche employé
+a un onglet **"Carrière"** qui retrace la progression dans le temps sur 4
+axes : Fonction, Catégorie, Échelle et Contrats — utile pour un employé
+dont la carrière précède l'usage de SOMIZ (ex. recruté en 2000, plusieurs
+changements de poste/catégorie depuis). Spec complète :
+`docs/superpowers/specs/2026-08-31-historique-carriere-design.md`.
+
+- **Référentiel `Echelle`** (`backend/employees/models.py`) — nouveau
+  référentiel simple (`nom`, `description`, `is_active`), même pattern que
+  `Categorie`/`TypeContrat` : CRUD `/ref/echelles/`, onglet "Échelles" dans
+  `/parametres`, import/template xlsx. **Pas de champ `Employee.echelle`
+  direct** — volontairement, pour ne pas dupliquer d'état : la valeur
+  actuelle d'Échelle d'un employé se lit uniquement via son historique
+  (voir plus bas).
+- **3 modèles d'historique dédiés** — `HistoriqueFonction`,
+  `HistoriqueCategorie`, `HistoriqueEchelle`, partageant un mixin abstrait
+  `HistoriquePeriode` (`employee`, `date_debut`, `date_fin` nullable = période
+  en cours, `commentaire`, `created_by`, `created_at`). Pas de
+  `GenericForeignKey` — 3 modèles concrets, un par axe. Les contrats ne
+  sont **pas** dupliqués dans un 4ᵉ modèle : la timeline "Carrière"
+  réutilise directement `employee.contrats.all()` (le modèle `Contrat`
+  existant gère déjà plusieurs contrats par employé avec leurs dates).
+- **Auto-tracking** — `EmployeeDetailView.perform_update`
+  (`backend/employees/views.py`, `CARRIERE_AXES = {'poste':
+  HistoriqueFonction, 'categorie': HistoriqueCategorie}`) : un changement
+  de `poste`/`categorie` via `PATCH /api/employees/<id>/` clôture
+  automatiquement la période ouverte existante (`date_fin = aujourd'hui`)
+  et en ouvre une nouvelle. Ajouté au même dict `details['transfer']` de
+  l'audit log `MODIFY_EMP` que le transfert organisationnel (`{champ: {de,
+  vers}}`), lisible dans `/audit` via les mêmes libellés génériques
+  (`TRANSFER_FIELD_LABELS` dans `AuditLogs.jsx`, entrées `poste`→"Fonction"
+  et `categorie`→"Catégorie"). Échelle n'ayant pas de champ direct sur
+  `Employee`, elle n'a **pas** d'auto-tracking — uniquement la gestion
+  manuelle ci-dessous.
+- **Gestion manuelle des périodes** (rattrapage de l'historique antérieur
+  à SOMIZ) — `GET/POST /api/employees/<id>/historique/<axe>/` et
+  `GET/PATCH/DELETE /api/historique/<axe>/<periode_id>/` (`axe` ∈
+  `fonctions|categories|echelles`, vues génériques
+  `HistoriqueListCreateView`/`HistoriqueDetailView` dans
+  `employees/views.py`, dict `HISTORIQUE_AXES`). Écriture ADMIN only,
+  lecture ADMIN+CONSULTANT scopée (`can_access_employee`). Validation de
+  chevauchement (`_check_no_overlap`) : deux périodes du même axe pour le
+  même employé ne peuvent pas se recouvrir. Chaque action est tracée dans
+  l'audit log existant (`MODIFY_EMP`, `details.action =
+  'historique_<axe>_create/update/delete'`) — pas de nouveau type d'action
+  `AuditLog.Action`.
+- **UI fiche employé** (`EmployeeDetail.jsx`, onglet "Carrière") — 4
+  timelines verticales en lecture seule (Fonction/Catégorie/Échelle/
+  Contrats), période en cours mise en évidence. Boutons "Gérer
+  l'historique <Axe>" (ADMIN only) ouvrent une modale de CRUD manuel par
+  axe (ajouter/supprimer une période).
+- **Piège "valeur actuelle" sans période ouverte** : un employé peut avoir
+  une Fonction/Catégorie connue (`employee.poste_nom`/`categorie_nom`)
+  sans qu'aucune `HistoriqueFonction`/`HistoriqueCategorie` avec
+  `date_fin=None` n'existe — soit parce qu'aucun changement n'a encore été
+  fait depuis l'usage de SOMIZ (aucun historique du tout), soit parce que
+  toutes les périodes saisies manuellement sont déjà closes (rattrapage
+  d'un historique 100% passé, sans période "en cours" explicitement
+  ajoutée). Dans les deux cas, l'onglet Carrière affiche quand même cette
+  valeur actuelle en plus des périodes listées, avec comme date de départ
+  la fin de la dernière période connue (ou la date de recrutement de
+  l'employé s'il n'y a aucun historique) — sinon la valeur "réelle" de
+  l'employé semblait disparaître dès qu'on consultait son historique.
+- **Piège pagination DRF** — `HistoriqueListCreateView` n'a pas de
+  `pagination_class` custom (contrairement à `ReferentielSearchMixin`
+  utilisé par les référentiels) : elle renvoie donc la pagination globale
+  par défaut (`{count, next, previous, results}`), jamais un tableau brut.
+  Le frontend doit lire `response.data.results || response.data` comme
+  partout ailleurs pour ce type d'endpoint — l'oublier fait planter le
+  rendu (`"X.map is not a function"` / `"is not iterable"`) dès qu'un
+  employé a au moins une période enregistrée.
 
 ---
 
