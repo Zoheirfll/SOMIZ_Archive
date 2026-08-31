@@ -390,6 +390,10 @@ class TypeDocument(models.Model):
         max_length=7, blank=True, verbose_name="Couleur",
         help_text="Code hexadécimal (ex. #166534) — assignée automatiquement à la création si non renseignée"
     )
+    champ_source = models.CharField(
+        max_length=100, blank=True, verbose_name="Champ source",
+        help_text="Code du champ (système ou personnalisé) que ce document justifie — ex. 'date_naissance', 'nin'. Permet de cliquer sur ce champ dans la fiche employé pour ouvrir directement ce document."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

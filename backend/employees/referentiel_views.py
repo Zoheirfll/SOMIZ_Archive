@@ -506,7 +506,7 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
         model = TypeDocument
         fields = [
             'id', 'nom', 'code', 'obligatoire', 'is_active', 'ordre', 'couleur',
-            'nb_documents', 'parent', 'parent_nom', 'is_categorie',
+            'nb_documents', 'parent', 'parent_nom', 'is_categorie', 'champ_source',
         ]
     def get_nb_documents(self, obj):
         return obj.documents.filter(is_active=True).count()
@@ -516,9 +516,13 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
         # directement — son propre "obligatoire" n'a donc aucun effet sur le
         # calcul de complétude (voir sous_types__isnull=True partout ailleurs)
         # et ne doit pas rester à True en base, pour ne pas induire l'admin
-        # en erreur en pensant que ça impose encore une exigence.
+        # en erreur en pensant que ça impose encore une exigence. Même
+        # raisonnement pour champ_source : une catégorie n'est jamais
+        # elle-même sélectionnable comme document, donc jamais "source"
+        # d'un champ.
         if self.instance and self.instance.sous_types.exists():
             attrs['obligatoire'] = False
+            attrs['champ_source'] = ''
         return attrs
 
     def validate_couleur(self, value):
