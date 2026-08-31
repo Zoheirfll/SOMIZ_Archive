@@ -114,3 +114,59 @@ class TestHistoriqueEndpoints:
     def test_unknown_axe_returns_404(self, admin_user, employee):
         resp = auth_client(admin_user).get(historique_list_url(employee.pk, "bogus"))
         assert resp.status_code == 404
+
+
+def employee_url(pk):
+    return f"/api/employees/{pk}/"
+
+
+@pytest.mark.django_db
+class TestCarriereAutoTracking:
+    def test_changing_poste_creates_new_periode(self, admin_user, employee, poste):
+        from employees.models import Poste
+        client = auth_client(admin_user)
+        nouveau_poste = Poste.objects.create(nom="Chef de service")
+        resp = client.patch(employee_url(employee.pk), {"poste": str(nouveau_poste.id)}, format="json")
+        assert resp.status_code == 200
+
+        # Aucune période préexistante (employé créé sans historique initial)
+        # : le premier changement ouvre juste la nouvelle période, sans
+        # "ancienne" période à clôturer.
+        periodes = HistoriqueFonction.objects.filter(employee=employee).order_by('date_debut')
+        assert periodes.count() == 1
+        nouvelle = periodes.first()
+        assert nouvelle.poste_id == nouveau_poste.id
+        assert nouvelle.date_debut == date.today()
+        assert nouvelle.date_fin is None
+
+    def test_changing_poste_twice_closes_the_first_new_periode(self, admin_user, employee, poste):
+        from employees.models import Poste
+        client = auth_client(admin_user)
+        poste_b = Poste.objects.create(nom="Chef de service")
+        poste_c = Poste.objects.create(nom="Directeur")
+        client.patch(employee_url(employee.pk), {"poste": str(poste_b.id)}, format="json")
+        client.patch(employee_url(employee.pk), {"poste": str(poste_c.id)}, format="json")
+
+        periodes = HistoriqueFonction.objects.filter(employee=employee).order_by('date_debut')
+        assert periodes.count() == 2
+        premiere, seconde = periodes
+        assert premiere.poste_id == poste_b.id
+        assert premiere.date_fin == date.today()
+        assert seconde.poste_id == poste_c.id
+        assert seconde.date_fin is None
+
+    def test_changing_poste_logs_transfer_detail(self, admin_user, employee, poste):
+        from employees.models import Poste
+        from audit.models import AuditLog
+        client = auth_client(admin_user)
+        nouveau_poste = Poste.objects.create(nom="Chef de service")
+        client.patch(employee_url(employee.pk), {"poste": str(nouveau_poste.id)}, format="json")
+        log = AuditLog.objects.filter(
+            action=AuditLog.Action.MODIFY_EMP, target_id=str(employee.pk)
+        ).order_by('-timestamp').first()
+        assert log.details["transfer"]["poste"] == {"de": poste.nom, "vers": "Chef de service"}
+
+    def test_unchanged_poste_creates_no_periode(self, admin_user, employee):
+        client = auth_client(admin_user)
+        client.patch(employee_url(employee.pk), {"nom": employee.nom}, format="json")
+        assert HistoriqueFonction.objects.filter(employee=employee).count() == 0

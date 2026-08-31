@@ -255,6 +255,14 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     # l'audit log (voir perform_update), en plus du diff générique.
     TRANSFER_FIELDS = ['direction', 'departement', 'service', 'cellule', 'section']
 
+    # Champs de progression de carrière — un changement crée une nouvelle
+    # période dans l'historique dédié (voir HistoriqueFonction/Categorie),
+    # en plus du diff générique.
+    CARRIERE_AXES = {
+        'poste': HistoriqueFonction,
+        'categorie': HistoriqueCategorie,
+    }
+
     def perform_update(self, serializer):
         instance = serializer.instance
         # Capturer les libellés AVANT save() : serializer.save() mute
@@ -263,6 +271,10 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         old_affectation = {
             field: (getattr(instance, field).nom if getattr(instance, field, None) else None)
             for field in self.TRANSFER_FIELDS
+        }
+        old_carriere = {
+            field: getattr(instance, field)
+            for field in self.CARRIERE_AXES
         }
 
         employee = serializer.save()
@@ -286,6 +298,29 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
             for field in self.TRANSFER_FIELDS
             if field in serializer.validated_data and old_affectation[field] != new_affectation[field]
         }
+
+        today = date_cls.today()
+        for field, model in self.CARRIERE_AXES.items():
+            if field not in serializer.validated_data:
+                continue
+            new_value = getattr(employee, field)
+            old_value = old_carriere[field]
+            if (old_value.pk if old_value else None) == (new_value.pk if new_value else None):
+                continue
+            model.objects.filter(
+                employee=employee, date_fin__isnull=True
+            ).update(date_fin=today)
+            if new_value is not None:
+                model.objects.create(
+                    employee=employee, date_debut=today,
+                    created_by=self.request.user,
+                    **{field: new_value},
+                )
+            changed[field] = {
+                'de': old_value.nom if old_value else None,
+                'vers': new_value.nom if new_value else None,
+            }
+
         if changed:
             details['transfer'] = changed
 
