@@ -271,6 +271,69 @@ class Echelle(models.Model):
     def __str__(self):
         return self.nom
 
+
+class HistoriquePeriode(models.Model):
+    """
+    Période dans le temps pour un axe de carrière (Fonction, Catégorie,
+    Échelle). `date_fin=None` signifie période en cours.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        'Employee', on_delete=models.CASCADE, related_name='%(class)s_periodes'
+    )
+    date_debut = models.DateField(verbose_name="Date début")
+    date_fin = models.DateField(null=True, blank=True, verbose_name="Date fin")
+    commentaire = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+        ordering = ['-date_debut']
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.date_fin and self.date_fin < self.date_debut:
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début."
+            )
+
+
+class HistoriqueFonction(HistoriquePeriode):
+    poste = models.ForeignKey(Poste, on_delete=models.CASCADE, related_name='historiques')
+
+    class Meta(HistoriquePeriode.Meta):
+        db_table = 'historique_fonctions'
+        verbose_name = "Historique — Fonction"
+
+    def __str__(self):
+        return f"{self.employee} — {self.poste} ({self.date_debut} → {self.date_fin or '...'})"
+
+
+class HistoriqueCategorie(HistoriquePeriode):
+    categorie = models.ForeignKey(Categorie, on_delete=models.CASCADE, related_name='historiques')
+
+    class Meta(HistoriquePeriode.Meta):
+        db_table = 'historique_categories'
+        verbose_name = "Historique — Catégorie"
+
+    def __str__(self):
+        return f"{self.employee} — {self.categorie} ({self.date_debut} → {self.date_fin or '...'})"
+
+
+class HistoriqueEchelle(HistoriquePeriode):
+    echelle = models.ForeignKey(Echelle, on_delete=models.CASCADE, related_name='historiques')
+
+    class Meta(HistoriquePeriode.Meta):
+        db_table = 'historique_echelles'
+        verbose_name = "Historique — Échelle"
+
+    def __str__(self):
+        return f"{self.employee} — {self.echelle} ({self.date_debut} → {self.date_fin or '...'})"
+
 # Palette fixe assignée automatiquement aux TypeDocument sans couleur propre
 # (voir TypeDocument.save()) — cyclique, l'ordre n'a pas d'autre signification.
 TYPE_DOCUMENT_DEFAULT_PALETTE = [
