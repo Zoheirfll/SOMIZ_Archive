@@ -75,6 +75,17 @@ export const XIcon = ({ size = 14, ...props }) => (
   </svg>
 );
 
+export const KeyboardIcon = ({ size = 16, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+    <line x1="6" y1="10" x2="6" y2="10" />
+    <line x1="10" y1="10" x2="10" y2="10" />
+    <line x1="14" y1="10" x2="14" y2="10" />
+    <line x1="18" y1="10" x2="18" y2="10" />
+    <line x1="7" y1="14" x2="17" y2="14" />
+  </svg>
+);
+
 export const DownloadIcon = ({ size = 14, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -116,5 +127,13 @@ export const EyeIcon = ({ open = true, size = 16, ...props }) =>
 export const Spinner = ({ size = 14, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true" style={{ animation: "spin 0.8s linear infinite" }} {...props}>
     <path d="M12 2a10 10 0 0 1 10 10" />
+  </svg>
+);
+
+export const InfoIcon = ({ size = 14, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="11" />
+    <line x1="12" y1="8" x2="12" y2="8" />
   </svg>
 );
