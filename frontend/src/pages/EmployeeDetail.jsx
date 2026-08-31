@@ -185,9 +185,9 @@ const EmployeeDetail = () => {
         api.get(`/employees/${id}/historique/categories/`),
         api.get(`/employees/${id}/historique/echelles/`),
       ]);
-      setHistoriqueFonctions(fonctions.data);
-      setHistoriqueCategories(categoriesRes.data);
-      setHistoriqueEchelles(echellesRes.data);
+      setHistoriqueFonctions(fonctions.data.results || fonctions.data);
+      setHistoriqueCategories(categoriesRes.data.results || categoriesRes.data);
+      setHistoriqueEchelles(echellesRes.data.results || echellesRes.data);
     } catch (err) {
       console.error(err);
     }
@@ -1321,9 +1321,27 @@ const EmployeeDetail = () => {
             }}
           >
             {[
-              { axe: "fonctions", title: "Fonction", data: historiqueFonctions, labelKey: "poste_nom" },
-              { axe: "categories", title: "Catégorie", data: historiqueCategories, labelKey: "categorie_nom" },
-              { axe: "echelles", title: "Échelle", data: historiqueEchelles, labelKey: "echelle_nom" },
+              {
+                axe: "fonctions",
+                title: "Fonction",
+                data: historiqueFonctions,
+                labelKey: "poste_nom",
+                currentValue: employee.poste_nom,
+              },
+              {
+                axe: "categories",
+                title: "Catégorie",
+                data: historiqueCategories,
+                labelKey: "categorie_nom",
+                currentValue: employee.categorie_nom,
+              },
+              {
+                axe: "echelles",
+                title: "Échelle",
+                data: historiqueEchelles,
+                labelKey: "echelle_nom",
+                currentValue: null,
+              },
             ].map((axe) => (
               <div key={axe.title} style={{ marginBottom: 28 }}>
                 <div
@@ -1339,7 +1357,25 @@ const EmployeeDetail = () => {
                 >
                   {axe.title}
                 </div>
-                {axe.data.length === 0 ? (
+                {axe.data.length === 0 && axe.currentValue && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      marginBottom: 6,
+                      background: theme.primaryBg,
+                      border: `1px solid ${theme.primaryBorder}`,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{axe.currentValue}</span>
+                    <span style={{ fontSize: 12, color: theme.textSecondary }}>
+                      Valeur actuelle — pas d'historique de période renseigné
+                    </span>
+                  </div>
+                )}
+                {axe.data.length === 0 && !axe.currentValue ? (
                   <div style={{ color: theme.textSecondary, fontSize: 13 }}>
                     Aucun historique renseigné.
                   </div>
