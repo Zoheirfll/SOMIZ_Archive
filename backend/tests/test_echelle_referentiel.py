@@ -43,3 +43,24 @@ class TestEchelleEndpoints:
         resp = auth_client(admin_user).delete(f"/api/ref/echelles/{echelle.id}/")
         assert resp.status_code == 204
         assert not Echelle.objects.filter(pk=echelle.pk).exists()
+
+    def test_admin_can_download_echelle_template(self, admin_user):
+        resp = auth_client(admin_user).get("/api/ref/import/echelles/template/")
+        assert resp.status_code == 200
+
+    def test_admin_can_import_echelles(self, admin_user):
+        import io
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["nom", "description"])
+        ws.append(["Échelle 7", ""])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        buf.name = "echelles.xlsx"
+        resp = auth_client(admin_user).post(
+            "/api/ref/import/echelles/", {"file": buf}, format="multipart"
+        )
+        assert resp.status_code == 200
+        assert Echelle.objects.filter(nom="Échelle 7").exists()

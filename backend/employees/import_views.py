@@ -15,7 +15,7 @@ from accounts.permissions import IsAdmin
 from employees.models import (
     Employee, Direction, Pole, Departement,
     Service, Cellule, Section, Poste, TypeContrat, Categorie, Contrat,
-    ChampPersonnalise, EmployeeChampValeur,
+    ChampPersonnalise, EmployeeChampValeur, Echelle,
 )
 
 logger = logging.getLogger('audit')
@@ -445,6 +445,11 @@ class ReferentielImportView(APIView):
             'required': {'nom'},
             'optional': {'description'},
         },
+        'echelles': {
+            'model': Echelle,
+            'required': {'nom'},
+            'optional': {'description'},
+        },
     }
 
     def post(self, request, model):
@@ -706,6 +711,10 @@ class ReferentielImportTemplateView(APIView):
         'categories': {
             'headers': ['nom', 'description'],
             'example': ['Cadre', ''],
+        },
+        'echelles': {
+            'headers': ['nom', 'description'],
+            'example': ['Echelle 10', ''],
         },
     }
 

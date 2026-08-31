@@ -135,6 +135,113 @@ const labelStyle = {
   marginBottom: 5,
 };
 
+// Sélection d'un employé responsable — recherche serveur par nom/matricule
+// (même pattern que la recherche de grant ponctuel dans Users.jsx), pas un
+// <select> listant potentiellement des milliers d'employés.
+const ResponsableField = ({ label, value, currentLabel, onChange }) => {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setResults([]);
+      return undefined;
+    }
+    setLoading(true);
+    const timeout = setTimeout(() => {
+      api.get(`/employees/search/?q=${encodeURIComponent(query.trim())}`)
+        .then((res) => setResults(res.data || []))
+        .catch(() => setResults([]))
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [query]);
+
+  return (
+    <>
+      <label style={labelStyle}>{label}</label>
+      {value ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            border: `1px solid ${theme.primaryBorder}`,
+            borderRadius: 8,
+            padding: "9px 14px",
+            marginBottom: 12,
+            fontSize: 13,
+            color: theme.text,
+            background: theme.bg,
+          }}
+        >
+          <span>{currentLabel || "Employé sélectionné"}</span>
+          <button
+            type="button"
+            onClick={() => onChange(null, null)}
+            style={{ background: "none", border: "none", color: theme.danger, cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+          >
+            Retirer
+          </button>
+        </div>
+      ) : (
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher un employé (nom, prénom, matricule)…"
+            className="input-focus"
+            style={{ ...inputStyle, marginBottom: 0 }}
+          />
+          {query.trim().length >= 2 && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                left: 0,
+                right: 0,
+                zIndex: 10,
+                background: theme.surface,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 10,
+                marginTop: 4,
+                maxHeight: 180,
+                overflowY: "auto",
+                boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+              }}
+            >
+              {loading ? (
+                <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Recherche…</div>
+              ) : results.length === 0 ? (
+                <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Aucun résultat.</div>
+              ) : (
+                results.map((emp) => (
+                  <div
+                    key={emp.id}
+                    onClick={() => {
+                      onChange(emp.id, `${emp.prenom} ${emp.nom}`);
+                      setQuery("");
+                      setResults([]);
+                    }}
+                    style={{ padding: "8px 12px", cursor: "pointer", fontSize: 13, borderBottom: `1px solid ${theme.borderLight}` }}
+                  >
+                    {emp.prenom} {emp.nom}{" "}
+                    <span style={{ color: theme.textMuted, fontFamily: "monospace", fontSize: 11 }}>
+                      ({emp.matricule})
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
 // ─── TABLEAU GÉNÉRIQUE ────────────────────────────────────────────────────────
 
 const RefTable = ({
@@ -370,6 +477,7 @@ const TABS = [
   { key: "postes", label: "Postes" },
   { key: "types-contrat", label: "Types de contrat" },
   { key: "categories", label: "Catégories" },
+  { key: "echelles", label: "Échelles" },
   { key: "types-documents", label: "Types de documents" },
   { key: "champs-personnalises", label: "Champs personnalisés" },
 ];
@@ -407,6 +515,7 @@ const REF_COLUMNS_INFO = {
   postes: { obligatoires: ["nom"], optionnelles: ["code", "description"] },
   "types-contrat": { obligatoires: ["nom"], optionnelles: ["description"] },
   categories: { obligatoires: ["nom"], optionnelles: ["description"] },
+  echelles: { obligatoires: ["nom"], optionnelles: ["description"] },
 };
 
 // Champs "système" de la fiche employé — pilotent le scoping/périmètre RGPD,
@@ -798,6 +907,7 @@ const Parametres = () => {
               <Badge count={i.nb_departements} color={theme.primary} />
             ),
           },
+          { key: "responsable_nom", label: "Directeur", render: (i) => i.responsable_nom || "—" },
           {
             key: "is_active",
             label: "Statut",
@@ -830,6 +940,7 @@ const Parametres = () => {
               <Badge count={i.nb_departements} color={theme.primary} />
             ),
           },
+          { key: "responsable_nom", label: "Directeur", render: (i) => i.responsable_nom || "—" },
           {
             key: "is_active",
             label: "Statut",
@@ -863,6 +974,7 @@ const Parametres = () => {
               <Badge count={i.nb_services} color={theme.primary} />
             ),
           },
+          { key: "responsable_nom", label: "Chef de département", render: (i) => i.responsable_nom || "—" },
           {
             key: "is_active",
             label: "Statut",
@@ -889,6 +1001,7 @@ const Parametres = () => {
           { key: "code", label: "Code", mono: true, primary: true },
           { key: "departement_nom", label: "Département" },
           { key: "direction_nom", label: "Direction" },
+          { key: "responsable_nom", label: "Chef de service", render: (i) => i.responsable_nom || "—" },
           {
             key: "is_active",
             label: "Statut",
@@ -929,6 +1042,7 @@ const Parametres = () => {
               <Badge count={i.nb_employes} color={theme.primary} />
             ),
           },
+          { key: "responsable_nom", label: "Chef de cellule", render: (i) => i.responsable_nom || "—" },
           {
             key: "is_active",
             label: "Statut",
@@ -969,6 +1083,7 @@ const Parametres = () => {
               <Badge count={i.nb_employes} color={theme.primary} />
             ),
           },
+          { key: "responsable_nom", label: "Chef de section", render: (i) => i.responsable_nom || "—" },
           {
             key: "is_active",
             label: "Statut",
@@ -1221,6 +1336,12 @@ const Parametres = () => {
               className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
               placeholder="Description optionnelle"
             />
+            <ResponsableField
+              label="Directeur"
+              value={form.responsable || null}
+              currentLabel={form.responsable_nom}
+              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
+            />
             <label style={labelStyle}>Statut</label>
             <select
               name="is_active"
@@ -1279,6 +1400,12 @@ const Parametres = () => {
               value={form.description || ""}
               onChange={handleChange}
               className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+            />
+            <ResponsableField
+              label="Directeur"
+              value={form.responsable || null}
+              currentLabel={form.responsable_nom}
+              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
             />
             <label style={labelStyle}>Statut</label>
             <select
@@ -1355,6 +1482,12 @@ const Parametres = () => {
               onChange={handleChange}
               className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
+            <ResponsableField
+              label="Chef de département"
+              value={form.responsable || null}
+              currentLabel={form.responsable_nom}
+              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
+            />
             <label style={labelStyle}>Statut</label>
             <select
               name="is_active"
@@ -1414,6 +1547,12 @@ const Parametres = () => {
               value={form.description || ""}
               onChange={handleChange}
               className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+            />
+            <ResponsableField
+              label="Chef de service"
+              value={form.responsable || null}
+              currentLabel={form.responsable_nom}
+              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
             />
             <label style={labelStyle}>Statut</label>
             <select
@@ -1515,6 +1654,12 @@ const Parametres = () => {
               onChange={handleChange}
               className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
+            <ResponsableField
+              label="Chef de cellule"
+              value={form.responsable || null}
+              currentLabel={form.responsable_nom}
+              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
+            />
             <label style={labelStyle}>Statut</label>
             <select
               name="is_active"
@@ -1615,6 +1760,12 @@ const Parametres = () => {
               value={form.description || ""}
               onChange={handleChange}
               className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
+            />
+            <ResponsableField
+              label="Chef de section"
+              value={form.responsable || null}
+              currentLabel={form.responsable_nom}
+              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
             />
             <label style={labelStyle}>Statut</label>
             <select
