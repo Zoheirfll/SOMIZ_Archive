@@ -108,12 +108,26 @@ const EmployeeDetail = () => {
   });
   const [typesContrat, setTypesContrat] = useState([]);
   const [savingContrat, setSavingContrat] = useState(false);
+  const [historiqueFonctions, setHistoriqueFonctions] = useState([]);
+  const [historiqueCategories, setHistoriqueCategories] = useState([]);
+  const [historiqueEchelles, setHistoriqueEchelles] = useState([]);
+  const [postes, setPostes] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [echelles, setEchelles] = useState([]);
+  const [managingAxe, setManagingAxe] = useState(null);
+  const [newPeriode, setNewPeriode] = useState({
+    valeur: "",
+    date_debut: "",
+    date_fin: "",
+  });
 
   useEffect(() => {
     fetchTypesDocuments();
     fetchEmployee();
     fetchContrats();
     fetchTypesContrat();
+    fetchHistorique();
+    fetchAxeReferentiels();
   }, [id]);
 
   useEffect(() => {
@@ -159,6 +173,36 @@ const EmployeeDetail = () => {
     try {
       const response = await api.get("/ref/types-contrat/");
       setTypesContrat(response.data.results || response.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchHistorique = async (silent = false) => {
+    try {
+      const [fonctions, categoriesRes, echellesRes] = await Promise.all([
+        api.get(`/employees/${id}/historique/fonctions/`),
+        api.get(`/employees/${id}/historique/categories/`),
+        api.get(`/employees/${id}/historique/echelles/`),
+      ]);
+      setHistoriqueFonctions(fonctions.data);
+      setHistoriqueCategories(categoriesRes.data);
+      setHistoriqueEchelles(echellesRes.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchAxeReferentiels = async () => {
+    try {
+      const [postesRes, categoriesRes, echellesRes] = await Promise.all([
+        api.get("/ref/postes/"),
+        api.get("/ref/categories/"),
+        api.get("/ref/echelles/"),
+      ]);
+      setPostes(postesRes.data.results || postesRes.data);
+      setCategories(categoriesRes.data.results || categoriesRes.data);
+      setEchelles(echellesRes.data.results || echellesRes.data);
     } catch (err) {
       console.error(err);
     }
@@ -725,6 +769,37 @@ const EmployeeDetail = () => {
           </div>
         </div>
 
+        {/* Voie hiérarchique */}
+        {employee.voie_hierarchique?.length > 0 && (
+          <div className="anim-slide-up" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: theme.shadowMd }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.border}` }}>
+              <span style={{ color: theme.textSecondary, fontSize: 13, fontWeight: 500 }}>Voie hiérarchique</span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 20 }}>
+              {employee.voie_hierarchique.map((niveau, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <EmployeeAvatar
+                    employee={{ id: niveau.employee_id, nom: niveau.nom, prenom: niveau.prenom, has_photo: niveau.has_photo }}
+                    size={40}
+                    fontSize={14}
+                  />
+                  <div>
+                    <div style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      {niveau.role}
+                    </div>
+                    <div style={{ color: theme.text, fontSize: 13, fontWeight: 700 }}>
+                      {niveau.prenom} {niveau.nom}
+                    </div>
+                  </div>
+                  {i < employee.voie_hierarchique.length - 1 && (
+                    <span style={{ color: theme.textMuted, fontSize: 16, marginLeft: 10 }}>→</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Onglets */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
           {[
@@ -733,6 +808,7 @@ const EmployeeDetail = () => {
               label: `Dossier (${employee.documents?.length || 0})`,
             },
             { key: "contrats", label: `Contrats (${contrats.length})` },
+            { key: "carriere", label: "Carrière" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -1230,6 +1306,332 @@ const EmployeeDetail = () => {
                 </tbody>
               </table>
             )}
+          </div>
+        )}
+
+        {/* Carrière */}
+        {activeTab === "carriere" && (
+          <div
+            className="tab-content"
+            style={{
+              background: theme.surface,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 12,
+              padding: 24,
+            }}
+          >
+            {[
+              { axe: "fonctions", title: "Fonction", data: historiqueFonctions, labelKey: "poste_nom" },
+              { axe: "categories", title: "Catégorie", data: historiqueCategories, labelKey: "categorie_nom" },
+              { axe: "echelles", title: "Échelle", data: historiqueEchelles, labelKey: "echelle_nom" },
+            ].map((axe) => (
+              <div key={axe.title} style={{ marginBottom: 28 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    color: theme.textSecondary,
+                    marginBottom: 10,
+                    borderLeft: `4px solid ${theme.primary}`,
+                    paddingLeft: 8,
+                  }}
+                >
+                  {axe.title}
+                </div>
+                {axe.data.length === 0 ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 13 }}>
+                    Aucun historique renseigné.
+                  </div>
+                ) : (
+                  [...axe.data]
+                    .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
+                    .map((periode) => (
+                      <div
+                        key={periode.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          padding: "10px 14px",
+                          borderRadius: 8,
+                          marginBottom: 6,
+                          background: periode.date_fin ? theme.surface : theme.primaryBg,
+                          border: `1px solid ${periode.date_fin ? theme.border : theme.primaryBorder}`,
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>
+                          {periode[axe.labelKey]}
+                        </span>
+                        <span style={{ fontSize: 12, color: theme.textSecondary }}>
+                          {periode.date_debut} → {periode.date_fin || "en cours"}
+                        </span>
+                      </div>
+                    ))
+                )}
+              </div>
+            ))}
+
+            {user?.role === "ADMIN" && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+                {[
+                  { axe: "fonctions", label: "Gérer l'historique Fonction" },
+                  { axe: "categories", label: "Gérer l'historique Catégorie" },
+                  { axe: "echelles", label: "Gérer l'historique Échelle" },
+                ].map((a) => (
+                  <button
+                    key={a.axe}
+                    onClick={() => setManagingAxe(a.axe)}
+                    className="btn-lift"
+                    style={{
+                      background: theme.surface,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      padding: "8px 14px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  color: theme.textSecondary,
+                  marginBottom: 10,
+                  borderLeft: `4px solid ${theme.primary}`,
+                  paddingLeft: 8,
+                }}
+              >
+                Contrats
+              </div>
+              {contrats.length === 0 ? (
+                <div style={{ color: theme.textSecondary, fontSize: 13 }}>
+                  Aucun contrat.
+                </div>
+              ) : (
+                [...contrats]
+                  .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
+                  .map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={() => navigate(`/contrats/${c.id}`)}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        marginBottom: 6,
+                        background: theme.surface,
+                        border: `1px solid ${theme.border}`,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>
+                        {c.numero_contrat} — {c.type_contrat_nom || "—"}
+                      </span>
+                      <span style={{ fontSize: 12, color: theme.textSecondary }}>
+                        {c.date_debut || "—"} → {c.date_fin || "en cours"}
+                      </span>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {managingAxe && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+            onClick={() => setManagingAxe(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: theme.surface,
+                borderRadius: 12,
+                padding: 24,
+                width: 480,
+                maxHeight: "80vh",
+                overflowY: "auto",
+              }}
+            >
+              <h3 style={{ margin: "0 0 16px" }}>
+                Historique —{" "}
+                {managingAxe === "fonctions"
+                  ? "Fonction"
+                  : managingAxe === "categories"
+                  ? "Catégorie"
+                  : "Échelle"}
+              </h3>
+
+              {(managingAxe === "fonctions"
+                ? historiqueFonctions
+                : managingAxe === "categories"
+                ? historiqueCategories
+                : historiqueEchelles
+              ).map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "8px 0",
+                    borderBottom: `1px solid ${theme.border}`,
+                  }}
+                >
+                  <span style={{ fontSize: 13 }}>
+                    {p.poste_nom || p.categorie_nom || p.echelle_nom} ({p.date_debut} →{" "}
+                    {p.date_fin || "en cours"})
+                  </span>
+                  <button
+                    onClick={async () => {
+                      if (!(await confirm("Supprimer cette période ?"))) return;
+                      await api.delete(`/historique/${managingAxe}/${p.id}/`);
+                      fetchHistorique(true);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: theme.danger,
+                      cursor: "pointer",
+                      fontSize: 12,
+                    }}
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              ))}
+
+              <div
+                style={{
+                  marginTop: 16,
+                  paddingTop: 16,
+                  borderTop: `1px solid ${theme.border}`,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+                  Ajouter une période
+                </div>
+                <select
+                  aria-label="Valeur"
+                  value={newPeriode.valeur}
+                  onChange={(e) =>
+                    setNewPeriode({ ...newPeriode, valeur: e.target.value })
+                  }
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    marginBottom: 8,
+                    borderRadius: 6,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                >
+                  <option value="">-- Sélectionner --</option>
+                  {(managingAxe === "fonctions"
+                    ? postes
+                    : managingAxe === "categories"
+                    ? categories
+                    : echelles
+                  ).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nom}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  aria-label="Date début"
+                  type="date"
+                  value={newPeriode.date_debut}
+                  onChange={(e) =>
+                    setNewPeriode({ ...newPeriode, date_debut: e.target.value })
+                  }
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    marginBottom: 8,
+                    borderRadius: 6,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                />
+                <input
+                  aria-label="Date fin"
+                  type="date"
+                  value={newPeriode.date_fin}
+                  onChange={(e) =>
+                    setNewPeriode({ ...newPeriode, date_fin: e.target.value })
+                  }
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    marginBottom: 12,
+                    borderRadius: 6,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                />
+                <button
+                  onClick={async () => {
+                    const fieldName =
+                      managingAxe === "fonctions"
+                        ? "poste"
+                        : managingAxe === "categories"
+                        ? "categorie"
+                        : "echelle";
+                    await api.post(`/employees/${id}/historique/${managingAxe}/`, {
+                      [fieldName]: newPeriode.valeur,
+                      date_debut: newPeriode.date_debut,
+                      date_fin: newPeriode.date_fin || null,
+                    });
+                    setNewPeriode({ valeur: "", date_debut: "", date_fin: "" });
+                    fetchHistorique(true);
+                  }}
+                  disabled={!newPeriode.valeur || !newPeriode.date_debut}
+                  className="btn-lift"
+                  style={{
+                    background: theme.primary,
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "10px 16px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  Ajouter une période
+                </button>
+              </div>
+
+              <button
+                onClick={() => setManagingAxe(null)}
+                style={{
+                  marginTop: 16,
+                  background: "none",
+                  border: "none",
+                  color: theme.textSecondary,
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Fermer
+              </button>
+            </div>
           </div>
         )}
 

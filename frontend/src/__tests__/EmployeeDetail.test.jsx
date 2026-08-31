@@ -96,6 +96,26 @@ beforeEach(() => {
     if (url.includes("types-contrat")) {
       return Promise.resolve({ data: { results: [{ id: "tc-1", nom: "CDI" }] } });
     }
+    if (url.includes("/historique/fonctions/")) {
+      return Promise.resolve({
+        data: [{ id: "h1", poste_nom: "Agent", date_debut: "2016-01-01", date_fin: "2025-12-31" }],
+      });
+    }
+    if (url.includes("/historique/categories/")) {
+      return Promise.resolve({ data: [] });
+    }
+    if (url.includes("/historique/echelles/")) {
+      return Promise.resolve({ data: [] });
+    }
+    if (url.includes("/ref/postes/")) {
+      return Promise.resolve({ data: { results: [{ id: "poste-1", nom: "Cadre" }] } });
+    }
+    if (url.includes("/ref/categories/")) {
+      return Promise.resolve({ data: { results: [{ id: "cat-1", nom: "Cadre" }] } });
+    }
+    if (url.includes("/ref/echelles/")) {
+      return Promise.resolve({ data: { results: [{ id: "ech-1", nom: "Échelle 10" }] } });
+    }
     if (url.includes("/contrats/")) {
       return Promise.resolve({ data: mockContrats });
     }
@@ -754,5 +774,64 @@ describe("EmployeeDetail — position stable des documents (pas de saut au ré-u
 
     expect(orderContrat).toBeLessThan(orderCv);
     expect(orderCv).toBeLessThan(orderDiplome);
+  });
+});
+
+describe("EmployeeDetail — onglet Carrière", () => {
+  test("affiche l'onglet Carrière avec l'historique Fonction", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText("Carrière"));
+    expect(await screen.findByText(/Agent/)).toBeInTheDocument();
+    expect(screen.getByText(/2016-01-01/)).toBeInTheDocument();
+  });
+
+  test("affiche 'Aucun historique renseigné' pour un axe vide", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText("Carrière"));
+    await screen.findByText(/Agent/);
+    expect(screen.getAllByText("Aucun historique renseigné.").length).toBeGreaterThan(0);
+  });
+
+  test("affiche les contrats dans l'onglet Carrière", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText("Carrière"));
+    await screen.findByText(/Agent/);
+    expect(screen.getAllByText(/CTR-2020-001/).length).toBeGreaterThan(0);
+  });
+
+  test("un CONSULTANT ne voit pas les boutons 'Gérer l'historique'", async () => {
+    renderPage("CONSULTANT");
+    fireEvent.click(await screen.findByText("Carrière"));
+    await screen.findByText(/Agent/);
+    expect(screen.queryByText("Gérer l'historique Fonction")).not.toBeInTheDocument();
+  });
+
+  test("un ADMIN peut ajouter une période via 'Gérer l'historique'", async () => {
+    api.post.mockResolvedValue({ data: { id: "new1" } });
+    renderPage();
+    fireEvent.click(await screen.findByText("Carrière"));
+    fireEvent.click(await screen.findByText("Gérer l'historique Échelle"));
+    fireEvent.change(screen.getByLabelText("Valeur"), { target: { value: "ech-1" } });
+    fireEvent.change(screen.getByLabelText("Date début"), { target: { value: "2020-01-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Ajouter une période" }));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        "/employees/emp-uuid/historique/echelles/",
+        expect.objectContaining({ echelle: "ech-1", date_debut: "2020-01-01" })
+      );
+    });
+  });
+
+  test("un ADMIN peut supprimer une période depuis la modale", async () => {
+    window.confirm = jest.fn();
+    api.delete.mockResolvedValue({});
+    renderPage();
+    fireEvent.click(await screen.findByText("Carrière"));
+    fireEvent.click(await screen.findByText("Gérer l'historique Fonction"));
+    fireEvent.click(await screen.findByText("Supprimer"));
+    fireEvent.click(await screen.findByText("Confirmer"));
+    await waitFor(() => {
+      expect(api.delete).toHaveBeenCalledWith("/historique/fonctions/h1/");
+    });
   });
 });
