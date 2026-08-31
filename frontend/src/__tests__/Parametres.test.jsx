@@ -158,6 +158,14 @@ describe("Parametres — navigation onglets", () => {
     });
   });
 
+  test("le formulaire Types de documents propose un select Champ source", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText("Types de documents"));
+    fireEvent.click(await screen.findByText(/\+ Ajouter/i));
+    expect(await screen.findByLabelText("Champ source")).toBeInTheDocument();
+    expect(screen.getByText("Date de naissance")).toBeInTheDocument();
+  });
+
   test("clic sur Échelles charge les échelles", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Échelles"));

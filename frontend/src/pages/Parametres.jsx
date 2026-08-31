@@ -575,6 +575,14 @@ const Parametres = () => {
   const [directions, setDirections] = useState([]);
   const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
+  const [champsPersonnalisesOptions, setChampsPersonnalisesOptions] = useState([]);
+
+  useEffect(() => {
+    api.get("/ref/champs-personnalises/").then((res) => {
+      const list = res.data.results || res.data;
+      setChampsPersonnalisesOptions(list.filter((c) => c.is_active));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Charger directions et départements pour les selects
@@ -1942,6 +1950,33 @@ const Parametres = () => {
                 Cette catégorie a des sous-types — elle n'est plus uploadable directement, donc "Obligatoire" n'a aucun effet ici. Marquez le(s) sous-type(s) concerné(s) comme obligatoire(s) à la place.
               </div>
             )}
+
+            <label style={labelStyle}>Champ source (optionnel)</label>
+            <select
+              name="champ_source"
+              aria-label="Champ source"
+              value={modal?.item?.is_categorie ? "" : form.champ_source || ""}
+              onChange={handleChange}
+              disabled={modal?.item?.is_categorie}
+              className="input-focus" style={inputStyle}
+            >
+              <option value="">-- Aucun --</option>
+              <optgroup label="Champs système">
+                {SYSTEM_FIELDS.map((f) => (
+                  <option key={f.code} value={f.code}>{f.nom}</option>
+                ))}
+              </optgroup>
+              {champsPersonnalisesOptions.length > 0 && (
+                <optgroup label="Champs personnalisés">
+                  {champsPersonnalisesOptions.map((c) => (
+                    <option key={c.code} value={c.code}>{c.nom}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: -8, marginBottom: 12 }}>
+              Le champ de la fiche employé que ce document justifie (ex. "Date de naissance" pour un Acte de naissance) — cliquer sur ce champ, côté fiche employé, ouvrira directement ce document.
+            </div>
 
             <label style={labelStyle}>Couleur (optionnel)</label>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
