@@ -55,6 +55,8 @@ const Modal = ({ title, onClose, onSubmit, saving, children }) => (
         padding: 32,
         width: 480,
         maxWidth: "90vw",
+        maxHeight: "85vh",
+        overflowY: "auto",
         boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
         border: `1px solid ${theme.primaryBorder}`,
       }}
@@ -1242,6 +1244,17 @@ const Parametres = () => {
                 {i.obligatoire ? "Obligatoire" : "Optionnel"}
               </span>
             ),
+          },
+          {
+            key: "champ_source",
+            label: "Champ source",
+            render: (i) => {
+              if (!i.champ_source) return <span style={{ color: theme.textMuted }}>—</span>;
+              const champ =
+                SYSTEM_FIELDS.find((f) => f.code === i.champ_source) ||
+                champsPersonnalisesOptions.find((c) => c.code === i.champ_source);
+              return <span style={{ fontSize: 12 }}>{champ?.nom || i.champ_source}</span>;
+            },
           },
           {
             key: "nb_documents",
