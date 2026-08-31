@@ -8,13 +8,13 @@ describe("InfoNotice", () => {
   });
 
   it("shows the popover text on click and hides it on outside click", () => {
-    const { container } = render(<InfoNotice text="Ceci explique la page." />);
+    render(<InfoNotice text="Ceci explique la page." />);
     expect(screen.queryByText("Ceci explique la page.")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Aide" }));
     expect(screen.getByText("Ceci explique la page.")).toBeInTheDocument();
 
-    const overlay = container.querySelector('div[style*="position: fixed"]');
+    const overlay = document.body.querySelector('div[style*="position: fixed"][style*="inset"]');
     fireEvent.click(overlay);
     expect(screen.queryByText("Ceci explique la page.")).not.toBeInTheDocument();
   });
