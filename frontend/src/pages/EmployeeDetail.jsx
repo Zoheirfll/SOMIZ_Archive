@@ -1371,7 +1371,7 @@ const EmployeeDetail = () => {
                   >
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{axe.currentValue}</span>
                     <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                      Valeur actuelle — pas d'historique de période renseigné
+                      {employee.date_embauche || "?"} → en cours
                     </span>
                   </div>
                 )}
