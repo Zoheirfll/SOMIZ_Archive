@@ -18,7 +18,7 @@ from employees.models import (
     TypeContrat, Categorie, TypeDocument,
     EmployeeDocument, EmployeeDocumentFile,
     ChampPersonnalise, SystemFieldLabel,
-    Pole, Cellule, Section,
+    Pole, Cellule, Section, Echelle,
 )
 
 
@@ -445,6 +445,31 @@ class CategorieDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     queryset = Categorie.objects.all()
 
+
+class EchelleSerializer(serializers.ModelSerializer):
+    nb_employes = serializers.SerializerMethodField()
+    class Meta:
+        model = Echelle
+        fields = ['id', 'nom', 'description', 'is_active', 'nb_employes']
+    def get_nb_employes(self, obj):
+        if not hasattr(obj, 'historiqueechelle_periodes'):
+            return 0
+        return obj.historiqueechelle_periodes.filter(date_fin__isnull=True).count()
+
+
+class EchelleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+    serializer_class = EchelleSerializer
+    search_fields = ['nom']
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+    def get_queryset(self):
+        return self.filter_search(Echelle.objects.all())
+
+class EchelleDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = EchelleSerializer
+    permission_classes = [IsAdmin]
+    queryset = Echelle.objects.all()
+
 class TypeDocumentSerializer(serializers.ModelSerializer):
     nb_documents = serializers.SerializerMethodField()
     parent_nom = serializers.CharField(source='parent.nom', read_only=True)
@@ -608,6 +633,7 @@ class ReferentielBulkDeleteView(APIView):
         'postes': Poste,
         'types-contrat': TypeContrat,
         'categories': Categorie,
+        'echelles': Echelle,
         'types-documents': TypeDocument,
         'champs-personnalises': ChampPersonnalise,
     }
