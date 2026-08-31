@@ -16,6 +16,8 @@ from employees.views import (
     ContratListCreateView,
     ContratDetailView,
     ContratDocumentListUploadView,
+    HistoriqueListCreateView,
+    HistoriqueDetailView,
 )
 from employees.import_views import EmployeeImportView, EmployeeImportTemplateView
 from employees.grh_integration import GRHEmployeeSyncView
@@ -41,6 +43,10 @@ urlpatterns = [
 
     # Contrats (sous-ressource d'un employé)
     path('employees/<str:emp_id>/contrats/', ContratListCreateView.as_view(), name='contrat-list'),
+
+    # Historique de carrière (sous-ressource d'un employé)
+    path('employees/<str:emp_id>/historique/<str:axe>/', HistoriqueListCreateView.as_view(), name='historique-list'),
+    path('historique/<str:axe>/<uuid:pk>/', HistoriqueDetailView.as_view(), name='historique-detail'),
 
     # Contrat — détail + dossier
     path('contrats/<uuid:pk>/', ContratDetailView.as_view(), name='contrat-detail'),

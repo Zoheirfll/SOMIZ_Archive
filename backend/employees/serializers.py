@@ -11,7 +11,7 @@ from rest_framework import serializers
 
 from employees.models import (
     Employee, EmployeeDocument, EmployeeDocumentFile, TypeDocument, Contrat,
-    ChampPersonnalise,
+    ChampPersonnalise, HistoriqueFonction, HistoriqueCategorie, HistoriqueEchelle,
 )
 
 
@@ -467,3 +467,29 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
                 attrs['departement'] = None
                 attrs['direction'] = section.direction
         return attrs
+
+
+# ─── HISTORIQUE DE CARRIÈRE ───────────────────────────────────────────────────
+
+class HistoriqueFonctionSerializer(serializers.ModelSerializer):
+    poste_nom = serializers.CharField(source='poste.nom', read_only=True)
+
+    class Meta:
+        model = HistoriqueFonction
+        fields = ['id', 'poste', 'poste_nom', 'date_debut', 'date_fin', 'commentaire']
+
+
+class HistoriqueCategorieSerializer(serializers.ModelSerializer):
+    categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
+
+    class Meta:
+        model = HistoriqueCategorie
+        fields = ['id', 'categorie', 'categorie_nom', 'date_debut', 'date_fin', 'commentaire']
+
+
+class HistoriqueEchelleSerializer(serializers.ModelSerializer):
+    echelle_nom = serializers.CharField(source='echelle.nom', read_only=True)
+
+    class Meta:
+        model = HistoriqueEchelle
+        fields = ['id', 'echelle', 'echelle_nom', 'date_debut', 'date_fin', 'commentaire']

@@ -6,6 +6,7 @@ API Views — CRUD Employés + Upload + Viewer inline sécurisé
 import mimetypes
 import os
 import magic
+from datetime import date as date_cls
 from django.conf import settings
 from django.core.files.base import File
 from django.db import transaction
@@ -15,6 +16,7 @@ from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
 from rest_framework import generics, status, filters
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -31,6 +33,9 @@ from employees.models import (
     Contrat,
     ChampPersonnalise,
     EmployeeChampValeur,
+    HistoriqueFonction,
+    HistoriqueCategorie,
+    HistoriqueEchelle,
 )
 from employees.serializers import (
     EmployeeListSerializer,
@@ -43,6 +48,9 @@ from employees.serializers import (
     ContratListSerializer,
     ContratDetailSerializer,
     ContratCreateUpdateSerializer,
+    HistoriqueFonctionSerializer,
+    HistoriqueCategorieSerializer,
+    HistoriqueEchelleSerializer,
 )
 from employees.pdf_utils import pdf_page_count, extract_pdf_pages, PdfExtractionError
 
@@ -296,6 +304,118 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
         instance.statut = Employee.Statut.ARCHIVE
         instance.save(update_fields=['statut'])
+
+
+HISTORIQUE_AXES = {
+    'fonctions': (HistoriqueFonction, HistoriqueFonctionSerializer),
+    'categories': (HistoriqueCategorie, HistoriqueCategorieSerializer),
+    'echelles': (HistoriqueEchelle, HistoriqueEchelleSerializer),
+}
+
+
+def _check_no_overlap(model, employee, date_debut, date_fin, exclude_pk=None):
+    end = date_fin or date_cls.max
+    qs = model.objects.filter(employee=employee)
+    if exclude_pk:
+        qs = qs.exclude(pk=exclude_pk)
+    for p in qs:
+        p_end = p.date_fin or date_cls.max
+        if date_debut <= p_end and p.date_debut <= end:
+            raise DRFValidationError(
+                "Cette période chevauche une période existante pour cet axe."
+            )
+
+
+class HistoriqueListCreateView(generics.ListCreateAPIView):
+    """
+    GET  /api/employees/{emp_id}/historique/{axe}/  → Liste des périodes (ADMIN + CONSULTANT scopé)
+    POST /api/employees/{emp_id}/historique/{axe}/  → Créer une période (ADMIN only)
+    axe ∈ {fonctions, categories, echelles}
+    """
+
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+
+    def _employee(self):
+        employee = resolve_employee(self.kwargs['emp_id'])
+        if not self.request.user.can_access_employee(employee):
+            raise Http404
+        return employee
+
+    def _axe_config(self):
+        axe = self.kwargs['axe']
+        if axe not in HISTORIQUE_AXES:
+            raise Http404
+        return HISTORIQUE_AXES[axe]
+
+    def get_serializer_class(self):
+        return self._axe_config()[1]
+
+    def get_queryset(self):
+        model, _ = self._axe_config()
+        return model.objects.filter(employee=self._employee())
+
+    def perform_create(self, serializer):
+        model, _ = self._axe_config()
+        employee = self._employee()
+        _check_no_overlap(
+            model, employee,
+            serializer.validated_data['date_debut'],
+            serializer.validated_data.get('date_fin'),
+        )
+        instance = serializer.save(employee=employee, created_by=self.request.user)
+        AuditLog.log(
+            self.request, AuditLog.Action.MODIFY_EMP, target=employee,
+            details={'action': f'historique_{self.kwargs["axe"]}_create', 'periode_id': str(instance.pk)}
+        )
+
+
+class HistoriqueDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET/PATCH/DELETE /api/historique/{axe}/{pk}/  (ADMIN only for write, ADMIN+CONSULTANT scopé for read)
+    """
+
+    def get_permissions(self):
+        return [IsAdminOrConsultant()] if self.request.method == 'GET' else [IsAdmin()]
+
+    def _axe_config(self):
+        axe = self.kwargs['axe']
+        if axe not in HISTORIQUE_AXES:
+            raise Http404
+        return HISTORIQUE_AXES[axe]
+
+    def get_serializer_class(self):
+        return self._axe_config()[1]
+
+    def get_object(self):
+        model, _ = self._axe_config()
+        instance = get_object_or_404(model, pk=self.kwargs['pk'])
+        if not self.request.user.can_access_employee(instance.employee):
+            raise Http404
+        return instance
+
+    def perform_update(self, serializer):
+        model, _ = self._axe_config()
+        instance = serializer.instance
+        _check_no_overlap(
+            model, instance.employee,
+            serializer.validated_data.get('date_debut', instance.date_debut),
+            serializer.validated_data.get('date_fin', instance.date_fin),
+            exclude_pk=instance.pk,
+        )
+        updated = serializer.save()
+        AuditLog.log(
+            self.request, AuditLog.Action.MODIFY_EMP, target=updated.employee,
+            details={'action': f'historique_{self.kwargs["axe"]}_update', 'periode_id': str(updated.pk)}
+        )
+
+    def perform_destroy(self, instance):
+        employee = instance.employee
+        AuditLog.log(
+            self.request, AuditLog.Action.MODIFY_EMP, target=employee,
+            details={'action': f'historique_{self.kwargs["axe"]}_delete', 'periode_id': str(instance.pk)}
+        )
+        instance.delete()
 
 
 class EmployeePhotoView(APIView):
