@@ -255,6 +255,22 @@ class Categorie(models.Model):
     def __str__(self):
         return self.nom
 
+
+class Echelle(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nom = models.CharField(max_length=100, unique=True, verbose_name="Échelle")
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'echelles'
+        verbose_name = "Échelle"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
 # Palette fixe assignée automatiquement aux TypeDocument sans couleur propre
 # (voir TypeDocument.save()) — cyclique, l'ordre n'a pas d'autre signification.
 TYPE_DOCUMENT_DEFAULT_PALETTE = [

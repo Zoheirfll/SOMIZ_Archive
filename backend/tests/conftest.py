@@ -68,6 +68,12 @@ def categorie(db):
 
 
 @pytest.fixture
+def echelle(db):
+    from employees.models import Echelle
+    return Echelle.objects.create(nom="Échelle 10")
+
+
+@pytest.fixture
 def type_doc_obligatoire(db):
     return TypeDocument.objects.create(
         nom="Carte Nationale", code="CIN", obligatoire=True, ordre=1
