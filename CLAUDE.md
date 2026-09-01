@@ -309,6 +309,33 @@ CONSULTANT, la recherche, l'archivage et l'audit (voir section Scoping).
 
 ---
 
+## Panneau "Informations" — colonnes Personnel/Administratif (2026-09-01)
+
+Le panneau "Informations" de la fiche employé est divisé en 2 colonnes
+côte à côte (1 colonne empilée sous 768px) : "Informations personnelles"
+à gauche, "Informations administratives" à droite.
+
+- `ChampPersonnalise` (`backend/employees/models.py`) sert désormais de
+  **catalogue unifié** pour tous les champs de ce panneau : `is_systeme`
+  (bool, seedé une fois pour les 19 champs structurels, jamais
+  créable/supprimable via l'UI) et `categorie` (`PERSONNEL`/
+  `ADMINISTRATIF`, modifiable pour tout champ y compris système). Les
+  champs système restent des colonnes réelles sur `Employee` — ces lignes
+  ne servent que de registre de métadonnées, jamais de stockage EAV
+  (`is_systeme=True` exclu de `champs_actifs`/`champs_personnalises`).
+- UI `/parametres` → "Champs personnalisés" : colonne "Catégorie" (select),
+  éditable pour toutes les lignes.
+- Scoping CONSULTANT indépendant : `User.scope_champs_personnels` (M2M,
+  vide = non restreint) restreint quels champs `categorie=PERSONNEL` sont
+  visibles — la colonne Administrative n'est jamais restreinte. UI : section
+  "Champs personnels" dans la modale "Périmètre" de `/users`.
+- `EmployeeDetailSerializer.champs_categories` — dict `{code: categorie}`
+  déjà filtré selon le périmètre de l'utilisateur courant ; un champ
+  personnel non autorisé est absent du dict (donc du panneau), pas
+  seulement masqué côté frontend.
+
+---
+
 ## Liste employés — colonnes configurables (2026-07-25)
 
 Le tableau `/employees` a un bouton "Colonnes" (à côté du filtre "Statut")
