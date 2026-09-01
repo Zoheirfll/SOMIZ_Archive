@@ -121,9 +121,23 @@ class TestAccessibleTypeDocIdsForEmployee:
     def test_admin_unrestricted(self, admin_user, employee):
         assert admin_user.accessible_type_doc_ids_for_employee(employee) is None
 
-    def test_org_scope_no_type_restriction(self, scoped_consultant, employee, service):
+    def test_org_scope_but_no_type_scope_configured_gives_no_types(self, scoped_consultant, employee, service):
+        """Depuis le 2026-09-01 : l'employé est dans le périmètre org, mais
+        aucun type de document n'est coché sur l'axe global — cet axe
+        n'étant plus "non restreint" par défaut, aucun type n'est visible
+        (seul un grant précis pourrait en débloquer)."""
         scoped_consultant.scope_services.set([service])
-        assert scoped_consultant.accessible_type_doc_ids_for_employee(employee) is None
+        assert scoped_consultant.accessible_type_doc_ids_for_employee(employee) == set()
+
+    def test_org_scope_and_explicit_type_scope_unrestricted(
+        self, scoped_consultant, employee, service, type_doc_obligatoire, type_doc_facultatif
+    ):
+        """Avec le périmètre org ET l'axe types explicitement configuré
+        (tous les types cochés), l'employé voit ces types."""
+        scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_types_documents.set([type_doc_obligatoire, type_doc_facultatif])
+        ids = scoped_consultant.accessible_type_doc_ids_for_employee(employee)
+        assert ids == {type_doc_obligatoire.id, type_doc_facultatif.id}
 
     def test_full_dossier_grant_unrestricted(self, scoped_consultant, employee, other_service):
         scoped_consultant.scope_services.set([other_service])
@@ -164,7 +178,14 @@ class TestAccessibleTypeDocIdsForEmployee:
 class TestCanAccessDocument:
     def test_org_scope_and_global_type_scope(self, scoped_consultant, employee, service, type_doc_obligatoire):
         scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_types_documents.set([type_doc_obligatoire])
         assert scoped_consultant.can_access_document(employee, type_doc_obligatoire.id) is True
+
+    def test_org_scope_without_type_scope_denied(self, scoped_consultant, employee, service, type_doc_obligatoire):
+        """Depuis le 2026-09-01 : périmètre org ok mais axe types de
+        documents vide (non configuré) = aucun accès sur cet axe."""
+        scoped_consultant.scope_services.set([service])
+        assert scoped_consultant.can_access_document(employee, type_doc_obligatoire.id) is False
 
     def test_no_access_outside_scope_and_grants(self, scoped_consultant, employee, other_service, type_doc_obligatoire):
         scoped_consultant.scope_services.set([other_service])
@@ -185,9 +206,12 @@ class TestAccessibleChampsPersonnelsForEmployee:
     def test_admin_unrestricted(self, admin_user, employee):
         assert admin_user.accessible_champs_personnels_for_employee(employee) is None
 
-    def test_org_scope_no_global_restriction(self, scoped_consultant, employee, service):
+    def test_org_scope_but_no_champ_scope_configured_gives_no_champs(self, scoped_consultant, employee, service):
+        """Depuis le 2026-09-01 : périmètre org ok mais axe champs
+        personnels non configuré = aucun champ visible (seul un grant
+        précis pourrait en débloquer)."""
         scoped_consultant.scope_services.set([service])
-        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) is None
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
 
     def test_org_scope_with_global_champ_restriction(
         self, scoped_consultant, employee, service, champ_personnel, champ_personnel_2
