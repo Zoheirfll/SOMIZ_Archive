@@ -37,3 +37,13 @@ class TestSeedChampsSysteme:
         c = ChampPersonnalise.objects.filter(code="RIB").first()
         if c is not None:
             assert c.categorie == "PERSONNEL"
+
+
+@pytest.mark.django_db
+class TestIsSystemeExcludedFromEAV:
+    def test_employee_detail_champs_personnalises_excludes_system(self, employee):
+        from employees.serializers import EmployeeDetailSerializer
+        data = EmployeeDetailSerializer(employee, context={}).data
+        codes = [c['code'] for c in data['champs_personnalises']]
+        assert 'matricule' not in codes
+        assert 'date_naissance' not in codes

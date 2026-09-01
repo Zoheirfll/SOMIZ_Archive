@@ -154,7 +154,7 @@ class EmployeeImportView(APIView):
         # ou supprimé dans /parametres est immédiatement pris en compte,
         # sans changement de code (voir Import.jsx qui liste ces mêmes
         # colonnes optionnelles dynamiquement).
-        champs_actifs = {c.code.lower(): c for c in ChampPersonnalise.objects.filter(is_active=True)}
+        champs_actifs = {c.code.lower(): c for c in ChampPersonnalise.objects.filter(is_active=True, is_systeme=False)}
 
         # Matricules existants pour détecter les doublons
         matricules_existants = set(

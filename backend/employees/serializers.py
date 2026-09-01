@@ -315,7 +315,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         return {
             v.champ.code: v.valeur
             for v in obj.valeurs_personnalisees.all()
-            if v.champ.is_active
+            if v.champ.is_active and not v.champ.is_systeme
         }
 
     def get_dossier_complet(self, obj):
@@ -391,7 +391,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
                 'valeur': valeurs.get(c.id, ''),
                 'ordre': c.ordre,
             }
-            for c in ChampPersonnalise.objects.filter(is_active=True)
+            for c in ChampPersonnalise.objects.filter(is_active=True, is_systeme=False)
         ]
 
     def get_documents(self, obj):
