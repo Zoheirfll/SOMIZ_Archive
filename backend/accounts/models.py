@@ -369,11 +369,31 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def _granted_type_doc_ids_for_employee(self, employee_id):
         """(full_dossier: bool, type_doc_ids: set) pour un employé donné.
-        full_dossier=True si un grant type_doc=None existe (couvre tout,
-        type_doc_ids est alors ignorable)."""
+        full_dossier=True si un grant type_doc=None ET champ_personnel=None
+        existe (le vrai grant "dossier complet", couvre tout — type_doc_ids
+        est alors ignorable). Une ligne champ_personnel=<Y> (type_doc=None
+        mais pas un dossier complet) est exclue avant de déterminer full."""
         if self.is_admin or not self.pk:
             return True, set()
-        rows = list(self.employee_grants.filter(employee_id=employee_id).values_list('type_doc_id', flat=True))
+        rows = list(
+            self.employee_grants.filter(employee_id=employee_id, champ_personnel__isnull=True)
+            .values_list('type_doc_id', flat=True)
+        )
+        if any(r is None for r in rows):
+            return True, set()
+        return False, set(rows)
+
+    def _granted_champ_personnel_ids_for_employee(self, employee_id):
+        """(full_dossier: bool, champ_personnel_ids: set) pour un employé
+        donné — symétrique de _granted_type_doc_ids_for_employee(). Le
+        "vrai" dossier complet (type_doc=None ET champ_personnel=None) est
+        partagé entre les deux méthodes."""
+        if self.is_admin or not self.pk:
+            return True, set()
+        rows = list(
+            self.employee_grants.filter(employee_id=employee_id, type_doc__isnull=True)
+            .values_list('champ_personnel_id', flat=True)
+        )
         if any(r is None for r in rows):
             return True, set()
         return False, set(rows)
@@ -453,6 +473,29 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not ids:
             return ChampPersonnalise.objects.all()
         return ChampPersonnalise.objects.filter(id__in=ids)
+
+    def accessible_champs_personnels_for_employee(self, employee):
+        """
+        IDs des ChampPersonnalise (categorie=PERSONNEL) visibles pour CET
+        employé précis, en tenant compte du périmètre organisationnel +
+        périmètre global (scope_champs_personnels) ET des grants ponctuels
+        (EmployeeAccessGrant) pour cet employé. Retourne None = tous les
+        champs personnels visibles (pas de restriction), sinon un set d'ids
+        (peut être vide = aucun champ personnel visible pour cet employé).
+        Même structure que accessible_type_doc_ids_for_employee().
+        """
+        if self.is_admin:
+            return None
+        org_ok = self._org_can_access_employee(employee)
+        global_champ_ids = self._champ_personnel_scope_ids()
+        full, grant_champ_ids = self._granted_champ_personnel_ids_for_employee(employee.id)
+        if full:
+            return None
+        if org_ok and not global_champ_ids:
+            return None
+        allowed = set(global_champ_ids) if org_ok else set()
+        allowed |= grant_champ_ids
+        return allowed
 
     def is_locked(self):
         """Vérifie si le compte est bloqué suite aux tentatives échouées."""

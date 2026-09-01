@@ -181,6 +181,73 @@ class TestCanAccessDocument:
         assert scoped_consultant.can_access_document(employee, type_doc_facultatif.id) is False
 
 
+class TestAccessibleChampsPersonnelsForEmployee:
+    def test_admin_unrestricted(self, admin_user, employee):
+        assert admin_user.accessible_champs_personnels_for_employee(employee) is None
+
+    def test_org_scope_no_global_restriction(self, scoped_consultant, employee, service):
+        scoped_consultant.scope_services.set([service])
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) is None
+
+    def test_org_scope_with_global_champ_restriction(
+        self, scoped_consultant, employee, service, champ_personnel, champ_personnel_2
+    ):
+        scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_champs_personnels.set([champ_personnel])
+        ids = scoped_consultant.accessible_champs_personnels_for_employee(employee)
+        assert ids == {champ_personnel.id}
+
+    def test_no_org_scope_no_grant_gives_empty_set(self, scoped_consultant, employee, other_service):
+        scoped_consultant.scope_services.set([other_service])
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
+
+    def test_precise_champ_grant_outside_org_scope(
+        self, scoped_consultant, employee, other_service, champ_personnel, champ_personnel_2
+    ):
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, champ_personnel=champ_personnel)
+        ids = scoped_consultant.accessible_champs_personnels_for_employee(employee)
+        assert ids == {champ_personnel.id}
+
+    def test_full_dossier_grant_unrestricted(self, scoped_consultant, employee, other_service):
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee)
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) is None
+
+    def test_precise_type_doc_grant_does_not_unlock_champs_personnels(
+        self, scoped_consultant, employee, other_service, type_doc_obligatoire
+    ):
+        """Un grant type_doc=X, champ_personnel=None n'est PAS un dossier
+        complet — ne doit pas débloquer les champs personnels."""
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire
+        )
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
+
+    def test_precise_champ_grant_does_not_unlock_type_docs(
+        self, scoped_consultant, employee, other_service, champ_personnel, type_doc_obligatoire
+    ):
+        """Symétriquement, un grant champ_personnel=Y ne débloque pas les
+        types de documents (full doit rester False sur ce seul grant)."""
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        )
+        ids = scoped_consultant.accessible_type_doc_ids_for_employee(employee)
+        assert ids == set()
+
+    def test_champs_scope_combines_with_org_and_grant(
+        self, scoped_consultant, employee, service, champ_personnel, champ_personnel_2
+    ):
+        """Périmètre global (org_ok) UNION grant précis."""
+        scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_champs_personnels.set([champ_personnel])
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, champ_personnel=champ_personnel_2)
+        ids = scoped_consultant.accessible_champs_personnels_for_employee(employee)
+        assert ids == {champ_personnel.id, champ_personnel_2.id}
+
+
 class TestEmployeeGrantsEndpoint:
     def test_admin_can_set_full_dossier_grant(self, admin_user, scoped_consultant, employee):
         client = auth_client(admin_user)
