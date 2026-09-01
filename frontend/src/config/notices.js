@@ -23,6 +23,6 @@ export const FIELD_NOTICES = {
     affectationExclusive: "Un employé est rattaché à un seul de ces trois champs à la fois : Service, Cellule ou Section. Choisir l'un vide automatiquement les deux autres.",
   },
   users: {
-    perimetre: "Trois niveaux de périmètre se combinent : le périmètre organisationnel (Direction/Département/Service/Cellule/Section, en OU entre les cases cochées), le périmètre \"Types de documents\" (combiné en ET avec l'organisationnel), et les accès ponctuels par employé (en OU en plus des deux autres). Aucune case cochée nulle part = accès non restreint.",
+    perimetre: "Trois niveaux de périmètre se combinent : le périmètre organisationnel (Direction/Département/Service/Cellule/Section, en OU entre les cases cochées), le périmètre \"Types de documents\" (combiné en ET avec l'organisationnel), et les accès ponctuels par employé (en OU en plus des deux autres). Aucune case cochée nulle part = aucun accès sur cette dimension — cochez au moins un élément, ou utilisez les accès ponctuels par employé.",
   },
 };

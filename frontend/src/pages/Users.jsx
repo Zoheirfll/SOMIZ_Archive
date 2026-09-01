@@ -760,7 +760,7 @@ const Users = () => {
                     Périmètre d'accès (optionnel)
                   </div>
                   <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 16 }}>
-                    Aucune case cochée nulle part = accès non restreint. Modifiable plus tard via le bouton "Périmètre".
+                    Aucune case cochée = aucun accès sur cette dimension. Cochez au moins un élément, ou utilisez "Employés spécifiques" pour un accès ponctuel. Modifiable plus tard via le bouton "Périmètre".
                   </div>
 
                   {[
@@ -1301,7 +1301,7 @@ const Users = () => {
               {" "}— {scopeModal.prenom} {scopeModal.nom}
             </div>
             <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 20 }}>
-              Cocher une direction filtre les départements affichés à ceux qu'elle contient ; cocher un département filtre les services de la même façon. Aucune case cochée nulle part = accès non restreint (comportement par défaut).
+              Cocher une direction filtre les départements affichés à ceux qu'elle contient ; cocher un département filtre les services de la même façon. Aucune case cochée = aucun accès sur cette dimension — cochez au moins un élément, ou utilisez "Employés spécifiques" pour un accès ponctuel.
             </div>
 
             {[
@@ -1363,7 +1363,7 @@ const Users = () => {
 
             <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 16 }}>
               <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
-                Périmètre indépendant : restreint en plus les <strong>types de documents</strong> visibles (combiné en ET avec le périmètre organisationnel ci-dessus). Aucune case cochée = tous les types visibles.
+                Périmètre indépendant : restreint en plus les <strong>types de documents</strong> visibles (combiné en ET avec le périmètre organisationnel ci-dessus). Aucune case cochée = aucun type visible sur cet axe.
               </div>
               {[{ level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument }].map(({ level, label, items, onToggle }) => (
                 <div key={level}>
@@ -1420,7 +1420,7 @@ const Users = () => {
 
             <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 16 }}>
               <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
-                Périmètre indépendant : restreint en plus les <strong>champs personnels</strong> visibles sur la fiche employé (combiné en ET avec le périmètre organisationnel ci-dessus). La colonne Administrative n'est jamais restreinte. Aucune case cochée = tous les champs personnels visibles.
+                Périmètre indépendant : restreint en plus les <strong>champs personnels</strong> visibles sur la fiche employé (combiné en ET avec le périmètre organisationnel ci-dessus). La colonne Administrative n'est jamais restreinte. Aucune case cochée = aucun champ personnel visible sur cet axe.
               </div>
               {[{ level: "champs_personnels", label: "Champs personnels", items: champsPersonnels, onToggle: toggleChampPersonnel }].map(({ level, label, items, onToggle }) => (
                 <div key={level}>
