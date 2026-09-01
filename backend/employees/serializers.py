@@ -354,6 +354,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
     has_photo = serializers.SerializerMethodField()
     champs_personnalises = serializers.SerializerMethodField()
+    champs_categories = serializers.SerializerMethodField()
     voie_hierarchique = serializers.SerializerMethodField()
 
     class Meta:
@@ -372,6 +373,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'categorie', 'categorie_nom',
             'dossier_complet', 'taux_completude',
             'documents', 'documents_manquants', 'champs_personnalises',
+            'champs_categories',
             'voie_hierarchique',
             'created_by_name', 'created_at', 'updated_at',
         ]
@@ -393,6 +395,17 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             }
             for c in ChampPersonnalise.objects.filter(is_active=True, is_systeme=False)
         ]
+
+    def get_champs_categories(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        result = {}
+        for c in ChampPersonnalise.objects.filter(is_active=True):
+            if c.categorie == ChampPersonnalise.Categorie.PERSONNEL:
+                if user is not None and not user.can_access_champ_personnel(c.id):
+                    continue
+            result[c.code] = c.categorie
+        return result
 
     def get_documents(self, obj):
         qs = obj.documents_actifs
