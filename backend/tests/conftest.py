@@ -88,6 +88,24 @@ def type_doc_facultatif(db):
 
 
 @pytest.fixture
+def champ_personnel(db):
+    from employees.models import ChampPersonnalise
+    return ChampPersonnalise.objects.create(
+        nom="RIB", code="RIB", categorie=ChampPersonnalise.Categorie.PERSONNEL,
+        type_champ="texte", is_active=True,
+    )
+
+
+@pytest.fixture
+def champ_personnel_2(db):
+    from employees.models import ChampPersonnalise
+    return ChampPersonnalise.objects.create(
+        nom="NIN", code="NIN", categorie=ChampPersonnalise.Categorie.PERSONNEL,
+        type_champ="texte", is_active=True,
+    )
+
+
+@pytest.fixture
 def employee(db, admin_user, direction, departement, service, poste, type_contrat, categorie):
     return Employee.objects.create(
         matricule="EMP-001",

@@ -57,12 +57,40 @@ class TestEmployeeAccessGrantModel:
     def test_create_full_dossier_grant(self, scoped_consultant, employee):
         grant = EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee)
         assert grant.type_doc_id is None
+        assert grant.champ_personnel_id is None
 
     def test_create_type_specific_grant(self, scoped_consultant, employee, type_doc_obligatoire):
         grant = EmployeeAccessGrant.objects.create(
             user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire
         )
         assert grant.type_doc_id == type_doc_obligatoire.id
+
+    def test_create_champ_personnel_specific_grant(self, scoped_consultant, employee, champ_personnel):
+        grant = EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        )
+        assert grant.champ_personnel_id == champ_personnel.id
+        assert grant.type_doc_id is None
+
+    def test_str_full_dossier(self, scoped_consultant, employee):
+        grant = EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee)
+        assert "dossier complet" in str(grant)
+
+    def test_str_champ_personnel(self, scoped_consultant, employee, champ_personnel):
+        grant = EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        )
+        assert champ_personnel.nom in str(grant)
+
+    def test_unique_together_allows_type_doc_and_champ_personnel_rows_together(
+        self, scoped_consultant, employee, type_doc_obligatoire, champ_personnel
+    ):
+        """Une ligne type_doc=X et une ligne champ_personnel=Y peuvent coexister
+        pour le même (user, employee) — seule la combinaison identique est
+        bloquée par unique_together."""
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire)
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, champ_personnel=champ_personnel)
+        assert EmployeeAccessGrant.objects.filter(user=scoped_consultant, employee=employee).count() == 2
 
 
 class TestEmployeeScopeQWithGrants:

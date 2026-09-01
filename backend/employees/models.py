@@ -902,11 +902,15 @@ class EmployeeAccessGrant(models.Model):
     """
     Périmètre CONSULTANT ponctuel — donne accès à UN employé précis, en plus
     (union) du périmètre organisationnel de l'utilisateur (voir
-    User.employee_scope_q()). type_doc=None = dossier complet de cet
-    employé ; type_doc=<X> = uniquement les documents de ce type, dans le
-    dossier général de l'employé (jamais les documents de contrat — un
-    grant "dossier complet" est nécessaire pour couvrir aussi les
-    contrats).
+    User.employee_scope_q()). type_doc=None ET champ_personnel=None =
+    dossier complet de cet employé (tout, y compris les champs personnels) ;
+    type_doc=<X> = uniquement les documents de ce type, dans le dossier
+    général de l'employé (jamais les documents de contrat — un grant
+    "dossier complet" est nécessaire pour couvrir aussi les contrats) ;
+    champ_personnel=<Y> = uniquement ce champ personnel pour cet employé.
+    type_doc et champ_personnel ne sont jamais renseignés simultanément sur
+    la même ligne (validé côté serializer, pas de contrainte DB — voir
+    EmployeeAccessGrantSerializer.validate()).
     """
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -918,6 +922,9 @@ class EmployeeAccessGrant(models.Model):
     type_doc = models.ForeignKey(
         'TypeDocument', null=True, blank=True, on_delete=models.CASCADE
     )
+    champ_personnel = models.ForeignKey(
+        'ChampPersonnalise', null=True, blank=True, on_delete=models.CASCADE
+    )
     granted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
         related_name='+'
@@ -925,10 +932,15 @@ class EmployeeAccessGrant(models.Model):
     granted_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'employee', 'type_doc')
+        unique_together = ('user', 'employee', 'type_doc', 'champ_personnel')
         verbose_name = "Accès employé spécifique"
         verbose_name_plural = "Accès employés spécifiques"
 
     def __str__(self):
-        cible = self.type_doc.nom if self.type_doc_id else "dossier complet"
+        if self.type_doc_id:
+            cible = self.type_doc.nom
+        elif self.champ_personnel_id:
+            cible = self.champ_personnel.nom
+        else:
+            cible = "dossier complet"
         return f"{self.user.username} → {self.employee.matricule} ({cible})"
