@@ -162,9 +162,11 @@ const Users = () => {
               employee_prenom: row.employee_prenom,
               employee_matricule: row.employee_matricule,
               type_docs: [],
+              champs_personnels: [],
             });
           }
           if (row.type_doc) byEmployee.get(row.employee).type_docs.push(row.type_doc);
+          if (row.champ_personnel) byEmployee.get(row.employee).champs_personnels.push(row.champ_personnel);
         });
         setEmployeeGrants(Array.from(byEmployee.values()));
       })
@@ -363,11 +365,15 @@ const Users = () => {
           scope_champs_personnels: scopeForm.champs_personnels,
         }),
         api.put(`/admin-users/${scopeModal.id}/employee-grants/`, {
-          grants: employeeGrants.flatMap((g) =>
-            g.type_docs.length === 0
-              ? [{ employee: g.employee, type_doc: null }]
-              : g.type_docs.map((typeDocId) => ({ employee: g.employee, type_doc: typeDocId }))
-          ),
+          grants: employeeGrants.flatMap((g) => {
+            if (g.type_docs.length === 0 && g.champs_personnels.length === 0) {
+              return [{ employee: g.employee, type_doc: null }];
+            }
+            return [
+              ...g.type_docs.map((typeDocId) => ({ employee: g.employee, type_doc: typeDocId })),
+              ...g.champs_personnels.map((champId) => ({ employee: g.employee, champ_personnel: champId })),
+            ];
+          }),
         }),
       ]);
       setMessage({ type: "success", text: "Périmètre mis à jour." });
@@ -412,6 +418,7 @@ const Users = () => {
           employee_prenom: employee.prenom,
           employee_matricule: employee.matricule,
           type_docs: [],
+          champs_personnels: [],
         },
       ];
     });
@@ -425,7 +432,7 @@ const Users = () => {
 
   const setGrantFullDossier = (employeeId) => {
     setEmployeeGrants((prev) =>
-      prev.map((g) => (g.employee === employeeId ? { ...g, type_docs: [] } : g))
+      prev.map((g) => (g.employee === employeeId ? { ...g, type_docs: [], champs_personnels: [] } : g))
     );
   };
 
@@ -437,6 +444,18 @@ const Users = () => {
           ? g.type_docs.filter((id) => id !== typeDocId)
           : [...g.type_docs, typeDocId];
         return { ...g, type_docs: next };
+      })
+    );
+  };
+
+  const toggleGrantChampPersonnel = (employeeId, champId) => {
+    setEmployeeGrants((prev) =>
+      prev.map((g) => {
+        if (g.employee !== employeeId) return g;
+        const next = g.champs_personnels.includes(champId)
+          ? g.champs_personnels.filter((id) => id !== champId)
+          : [...g.champs_personnels, champId];
+        return { ...g, champs_personnels: next };
       })
     );
   };
@@ -1584,6 +1603,47 @@ const Users = () => {
                           );
                         })}
                       </div>
+                      {champsPersonnels.length > 0 && (
+                        <>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: theme.textMuted, textTransform: "uppercase", letterSpacing: "0.04em", margin: "8px 0 4px" }}>
+                            Champs personnels
+                          </div>
+                          <div style={{
+                            border: `1px solid ${theme.border}`,
+                            borderRadius: 8,
+                            maxHeight: 130,
+                            overflowY: "auto",
+                            padding: "6px 8px",
+                            background: theme.surface,
+                          }}>
+                            {champsPersonnels.map((c) => {
+                              const dossierComplet = g.type_docs.length === 0 && g.champs_personnels.length === 0;
+                              const coveredByGlobalChampScope =
+                                scopeForm.champs_personnels.length === 0 || scopeForm.champs_personnels.includes(c.id);
+                              const checked = dossierComplet || coveredByGlobalChampScope || g.champs_personnels.includes(c.id);
+                              return (
+                                <label
+                                  key={c.id}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12,
+                                    color: coveredByGlobalChampScope ? theme.textMuted : theme.text,
+                                    cursor: coveredByGlobalChampScope ? "default" : "pointer",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={coveredByGlobalChampScope}
+                                    onChange={() => toggleGrantChampPersonnel(g.employee, c.id)}
+                                  />
+                                  {c.nom}
+                                  {coveredByGlobalChampScope && <span style={{ fontStyle: "italic" }}>(périmètre global)</span>}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
