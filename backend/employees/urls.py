@@ -3,6 +3,7 @@ from django.urls import path
 from employees.views import (
     EmployeeListCreateView,
     EmployeeDetailView,
+    EmployeeAdjacentView,
     EmployeePhotoView,
     EmployeeChampsPersonnalisesView,
     DocumentListUploadView,
@@ -34,6 +35,7 @@ urlpatterns = [
     # comme URL lisible côté frontend (voir EmployeeDetailView.get_object) —
     # volontairement pas de nom dans l'URL (donnée personnelle, RGPD).
     path('employees/<str:pk>/', EmployeeDetailView.as_view(), name='employee-detail'),
+    path('employees/<str:pk>/adjacent/', EmployeeAdjacentView.as_view(), name='employee-adjacent'),
     path('employees/<str:pk>/photo/', EmployeePhotoView.as_view(), name='employee-photo'),
     path('employees/<str:pk>/champs/', EmployeeChampsPersonnalisesView.as_view(), name='employee-champs'),
 

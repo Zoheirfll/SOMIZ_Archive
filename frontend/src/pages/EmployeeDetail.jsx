@@ -77,6 +77,7 @@ const EmployeeDetail = () => {
   const isMobile = useIsMobile();
 
   const [employee, setEmployee] = useState(null);
+  const [adjacent, setAdjacent] = useState({ prev: null, next: null });
   const [contrats, setContrats] = useState([]);
   const [selectedContratId, setSelectedContratId] = useState(null);
   const [activeTab, setActiveTab] = useState(
@@ -133,7 +134,20 @@ const EmployeeDetail = () => {
     fetchHistorique();
     fetchAxeReferentiels();
     fetchSystemFieldOrder();
+    fetchAdjacent();
   }, [id]);
+
+  // Navigation Précédent/Suivant triée par N° Contrat — permet de parcourir
+  // les employés depuis la fiche sans repasser par la liste (respecte le
+  // périmètre de l'utilisateur côté serveur).
+  const fetchAdjacent = async () => {
+    try {
+      const r = await api.get(`/employees/${id}/adjacent/`);
+      setAdjacent({ prev: r.data.prev || null, next: r.data.next || null });
+    } catch {
+      setAdjacent({ prev: null, next: null });
+    }
+  };
 
   // Ordre des champs système (Matricule, Fonction...) tel que réglé dans
   // Paramètres > Champs personnalisés (flèches ↑/↓, mélangé avec les
@@ -780,6 +794,47 @@ const EmployeeDetail = () => {
                   {employee.prenom} {employee.nom}
                 </h1>
                 <InfoNotice text={PAGE_NOTICES.employeeDetail} />
+                <div style={{ display: "flex", gap: 6, marginLeft: 6 }}>
+                  <button
+                    onClick={() => navigate(`/employees/${adjacent.prev.id}`)}
+                    disabled={!adjacent.prev}
+                    title={adjacent.prev ? `${adjacent.prev.prenom} ${adjacent.prev.nom} (${adjacent.prev.matricule})` : "Aucun employé précédent"}
+                    className={adjacent.prev ? "btn-lift" : undefined}
+                    style={{
+                      background: "rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      color: adjacent.prev ? "#fff" : "rgba(255,255,255,0.35)",
+                      borderRadius: 8,
+                      width: 28,
+                      height: 28,
+                      fontSize: 14,
+                      cursor: adjacent.prev ? "pointer" : "default",
+                    }}
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={() => navigate(`/employees/${adjacent.next.id}`)}
+                    disabled={!adjacent.next}
+                    title={adjacent.next ? `${adjacent.next.prenom} ${adjacent.next.nom} (${adjacent.next.matricule})` : "Aucun employé suivant"}
+                    className={adjacent.next ? "btn-lift" : undefined}
+                    style={{
+                      background: "rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      color: adjacent.next ? "#fff" : "rgba(255,255,255,0.35)",
+                      borderRadius: 8,
+                      width: 28,
+                      height: 28,
+                      fontSize: 14,
+                      cursor: adjacent.next ? "pointer" : "default",
+                    }}
+                  >
+                    →
+                  </button>
+                </div>
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 2 }}>
+                Navigation triée par N° Contrat
               </div>
               <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, marginTop: 4, display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{employee.matricule}</span>

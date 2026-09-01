@@ -10,7 +10,7 @@ from datetime import date as date_cls
 from django.conf import settings
 from django.core.files.base import File
 from django.db import transaction
-from django.db.models import Q, Count, Exists, OuterRef, Subquery
+from django.db.models import Q, Count, Exists, OuterRef, Subquery, F
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
@@ -210,6 +210,51 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             target=employee,
             details={'matricule': employee.matricule}
         )
+
+
+class EmployeeAdjacentView(generics.GenericAPIView):
+    """
+    GET /api/employees/{id}/adjacent/ — employé précédent/suivant trié par
+    N° Contrat (numero_contrat_actif du dernier contrat), pour naviguer
+    directement depuis la fiche employé sans revenir à la liste. Respecte
+    le même périmètre que EmployeeDetailView (404 si l'employé courant est
+    hors périmètre — ne pas confirmer son existence).
+    """
+    permission_classes = [IsAdminOrConsultant]
+    queryset = Employee.objects.all()
+
+    def get_queryset(self):
+        return self.queryset.filter(self.request.user.employee_scope_q())
+
+    def get(self, request, pk):
+        queryset = self.filter_queryset(self.get_queryset())
+        employee = resolve_employee(pk, queryset)
+        self.check_object_permissions(request, employee)
+
+        latest_contrat = Contrat.objects.filter(
+            employee=OuterRef('pk')
+        ).order_by('-date_debut', '-id')
+        ordered_ids = list(
+            queryset.annotate(
+                numero_contrat_actif=Subquery(latest_contrat.values('numero_contrat')[:1]),
+            )
+            .order_by(F('numero_contrat_actif').asc(nulls_last=True), 'nom', 'prenom', 'id')
+            .values_list('id', flat=True)
+        )
+        try:
+            idx = ordered_ids.index(employee.id)
+        except ValueError:
+            idx = None
+
+        def summary(eid):
+            if eid is None:
+                return None
+            e = Employee.objects.only('id', 'nom', 'prenom', 'matricule').get(pk=eid)
+            return {'id': str(e.id), 'nom': e.nom, 'prenom': e.prenom, 'matricule': e.matricule}
+
+        prev_id = ordered_ids[idx - 1] if idx not in (None, 0) else None
+        next_id = ordered_ids[idx + 1] if idx is not None and idx < len(ordered_ids) - 1 else None
+        return Response({'prev': summary(prev_id), 'next': summary(next_id)})
 
 
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
