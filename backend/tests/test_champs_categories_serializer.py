@@ -40,11 +40,22 @@ class TestChampsCategories:
         assert data["champs_categories"]["matricule"] == "ADMINISTRATIF"
         assert data["champs_categories"]["date_naissance"] == "PERSONNEL"
 
-    def test_consultant_without_restriction_sees_all(self, consultant_user, employee):
+    def test_consultant_without_any_scope_loses_personal_fields(self, consultant_user, employee):
+        """Depuis le 2026-09-01 : un CONSULTANT sans aucun périmètre
+        configuré (organisationnel ni champs personnels) n'a plus accès
+        par défaut aux champs personnels (règle inversée)."""
         data = EmployeeDetailSerializer(employee, context=make_context(consultant_user)).data
-        assert "date_naissance" in data["champs_categories"]
+        assert "date_naissance" not in data["champs_categories"]
+        # ADMINISTRATIF fields are never restricted by this scope.
+        assert data["champs_categories"]["matricule"] == "ADMINISTRATIF"
 
     def test_consultant_restricted_loses_unauthorized_personal_field(self, consultant_user, employee):
+        # Le périmètre "champs personnels" se combine en ET avec le
+        # périmètre organisationnel (qui vs quoi) — il faut donc aussi
+        # couvrir l'employé organisationnellement pour observer l'effet du
+        # périmètre "champs personnels" seul (les deux axes sont
+        # default-deny depuis le 2026-09-01).
+        consultant_user.scope_directions.set([employee.direction])
         date_naissance = ChampPersonnalise.objects.get(code="date_naissance")
         autre_perso = ChampPersonnalise.objects.create(
             nom="Autre perso", code="AUTRE_PERSO", categorie=ChampPersonnalise.Categorie.PERSONNEL
@@ -55,6 +66,7 @@ class TestChampsCategories:
         assert "AUTRE_PERSO" not in data["champs_categories"]
 
     def test_administratif_never_restricted(self, consultant_user, employee):
+        consultant_user.scope_directions.set([employee.direction])
         date_naissance = ChampPersonnalise.objects.get(code="date_naissance")
         consultant_user.scope_champs_personnels.add(date_naissance)
         data = EmployeeDetailSerializer(employee, context=make_context(consultant_user)).data

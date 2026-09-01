@@ -21,11 +21,14 @@ def champ_personnel_2(db):
 
 @pytest.mark.django_db
 class TestScopeChampsPersonnels:
-    def test_no_selection_means_unrestricted(self, consultant_user, champ_personnel):
+    def test_no_selection_means_no_access(self, consultant_user, champ_personnel):
+        """Depuis le 2026-09-01 : aucune case cochée = aucun accès sur cet
+        axe (règle inversée). has_champ_personnel_scope_restriction reste
+        False (sémantique inchangée : reflète si une restriction a été
+        explicitement configurée, pas le résultat d'accès)."""
         assert consultant_user.has_champ_personnel_scope_restriction is False
-        assert consultant_user.can_access_champ_personnel(champ_personnel.id) is True
-        assert consultant_user.accessible_champs_personnels_qs().count() == \
-            ChampPersonnalise.objects.count()
+        assert consultant_user.can_access_champ_personnel(champ_personnel.id) is False
+        assert consultant_user.accessible_champs_personnels_qs().count() == 0
 
     def test_selection_restricts_access(self, consultant_user, champ_personnel, champ_personnel_2):
         consultant_user.scope_champs_personnels.add(champ_personnel)
