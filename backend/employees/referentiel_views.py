@@ -581,7 +581,8 @@ RESERVED_CHAMP_CODES = {
 class ChampPersonnaliseSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChampPersonnalise
-        fields = ['id', 'nom', 'code', 'type_champ', 'ordre', 'is_active']
+        fields = ['id', 'nom', 'code', 'type_champ', 'ordre', 'is_active', 'is_systeme', 'categorie']
+        read_only_fields = ['is_systeme']
 
     def validate_code(self, value):
         if value.strip().lower() in RESERVED_CHAMP_CODES:
@@ -590,6 +591,20 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
                 "dans l'import CSV) — choisissez un code différent."
             )
         return value
+
+    def validate(self, attrs):
+        # Un champ système (is_systeme=True) n'est jamais créable via ce
+        # serializer (is_systeme est read_only) — ici on protège l'édition :
+        # seule `categorie` peut changer sur une instance existante is_systeme.
+        instance = getattr(self, 'instance', None)
+        if instance is not None and instance.is_systeme:
+            mutable = set(attrs.keys()) - {'categorie'}
+            if mutable:
+                raise serializers.ValidationError(
+                    "Un champ système ne peut avoir que sa catégorie modifiée "
+                    "(nom, code, type, ordre et statut restent figés)."
+                )
+        return attrs
 
 
 class ChampPersonnaliseListCreateView(generics.ListCreateAPIView):
@@ -604,6 +619,15 @@ class ChampPersonnaliseDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ChampPersonnaliseSerializer
     permission_classes = [IsAdmin]
     queryset = ChampPersonnalise.objects.all()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_systeme:
+            return Response(
+                {"detail": "Un champ système ne peut pas être supprimé."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class SystemFieldLabelSerializer(serializers.ModelSerializer):
