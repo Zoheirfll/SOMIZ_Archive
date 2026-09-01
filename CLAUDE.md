@@ -112,25 +112,35 @@ sélection = accès non restreint (même règle que les 3 champs ci-dessus).
 - Appliqué dans `DocumentListUploadView`, `ContratDocumentListUploadView`, `FileViewerView`, `DocumentViewerView`, et dans `EmployeeDetailSerializer.get_documents()` / `get_documents_manquants()`.
 - UI d'assignation : même modal "Périmètre" (page `/users`), section séparée "Types de documents" (pas de cascade, juste Tout/Aucun).
 
-### Périmètre ponctuel — employés spécifiques (2026-08-30)
+### Périmètre ponctuel — employés spécifiques (2026-08-30, étendu 2026-09-01)
 
 En plus des deux périmètres ci-dessus, un CONSULTANT peut recevoir un
 accès ponctuel à un ou plusieurs **employés précis**
-(`EmployeeAccessGrant`, `user` + `employee` + `type_doc` optionnel — une
-ligne par `(employé, type)`) — combiné en **OU** avec le périmètre
-organisationnel (l'employé devient visible en plus de son périmètre
-normal, pas à la place). Deux niveaux de grant, par employé :
-- Aucune ligne `type_doc` (ou toutes retirées) — dossier complet de cet
-  employé (documents + contrats).
+(`EmployeeAccessGrant`, `user` + `employee` + `type_doc` optionnel +
+`champ_personnel` optionnel — une ligne par `(employé, type)` ou par
+`(employé, champ personnel)`, jamais les deux sur la même ligne) —
+combiné en **OU** avec le périmètre organisationnel (l'employé devient
+visible en plus de son périmètre normal, pas à la place). Trois niveaux
+de grant, par employé :
+- Aucune ligne `type_doc` NI `champ_personnel` (ou toutes retirées) —
+  **dossier complet** de cet employé : documents + contrats + **tous les
+  champs personnels**, sans exception.
 - Une ou plusieurs lignes `type_doc=<X>` — uniquement les documents de ces
   types précis, dans le dossier général de l'employé (jamais les
   documents de contrat — un grant dossier complet est nécessaire pour
   couvrir aussi les contrats).
+- Une ou plusieurs lignes `champ_personnel=<Y>` — uniquement ces champs
+  personnels précis (`ChampPersonnalise.categorie=PERSONNEL`) pour cet
+  employé. Un grant `type_doc=<X>` seul ne débloque aucun champ
+  personnel, et symétriquement un grant `champ_personnel=<Y>` seul ne
+  débloque aucun document — seul le grant dossier complet (les deux
+  colonnes `None`) couvre les deux axes à la fois.
 
-Contrairement au périmètre "types de documents" global, ces grants sont
-**indépendants** de `scope_types_documents` — un grant ponctuel donne
-accès même si ce type n'est pas dans le périmètre global de l'utilisateur.
-Un type déjà couvert par le périmètre global n'a pas besoin d'un grant
+Contrairement au périmètre "types de documents"/"champs personnels"
+global, ces grants sont **indépendants** de `scope_types_documents`/
+`scope_champs_personnels` — un grant ponctuel donne accès même si
+l'élément n'est pas dans le périmètre global de l'utilisateur. Un
+type/champ déjà couvert par le périmètre global n'a pas besoin d'un grant
 séparé — l'UI l'affiche automatiquement coché (non modifiable) dans la
 liste par employé, pour éviter toute confusion sur ce qui est déjà
 accessible.
@@ -140,20 +150,31 @@ accessible.
   autorisés pour CET employé, tenant compte du périmètre organisationnel +
   global + des grants. `contrat_scope=True` ignore les grants type_doc
   précis (utilisé par `ContratDocumentListUploadView`).
+- `User.accessible_champs_personnels_for_employee(employee)` — même
+  principe, symétrique, pour les champs personnels (`None` ou `set`
+  d'ids de `ChampPersonnalise`). Utilisé par
+  `EmployeeDetailSerializer.get_champs_categories()` (calculé une seule
+  fois par employé, pas par champ).
 - `User.can_access_document(employee, type_doc_id, contrat_scope=False)`
   — équivalent objet-par-objet, combine `can_access_employee()` (étendu
   pour inclure les employés avec grant) et la méthode ci-dessus.
 - UI : même modale "Périmètre" (`/users`), section "Employés spécifiques"
   — recherche (nom, prénom, matricule, **n° contrat** — `employee_search`
-  cherche aussi sur `contrats__numero_contrat`) + liste à cocher
-  "Dossier complet" / un-ou-plusieurs types par employé.
+  cherche aussi sur `contrats__numero_contrat`) + deux listes à cocher par
+  employé : "Dossier complet" / un-ou-plusieurs types de documents, et
+  "Champs personnels" / un-ou-plusieurs champs précis. Cocher un champ
+  personnel précis sort naturellement du mode "Dossier complet" (même
+  mécanique que les types de documents : le dossier complet correspond à
+  `type_docs` ET `champs_personnels` vides tous les deux).
   `GET/PUT /api/admin-users/<id>/employee-grants/` (ADMIN only, PUT
   remplace l'ensemble des lignes de ce compte). Badge "Employés
   spécifiques" dans la colonne Périmètre de `/users`
   (`UserSerializer.employee_grants_count`, nombre d'employés distincts —
   pas de lignes de grant).
 - Un grant ne peut jamais référencer un `TypeDocument` catégorie
-  (`is_categorie`), même garde-fou que le reste du système.
+  (`is_categorie`), même garde-fou que le reste du système. Une ligne ne
+  peut jamais cibler `type_doc` ET `champ_personnel` en même temps
+  (`EmployeeAccessGrantSerializer.validate()`, 400 sinon).
 
 ### Référentiel "Section" (2026-08-30)
 
