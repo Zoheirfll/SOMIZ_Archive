@@ -100,7 +100,8 @@ const Users = () => {
   const [cellules, setCellules] = useState([]);
   const [sections, setSections] = useState([]);
   const [typesDocuments, setTypesDocuments] = useState([]);
-  const [scopeForm, setScopeForm] = useState({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [] });
+  const [champsPersonnels, setChampsPersonnels] = useState([]);
+  const [scopeForm, setScopeForm] = useState({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
   const [savingScope, setSavingScope] = useState(false);
 
   // Périmètre "employés spécifiques" — grants ponctuels indépendants du
@@ -125,6 +126,10 @@ const Users = () => {
     api.get("/ref/types-documents/").then((res) => {
       setTypesDocuments(sortTypesDocumentsHierarchy(res.data.results || res.data));
     }).catch(() => {});
+    api.get("/ref/champs-personnalises/").then((res) => {
+      const list = res.data.results || res.data;
+      setChampsPersonnels(list.filter((c) => c.categorie === "PERSONNEL"));
+    }).catch(() => {});
   }, []);
 
   const openScopeModal = (u) => {
@@ -137,6 +142,7 @@ const Users = () => {
       cellules: u.scope_cellules || [],
       sections: u.scope_sections || [],
       types_documents: u.scope_types_documents || [],
+      champs_personnels: u.scope_champs_personnels || [],
     });
     setEmployeeGrants([]);
     setGrantSearch("");
@@ -320,6 +326,15 @@ const Users = () => {
     return scopeForm.types_documents.includes(item.id);
   };
 
+  const toggleChampPersonnel = (id) => {
+    setScopeForm((prev) => {
+      const next = prev.champs_personnels.includes(id)
+        ? prev.champs_personnels.filter((x) => x !== id)
+        : [...prev.champs_personnels, id];
+      return { ...prev, champs_personnels: next };
+    });
+  };
+
   const selectAllInLevel = (level, items) => {
     // Pour les types de documents, ne jamais ajouter l'id d'une catégorie —
     // elle n'est jamais rattachée à un document, seuls ses sous-types comptent.
@@ -345,6 +360,7 @@ const Users = () => {
           scope_cellules: scopeForm.cellules,
           scope_sections: scopeForm.sections,
           scope_types_documents: scopeForm.types_documents,
+          scope_champs_personnels: scopeForm.champs_personnels,
         }),
         api.put(`/admin-users/${scopeModal.id}/employee-grants/`, {
           grants: employeeGrants.flatMap((g) =>
@@ -487,12 +503,13 @@ const Users = () => {
           scope_cellules: scopeForm.cellules,
           scope_sections: scopeForm.sections,
           scope_types_documents: scopeForm.types_documents,
+          scope_champs_personnels: scopeForm.champs_personnels,
         });
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
       setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", password: "", password2: "" });
-      setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [] });
+      setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
       const data = err.response?.data;
@@ -735,6 +752,7 @@ const Users = () => {
                     { level: "cellules", label: "Cellules", items: visibleCellules, onToggle: toggleCellule },
                     { level: "sections", label: "Sections", items: visibleSections, onToggle: toggleSection },
                     { level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument },
+                    { level: "champs_personnels", label: "Champs personnels", items: champsPersonnels, onToggle: toggleChampPersonnel },
                   ].map(({ level, label, items, onToggle }) => (
                     <div key={level} style={{ marginBottom: 16 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -1373,6 +1391,61 @@ const Users = () => {
                           {item.parent_nom && <span style={{ color: theme.textMuted, fontSize: 12 }}>↳</span>}
                           {!item.parent_nom && item.is_categorie && <span title="Catégorie">📁</span>}
                           <span style={item.is_categorie ? { fontWeight: 700 } : undefined}>{item.nom}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 16 }}>
+              <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
+                Périmètre indépendant : restreint en plus les <strong>champs personnels</strong> visibles sur la fiche employé (combiné en ET avec le périmètre organisationnel ci-dessus). La colonne Administrative n'est jamais restreinte. Aucune case cochée = tous les champs personnels visibles.
+              </div>
+              {[{ level: "champs_personnels", label: "Champs personnels", items: champsPersonnels, onToggle: toggleChampPersonnel }].map(({ level, label, items, onToggle }) => (
+                <div key={level}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => selectAllInLevel(level, items)}
+                        style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                      >
+                        Tout
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => clearLevel(level)}
+                        style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
+                      >
+                        Aucun
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 10,
+                    maxHeight: 140,
+                    overflowY: "auto",
+                    padding: "8px 12px",
+                    background: theme.bg,
+                  }}>
+                    {items.length === 0 ? (
+                      <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
+                    ) : (
+                      items.map((item) => (
+                        <label
+                          key={item.id}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={scopeForm.champs_personnels.includes(item.id)}
+                            onChange={() => onToggle(item.id)}
+                          />
+                          {item.nom}
                         </label>
                       ))
                     )}

@@ -237,6 +237,37 @@ describe("Users — toggle actif/désactivé", () => {
   });
 });
 
+describe("Users — modale Périmètre — Champs personnels", () => {
+  test("affiche la section Champs personnels dans la modale Périmètre", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/ref/champs-personnalises/") {
+        return Promise.resolve({
+          data: [
+            { id: "champ-1", nom: "Date de naissance", code: "date_naissance", categorie: "PERSONNEL", is_systeme: true },
+            { id: "champ-2", nom: "Matricule", code: "matricule", categorie: "ADMINISTRATIF", is_systeme: true },
+          ],
+        });
+      }
+      if (url === "/admin-users/") {
+        return Promise.resolve({
+          data: {
+            results: [makeUser("u1", "cons1", "CONSULTANT", true)],
+          },
+        });
+      }
+      return Promise.resolve({ data: { results: [] } });
+    });
+
+    renderPage();
+    const perimetreBtn = await screen.findByRole("button", { name: "Périmètre" });
+    fireEvent.click(perimetreBtn);
+
+    expect(await screen.findByText("Champs personnels")).toBeInTheDocument();
+    expect(screen.getByText("Date de naissance")).toBeInTheDocument();
+    expect(screen.queryByText("Matricule")).not.toBeInTheDocument();
+  });
+});
+
 describe("Users — modal reset mot de passe", () => {
   test("cliquer Reset MDP ouvre le modal", async () => {
     api.get.mockResolvedValue({
