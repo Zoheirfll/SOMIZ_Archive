@@ -194,10 +194,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     def _org_employee_scope_q(self, prefix=''):
         """employee_scope_q() sans les grants ponctuels — périmètre
         organisationnel seul. Utilisé en interne par
-        accessible_type_doc_ids_for_employee()."""
+        accessible_type_doc_ids_for_employee().
+        ADMIN/SUPERADMIN : toujours non restreint (Q() vide). Pour un
+        CONSULTANT, aucune case cochée nulle part sur cette dimension =
+        accès à RIEN (Q(pk__in=[]), toujours faux) — voir CLAUDE.md
+        section Scoping, règle inversée le 2026-09-01."""
+        if self.is_admin:
+            return Q()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Q()
+            return Q(pk__in=[])
         q = Q()
         if direction_ids:
             q |= Q(**{f'{prefix}direction_id__in': direction_ids})
@@ -219,23 +225,28 @@ class User(AbstractBaseUser, PermissionsMixin):
         Employee via `prefix`, ex. prefix='employee__' pour un queryset
         Contrat) pour restreindre au périmètre de cet utilisateur — union du
         périmètre organisationnel (directions/pôles/départements/services/
-        cellules) ET des employés ayant un accès ponctuel accordé
+        cellules/sections) ET des employés ayant un accès ponctuel accordé
         (EmployeeAccessGrant, voir _granted_employee_ids). Q() vide = accès
-        non restreint (ADMIN, ou CONSULTANT sans périmètre ni grant —
-        comportement historique préservé).
+        non restreint (ADMIN/SUPERADMIN uniquement). Pour un CONSULTANT sans
+        aucune case cochée nulle part et sans grant, ne matche plus rien
+        (règle inversée le 2026-09-01, voir CLAUDE.md).
         """
         q = self._org_employee_scope_q(prefix=prefix)
         granted_ids = self._granted_employee_ids()
         if not granted_ids:
             return q
         grant_q = Q(**{f'{prefix}id__in': granted_ids})
-        return q | grant_q if q.children else grant_q
+        return q | grant_q
 
     def _org_can_access_employee(self, employee):
-        """can_access_employee() sans les grants ponctuels."""
+        """can_access_employee() sans les grants ponctuels. ADMIN/SUPERADMIN
+        toujours True ; CONSULTANT sans aucune case cochée nulle part :
+        False (règle inversée le 2026-09-01)."""
+        if self.is_admin:
+            return True
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return True
+            return False
         return (
             employee.direction_id in direction_ids
             or (employee.departement_id and employee.departement.pole_id in pole_ids)
@@ -255,11 +266,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def accessible_directions_qs(self):
         """Directions visibles pour ce compte (ex. filtre de la page Employés).
-        Non restreint pour ADMIN ou CONSULTANT sans périmètre."""
+        Non restreint pour ADMIN/SUPERADMIN ; aucune restriction configurée
+        pour un CONSULTANT = aucune direction visible (règle inversée le
+        2026-09-01)."""
         from employees.models import Direction
+        if self.is_admin:
+            return Direction.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Direction.objects.all()
+            return Direction.objects.none()
         return Direction.objects.filter(
             Q(id__in=direction_ids)
             | Q(poles__id__in=pole_ids)
@@ -274,9 +289,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_poles_qs(self):
         """Pôles visibles pour ce compte."""
         from employees.models import Pole
+        if self.is_admin:
+            return Pole.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Pole.objects.all()
+            return Pole.objects.none()
         return Pole.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(id__in=pole_ids)
@@ -287,9 +304,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_departements_qs(self):
         """Départements visibles pour ce compte."""
         from employees.models import Departement
+        if self.is_admin:
+            return Departement.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Departement.objects.all()
+            return Departement.objects.none()
         return Departement.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(pole_id__in=pole_ids)
@@ -302,9 +321,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_services_qs(self):
         """Services visibles pour ce compte."""
         from employees.models import Service
+        if self.is_admin:
+            return Service.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Service.objects.all()
+            return Service.objects.none()
         return Service.objects.filter(
             Q(departement__direction_id__in=direction_ids)
             | Q(departement__pole_id__in=pole_ids)
@@ -315,9 +336,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_cellules_qs(self):
         """Cellules visibles pour ce compte."""
         from employees.models import Cellule
+        if self.is_admin:
+            return Cellule.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Cellule.objects.all()
+            return Cellule.objects.none()
         return Cellule.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(departement_id__in=departement_ids)
@@ -327,9 +350,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_sections_qs(self):
         """Sections visibles pour ce compte."""
         from employees.models import Section
+        if self.is_admin:
+            return Section.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Section.objects.all()
+            return Section.objects.none()
         return Section.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(departement_id__in=departement_ids)
