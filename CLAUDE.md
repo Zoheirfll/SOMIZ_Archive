@@ -82,8 +82,12 @@ Un CONSULTANT peut être restreint à un périmètre : `User.scope_directions`,
 `scope_poles`, `scope_departements`, `scope_services`, `scope_cellules`
 (ManyToMany, sélection multiple à chaque niveau — union : un employé est
 visible dès qu'il correspond à AU MOINS un élément choisi, peu importe le
-niveau). **Aucune sélection nulle part = accès non restreint**
-(comportement historique préservé pour tous les comptes existants).
+niveau). **Aucune sélection nulle part = accès à AUCUN employé sur cette
+dimension** (règle inversée le 2026-09-01 — l'ancien comportement,
+"vide = non restreint", est désormais réservé à ADMIN/SUPERADMIN ; un
+CONSULTANT sans aucune case cochée ne voit plus rien via le périmètre
+organisationnel, sauf accès ponctuel via `EmployeeAccessGrant`, voir
+section "Périmètre ponctuel — employés spécifiques" plus bas).
 `Employee` n'a pas de FK directe vers `Pole` (seulement via
 `departement.pole`) — un périmètre par Pôle se traduit donc en
 `departement__pole_id__in`.
@@ -104,7 +108,8 @@ ManyToMany vers `TypeDocument`). Ce périmètre est **indépendant** et se
 combine en **ET** avec le périmètre organisationnel (qui vs quoi) — un
 CONSULTANT restreint aux deux ne voit que les documents des types
 autorisés, pour les employés de son périmètre organisationnel. Aucune
-sélection = accès non restreint (même règle que les 3 champs ci-dessus).
+sélection = aucun type de document visible sur cet axe (règle inversée
+le 2026-09-01, même règle que le périmètre organisationnel ci-dessus).
 
 - `User.document_type_scope_q(prefix='type_doc_id')` — Q object pour `.filter()` sur un queryset `EmployeeDocument` (adapter le prefix, ex. `'document__type_doc_id'`, pour un queryset `EmployeeDocumentFile`).
 - `User.can_access_document_type(type_doc_id)` — équivalent objet-par-objet.
@@ -347,7 +352,8 @@ côte à côte (1 colonne empilée sous 768px) : "Informations personnelles"
 - UI `/parametres` → "Champs personnalisés" : colonne "Catégorie" (select),
   éditable pour toutes les lignes.
 - Scoping CONSULTANT indépendant : `User.scope_champs_personnels` (M2M,
-  vide = non restreint) restreint quels champs `categorie=PERSONNEL` sont
+  vide = aucun champ personnel visible sur cet axe, règle inversée le
+  2026-09-01) restreint quels champs `categorie=PERSONNEL` sont
   visibles — la colonne Administrative n'est jamais restreinte. UI : section
   "Champs personnels" dans la modale "Périmètre" de `/users`.
 - `EmployeeDetailSerializer.champs_categories` — dict `{code: categorie}`
