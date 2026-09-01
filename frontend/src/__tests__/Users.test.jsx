@@ -312,7 +312,12 @@ describe("Users — modale Périmètre — Champs personnels par employé (grant
     });
   });
 
-  test("les champs personnels apparaissent cochés automatiquement quand Dossier complet est actif", async () => {
+  test("les champs personnels restent décochés par défaut même avec Dossier complet actif", async () => {
+    // Depuis 2026-09-01 : "Dossier complet" (documents + contrats) est
+    // découplé des champs personnels — un nouvel employé ajouté a le
+    // dossier complet actif par défaut, mais aucun champ personnel coché
+    // tant qu'on ne le sélectionne pas explicitement (ou qu'il n'est pas
+    // déjà couvert par le périmètre global).
     mockRefsAndUser();
     renderPage();
     const perimetreBtn = await screen.findByRole("button", { name: "Périmètre" });
@@ -324,10 +329,8 @@ describe("Users — modale Périmètre — Champs personnels par employé (grant
     fireEvent.click(result);
 
     await screen.findAllByText("RIB");
-    // "Dossier complet" est coché par défaut (nouvel employé = aucune restriction) —
-    // la checklist par-employé (2e occurrence de "RIB") doit refléter ce statut coché.
     const ribCheckboxes = screen.getAllByText("RIB").map((el) => el.closest("label").querySelector("input"));
-    expect(ribCheckboxes[1]).toBeChecked();
+    expect(ribCheckboxes[1]).not.toBeChecked();
   });
 
   test("cocher un champ personnel précis sort du mode Dossier complet et l'envoie dans le PUT", async () => {
