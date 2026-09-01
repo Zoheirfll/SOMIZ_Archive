@@ -601,12 +601,32 @@ class ChampPersonnalise(models.Model):
         DATE = 'date', 'Date'
         BOOLEEN = 'booleen', 'Booléen (Oui/Non)'
 
+    class Categorie(models.TextChoices):
+        PERSONNEL = 'PERSONNEL', 'Personnel'
+        ADMINISTRATIF = 'ADMINISTRATIF', 'Administratif'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=100, verbose_name="Nom")
     code = models.CharField(max_length=50, unique=True, verbose_name="Code")
     type_champ = models.CharField(
         max_length=10, choices=TypeChamp.choices, default=TypeChamp.TEXTE,
         verbose_name="Type"
+    )
+    is_systeme = models.BooleanField(
+        default=False,
+        verbose_name="Champ système",
+        help_text=(
+            "True pour les 12 champs structurels de la fiche employé (Matricule, "
+            "Direction, Fonction...) — lignes seedées une fois par migration, jamais "
+            "créables/supprimables via l'UI. Sert de registre de métadonnées "
+            "(catégorie + permission), jamais de stockage de valeur : aucune "
+            "EmployeeChampValeur n'est créée pour un champ is_systeme=True."
+        ),
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, default=Categorie.ADMINISTRATIF,
+        verbose_name="Catégorie",
+        help_text="Colonne d'affichage sur la fiche employé (panneau Informations).",
     )
     ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
     is_active = models.BooleanField(default=True, verbose_name="Actif")
