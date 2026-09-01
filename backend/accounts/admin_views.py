@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from accounts.permissions import IsAdmin
 from audit.models import AuditLog
-from employees.models import Employee, EmployeeAccessGrant, TypeDocument
+from employees.models import ChampPersonnalise, Employee, EmployeeAccessGrant, TypeDocument
 
 User = get_user_model()
 
@@ -216,6 +216,11 @@ class EmployeeAccessGrantSerializer(serializers.Serializer):
         queryset=TypeDocument.objects.all(), allow_null=True, required=False
     )
     type_doc_nom = serializers.CharField(source='type_doc.nom', read_only=True, default=None)
+    champ_personnel = serializers.PrimaryKeyRelatedField(
+        queryset=ChampPersonnalise.objects.filter(categorie=ChampPersonnalise.Categorie.PERSONNEL),
+        allow_null=True, required=False,
+    )
+    champ_personnel_nom = serializers.CharField(source='champ_personnel.nom', read_only=True, default=None)
 
     def validate_type_doc(self, value):
         if value is not None and value.is_categorie:
@@ -223,6 +228,13 @@ class EmployeeAccessGrantSerializer(serializers.Serializer):
                 "Impossible d'accorder un accès sur une catégorie — choisissez un type de document précis."
             )
         return value
+
+    def validate(self, attrs):
+        if attrs.get('type_doc') is not None and attrs.get('champ_personnel') is not None:
+            raise serializers.ValidationError(
+                "Un grant ne peut pas cibler à la fois un type de document et un champ personnel."
+            )
+        return attrs
 
 
 class EmployeeGrantsView(APIView):
@@ -239,7 +251,7 @@ class EmployeeGrantsView(APIView):
 
     def get(self, request, pk):
         target = self._target(pk)
-        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc')
+        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc', 'champ_personnel')
         return Response({'grants': EmployeeAccessGrantSerializer(grants, many=True).data})
 
     def put(self, request, pk):
@@ -254,21 +266,30 @@ class EmployeeGrantsView(APIView):
                     user=target,
                     employee=row['employee'],
                     type_doc=row.get('type_doc'),
+                    champ_personnel=row.get('champ_personnel'),
                     granted_by=request.user,
                 )
                 for row in serializer.validated_data
             ]
-            # unique_together (user, employee, type_doc) : dédoublonner les
-            # lignes identiques envoyées par erreur par le frontend plutôt
-            # que de laisser bulk_create lever une IntegrityError.
+            # unique_together (user, employee, type_doc, champ_personnel) :
+            # dédoublonner les lignes identiques envoyées par erreur par le
+            # frontend plutôt que de laisser bulk_create lever une
+            # IntegrityError.
             seen = set()
             deduped = []
             for grant in created:
-                key = (grant.employee_id, grant.type_doc_id)
+                key = (grant.employee_id, grant.type_doc_id, grant.champ_personnel_id)
                 if key not in seen:
                     seen.add(key)
                     deduped.append(grant)
             EmployeeAccessGrant.objects.bulk_create(deduped)
+
+        def _cible(g):
+            if g.type_doc_id:
+                return g.type_doc.nom
+            if g.champ_personnel_id:
+                return f"champ personnel : {g.champ_personnel.nom}"
+            return 'dossier complet'
 
         AuditLog.log(
             request, AuditLog.Action.MODIFY_USER, target=target,
@@ -277,12 +298,12 @@ class EmployeeGrantsView(APIView):
                 'grants': [
                     {
                         'employee': g.employee.matricule,
-                        'type_doc': g.type_doc.nom if g.type_doc_id else 'dossier complet',
+                        'type_doc': _cible(g),
                     }
                     for g in deduped
                 ],
             },
         )
 
-        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc')
+        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc', 'champ_personnel')
         return Response({'grants': EmployeeAccessGrantSerializer(grants, many=True).data})

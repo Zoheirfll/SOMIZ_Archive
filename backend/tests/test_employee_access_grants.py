@@ -257,6 +257,50 @@ class TestEmployeeGrantsEndpoint:
         assert len(resp.data["grants"]) == 1
         assert resp.data["grants"][0]["employee_matricule"] == employee.matricule
 
+    def test_admin_can_set_champ_personnel_specific_grant(self, admin_user, scoped_consultant, employee, champ_personnel):
+        client = auth_client(admin_user)
+        resp = client.put(
+            f"/api/admin-users/{scoped_consultant.id}/employee-grants/",
+            {"grants": [{"employee": str(employee.id), "champ_personnel": str(champ_personnel.id)}]},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.data
+        assert EmployeeAccessGrant.objects.filter(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        ).exists()
+        assert resp.data["grants"][0]["champ_personnel_nom"] == champ_personnel.nom
+
+    def test_rejects_both_type_doc_and_champ_personnel_on_same_row(
+        self, admin_user, scoped_consultant, employee, type_doc_obligatoire, champ_personnel
+    ):
+        client = auth_client(admin_user)
+        resp = client.put(
+            f"/api/admin-users/{scoped_consultant.id}/employee-grants/",
+            {"grants": [{
+                "employee": str(employee.id),
+                "type_doc": str(type_doc_obligatoire.id),
+                "champ_personnel": str(champ_personnel.id),
+            }]},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_put_dedupes_on_employee_type_doc_champ_personnel_triple(
+        self, admin_user, scoped_consultant, employee, type_doc_obligatoire, champ_personnel
+    ):
+        client = auth_client(admin_user)
+        resp = client.put(
+            f"/api/admin-users/{scoped_consultant.id}/employee-grants/",
+            {"grants": [
+                {"employee": str(employee.id), "type_doc": str(type_doc_obligatoire.id)},
+                {"employee": str(employee.id), "champ_personnel": str(champ_personnel.id)},
+                {"employee": str(employee.id), "champ_personnel": str(champ_personnel.id)},
+            ]},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.data
+        assert EmployeeAccessGrant.objects.filter(user=scoped_consultant, employee=employee).count() == 2
+
 
 class TestGrantIntegrationInViews:
     def test_document_list_shows_only_granted_type(
