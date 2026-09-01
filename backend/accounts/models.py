@@ -115,6 +115,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         'employees.TypeDocument', blank=True, related_name='scoped_users',
         verbose_name="Périmètre — Types de documents"
     )
+    # Périmètre indépendant : restreint les CHAMPS personnels (colonne
+    # "Informations personnelles" de la fiche employé) visibles, combiné en
+    # ET avec les périmètres organisationnel et types de documents
+    # ci-dessus. Ne couvre que les champs categorie=PERSONNEL — la colonne
+    # Administrative reste toujours visible en entier. Vide = accès non
+    # restreint (même règle que les autres champs de scope).
+    scope_champs_personnels = models.ManyToManyField(
+        'employees.ChampPersonnalise', blank=True, related_name='scoped_users',
+        verbose_name="Périmètre — Champs personnels"
+    )
 
     objects = UserManager()
 
@@ -414,6 +424,35 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not type_ids:
             return TypeDocument.objects.all()
         return TypeDocument.objects.filter(id__in=type_ids)
+
+    def _champ_personnel_scope_ids(self):
+        """IDs des ChampPersonnalise (categorie=PERSONNEL) sélectionnés —
+        set vide si aucune restriction."""
+        if self.is_admin or not self.pk:
+            return set()
+        return set(self.scope_champs_personnels.values_list('id', flat=True))
+
+    @property
+    def has_champ_personnel_scope_restriction(self):
+        """True si ce compte est restreint à certains champs personnels."""
+        return bool(self._champ_personnel_scope_ids())
+
+    def can_access_champ_personnel(self, champ_id):
+        """Vérification objet-par-objet pour un champ categorie=PERSONNEL."""
+        ids = self._champ_personnel_scope_ids()
+        if not ids:
+            return True
+        return champ_id in ids
+
+    def accessible_champs_personnels_qs(self):
+        """ChampPersonnalise visibles pour ce compte (tous si aucune
+        restriction, quelle que soit la categorie — le filtre PERSONNEL
+        s'applique côté appelant, voir EmployeeDetailSerializer)."""
+        from employees.models import ChampPersonnalise
+        ids = self._champ_personnel_scope_ids()
+        if not ids:
+            return ChampPersonnalise.objects.all()
+        return ChampPersonnalise.objects.filter(id__in=ids)
 
     def is_locked(self):
         """Vérifie si le compte est bloqué suite aux tentatives échouées."""
