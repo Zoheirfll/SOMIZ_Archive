@@ -406,15 +406,18 @@ const Users = () => {
           scope_champs_personnels: scopeForm.champs_personnels,
         }),
         api.put(`/admin-users/${scopeModal.id}/employee-grants/`, {
-          grants: employeeGrants.flatMap((g) => {
-            if (g.type_docs.length === 0 && g.champs_personnels.length === 0) {
-              return [{ employee: g.employee, type_doc: null }];
-            }
-            return [
-              ...g.type_docs.map((typeDocId) => ({ employee: g.employee, type_doc: typeDocId })),
-              ...g.champs_personnels.map((champId) => ({ employee: g.employee, champ_personnel: champId })),
-            ];
-          }),
+          // Dossier complet (type_docs=[]) et champs personnels sont
+          // découplés depuis 2026-09-01 : la ligne "dossier complet"
+          // (type_doc=null) ne dépend plus de champs_personnels, et doit
+          // toujours être envoyée dès que type_docs est vide — même quand
+          // des champs personnels précis sont aussi sélectionnés (sinon
+          // l'accès documents/contrats se perdait silencieusement).
+          grants: employeeGrants.flatMap((g) => [
+            ...(g.type_docs.length === 0
+              ? [{ employee: g.employee, type_doc: null }]
+              : g.type_docs.map((typeDocId) => ({ employee: g.employee, type_doc: typeDocId }))),
+            ...g.champs_personnels.map((champId) => ({ employee: g.employee, champ_personnel: champId })),
+          ]),
         }),
       ]);
       setMessage({ type: "success", text: "Périmètre mis à jour." });
@@ -472,8 +475,13 @@ const Users = () => {
   };
 
   const setGrantFullDossier = (employeeId) => {
+    // Dossier complet ne couvre que documents + contrats (type_docs=[]) —
+    // les champs personnels sont découplés depuis 2026-09-01 : un accès
+    // dossier complet ne doit plus exposer automatiquement tous les champs
+    // personnels de l'employé, donc on ne touche plus à champs_personnels
+    // ici (voir backend User.accessible_champs_personnels_for_employee).
     setEmployeeGrants((prev) =>
-      prev.map((g) => (g.employee === employeeId ? { ...g, type_docs: [], champs_personnels: [] } : g))
+      prev.map((g) => (g.employee === employeeId ? { ...g, type_docs: [] } : g))
     );
   };
 
@@ -1517,7 +1525,7 @@ const Users = () => {
             <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 8 }}>
               <label style={{ ...labelStyle, marginBottom: 6 }}>Employés spécifiques</label>
               <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
-                Accès ponctuel à un employé précis, en plus (union) du périmètre ci-dessus — dossier complet ou un ou plusieurs types de documents. Les types déjà couverts par le périmètre global "Types de documents" apparaissent cochés automatiquement.
+                Accès ponctuel à un employé précis, en plus (union) du périmètre ci-dessus — dossier complet (documents + contrats) ou un ou plusieurs types de documents. Les champs personnels sont indépendants du dossier complet : à cocher séparément, y compris quand le dossier complet est actif — aucune case cochée = aucun champ personnel visible pour cet employé. Les éléments déjà couverts par le périmètre global apparaissent cochés automatiquement.
               </div>
               <div style={{ position: "relative", marginBottom: 10 }}>
                 <input
@@ -1620,8 +1628,7 @@ const Users = () => {
                           // d'être re-coché ici — on l'affiche coché et non
                           // modifiable pour que l'admin voie tout de suite
                           // qu'il est déjà accessible, sans double-saisie.
-                          const coveredByGlobalScope =
-                            scopeForm.types_documents.length === 0 || scopeForm.types_documents.includes(t.id);
+                          const coveredByGlobalScope = scopeForm.types_documents.includes(t.id);
                           return (
                             <label
                               key={t.id}
@@ -1658,10 +1665,15 @@ const Users = () => {
                             background: theme.surface,
                           }}>
                             {champsPersonnels.map((c) => {
-                              const dossierComplet = g.type_docs.length === 0 && g.champs_personnels.length === 0;
-                              const coveredByGlobalChampScope =
-                                scopeForm.champs_personnels.length === 0 || scopeForm.champs_personnels.includes(c.id);
-                              const checked = dossierComplet || coveredByGlobalChampScope || g.champs_personnels.includes(c.id);
+                              // Découplé de "Dossier complet" depuis
+                              // 2026-09-01 : ce dernier ne couvre plus les
+                              // champs personnels (voir setGrantFullDossier)
+                              // — un champ personnel n'est coché que via le
+                              // périmètre global ou une sélection explicite
+                              // ici, jamais implicitement par le dossier
+                              // complet.
+                              const coveredByGlobalChampScope = scopeForm.champs_personnels.includes(c.id);
+                              const checked = coveredByGlobalChampScope || g.champs_personnels.includes(c.id);
                               return (
                                 <label
                                   key={c.id}

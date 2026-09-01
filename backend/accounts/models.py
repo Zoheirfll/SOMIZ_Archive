@@ -525,22 +525,26 @@ class User(AbstractBaseUser, PermissionsMixin):
         IDs des ChampPersonnalise (categorie=PERSONNEL) visibles pour CET
         employé précis, en tenant compte du périmètre organisationnel +
         périmètre global (scope_champs_personnels) ET des grants ponctuels
-        (EmployeeAccessGrant) pour cet employé. Retourne None = tous les
-        champs personnels visibles (pas de restriction), sinon un set d'ids
-        (peut être vide = aucun champ personnel visible pour cet employé).
-        Même structure que accessible_type_doc_ids_for_employee() — y
-        compris la règle inversée du 2026-09-01 : un axe global vide
-        (scope_champs_personnels) n'est plus "non restreint" mais "aucun
-        champ sur cet axe", seul un grant précis pouvant encore débloquer
-        un champ dans ce cas.
+        (EmployeeAccessGrant) pour cet employé. Retourne None seulement pour
+        ADMIN/SUPERADMIN (tous visibles) ; pour un CONSULTANT, toujours un
+        set — jamais None — même quand un grant "dossier complet" existe
+        pour cet employé : depuis 2026-09-01, un grant dossier complet
+        (type_doc=None ET champ_personnel=None) ne débloque plus
+        automatiquement les champs personnels (découplé volontairement —
+        un ADMIN doit pouvoir donner accès aux documents/contrats d'un
+        employé sans lui exposer aucun de ses champs personnels). Seuls le
+        périmètre global (scope_champs_personnels) et les grants
+        champ_personnel précis pour CET employé débloquent un champ
+        personnel ; `_granted_champ_personnel_ids_for_employee` reste
+        utilisé pour ses ids précis, son flag `full` est ignoré ici (il ne
+        sert plus qu'à `_granted_type_doc_ids_for_employee`, côté
+        documents/contrats).
         """
         if self.is_admin:
             return None
         org_ok = self._org_can_access_employee(employee)
         global_champ_ids = self._champ_personnel_scope_ids()
-        full, grant_champ_ids = self._granted_champ_personnel_ids_for_employee(employee.id)
-        if full:
-            return None
+        _, grant_champ_ids = self._granted_champ_personnel_ids_for_employee(employee.id)
         allowed = set(global_champ_ids) if org_ok else set()
         allowed |= grant_champ_ids
         return allowed

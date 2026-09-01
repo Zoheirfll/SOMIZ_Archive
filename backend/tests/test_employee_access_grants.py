@@ -233,10 +233,15 @@ class TestAccessibleChampsPersonnelsForEmployee:
         ids = scoped_consultant.accessible_champs_personnels_for_employee(employee)
         assert ids == {champ_personnel.id}
 
-    def test_full_dossier_grant_unrestricted(self, scoped_consultant, employee, other_service):
+    def test_full_dossier_grant_does_not_unlock_personal_fields(self, scoped_consultant, employee, other_service):
+        # Depuis 2026-09-01 : un grant "dossier complet" (type_doc=None,
+        # champ_personnel=None) couvre documents + contrats mais plus les
+        # champs personnels — découplé volontairement (un ADMIN doit
+        # pouvoir donner l'accès au dossier sans exposer les champs
+        # personnels de l'employé).
         scoped_consultant.scope_services.set([other_service])
         EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee)
-        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) is None
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
 
     def test_precise_type_doc_grant_does_not_unlock_champs_personnels(
         self, scoped_consultant, employee, other_service, type_doc_obligatoire

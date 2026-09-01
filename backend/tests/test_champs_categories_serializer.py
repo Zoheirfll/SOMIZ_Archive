@@ -86,13 +86,16 @@ class TestChampsCategories:
         data = EmployeeDetailSerializer(employee, context=make_context(scoped_consultant_2)).data
         assert "date_naissance" in data["champs_categories"]
 
-    def test_full_dossier_grant_unlocks_all_personal_fields(
+    def test_full_dossier_grant_does_not_unlock_personal_fields(
         self, scoped_consultant_2, employee, other_service_2
     ):
+        # Depuis 2026-09-01 : un grant "dossier complet" ne couvre plus les
+        # champs personnels (découplé volontairement) — seul un grant
+        # champ_personnel précis ou le périmètre global peut les débloquer.
         scoped_consultant_2.scope_services.set([other_service_2])
         EmployeeAccessGrant.objects.create(user=scoped_consultant_2, employee=employee)
         data = EmployeeDetailSerializer(employee, context=make_context(scoped_consultant_2)).data
-        assert "date_naissance" in data["champs_categories"]
+        assert "date_naissance" not in data["champs_categories"]
         assert data["champs_categories"]["matricule"] == "ADMINISTRATIF"
 
     def test_no_org_scope_no_grant_hides_personal_fields(
