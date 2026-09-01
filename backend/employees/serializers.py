@@ -399,10 +399,16 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     def get_champs_categories(self, obj):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
+        # Calculé une seule fois pour cet employé (pas par champ) — combine
+        # périmètre organisationnel + périmètre global scope_champs_personnels
+        # + grants ponctuels (EmployeeAccessGrant.champ_personnel), voir
+        # User.accessible_champs_personnels_for_employee(). None = tous
+        # visibles (ADMIN ou CONSULTANT non restreint).
+        allowed_ids = user.accessible_champs_personnels_for_employee(obj) if user is not None else None
         result = {}
         for c in ChampPersonnalise.objects.filter(is_active=True):
             if c.categorie == ChampPersonnalise.Categorie.PERSONNEL:
-                if user is not None and not user.can_access_champ_personnel(c.id):
+                if allowed_ids is not None and c.id not in allowed_ids:
                     continue
             result[c.code] = c.categorie
         return result
