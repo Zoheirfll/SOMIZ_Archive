@@ -207,7 +207,10 @@ class TestDocumentUpload:
         assert resp.status_code == 400
 
     def test_get_documents_consultant_allowed(self, consultant_user, employee):
-        """Un CONSULTANT peut lire la liste des documents (GET)."""
+        """Un CONSULTANT peut lire la liste des documents (GET), à
+        condition d'être dans son périmètre — un CONSULTANT sans aucun
+        périmètre configuré n'a plus accès par défaut depuis 2026-09-01."""
+        consultant_user.scope_directions.set([employee.direction])
         client = auth_client(consultant_user)
         resp = client.get(doc_url(employee.pk))
         assert resp.status_code == 200

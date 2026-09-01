@@ -178,6 +178,10 @@ class TestEmployeeDetailView:
         assert resp.status_code == 404
 
     def test_consultant_can_view_detail(self, consultant_user, employee):
+        # Depuis le 2026-09-01, un CONSULTANT sans périmètre configuré n'a
+        # plus accès par défaut — ce test vérifie la lecture (pas le
+        # scoping), on assigne donc un périmètre couvrant l'employé.
+        consultant_user.scope_directions.set([employee.direction])
         client = auth_client(consultant_user)
         resp = client.get(employee_url(employee.pk))
         assert resp.status_code == 200

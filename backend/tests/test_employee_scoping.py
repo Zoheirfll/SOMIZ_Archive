@@ -69,9 +69,9 @@ class TestEmployeeScopeQ:
         assert admin_user.can_access_employee(employee) is True
         assert admin_user.employee_scope_q().children == []
 
-    def test_consultant_no_scope_unrestricted(self, consultant_user, employee):
-        """Comportement historique préservé : pas de scope assigné = accès complet."""
-        assert consultant_user.can_access_employee(employee) is True
+    def test_consultant_no_scope_denied(self, consultant_user, employee):
+        """Règle inversée le 2026-09-01 : pas de scope assigné = aucun accès."""
+        assert consultant_user.can_access_employee(employee) is False
 
     def test_consultant_matching_service_scope(self, scoped_consultant, employee, service):
         scoped_consultant.scope_services.set([service])
