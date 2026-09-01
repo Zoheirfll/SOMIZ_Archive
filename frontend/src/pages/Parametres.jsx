@@ -929,14 +929,13 @@ const Parametres = () => {
     activeTab === "types-documents"
       ? sortTypesDocumentsHierarchy(data[activeTab] || [])
       : activeTab === "champs-personnalises"
-        ? [
-            ...SYSTEM_FIELDS.map((f, idx) => ({
-              ...f,
-              nom: systemLabels[f.code]?.label || f.nom,
-              ordre: systemLabels[f.code]?.ordre ?? idx * 10,
-            })),
-            ...(data[activeTab] || []),
-          ].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
+        ? (data[activeTab] || [])
+            .map((f) =>
+              f.is_systeme
+                ? { ...f, system: true, nom: systemLabels[f.code]?.label || f.nom }
+                : { ...f, system: false }
+            )
+            .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
         : data[activeTab] || [];
 
   const sortedItems = useMemo(() => {
@@ -1347,6 +1346,33 @@ const Parametres = () => {
               <span style={{ color: theme.textSecondary, fontSize: 12, textTransform: "capitalize" }}>
                 {i.type_champ}
               </span>
+            ),
+          },
+          {
+            key: "categorie",
+            label: "Catégorie",
+            sortable: false,
+            render: (i) => (
+              <select
+                value={i.categorie}
+                onChange={async (e) => {
+                  const categorie = e.target.value;
+                  await api.patch(`/ref/champs-personnalises/${i.id}/`, { categorie });
+                  fetchTab(activeTab, page, search, true);
+                }}
+                className="input-focus"
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 6,
+                  padding: "3px 6px",
+                  fontSize: 12,
+                  color: theme.text,
+                  background: theme.surface,
+                }}
+              >
+                <option value="ADMINISTRATIF">Administratif</option>
+                <option value="PERSONNEL">Personnel</option>
+              </select>
             ),
           },
           {

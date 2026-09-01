@@ -283,6 +283,54 @@ describe("Parametres — suppression", () => {
   });
 });
 
+describe("Parametres — champs personnalisés — catégorie", () => {
+  test("affiche et permet de modifier la catégorie d'un champ système", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/ref/champs-personnalises/") {
+        return Promise.resolve({
+          data: [
+            { id: "uuid-matricule", nom: "Matricule", code: "matricule", type_champ: "texte", ordre: 0, is_active: true, is_systeme: true, categorie: "ADMINISTRATIF" },
+          ],
+        });
+      }
+      return Promise.resolve(emptyResponse);
+    });
+    api.patch.mockResolvedValue({ data: {} });
+
+    renderPage();
+    fireEvent.click(await screen.findByText("Champs personnalisés"));
+
+    const select = await screen.findByDisplayValue("Administratif");
+    fireEvent.change(select, { target: { value: "PERSONNEL" } });
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith(
+        "/ref/champs-personnalises/uuid-matricule/",
+        { categorie: "PERSONNEL" }
+      );
+    });
+  });
+
+  test("ne duplique pas les champs système (une seule provenance : le backend)", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/ref/champs-personnalises/") {
+        return Promise.resolve({
+          data: [
+            { id: "uuid-matricule", nom: "Matricule", code: "matricule", type_champ: "texte", ordre: 0, is_active: true, is_systeme: true, categorie: "ADMINISTRATIF" },
+          ],
+        });
+      }
+      return Promise.resolve(emptyResponse);
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByText("Champs personnalisés"));
+
+    await screen.findAllByText("Matricule");
+    expect(screen.getAllByText("Matricule")).toHaveLength(1);
+  });
+});
+
 describe("Parametres — erreurs réseau", () => {
   test("erreur lors du chargement affiche un message d'erreur", async () => {
     api.get.mockRejectedValue(new Error("Network Error"));
