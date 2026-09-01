@@ -932,7 +932,12 @@ const Parametres = () => {
         ? (data[activeTab] || [])
             .map((f) =>
               f.is_systeme
-                ? { ...f, system: true, nom: systemLabels[f.code]?.label || f.nom }
+                ? {
+                    ...f,
+                    system: true,
+                    nom: systemLabels[f.code]?.label || f.nom,
+                    ordre: systemLabels[f.code]?.ordre ?? f.ordre,
+                  }
                 : { ...f, system: false }
             )
             .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
