@@ -218,32 +218,61 @@ const Users = () => {
           (s.departement && scopeForm.departements.includes(s.departement))
         );
 
+  // Cocher une Direction/un Département coche aussi automatiquement, en
+  // cascade, tout ce qu'il contient (Départements/Services, Cellules,
+  // Sections) — visuellement explicite sur ce que l'accès couvre déjà de
+  // toute façon via employee_scope_q() (un match sur `direction_id` seul
+  // suffit à voir tout le monde en dessous), plutôt que de laisser des
+  // niveaux inférieurs vides après avoir coché un niveau supérieur.
+  // Décocher ne fait qu'enlever ce qui n'est plus dans la cascade visible
+  // (comportement existant, inchangé) — pas de "décoche en cascade" needed
+  // puisque retirer un parent retire déjà tous ses enfants de la sélection.
   const toggleDirection = (id) => {
     setScopeForm((prev) => {
-      const nextDirections = prev.directions.includes(id)
-        ? prev.directions.filter((x) => x !== id)
-        : [...prev.directions, id];
+      const adding = !prev.directions.includes(id);
+      const nextDirections = adding
+        ? [...prev.directions, id]
+        : prev.directions.filter((x) => x !== id);
       // Retire les pôles/départements/services/cellules qui ne sont plus dans la cascade visible.
       const stillVisiblePoleIds = nextDirections.length > 0
         ? poles.filter((p) => nextDirections.includes(p.direction)).map((p) => p.id)
         : poles.map((p) => p.id);
-      const nextPoles = prev.poles.filter((poleId) => stillVisiblePoleIds.includes(poleId));
+      let nextPoles = prev.poles.filter((poleId) => stillVisiblePoleIds.includes(poleId));
       const stillVisibleDeps = nextDirections.length > 0
         ? departements.filter((d) => nextDirections.includes(d.direction)).map((d) => d.id)
         : departements.map((d) => d.id);
-      const nextDepartements = prev.departements.filter((depId) => stillVisibleDeps.includes(depId));
+      let nextDepartements = prev.departements.filter((depId) => stillVisibleDeps.includes(depId));
+      let nextServices = prev.services;
+      let nextCellules = prev.cellules;
+      let nextSections = prev.sections;
+      if (adding) {
+        const cascadePoleIds = poles.filter((p) => p.direction === id).map((p) => p.id);
+        nextPoles = [...new Set([...nextPoles, ...cascadePoleIds])];
+        const cascadeDepIds = departements.filter((d) => d.direction === id).map((d) => d.id);
+        nextDepartements = [...new Set([...nextDepartements, ...cascadeDepIds])];
+        const cascadeServiceIds = services.filter((s) => cascadeDepIds.includes(s.departement)).map((s) => s.id);
+        nextServices = [...new Set([...prev.services, ...cascadeServiceIds])];
+        const cascadeCelluleIds = cellules
+          .filter((c) => c.direction === id || cascadeDepIds.includes(c.departement))
+          .map((c) => c.id);
+        nextCellules = [...new Set([...prev.cellules, ...cascadeCelluleIds])];
+        const cascadeSectionIds = sections
+          .filter((s) => s.direction === id || cascadeDepIds.includes(s.departement))
+          .map((s) => s.id);
+        nextSections = [...new Set([...prev.sections, ...cascadeSectionIds])];
+      }
       const stillVisibleDepSet = new Set(nextDepartements);
-      const nextServices = prev.services.filter((svcId) => {
+      nextServices = nextServices.filter((svcId) => {
         const svc = services.find((s) => s.id === svcId);
         return svc && stillVisibleDepSet.has(svc.departement);
       });
-      const nextCellules = prev.cellules.filter((celId) => {
+      nextCellules = nextCellules.filter((celId) => {
         const cel = cellules.find((c) => c.id === celId);
         if (!cel) return false;
         if (cel.departement) return stillVisibleDeps.includes(cel.departement);
         return nextDirections.length === 0 || nextDirections.includes(cel.direction);
       });
-      const nextSections = prev.sections.filter((secId) => {
+      nextSections = nextSections.filter((secId) => {
         const sec = sections.find((s) => s.id === secId);
         if (!sec) return false;
         if (sec.departement) return stillVisibleDeps.includes(sec.departement);
@@ -262,14 +291,26 @@ const Users = () => {
 
   const toggleDepartement = (id) => {
     setScopeForm((prev) => {
-      const nextDepartements = prev.departements.includes(id)
-        ? prev.departements.filter((x) => x !== id)
-        : [...prev.departements, id];
-      const nextServices = prev.services.filter((svcId) => {
+      const adding = !prev.departements.includes(id);
+      const nextDepartements = adding
+        ? [...prev.departements, id]
+        : prev.departements.filter((x) => x !== id);
+      let nextServices = prev.services;
+      let nextCellules = prev.cellules;
+      let nextSections = prev.sections;
+      if (adding) {
+        const cascadeServiceIds = services.filter((s) => s.departement === id).map((s) => s.id);
+        nextServices = [...new Set([...prev.services, ...cascadeServiceIds])];
+        const cascadeCelluleIds = cellules.filter((c) => c.departement === id).map((c) => c.id);
+        nextCellules = [...new Set([...prev.cellules, ...cascadeCelluleIds])];
+        const cascadeSectionIds = sections.filter((s) => s.departement === id).map((s) => s.id);
+        nextSections = [...new Set([...prev.sections, ...cascadeSectionIds])];
+      }
+      nextServices = nextServices.filter((svcId) => {
         const svc = services.find((s) => s.id === svcId);
         return svc && nextDepartements.includes(svc.departement);
       });
-      return { ...prev, departements: nextDepartements, services: nextDepartements.length > 0 ? nextServices : prev.services };
+      return { ...prev, departements: nextDepartements, services: nextDepartements.length > 0 ? nextServices : prev.services, cellules: nextCellules, sections: nextSections };
     });
   };
 
