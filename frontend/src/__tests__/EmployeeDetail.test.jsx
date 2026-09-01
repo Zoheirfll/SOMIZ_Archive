@@ -61,6 +61,27 @@ const mockEmployee = {
     { id: "type-3", code: "NIN_DOC", label: "Copie NIN" },
   ],
   champs_personnalises: [{ id: "cp-1", code: "nin", nom: "NIN", type_champ: "texte", valeur: "123456" }],
+  champs_categories: {
+    matricule: "ADMINISTRATIF",
+    numero_contrat: "ADMINISTRATIF",
+    nom: "ADMINISTRATIF",
+    date_naissance: "PERSONNEL",
+    date_embauche: "ADMINISTRATIF",
+    date_debut_contrat: "ADMINISTRATIF",
+    date_fin_contrat: "ADMINISTRATIF",
+    statut: "ADMINISTRATIF",
+    direction: "ADMINISTRATIF",
+    pole: "ADMINISTRATIF",
+    departement: "ADMINISTRATIF",
+    section: "ADMINISTRATIF",
+    service: "ADMINISTRATIF",
+    cellule: "ADMINISTRATIF",
+    poste: "ADMINISTRATIF",
+    type_contrat: "ADMINISTRATIF",
+    categorie: "ADMINISTRATIF",
+    echelle: "ADMINISTRATIF",
+    nin: "PERSONNEL",
+  },
 };
 const mockTypes = [
   { id: "type-1", code: "CIN", nom: "Carte Nationale", obligatoire: true, champ_source: "date_naissance" },
@@ -188,6 +209,20 @@ describe("EmployeeDetail — rendu initial", () => {
     await waitFor(() => {
       expect(screen.getByText(/75%/)).toBeInTheDocument();
     });
+  });
+
+  test("affiche les informations réparties en colonnes Personnel et Administratif", async () => {
+    renderPage();
+
+    const personnelHeading = await screen.findByText("Informations personnelles");
+    const adminHeading = await screen.findByText("Informations administratives");
+    expect(personnelHeading).toBeInTheDocument();
+    expect(adminHeading).toBeInTheDocument();
+
+    const personnelCard = personnelHeading.closest("div").parentElement;
+    const adminCard = adminHeading.closest("div").parentElement;
+    expect(within(personnelCard).getByText("1990-01-01")).toBeInTheDocument();
+    expect(within(adminCard).getByText("EMP-001")).toBeInTheDocument();
   });
 });
 

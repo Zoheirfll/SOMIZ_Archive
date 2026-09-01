@@ -617,7 +617,7 @@ const EmployeeDetail = () => {
     : null;
 
   const infoFields = [
-    { label: "Matricule", value: employee.matricule, mono: true, sortKey: systemOrdre("matricule") },
+    { label: "Matricule", value: employee.matricule, mono: true, code: "matricule", sortKey: systemOrdre("matricule") },
     {
       label: "N° Contrat",
       value: contrats[0]?.numero_contrat || "—",
@@ -629,6 +629,7 @@ const EmployeeDetail = () => {
       label: "Nom & Prénom",
       value: `${employee.nom} ${employee.prenom}`,
       bold: true,
+      code: "nom",
       sortKey: systemOrdre("nom"),
     },
     { label: "Date de naissance", value: employee.date_naissance || "—", code: "date_naissance", sortKey: systemOrdre("date_naissance") },
@@ -677,6 +678,15 @@ const EmployeeDetail = () => {
       sortKey: c.ordre ?? 0,
     })),
   ].sort((a, b) => a.sortKey - b.sortKey);
+
+  // Un champ absent de champs_categories n'est pas affiché pour l'utilisateur
+  // courant, quelle qu'en soit la raison (périmètre CONSULTANT sur un champ
+  // personnel non autorisé — voir CLAUDE.md "Panneau Informations — colonnes
+  // Personnel/Administratif" — le backend l'a déjà exclu du dict).
+  const champsCategories = employee.champs_categories || {};
+  const visibleInfoFields = infoFields.filter((f) => f.code in champsCategories);
+  const infoFieldsPersonnel = visibleInfoFields.filter((f) => champsCategories[f.code] === "PERSONNEL");
+  const infoFieldsAdministratif = visibleInfoFields.filter((f) => champsCategories[f.code] === "ADMINISTRATIF");
 
   const documentsAffiches = groupDocsByVersion(
     (employee.documents || []).filter(
@@ -812,85 +822,101 @@ const EmployeeDetail = () => {
         )}
 
         {/* Infos employé */}
-        <div className="anim-slide-up" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: theme.shadowMd }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.border}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <span style={{ color: theme.textSecondary, fontSize: 13, fontWeight: 500 }}>Informations</span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: 20,
-            }}
-          >
-            {infoFields.map((item) => (
-              <div key={item.label}>
-                <div
-                  onClick={champToDoc[item.code] ? () => handleFieldClick(item.code) : undefined}
-                  title={champToDoc[item.code] ? `Voir le document : ${champToDoc[item.code].nom}` : undefined}
-                  className={champToDoc[item.code] ? "hover-lift" : undefined}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    color: champToDoc[item.code] ? theme.primary : theme.textMuted,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    marginBottom: 6,
-                    ...(champToDoc[item.code]
-                      ? {
-                          cursor: "pointer",
-                          background: theme.primaryBg,
-                          border: `1px solid ${theme.primaryBorder}`,
-                          borderRadius: 6,
-                          padding: "3px 7px",
-                        }
-                      : {}),
-                  }}
-                >
-                  {champToDoc[item.code] && <span style={{ fontSize: 11 }}>🔗</span>}
-                  {item.label}
-                </div>
-                {item.badge ? (
-                  <span
-                    style={{
-                      background:
-                        employee.statut === "actif"
-                          ? theme.primaryBg
-                          : theme.dangerBg,
-                      color:
-                        employee.statut === "actif"
-                          ? theme.primary
-                          : theme.danger,
-                      border: `1px solid ${employee.statut === "actif" ? theme.border : theme.dangerBorder}`,
-                      borderRadius: 6,
-                      padding: "3px 10px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {employee.statut}
-                  </span>
-                ) : (
-                  <div
-                    style={{
-                      color: item.mono ? theme.primary : theme.text,
-                      fontFamily: item.mono ? "monospace" : "inherit",
-                      fontWeight: item.bold || item.mono ? 700 : 400,
-                      fontSize: item.mono ? 15 : 13,
-                    }}
-                  >
-                    {item.value}
-                  </div>
-                )}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gap: 24,
+            marginBottom: 24,
+          }}
+        >
+          {[
+            { title: "Informations personnelles", fields: infoFieldsPersonnel },
+            { title: "Informations administratives", fields: infoFieldsAdministratif },
+          ].map(({ title, fields }) => (
+            <div
+              key={title}
+              className="anim-slide-up"
+              style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.border}` }}>
+                <span style={{ color: theme.textSecondary, fontSize: 13, fontWeight: 500 }}>{title}</span>
               </div>
-            ))}
-          </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 20,
+                }}
+              >
+                {fields.map((item) => (
+                  <div key={item.label}>
+                    <div
+                      onClick={champToDoc[item.code] ? () => handleFieldClick(item.code) : undefined}
+                      title={champToDoc[item.code] ? `Voir le document : ${champToDoc[item.code].nom}` : undefined}
+                      className={champToDoc[item.code] ? "hover-lift" : undefined}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        color: champToDoc[item.code] ? theme.primary : theme.textMuted,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 6,
+                        ...(champToDoc[item.code]
+                          ? {
+                              cursor: "pointer",
+                              background: theme.primaryBg,
+                              border: `1px solid ${theme.primaryBorder}`,
+                              borderRadius: 6,
+                              padding: "3px 7px",
+                            }
+                          : {}),
+                      }}
+                    >
+                      {champToDoc[item.code] && <span style={{ fontSize: 11 }}>🔗</span>}
+                      {item.label}
+                    </div>
+                    {item.badge ? (
+                      <span
+                        style={{
+                          background:
+                            employee.statut === "actif"
+                              ? theme.primaryBg
+                              : theme.dangerBg,
+                          color:
+                            employee.statut === "actif"
+                              ? theme.primary
+                              : theme.danger,
+                          border: `1px solid ${employee.statut === "actif" ? theme.border : theme.dangerBorder}`,
+                          borderRadius: 6,
+                          padding: "3px 10px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {employee.statut}
+                      </span>
+                    ) : (
+                      <div
+                        style={{
+                          color: item.mono ? theme.primary : theme.text,
+                          fontFamily: item.mono ? "monospace" : "inherit",
+                          fontWeight: item.bold || item.mono ? 700 : 400,
+                          fontSize: item.mono ? 15 : 13,
+                        }}
+                      >
+                        {item.value}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Voie hiérarchique */}
