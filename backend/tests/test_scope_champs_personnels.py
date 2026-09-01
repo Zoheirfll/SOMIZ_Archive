@@ -38,3 +38,26 @@ class TestScopeChampsPersonnels:
     def test_admin_always_unrestricted(self, admin_user, champ_personnel, champ_personnel_2):
         admin_user.scope_champs_personnels.add(champ_personnel)
         assert admin_user.can_access_champ_personnel(champ_personnel_2.id) is True
+
+
+from rest_framework.test import APIClient
+
+
+def auth_client(user):
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
+
+
+@pytest.mark.django_db
+class TestUserSerializerChampsPersonnels:
+    def test_patch_scope_champs_personnels(self, admin_user, consultant_user, champ_personnel):
+        resp = auth_client(admin_user).patch(
+            f"/api/admin-users/{consultant_user.id}/",
+            {"scope_champs_personnels": [str(champ_personnel.id)]},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert resp.data["scope_champs_personnels_nom"] == ["Test Perso"]
+        consultant_user.refresh_from_db()
+        assert consultant_user.can_access_champ_personnel(champ_personnel.id)

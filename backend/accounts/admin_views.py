@@ -21,6 +21,7 @@ class UserSerializer(serializers.ModelSerializer):
     scope_cellules_nom = serializers.SerializerMethodField()
     scope_sections_nom = serializers.SerializerMethodField()
     scope_types_documents_nom = serializers.SerializerMethodField()
+    scope_champs_personnels_nom = serializers.SerializerMethodField()
     employee_grants_count = serializers.SerializerMethodField()
 
     def get_employee_grants_count(self, obj):
@@ -49,6 +50,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_scope_types_documents_nom(self, obj):
         return list(obj.scope_types_documents.values_list('nom', flat=True))
 
+    def get_scope_champs_personnels_nom(self, obj):
+        return list(obj.scope_champs_personnels.values_list('nom', flat=True))
+
     class Meta:
         model = User
         fields = [
@@ -60,6 +64,7 @@ class UserSerializer(serializers.ModelSerializer):
             'scope_cellules', 'scope_cellules_nom',
             'scope_sections', 'scope_sections_nom',
             'scope_types_documents', 'scope_types_documents_nom',
+            'scope_champs_personnels', 'scope_champs_personnels_nom',
             'employee_grants_count',
         ]
         read_only_fields = ['id', 'last_login']
@@ -173,6 +178,7 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
                 'scope_services': sorted(str(i) for i in u.scope_services.values_list('id', flat=True)),
                 'scope_cellules': sorted(str(i) for i in u.scope_cellules.values_list('id', flat=True)),
                 'scope_types_documents': sorted(str(i) for i in u.scope_types_documents.values_list('id', flat=True)),
+                'scope_champs_personnels': sorted(str(i) for i in u.scope_champs_personnels.values_list('id', flat=True)),
             }
 
         before = _scope_snapshot(target)
