@@ -27,7 +27,6 @@ import Statistiques from "../pages/Statistiques";
 
 const baseStats = {
   periode: { debut: "2026-01-01", fin: "2026-12-31" },
-  scope: "all",
   indicateurs: {
     recrutements: { valeur: 12, variation_pct: 8.3 },
     archivages: { valeur: 3, variation_pct: -25 },
@@ -44,6 +43,10 @@ const baseStats = {
   contrats_echeance: [],
   completude_par_direction: [],
   completude_par_departement: [],
+  mon_activite: {
+    employes_crees: 4, employes_modifies: 6, employes_archives: 1,
+    documents_uploades: 20, documents_supprimes: 2, documents_modifies: 5,
+  },
 };
 
 const renderPage = (role = "ADMIN") => {
@@ -220,34 +223,75 @@ describe("Statistiques — export", () => {
   });
 });
 
-describe("Statistiques — périmètre par rôle", () => {
-  test("un ADMIN normal ne voit pas de bascule et affiche le sous-titre \"Vos statistiques\"", async () => {
-    api.get.mockResolvedValue({ data: { ...baseStats, scope: "mine" } });
+describe("Statistiques — mon activité", () => {
+  test("affiche uniquement les compteurs d'activité non nuls du compte connecté", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
     renderPage("ADMIN");
     await screen.findByText("Recrutements");
-    expect(screen.getByText("Vos statistiques (employés que vous gérez)")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Mes statistiques" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Toute l'organisation" })).not.toBeInTheDocument();
+    expect(screen.getByText("Mon activité")).toBeInTheDocument();
+    expect(screen.getByText("Employés créés")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText("Documents uploadés")).toBeInTheDocument();
+    expect(screen.getByText("20")).toBeInTheDocument();
   });
 
-  test("un SUPERADMIN voit la bascule, non cochée par défaut (organisation entière)", async () => {
-    api.get.mockResolvedValue({ data: { ...baseStats, scope: "all" } });
-    renderPage("SUPERADMIN");
+  test("masque un compteur à zéro (ex. employés archivés)", async () => {
+    api.get.mockResolvedValue({
+      data: { ...baseStats, mon_activite: { ...baseStats.mon_activite, employes_archives: 0 } },
+    });
+    renderPage("ADMIN");
     await screen.findByText("Recrutements");
-    expect(screen.getByRole("button", { name: "Toute l'organisation" })).toBeInTheDocument();
-    expect(screen.getByText("Analyse RH sur l'ensemble de l'organisation")).toBeInTheDocument();
+    expect(screen.queryByText("Employés archivés")).not.toBeInTheDocument();
   });
 
-  test("cliquer la bascule SUPERADMIN refetch avec scope=mine", async () => {
-    api.get.mockResolvedValue({ data: { ...baseStats, scope: "all" } });
+  test("affiche un message si aucune activité sur la période", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...baseStats,
+        mon_activite: {
+          employes_crees: 0, employes_modifies: 0, employes_archives: 0,
+          documents_uploades: 0, documents_supprimes: 0, documents_modifies: 0,
+        },
+      },
+    });
+    renderPage("ADMIN");
+    await screen.findByText("Recrutements");
+    expect(screen.getByText("Aucune activité sur cette période.")).toBeInTheDocument();
+  });
+
+  test("un ADMIN normal ne voit pas la section Activité par administrateur", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage("ADMIN");
+    await screen.findByText("Recrutements");
+    expect(screen.queryByText("Activité par administrateur")).not.toBeInTheDocument();
+  });
+
+  test("un SUPERADMIN voit la section Activité par administrateur avec une ligne par compte, colonnes non nulles seulement", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...baseStats,
+        activite_par_admin: [
+          {
+            id: "a1", nom_complet: "Jean Admin", role: "ADMIN",
+            employes_crees: 4, employes_modifies: 0, employes_archives: 0,
+            documents_uploades: 20, documents_supprimes: 0, documents_modifies: 0,
+          },
+          {
+            id: "a2", nom_complet: "Marie Super", role: "SUPERADMIN",
+            employes_crees: 0, employes_modifies: 0, employes_archives: 0,
+            documents_uploades: 0, documents_supprimes: 0, documents_modifies: 0,
+          },
+        ],
+      },
+    });
     renderPage("SUPERADMIN");
     await screen.findByText("Recrutements");
-    api.get.mockResolvedValue({ data: { ...baseStats, scope: "mine" } });
-    fireEvent.click(screen.getByRole("button", { name: "Toute l'organisation" }));
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
-      "/reporting/stats-detail/",
-      expect.objectContaining({ params: expect.objectContaining({ scope: "mine" }) })
-    ));
-    expect(await screen.findByRole("button", { name: "Mes statistiques" })).toBeInTheDocument();
+    expect(screen.getByText("Activité par administrateur")).toBeInTheDocument();
+    expect(screen.getByText("Jean Admin")).toBeInTheDocument();
+    expect(screen.getByText("Marie Super")).toBeInTheDocument();
+    // "Modifiés" est nul pour toutes les lignes -> colonne masquée
+    expect(screen.queryByRole("columnheader", { name: "Modifiés" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Créés" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Uploadés" })).toBeInTheDocument();
   });
 });

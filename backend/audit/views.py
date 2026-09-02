@@ -155,28 +155,14 @@ def _parse_date_param(request, name):
         return 'invalid'
 
 
-def _resolve_scope_ids(request):
-    """
-    Périmètre "Mes statistiques" — voir CLAUDE.md section Statistiques.
-    Un ADMIN normal est TOUJOURS restreint à ce qu'il a créé/modifié ;
-    un SUPERADMIN reste non restreint (None) sauf s'il demande
-    explicitement ?scope=mine, auquel cas son propre périmètre
-    créé/modifié est calculé de la même façon.
-    """
-    from audit.stats import compute_admin_scope_ids
-    user = request.user
-    if user.is_superadmin:
-        if request.query_params.get('scope') == 'mine':
-            return compute_admin_scope_ids(user)
-        return None
-    return compute_admin_scope_ids(user)
-
-
 class StatsDetailView(APIView):
     """
-    GET /api/reporting/stats-detail/?date_debut=&date_fin=&scope=
-    Statistiques détaillées de la page /statistiques — voir
-    docs/superpowers/specs/2026-09-02-page-statistiques-design.md.
+    GET /api/reporting/stats-detail/?date_debut=&date_fin=
+    Statistiques détaillées de la page /statistiques (toujours
+    organisation-wide) + "Mon activité" du compte connecté, et
+    "Activité par administrateur" pour un SUPERADMIN — voir
+    docs/superpowers/specs/2026-09-02-page-statistiques-design.md et
+    CLAUDE.md section "Page Statistiques".
     """
     permission_classes = [IsAdmin]
 
@@ -185,9 +171,7 @@ class StatsDetailView(APIView):
         date_fin = _parse_date_param(request, 'date_fin')
         if date_debut == 'invalid' or date_fin == 'invalid':
             return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
-        scope_ids = _resolve_scope_ids(request)
-        data = build_stats_detail(date_debut, date_fin, scope_ids)
-        data['scope'] = 'mine' if scope_ids is not None else 'all'
+        data = build_stats_detail(date_debut, date_fin, requesting_user=request.user)
         return Response(data)
 
 
@@ -216,8 +200,7 @@ class StatsExportView(APIView):
         date_fin = _parse_date_param(request, 'date_fin')
         if date_debut == 'invalid' or date_fin == 'invalid':
             return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
-        scope_ids = _resolve_scope_ids(request)
-        data = build_stats_detail(date_debut, date_fin, scope_ids)
+        data = build_stats_detail(date_debut, date_fin, requesting_user=request.user)
 
         wb = openpyxl.Workbook()
         wb.remove(wb.active)
@@ -263,6 +246,24 @@ class StatsExportView(APIView):
             [r['direction_nom'], r['nom'], r['total'], r['complets'], r['taux']]
             for r in data['completude_par_departement']
         ])
+        activite_headers = [
+            'Administrateur', 'Employés créés', 'Employés modifiés', 'Employés archivés',
+            'Documents uploadés', 'Documents supprimés', 'Documents modifiés',
+        ]
+        if 'activite_par_admin' in data:
+            _stats_sheet(wb, 'Activité par administrateur', activite_headers, [
+                [
+                    a['nom_complet'], a['employes_crees'], a['employes_modifies'], a['employes_archives'],
+                    a['documents_uploades'], a['documents_supprimes'], a['documents_modifies'],
+                ]
+                for a in data['activite_par_admin']
+            ])
+        else:
+            a = data['mon_activite']
+            _stats_sheet(wb, 'Mon activité', activite_headers, [[
+                request.user.full_name, a['employes_crees'], a['employes_modifies'], a['employes_archives'],
+                a['documents_uploades'], a['documents_supprimes'], a['documents_modifies'],
+            ]])
 
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -273,6 +274,6 @@ class StatsExportView(APIView):
 
         AuditLog.log(
             request, AuditLog.Action.EXPORT,
-            details={'type': 'statistiques', 'periode': data['periode'], 'scope': 'mine' if scope_ids is not None else 'all'},
+            details={'type': 'statistiques', 'periode': data['periode']},
         )
         return response

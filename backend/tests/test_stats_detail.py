@@ -2,9 +2,9 @@ import pytest
 from datetime import date, timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from audit.stats import build_stats_detail, compute_admin_scope_ids
+from audit.stats import build_stats_detail
 from audit.models import AuditLog
-from employees.models import Employee, Contrat
+from employees.models import Employee, Contrat, EmployeeDocument
 
 User = get_user_model()
 
@@ -188,45 +188,91 @@ class TestBuildStatsDetailCompletude:
         assert row['taux'] == 0.0
 
 
+def _other_admin():
+    return User.objects.create_user(
+        username="other_admin", password="Pass123!", nom="Other", prenom="Admin", role="ADMIN",
+    )
+
+
 @pytest.mark.django_db
-class TestComputeAdminScopeIds:
-    def _other_admin(self):
-        return User.objects.create_user(
-            username="other_admin", password="Pass123!", nom="Other", prenom="Admin", role="ADMIN",
+class TestBuildStatsDetailMonActivite:
+    def test_no_requesting_user_omits_mon_activite(self):
+        result = build_stats_detail(None, None)
+        assert 'mon_activite' not in result
+        assert 'activite_par_admin' not in result
+
+    def test_mon_activite_present_for_requesting_user(self, admin_user):
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert 'mon_activite' in result
+        assert result['mon_activite']['employes_crees'] == 0
+
+    def test_mon_activite_counts_employes_crees(self, admin_user):
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.CREATE_EMP,
+            target_model='Employee', target_id='x', target_label='x',
         )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert result['mon_activite']['employes_crees'] == 1
 
-    def test_includes_employees_created_by_admin(self, admin_user, direction, departement):
-        emp = _make_employee(direction=direction, departement=departement, created_by=admin_user)
-        _make_employee(direction=direction, departement=departement, created_by=self._other_admin())
-        scope = compute_admin_scope_ids(admin_user)
-        assert emp.id in scope
-        assert len(scope) == 1
-
-    def test_includes_employees_modified_by_admin(self, admin_user, direction, departement):
-        other = self._other_admin()
-        emp = _make_employee(direction=direction, departement=departement, created_by=other)
+    def test_mon_activite_counts_employes_archives(self, admin_user):
         AuditLog.objects.create(
             user=admin_user, action=AuditLog.Action.MODIFY_EMP,
-            target_model='Employee', target_id=str(emp.pk), target_label=str(emp),
+            target_model='Employee', target_id='x', target_label='x',
+            details={'transfer': {'statut': {'de': 'Actif', 'vers': 'Archivé'}}},
         )
-        scope = compute_admin_scope_ids(admin_user)
-        assert emp.id in scope
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.MODIFY_EMP,
+            target_model='Employee', target_id='y', target_label='y',
+            details={'transfer': {'poste': {'de': 'A', 'vers': 'B'}}},
+        )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert result['mon_activite']['employes_modifies'] == 2
+        assert result['mon_activite']['employes_archives'] == 1
 
-    def test_excludes_employees_untouched_by_admin(self, admin_user, direction, departement):
-        other = self._other_admin()
-        _make_employee(direction=direction, departement=departement, created_by=other)
-        scope = compute_admin_scope_ids(admin_user)
-        assert scope == set()
+    def test_mon_activite_counts_present_documents_only(self, admin_user, direction, departement, type_doc_obligatoire):
+        emp = _make_employee(direction=direction, departement=departement, created_by=admin_user)
+        present = EmployeeDocument.objects.create(
+            employee=emp, type_doc=type_doc_obligatoire, uploaded_by=admin_user, is_active=True,
+        )
+        deleted = EmployeeDocument.objects.create(
+            employee=emp, type_doc=type_doc_obligatoire, uploaded_by=admin_user, is_active=False,
+        )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        # Un document supprimé (hard delete simulé ici par is_active=False)
+        # ne doit plus compter dans "Documents uploadés" — voir CLAUDE.md,
+        # ce compteur reflète l'état actuel, pas le journal d'audit.
+        assert result['mon_activite']['documents_uploades'] == 1
 
-    def test_empty_scope_restricts_build_stats_detail_to_nothing(self, admin_user, direction, departement):
-        _make_employee(direction=direction, departement=departement, statut='actif', created_by=self._other_admin())
-        result = build_stats_detail(None, None, scope_ids=set())
-        assert result['repartition_direction'] == []
+    def test_mon_activite_uploads_respect_date_range(self, admin_user, direction, departement, type_doc_obligatoire):
+        emp = _make_employee(direction=direction, departement=departement, created_by=admin_user)
+        doc = EmployeeDocument.objects.create(
+            employee=emp, type_doc=type_doc_obligatoire, uploaded_by=admin_user, is_active=True,
+        )
+        EmployeeDocument.objects.filter(pk=doc.pk).update(
+            uploaded_at=timezone.make_aware(timezone.datetime(2020, 1, 1))
+        )
+        result = build_stats_detail(date(2026, 1, 1), date(2026, 12, 31), requesting_user=admin_user)
+        assert result['mon_activite']['documents_uploades'] == 0
 
-    def test_scope_restricts_repartition_direction(self, admin_user, direction, departement):
-        emp = _make_employee(direction=direction, departement=departement, statut='actif', created_by=admin_user)
-        _make_employee(direction=direction, departement=departement, statut='actif', created_by=self._other_admin())
-        scope = compute_admin_scope_ids(admin_user)
-        result = build_stats_detail(None, None, scope_ids=scope)
-        row = next(r for r in result['repartition_direction'] if r['id'] == str(direction.id))
-        assert row['count'] == 1
+    def test_mon_activite_does_not_count_other_admins_actions(self, admin_user):
+        other = _other_admin()
+        AuditLog.objects.create(
+            user=other, action=AuditLog.Action.CREATE_EMP,
+            target_model='Employee', target_id='x', target_label='x',
+        )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert result['mon_activite']['employes_crees'] == 0
+
+    def test_activite_par_admin_absent_for_non_superadmin(self, admin_user):
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert 'activite_par_admin' not in result
+
+    def test_activite_par_admin_present_for_superadmin(self):
+        superadmin = User.objects.create_user(
+            username="super_test", password="Pass123!", nom="Super", prenom="X", role="SUPERADMIN",
+        )
+        _other_admin()
+        result = build_stats_detail(None, None, requesting_user=superadmin)
+        noms = [a['nom_complet'] for a in result['activite_par_admin']]
+        assert superadmin.full_name in noms
+        assert 'Admin Other' in noms or any('Other' in n for n in noms)

@@ -852,23 +852,42 @@ comparaison à la période précédente, export Excel (`.xlsx`) et PDF
 `GET /api/reporting/stats-detail/` (JSON) et
 `GET /api/reporting/stats-export.xlsx/` (export).
 
-### Périmètre "Mes statistiques" par ADMIN
+### "Mon activité" — décompte des actions par compte
 
-Un compte ADMIN normal ne voit ses statistiques que sur le périmètre
-d'employés qu'il a **créés** (`Employee.created_by`) **OU** qu'il a
-**modifiés** au moins une fois (`AuditLog` de type `MODIFY_EMP` dont il
-est l'auteur) — `audit.stats.compute_admin_scope_ids()`, union des deux
-seuls signaux d'attribution disponibles dans le modèle actuel. Ce
-périmètre est **toujours appliqué** pour un ADMIN, sans bascule possible
-côté UI. Un `SUPERADMIN` reste non restreint par défaut (voir toujours
-tout le monde, cohérent avec `/dashboard` et `/audit`) mais peut basculer
-sur "Mes statistiques" via `?scope=mine` — bouton dédié dans la barre de
-filtres de `/statistiques`, absent pour un ADMIN normal. La réponse JSON
-inclut `scope: 'mine'|'all'` pour que le frontend affiche le bon
-sous-titre ("Vos statistiques (employés que vous gérez)" vs "Analyse RH
-sur l'ensemble de l'organisation").
+Les statistiques principales (répartitions, évolution, pyramides,
+échéances, complétude) restent **toujours organisation-wide**, pour
+ADMIN comme SUPERADMIN — pas de restriction de périmètre sur cette
+partie de la page (essayé puis abandonné : un ADMIN doit garder la vue
+d'ensemble complète, exactement comme avant ce chantier).
 
-Ce périmètre est propre à `/statistiques` — il ne touche pas au scoping
+En complément, une section **"Mon activité"** donne à chaque compte
+ADMIN/SUPERADMIN le décompte de ses propres actions sur la période
+sélectionnée (mêmes filtres de date que le reste de la page) :
+employés créés/modifiés/archivés (`AuditLog` du compte, types
+`CREATE_EMP`/`MODIFY_EMP`, archivage = `MODIFY_EMP` avec
+`details.transfer.statut.vers` dans les libellés d'archivage),
+documents supprimés/modifiés (`AuditLog` `DELETE_DOC`/`MODIFY_DOC`), et
+**documents uploadés** — ce dernier compte les `EmployeeDocument`
+**actuellement présents** (`uploaded_by`, `is_active=True`,
+`uploaded_at` dans la période), pas les entrées `UPLOAD` du journal
+d'audit : celles-ci persistent après une suppression définitive (hard
+delete, voir section "Documents employés"), ce qui gonflerait
+indéfiniment ce compteur avec des documents qui n'existent plus. Upload
+manuel et "Scanner un dossier" (scan-import) sont comptés ensemble, sans
+distinction (même type d'objet créé).
+
+Un `SUPERADMIN` reçoit en plus **"Activité par administrateur"** — la
+même ventilation pour tous les comptes ADMIN/SUPERADMIN actifs, en
+tableau comparatif (`audit.stats._activite_par_admin()`). Logique
+commune dans `audit.stats._activity_counts(user, date_debut, date_fin)`,
+réutilisée par `_mon_activite()` (le compte connecté) et
+`_activite_par_admin()` (tous les comptes).
+
+Côté UI (`Statistiques.jsx`), un compteur/une colonne à zéro est
+masqué·e — seuls les indicateurs "présents" (valeur > 0) s'affichent,
+pour ne pas polluer la page de zéros sans intérêt sur une période donnée.
+
+Ce mécanisme est propre à `/statistiques` — il ne touche pas au scoping
 CONSULTANT (`employee_scope_q`/`can_access_employee`, voir section
 Scoping) ni à la visibilité du journal d'audit par rôle (voir en-tête de
 ce fichier), qui restent des mécanismes indépendants.

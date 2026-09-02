@@ -91,7 +91,6 @@ const Statistiques = () => {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const isSuperadmin = user?.role === "SUPERADMIN";
-  const [myScope, setMyScope] = useState(false);
 
   const fetchStats = useCallback(async (params = {}, silent = false) => {
     if (!silent) setLoading(true);
@@ -117,34 +116,22 @@ const Statistiques = () => {
   const handlePresetClick = (preset) => {
     setFilters({ preset, dateDebut: "", dateFin: "" });
     const range = presetToRange(preset);
-    fetchStats({ ...(range || {}), ...(myScope ? { scope: "mine" } : {}) }, true);
+    fetchStats(range || {}, true);
   };
 
   const handleDateChange = (field, value) => {
     const next = { ...filters, preset: null, [field]: value };
     setFilters(next);
     if (next.dateDebut && next.dateFin) {
-      fetchStats({
-        date_debut: next.dateDebut, date_fin: next.dateFin,
-        ...(myScope ? { scope: "mine" } : {}),
-      }, true);
+      fetchStats({ date_debut: next.dateDebut, date_fin: next.dateFin }, true);
     }
   };
 
   const currentDateParams = () => {
-    const base = filters.dateDebut && filters.dateFin
-      ? { date_debut: filters.dateDebut, date_fin: filters.dateFin }
-      : (presetToRange(filters.preset || "12m") || {});
-    return { ...base, ...(myScope ? { scope: "mine" } : {}) };
-  };
-
-  const handleScopeToggle = () => {
-    const next = !myScope;
-    setMyScope(next);
-    const range = filters.dateDebut && filters.dateFin
-      ? { date_debut: filters.dateDebut, date_fin: filters.dateFin }
-      : (presetToRange(filters.preset || "12m") || {});
-    fetchStats({ ...range, ...(next ? { scope: "mine" } : {}) }, true);
+    if (filters.dateDebut && filters.dateFin) {
+      return { date_debut: filters.dateDebut, date_fin: filters.dateFin };
+    }
+    return presetToRange(filters.preset || "12m") || {};
   };
 
   const handleExportExcel = async () => {
@@ -209,11 +196,7 @@ const Statistiques = () => {
               <InfoNotice text={PAGE_NOTICES.statistiques} />
             </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
-              {isSuperadmin
-                ? (stats?.scope === "mine"
-                  ? "Vos statistiques (employés que vous gérez)"
-                  : "Analyse RH sur l'ensemble de l'organisation")
-                : "Vos statistiques (employés que vous gérez)"}
+              Analyse RH sur la période sélectionnée
             </div>
           </div>
         </div>
@@ -266,21 +249,6 @@ const Statistiques = () => {
               style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
             />
           </div>
-          {isSuperadmin && (
-            <button
-              onClick={handleScopeToggle}
-              aria-pressed={myScope}
-              style={{
-                background: myScope ? theme.primaryBg : "transparent",
-                border: `1px solid ${myScope ? theme.primaryBorder : theme.border}`,
-                color: myScope ? theme.primary : theme.textSecondary,
-                borderRadius: 20, padding: "6px 14px", fontSize: 12, fontWeight: 700,
-                cursor: "pointer", fontFamily: theme.fontFamily,
-              }}
-            >
-              {myScope ? "Mes statistiques" : "Toute l'organisation"}
-            </button>
-          )}
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setExportMenuOpen((v) => !v)}
@@ -494,6 +462,85 @@ const Statistiques = () => {
             </>
           )}
         </div>
+
+        {stats.mon_activite && (() => {
+          const tiles = [
+            { key: "employes_crees", label: "Employés créés" },
+            { key: "employes_modifies", label: "Employés modifiés" },
+            { key: "employes_archives", label: "Employés archivés" },
+            { key: "documents_uploades", label: "Documents uploadés" },
+            { key: "documents_supprimes", label: "Documents supprimés" },
+            { key: "documents_modifies", label: "Documents modifiés" },
+          ].filter(({ key }) => stats.mon_activite[key] > 0);
+          return (
+            <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd, marginBottom: 20 }}>
+              <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Mon activité</h2>
+              {tiles.length === 0 ? (
+                <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune activité sur cette période.</div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${Math.min(tiles.length, 6)}, 1fr)`, gap: 16 }}>
+                  {tiles.map(({ key, label }) => (
+                    <div key={key}>
+                      <div style={{ color: theme.textSecondary, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700, marginBottom: 4 }}>
+                        {label}
+                      </div>
+                      <div style={{ color: theme.primary, fontSize: 22, fontWeight: 800 }}>
+                        {stats.mon_activite[key]}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {isSuperadmin && stats.activite_par_admin && (() => {
+          const columns = [
+            { key: "employes_crees", label: "Créés" },
+            { key: "employes_modifies", label: "Modifiés" },
+            { key: "employes_archives", label: "Archivés" },
+            { key: "documents_uploades", label: "Uploadés" },
+            { key: "documents_supprimes", label: "Supprimés" },
+            { key: "documents_modifies", label: "Doc. modifiés" },
+          ].filter(({ key }) => stats.activite_par_admin.some((a) => a[key] > 0));
+          return (
+            <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd, marginBottom: 20 }}>
+              <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Activité par administrateur</h2>
+              {stats.activite_par_admin.length === 0 || columns.length === 0 ? (
+                <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune activité sur cette période.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${theme.border}`, textAlign: "left" }}>
+                        <th style={{ padding: "8px 6px", color: theme.textSecondary }}>Administrateur</th>
+                        {columns.map((c) => (
+                          <th key={c.key} style={{ padding: "8px 6px", color: theme.textSecondary }}>{c.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.activite_par_admin.map((a) => (
+                        <tr key={a.id} style={{ borderBottom: `1px solid ${theme.borderLight}` }}>
+                          <td style={{ padding: "8px 6px", fontWeight: 600 }}>
+                            {a.nom_complet}
+                            {a.role === "SUPERADMIN" && (
+                              <span style={{ color: theme.textMuted, fontSize: 11, marginLeft: 6 }}>(SUPERADMIN)</span>
+                            )}
+                          </td>
+                          {columns.map((c) => (
+                            <td key={c.key} style={{ padding: "8px 6px" }}>{a[c.key]}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </PageBackground>
   );

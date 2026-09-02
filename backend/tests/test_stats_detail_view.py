@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIClient
 from employees.models import Employee
+from audit.models import AuditLog
 
 User = get_user_model()
 
@@ -45,15 +46,7 @@ class TestStatsDetailView:
         assert resp.data['periode']['debut'] == '2026-01-01'
         assert resp.data['periode']['fin'] == '2026-01-31'
 
-
-@pytest.mark.django_db
-class TestStatsDetailViewScope:
-    def test_admin_is_always_scoped_to_mine(self, admin_user):
-        resp = auth_client(admin_user).get('/api/reporting/stats-detail/')
-        assert resp.status_code == 200
-        assert resp.data['scope'] == 'mine'
-
-    def test_admin_does_not_see_other_admins_employees(self, admin_user, direction, departement):
+    def test_stats_are_organization_wide_for_any_admin(self, admin_user, direction, departement):
         other_admin = User.objects.create_user(
             username="other_admin2", password="Pass123!", nom="Other", prenom="Admin", role="ADMIN",
         )
@@ -62,32 +55,36 @@ class TestStatsDetailViewScope:
             direction=direction, departement=departement, statut='actif', created_by=other_admin,
         )
         resp = auth_client(admin_user).get('/api/reporting/stats-detail/')
-        assert resp.data['repartition_direction'] == []
+        row = next(r for r in resp.data['repartition_direction'] if r['id'] == str(direction.id))
+        assert row['count'] == 1
 
-    def test_admin_sees_own_created_employee(self, admin_user, direction, departement):
-        Employee.objects.create(
-            matricule="EMP-MINE", nom="Mine", prenom="X",
-            direction=direction, departement=departement, statut='actif', created_by=admin_user,
+
+@pytest.mark.django_db
+class TestStatsDetailViewActivite:
+    def test_admin_gets_mon_activite(self, admin_user):
+        resp = auth_client(admin_user).get('/api/reporting/stats-detail/')
+        assert 'mon_activite' in resp.data
+        assert 'activite_par_admin' not in resp.data
+
+    def test_mon_activite_counts_only_this_admins_actions(self, admin_user):
+        other_admin = User.objects.create_user(
+            username="other_admin3", password="Pass123!", nom="Other", prenom="Admin", role="ADMIN",
+        )
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.CREATE_EMP,
+            target_model='Employee', target_id='a', target_label='a',
+        )
+        AuditLog.objects.create(
+            user=other_admin, action=AuditLog.Action.CREATE_EMP,
+            target_model='Employee', target_id='b', target_label='b',
         )
         resp = auth_client(admin_user).get('/api/reporting/stats-detail/')
-        row = next(r for r in resp.data['repartition_direction'] if r['id'] == str(direction.id))
-        assert row['count'] == 1
+        assert resp.data['mon_activite']['employes_crees'] == 1
 
-    def test_superadmin_defaults_to_all(self, superadmin_user):
+    def test_superadmin_gets_activite_par_admin(self, superadmin_user, admin_user):
         resp = auth_client(superadmin_user).get('/api/reporting/stats-detail/')
-        assert resp.status_code == 200
-        assert resp.data['scope'] == 'all'
-
-    def test_superadmin_can_request_mine(self, superadmin_user):
-        resp = auth_client(superadmin_user).get('/api/reporting/stats-detail/?scope=mine')
-        assert resp.status_code == 200
-        assert resp.data['scope'] == 'mine'
-
-    def test_superadmin_sees_all_admins_employees_by_default(self, superadmin_user, admin_user, direction, departement):
-        Employee.objects.create(
-            matricule="EMP-ANYONE", nom="Anyone", prenom="X",
-            direction=direction, departement=departement, statut='actif', created_by=admin_user,
-        )
-        resp = auth_client(superadmin_user).get('/api/reporting/stats-detail/')
-        row = next(r for r in resp.data['repartition_direction'] if r['id'] == str(direction.id))
-        assert row['count'] == 1
+        assert 'activite_par_admin' in resp.data
+        assert 'mon_activite' in resp.data
+        noms = [a['nom_complet'] for a in resp.data['activite_par_admin']]
+        assert superadmin_user.full_name in noms
+        assert admin_user.full_name in noms
