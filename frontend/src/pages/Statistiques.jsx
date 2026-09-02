@@ -90,6 +90,8 @@ const Statistiques = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const isSuperadmin = user?.role === "SUPERADMIN";
+  const [myScope, setMyScope] = useState(false);
 
   const fetchStats = useCallback(async (params = {}, silent = false) => {
     if (!silent) setLoading(true);
@@ -115,22 +117,34 @@ const Statistiques = () => {
   const handlePresetClick = (preset) => {
     setFilters({ preset, dateDebut: "", dateFin: "" });
     const range = presetToRange(preset);
-    fetchStats(range || {}, true);
+    fetchStats({ ...(range || {}), ...(myScope ? { scope: "mine" } : {}) }, true);
   };
 
   const handleDateChange = (field, value) => {
     const next = { ...filters, preset: null, [field]: value };
     setFilters(next);
     if (next.dateDebut && next.dateFin) {
-      fetchStats({ date_debut: next.dateDebut, date_fin: next.dateFin }, true);
+      fetchStats({
+        date_debut: next.dateDebut, date_fin: next.dateFin,
+        ...(myScope ? { scope: "mine" } : {}),
+      }, true);
     }
   };
 
   const currentDateParams = () => {
-    if (filters.dateDebut && filters.dateFin) {
-      return { date_debut: filters.dateDebut, date_fin: filters.dateFin };
-    }
-    return presetToRange(filters.preset || "12m") || {};
+    const base = filters.dateDebut && filters.dateFin
+      ? { date_debut: filters.dateDebut, date_fin: filters.dateFin }
+      : (presetToRange(filters.preset || "12m") || {});
+    return { ...base, ...(myScope ? { scope: "mine" } : {}) };
+  };
+
+  const handleScopeToggle = () => {
+    const next = !myScope;
+    setMyScope(next);
+    const range = filters.dateDebut && filters.dateFin
+      ? { date_debut: filters.dateDebut, date_fin: filters.dateFin }
+      : (presetToRange(filters.preset || "12m") || {});
+    fetchStats({ ...range, ...(next ? { scope: "mine" } : {}) }, true);
   };
 
   const handleExportExcel = async () => {
@@ -195,7 +209,11 @@ const Statistiques = () => {
               <InfoNotice text={PAGE_NOTICES.statistiques} />
             </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
-              Analyse RH sur la période sélectionnée
+              {isSuperadmin
+                ? (stats?.scope === "mine"
+                  ? "Vos statistiques (employés que vous gérez)"
+                  : "Analyse RH sur l'ensemble de l'organisation")
+                : "Vos statistiques (employés que vous gérez)"}
             </div>
           </div>
         </div>
@@ -248,6 +266,21 @@ const Statistiques = () => {
               style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
             />
           </div>
+          {isSuperadmin && (
+            <button
+              onClick={handleScopeToggle}
+              aria-pressed={myScope}
+              style={{
+                background: myScope ? theme.primaryBg : "transparent",
+                border: `1px solid ${myScope ? theme.primaryBorder : theme.border}`,
+                color: myScope ? theme.primary : theme.textSecondary,
+                borderRadius: 20, padding: "6px 14px", fontSize: 12, fontWeight: 700,
+                cursor: "pointer", fontFamily: theme.fontFamily,
+              }}
+            >
+              {myScope ? "Mes statistiques" : "Toute l'organisation"}
+            </button>
+          )}
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setExportMenuOpen((v) => !v)}

@@ -1,9 +1,12 @@
 import pytest
 from datetime import date, timedelta
+from django.contrib.auth import get_user_model
 from django.utils import timezone
-from audit.stats import build_stats_detail
+from audit.stats import build_stats_detail, compute_admin_scope_ids
 from audit.models import AuditLog
 from employees.models import Employee, Contrat
+
+User = get_user_model()
 
 
 def _make_employee(**kwargs):
@@ -183,3 +186,47 @@ class TestBuildStatsDetailCompletude:
         assert row['total'] == 1
         assert row['complets'] == 0
         assert row['taux'] == 0.0
+
+
+@pytest.mark.django_db
+class TestComputeAdminScopeIds:
+    def _other_admin(self):
+        return User.objects.create_user(
+            username="other_admin", password="Pass123!", nom="Other", prenom="Admin", role="ADMIN",
+        )
+
+    def test_includes_employees_created_by_admin(self, admin_user, direction, departement):
+        emp = _make_employee(direction=direction, departement=departement, created_by=admin_user)
+        _make_employee(direction=direction, departement=departement, created_by=self._other_admin())
+        scope = compute_admin_scope_ids(admin_user)
+        assert emp.id in scope
+        assert len(scope) == 1
+
+    def test_includes_employees_modified_by_admin(self, admin_user, direction, departement):
+        other = self._other_admin()
+        emp = _make_employee(direction=direction, departement=departement, created_by=other)
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.MODIFY_EMP,
+            target_model='Employee', target_id=str(emp.pk), target_label=str(emp),
+        )
+        scope = compute_admin_scope_ids(admin_user)
+        assert emp.id in scope
+
+    def test_excludes_employees_untouched_by_admin(self, admin_user, direction, departement):
+        other = self._other_admin()
+        _make_employee(direction=direction, departement=departement, created_by=other)
+        scope = compute_admin_scope_ids(admin_user)
+        assert scope == set()
+
+    def test_empty_scope_restricts_build_stats_detail_to_nothing(self, admin_user, direction, departement):
+        _make_employee(direction=direction, departement=departement, statut='actif', created_by=self._other_admin())
+        result = build_stats_detail(None, None, scope_ids=set())
+        assert result['repartition_direction'] == []
+
+    def test_scope_restricts_repartition_direction(self, admin_user, direction, departement):
+        emp = _make_employee(direction=direction, departement=departement, statut='actif', created_by=admin_user)
+        _make_employee(direction=direction, departement=departement, statut='actif', created_by=self._other_admin())
+        scope = compute_admin_scope_ids(admin_user)
+        result = build_stats_detail(None, None, scope_ids=scope)
+        row = next(r for r in result['repartition_direction'] if r['id'] == str(direction.id))
+        assert row['count'] == 1

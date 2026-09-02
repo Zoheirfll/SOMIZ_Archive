@@ -27,6 +27,7 @@ import Statistiques from "../pages/Statistiques";
 
 const baseStats = {
   periode: { debut: "2026-01-01", fin: "2026-12-31" },
+  scope: "all",
   indicateurs: {
     recrutements: { valeur: 12, variation_pct: 8.3 },
     archivages: { valeur: 3, variation_pct: -25 },
@@ -216,5 +217,37 @@ describe("Statistiques — export", () => {
     fireEvent.click(screen.getByRole("button", { name: "Exporter" }));
     fireEvent.click(screen.getByRole("button", { name: "PDF (impression)" }));
     expect(window.print).toHaveBeenCalled();
+  });
+});
+
+describe("Statistiques — périmètre par rôle", () => {
+  test("un ADMIN normal ne voit pas de bascule et affiche le sous-titre \"Vos statistiques\"", async () => {
+    api.get.mockResolvedValue({ data: { ...baseStats, scope: "mine" } });
+    renderPage("ADMIN");
+    await screen.findByText("Recrutements");
+    expect(screen.getByText("Vos statistiques (employés que vous gérez)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mes statistiques" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toute l'organisation" })).not.toBeInTheDocument();
+  });
+
+  test("un SUPERADMIN voit la bascule, non cochée par défaut (organisation entière)", async () => {
+    api.get.mockResolvedValue({ data: { ...baseStats, scope: "all" } });
+    renderPage("SUPERADMIN");
+    await screen.findByText("Recrutements");
+    expect(screen.getByRole("button", { name: "Toute l'organisation" })).toBeInTheDocument();
+    expect(screen.getByText("Analyse RH sur l'ensemble de l'organisation")).toBeInTheDocument();
+  });
+
+  test("cliquer la bascule SUPERADMIN refetch avec scope=mine", async () => {
+    api.get.mockResolvedValue({ data: { ...baseStats, scope: "all" } });
+    renderPage("SUPERADMIN");
+    await screen.findByText("Recrutements");
+    api.get.mockResolvedValue({ data: { ...baseStats, scope: "mine" } });
+    fireEvent.click(screen.getByRole("button", { name: "Toute l'organisation" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      "/reporting/stats-detail/",
+      expect.objectContaining({ params: expect.objectContaining({ scope: "mine" }) })
+    ));
+    expect(await screen.findByRole("button", { name: "Mes statistiques" })).toBeInTheDocument();
   });
 });

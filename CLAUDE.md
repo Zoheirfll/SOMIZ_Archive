@@ -781,6 +781,100 @@ changements de poste/catégorie depuis). Spec complète :
 
 ---
 
+## Archivage employé (2026-09-02)
+
+Un employé Inactif/Archivé/Démobilisé (`Employee.statut`) sort du
+drill-down organisationnel de `/employees` (Direction → Département →
+Service) et vit dans un onglet séparé **"Archivés (N)"** sur la même
+page — l'onglet "Organisation" ne montre implicitement que les employés
+Actif (plus de filtre "Statut" à ce niveau). Spec complète :
+`docs/superpowers/specs/2026-09-02-archivage-employes-design.md`.
+
+- **`MotifArchivage`** — nouveau référentiel simple (`nom` unique,
+  `description`, `is_active`), même pattern que `Categorie`/`TypeContrat`
+  (CRUD `/ref/motifs-archivage/`, onglet "Motifs d'archivage" dans
+  `/parametres`, import xlsx). `Employee.motif_archivage` (FK nullable,
+  `SET_NULL`) est **toujours facultatif**.
+- **Un employé Actif n'a jamais de motif** — `EmployeeCreateUpdateSerializer.validate()`
+  force `motif_archivage=None` dès que `statut` résultant vaut `actif`,
+  même si le payload en envoie un (garde-fou serveur, pas seulement
+  côté formulaire).
+- **Trois actions**, toutes ADMIN only :
+  - **Archiver** (remplace l'ancien comportement de "Supprimer" tant que
+    l'employé est Actif) — `PATCH /api/employees/<id>/`
+    `{statut: 'archive', motif_archivage: <id|null>}`, réversible. Tracé
+    dans l'audit log existant (`MODIFY_EMP`, même clé `details.transfer`
+    que le transfert organisationnel/carrière — `TRANSFER_FIELD_LABELS`
+    dans `AuditLogs.jsx` inclut désormais `statut`/`motif_archivage`).
+  - **Restaurer** — `PATCH` `{statut: 'actif', motif_archivage: null}`,
+    réversible.
+  - **Supprimer définitivement** — `DELETE /api/employees/<id>/` ou
+    `POST /api/employees/bulk-delete/` (`action=delete`). **Changement de
+    politique (2026-09-02)** : ce n'est plus un soft-delete (l'ancien
+    commentaire "on archive, on ne supprime pas" ne s'applique plus) —
+    l'employé, ses contrats, documents et fichiers physiques sont
+    supprimés définitivement et irréversiblement. **Bloqué (400) tant que
+    l'employé est encore `statut=actif`** — il faut d'abord l'archiver,
+    jamais un clic direct depuis la vue organisationnelle
+    (`EmployeeDetailView.perform_destroy`/`EmployeeBulkDeleteView`,
+    `backend/employees/views.py`). Confirmation renforcée côté frontend
+    (saisie du mot "SUPPRIMER" via `usePrompt()`, `Employees.jsx`) en plus
+    du garde-fou serveur.
+- **Liste `/api/employees/`** : sans `?vue=archives` ni `?statut=`
+  explicite, ne renvoie désormais que les employés Actif par défaut
+  (`EmployeeListCreateView.get_queryset()`) — `?vue=archives` renvoie les
+  3 statuts non-Actif, combinable avec `?statut=` pour n'en garder qu'un.
+  `employee_search` (autocomplete) reste inchangé, volontairement limité
+  aux Actif comme avant ce chantier.
+- **Badges "N employé(s)"** sur les cartes Service/Cellule/Section
+  (`ServiceSerializer`/`CelluleSerializer`/`SectionSerializer.get_nb_employes`,
+  `referentiel_views.py`) ne comptent plus que les employés Actif — un
+  employé archivé "sort" visuellement de l'organisation, y compris dans
+  ces compteurs.
+- Colonne "Motif" ajoutée à la liste des colonnes configurables de
+  `/employees` (masquée par défaut, comme les autres colonnes ajoutées
+  récemment — voir section "Liste employés — colonnes configurables").
+- Dashboard **non modifié** par ce chantier (continue de compter tous les
+  statuts) — laissé hors scope volontairement.
+
+---
+
+## Page Statistiques (2026-09-02)
+
+`/statistiques` (ADMIN/SUPERADMIN, distincte de `/dashboard`) : analyse RH
+détaillée — répartitions Direction/Département/Catégorie/Type de
+contrat/Fonction, évolution mensuelle recrutements vs archivages,
+pyramides âge/ancienneté, contrats arrivant à échéance (90 jours),
+complétude par unité, filtres de date (préréglages + plage libre) avec
+comparaison à la période précédente, export Excel (`.xlsx`) et PDF
+(impression navigateur). Logique de calcul centralisée dans
+`backend/audit/stats.py` (`build_stats_detail()`), consommée par
+`GET /api/reporting/stats-detail/` (JSON) et
+`GET /api/reporting/stats-export.xlsx/` (export).
+
+### Périmètre "Mes statistiques" par ADMIN
+
+Un compte ADMIN normal ne voit ses statistiques que sur le périmètre
+d'employés qu'il a **créés** (`Employee.created_by`) **OU** qu'il a
+**modifiés** au moins une fois (`AuditLog` de type `MODIFY_EMP` dont il
+est l'auteur) — `audit.stats.compute_admin_scope_ids()`, union des deux
+seuls signaux d'attribution disponibles dans le modèle actuel. Ce
+périmètre est **toujours appliqué** pour un ADMIN, sans bascule possible
+côté UI. Un `SUPERADMIN` reste non restreint par défaut (voir toujours
+tout le monde, cohérent avec `/dashboard` et `/audit`) mais peut basculer
+sur "Mes statistiques" via `?scope=mine` — bouton dédié dans la barre de
+filtres de `/statistiques`, absent pour un ADMIN normal. La réponse JSON
+inclut `scope: 'mine'|'all'` pour que le frontend affiche le bon
+sous-titre ("Vos statistiques (employés que vous gérez)" vs "Analyse RH
+sur l'ensemble de l'organisation").
+
+Ce périmètre est propre à `/statistiques` — il ne touche pas au scoping
+CONSULTANT (`employee_scope_q`/`can_access_employee`, voir section
+Scoping) ni à la visibilité du journal d'audit par rôle (voir en-tête de
+ce fichier), qui restent des mécanismes indépendants.
+
+---
+
 ## Consentement Loi 18-07 (2026-08-27)
 
 Tout accès à SOMIZ (ADMIN comme CONSULTANT, y compris les comptes créés
@@ -937,7 +1031,8 @@ pas utilisables directement pour les changements de layout structurels
 | `/employees/:id` | Détail employé + documents + contrats | Tous |
 | `/employees/:id/modifier` | Modifier employé | ADMIN |
 | `/contrats/:id` | Détail contrat | Tous |
-| `/dashboard` | Statistiques | ADMIN |
+| `/dashboard` | Tableau de bord (indicateurs instantanés) | ADMIN |
+| `/statistiques` | Statistiques RH détaillées (filtres, périmètre, export) | ADMIN |
 | `/users` | Gestion utilisateurs | ADMIN |
 | `/audit` | Logs d'audit | ADMIN |
 | `/parametres` | CRUD référentiels (Directions, Depts, Services, Postes...) | ADMIN |

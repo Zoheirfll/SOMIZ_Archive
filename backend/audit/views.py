@@ -155,9 +155,26 @@ def _parse_date_param(request, name):
         return 'invalid'
 
 
+def _resolve_scope_ids(request):
+    """
+    Périmètre "Mes statistiques" — voir CLAUDE.md section Statistiques.
+    Un ADMIN normal est TOUJOURS restreint à ce qu'il a créé/modifié ;
+    un SUPERADMIN reste non restreint (None) sauf s'il demande
+    explicitement ?scope=mine, auquel cas son propre périmètre
+    créé/modifié est calculé de la même façon.
+    """
+    from audit.stats import compute_admin_scope_ids
+    user = request.user
+    if user.is_superadmin:
+        if request.query_params.get('scope') == 'mine':
+            return compute_admin_scope_ids(user)
+        return None
+    return compute_admin_scope_ids(user)
+
+
 class StatsDetailView(APIView):
     """
-    GET /api/reporting/stats-detail/?date_debut=&date_fin=
+    GET /api/reporting/stats-detail/?date_debut=&date_fin=&scope=
     Statistiques détaillées de la page /statistiques — voir
     docs/superpowers/specs/2026-09-02-page-statistiques-design.md.
     """
@@ -168,7 +185,10 @@ class StatsDetailView(APIView):
         date_fin = _parse_date_param(request, 'date_fin')
         if date_debut == 'invalid' or date_fin == 'invalid':
             return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
-        return Response(build_stats_detail(date_debut, date_fin))
+        scope_ids = _resolve_scope_ids(request)
+        data = build_stats_detail(date_debut, date_fin, scope_ids)
+        data['scope'] = 'mine' if scope_ids is not None else 'all'
+        return Response(data)
 
 
 def _stats_sheet(wb, title, headers, rows):
@@ -196,7 +216,8 @@ class StatsExportView(APIView):
         date_fin = _parse_date_param(request, 'date_fin')
         if date_debut == 'invalid' or date_fin == 'invalid':
             return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
-        data = build_stats_detail(date_debut, date_fin)
+        scope_ids = _resolve_scope_ids(request)
+        data = build_stats_detail(date_debut, date_fin, scope_ids)
 
         wb = openpyxl.Workbook()
         wb.remove(wb.active)
@@ -252,6 +273,6 @@ class StatsExportView(APIView):
 
         AuditLog.log(
             request, AuditLog.Action.EXPORT,
-            details={'type': 'statistiques', 'periode': data['periode']},
+            details={'type': 'statistiques', 'periode': data['periode'], 'scope': 'mine' if scope_ids is not None else 'all'},
         )
         return response
