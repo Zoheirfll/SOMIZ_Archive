@@ -8,6 +8,7 @@ import Employees from "./pages/Employees";
 import EmployeeDetail from "./pages/EmployeeDetail";
 import EmployeeForm from "./pages/EmployeeForm";
 import Dashboard from "./pages/Dashboard";
+import Statistiques from "./pages/Statistiques";
 import Users from "./pages/Users";
 import AuditLogs from "./pages/AuditLogs";
 import Parametres from "./pages/Parametres";
@@ -78,6 +79,14 @@ function App() {
             element={
               <ProtectedRoute adminOnly>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/statistiques"
+            element={
+              <ProtectedRoute adminOnly>
+                <Statistiques />
               </ProtectedRoute>
             }
           />

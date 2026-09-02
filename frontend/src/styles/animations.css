@@ -149,3 +149,13 @@
   background: #F0FDF4 !important;
   border-left-color: #166534;
 }
+
+/* ─── Impression (export PDF via window.print) ──────────────────────────── */
+@media print {
+  nav, .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+}

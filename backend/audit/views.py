@@ -3,13 +3,18 @@ apps/audit/views.py
 Journal d'audit + statistiques de complétude des dossiers
 """
 
+from datetime import date
 from django.db.models import Count, Q
+from django.http import HttpResponse
 from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
+import openpyxl
+from openpyxl.styles import Font
 
 from accounts.permissions import IsAdmin
 from audit.models import AuditLog
+from audit.stats import build_stats_detail
 from employees.models import Employee, EmployeeDocument
 
 
@@ -138,3 +143,115 @@ class AdminStatsView(APIView):
             'activite_7_jours': list(activite),
             'total_documents': EmployeeDocument.objects.filter(is_active=True).count(),
         })
+
+
+def _parse_date_param(request, name):
+    raw = request.query_params.get(name)
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return 'invalid'
+
+
+class StatsDetailView(APIView):
+    """
+    GET /api/reporting/stats-detail/?date_debut=&date_fin=
+    Statistiques détaillées de la page /statistiques — voir
+    docs/superpowers/specs/2026-09-02-page-statistiques-design.md.
+    """
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        date_debut = _parse_date_param(request, 'date_debut')
+        date_fin = _parse_date_param(request, 'date_fin')
+        if date_debut == 'invalid' or date_fin == 'invalid':
+            return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
+        return Response(build_stats_detail(date_debut, date_fin))
+
+
+def _stats_sheet(wb, title, headers, rows):
+    ws = wb.create_sheet(title)
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    for col_idx in range(1, len(headers) + 1):
+        ws.cell(row=1, column=col_idx).font = Font(bold=True)
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max(
+            len(str(headers[col_idx - 1])) + 2, 14
+        )
+
+
+class StatsExportView(APIView):
+    """
+    GET /api/reporting/stats-export.xlsx/?date_debut=&date_fin=
+    Export Excel des mêmes statistiques que StatsDetailView, un onglet par
+    section.
+    """
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        date_debut = _parse_date_param(request, 'date_debut')
+        date_fin = _parse_date_param(request, 'date_fin')
+        if date_debut == 'invalid' or date_fin == 'invalid':
+            return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
+        data = build_stats_detail(date_debut, date_fin)
+
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+
+        _stats_sheet(wb, 'Indicateurs', ['Indicateur', 'Valeur', 'Variation (%)'], [
+            [label, data['indicateurs'][key]['valeur'], data['indicateurs'][key]['variation_pct']]
+            for key, label in [
+                ('recrutements', 'Recrutements'), ('archivages', 'Archivages'),
+                ('dossiers_completes', 'Dossiers complétés'),
+            ]
+        ])
+        _stats_sheet(wb, 'Répartition organisation', ['Direction', 'Département', 'Effectif'], [
+            [r['nom'], '', r['count']] for r in data['repartition_direction']
+        ] + [
+            [r['direction_nom'], r['nom'], r['count']] for r in data['repartition_departement']
+        ])
+        _stats_sheet(wb, 'Répartition profils', ['Axe', 'Valeur', 'Effectif'], [
+            ['Catégorie', r['nom'], r['count']] for r in data['repartition_categorie']
+        ] + [
+            ['Type de contrat', r['nom'], r['count']] for r in data['repartition_type_contrat']
+        ] + [
+            ['Fonction', r['nom'], r['count']] for r in data['repartition_fonction']
+        ])
+        _stats_sheet(wb, 'Évolution', ['Mois', 'Recrutements', 'Archivages'], [
+            [e['mois'], e['recrutements'], e['archivages']] for e in data['evolution_mensuelle']
+        ])
+        _stats_sheet(wb, 'Démographie', ['Tranche âge', 'Effectif', 'Tranche ancienneté', 'Effectif'], [
+            [
+                data['pyramide_age'][i]['tranche'] if i < len(data['pyramide_age']) else '',
+                data['pyramide_age'][i]['count'] if i < len(data['pyramide_age']) else '',
+                data['pyramide_anciennete'][i]['tranche'] if i < len(data['pyramide_anciennete']) else '',
+                data['pyramide_anciennete'][i]['count'] if i < len(data['pyramide_anciennete']) else '',
+            ]
+            for i in range(max(len(data['pyramide_age']), len(data['pyramide_anciennete'])))
+        ])
+        _stats_sheet(wb, 'Échéances contrats', ['N° Contrat', 'Employé', 'Date fin', 'Jours restants'], [
+            [c['numero_contrat'], c['employee_nom'], c['date_fin'], c['jours_restants']]
+            for c in data['contrats_echeance']
+        ])
+        _stats_sheet(wb, 'Complétude', ['Direction', 'Département', 'Total', 'Complets', 'Taux (%)'], [
+            [r['nom'], '', r['total'], r['complets'], r['taux']] for r in data['completude_par_direction']
+        ] + [
+            [r['direction_nom'], r['nom'], r['total'], r['complets'], r['taux']]
+            for r in data['completude_par_departement']
+        ])
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"statistiques_somiz_{data['periode']['debut']}_au_{data['periode']['fin']}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+
+        AuditLog.log(
+            request, AuditLog.Action.EXPORT,
+            details={'type': 'statistiques', 'periode': data['periode']},
+        )
+        return response

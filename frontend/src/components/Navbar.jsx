@@ -41,6 +41,7 @@ const Navbar = () => {
     { path: "/organigramme", label: "Organigramme" },
     { path: "/import", label: "Import", adminOnly: true },
     { path: "/dashboard", label: "Dashboard", adminOnly: true },
+    { path: "/statistiques", label: "Statistiques", adminOnly: true },
     { path: "/users", label: "Utilisateurs", adminOnly: true },
     { path: "/parametres", label: "Paramètres", adminOnly: true },
     { path: "/audit", label: "Journal", adminOnly: true },
@@ -106,11 +107,11 @@ const Navbar = () => {
                   background: isActive ? theme.primaryBg : "transparent",
                   border: "none",
                   borderRadius: 8,
-                  color: isActive ? theme.primary : theme.textSecondary,
+                  color: theme.text,
                   padding: "7px 14px",
                   cursor: "pointer",
                   fontSize: 13,
-                  fontWeight: isActive ? 700 : 500,
+                  fontWeight: 700,
                   fontFamily: theme.fontFamily,
                   transition: "background 0.15s, color 0.15s",
                 }}
@@ -123,7 +124,7 @@ const Navbar = () => {
                 onMouseLeave={(e) => {
                   if (!isActive) {
                     e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = theme.textSecondary;
+                    e.currentTarget.style.color = theme.text;
                   }
                 }}
               >
@@ -355,12 +356,12 @@ const Navbar = () => {
                     background: isActive ? theme.primaryBg : "transparent",
                     border: "none",
                     borderRadius: 8,
-                    color: isActive ? theme.primary : theme.textSecondary,
+                    color: theme.text,
                     padding: "12px 14px",
                     textAlign: "left",
                     cursor: "pointer",
                     fontSize: 14,
-                    fontWeight: isActive ? 700 : 500,
+                    fontWeight: 700,
                     fontFamily: theme.fontFamily,
                   }}
                 >
