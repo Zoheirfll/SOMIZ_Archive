@@ -55,6 +55,10 @@
   box-shadow: 0 0 0 3px rgba(26, 122, 60, 0.13) !important;
   outline: none !important;
 }
+:root[data-theme="dark"] .input-focus:focus {
+  border-color: #4ade80 !important;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.22) !important;
+}
 
 /* ─── Boutons — lift au survol ───────────────────────────────────────── */
 .btn-lift {
@@ -84,6 +88,10 @@
 .nav-link:hover {
   background: #E8F5EE !important;
   color: #1A7A3C !important;
+}
+:root[data-theme="dark"] .nav-link:hover {
+  background: #16261C !important;
+  color: #4ade80 !important;
 }
 
 /* ─── Cartes hiérarchiques — lift plus prononcé ──────────────────────── */
@@ -123,6 +131,9 @@
   background: #F1F5F9;
   min-height: 100vh;
 }
+:root[data-theme="dark"] .page-root {
+  background: #0A0F1A;
+}
 .page-root::before {
   content: "";
   position: fixed;
@@ -134,6 +145,9 @@
   background: radial-gradient(circle, rgba(22,101,52,0.055) 0%, transparent 70%);
   pointer-events: none;
   z-index: 0;
+}
+:root[data-theme="dark"] .page-root::before {
+  background: radial-gradient(circle, rgba(74,222,128,0.07) 0%, transparent 70%);
 }
 .page-root::after {
   content: "";
@@ -147,6 +161,9 @@
   pointer-events: none;
   z-index: 0;
 }
+:root[data-theme="dark"] .page-root::after {
+  background: radial-gradient(circle, rgba(251,191,36,0.06) 0%, transparent 70%);
+}
 
 /* ─── Tables — survol de ligne ───────────────────────────────────────────── */
 .table-row-hover {
@@ -156,6 +173,10 @@
 .table-row-hover:hover {
   background: #F0FDF4 !important;
   border-left-color: #166534;
+}
+:root[data-theme="dark"] .table-row-hover:hover {
+  background: #16261C !important;
+  border-left-color: #4ade80;
 }
 
 /* ─── Impression (export PDF via window.print) ──────────────────────────── */

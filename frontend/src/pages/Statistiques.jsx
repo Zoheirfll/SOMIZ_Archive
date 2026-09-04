@@ -67,8 +67,8 @@ const RepartitionBar = ({ label, count, displayValue, max, color, onClick, sub }
       </span>
       <span style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700 }}>{displayValue ?? count}</span>
     </div>
-    <div style={{ background: theme.bg, borderRadius: 6, height: 8, overflow: "hidden", border: `1px solid ${theme.border}` }}>
-      <div style={{ height: "100%", width: `${max ? (count / max) * 100 : 0}%`, background: color, borderRadius: 6, transition: "width 0.6s ease" }} />
+    <div style={{ background: theme.borderLight, borderRadius: 6, height: 8, overflow: "hidden", border: `1px solid ${theme.border}` }}>
+      <div style={{ height: "100%", width: `${max ? Math.max((count / max) * 100, count > 0 ? 2 : 0) : 0}%`, background: color, borderRadius: 6, transition: "width 0.6s ease" }} />
     </div>
   </div>
   );

@@ -300,7 +300,7 @@ const Dashboard = () => {
                       </span>
                     </div>
                     <div style={{
-                      background: theme.bg,
+                      background: theme.borderLight,
                       borderRadius: 6,
                       height: 8,
                       overflow: "hidden",
@@ -309,13 +309,13 @@ const Dashboard = () => {
                       <div
                         style={{
                           height: "100%",
-                          width: `${data.pourcentage}%`,
+                          width: `${Math.max(data.pourcentage, data.pourcentage > 0 ? 3 : 0)}%`,
                           background:
                             data.pourcentage >= 80
-                              ? "linear-gradient(90deg, #166534, #16a34a)"
+                              ? theme.success
                               : data.pourcentage >= 50
-                                ? "linear-gradient(90deg, #92400e, #b45309)"
-                                : "linear-gradient(90deg, #991b1b, #dc2626)",
+                                ? theme.warning
+                                : theme.danger,
                           borderRadius: 6,
                           transition: "width 0.6s ease",
                         }}

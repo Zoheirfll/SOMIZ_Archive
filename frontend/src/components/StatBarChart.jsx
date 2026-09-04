@@ -18,7 +18,7 @@ const StatBarChart = ({ data, xKey, series, orientation = "vertical", height = 2
         {data.map((d) => (
           <div key={d[xKey]} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <div style={{ width: 70, fontSize: 12, color: theme.textSecondary, flexShrink: 0 }}>{d[xKey]}</div>
-            <div style={{ flex: 1, background: theme.bg, borderRadius: 6, height: 16, overflow: "hidden", border: `1px solid ${theme.border}` }}>
+            <div style={{ flex: 1, background: theme.borderLight, borderRadius: 6, height: 16, overflow: "hidden", border: `1px solid ${theme.border}` }}>
               <div
                 data-testid="stat-bar"
                 style={{

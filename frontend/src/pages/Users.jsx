@@ -526,7 +526,7 @@ const Users = () => {
                     className="table-row-hover"
                     style={{
                       borderBottom: `1px solid ${theme.border}`,
-                      background: idx % 2 === 0 ? theme.surface : "#FAFBFC",
+                      background: idx % 2 === 0 ? theme.surface : theme.surfaceHover,
                     }}
                   >
                     <td style={{ padding: "13px 16px", color: theme.primary, fontFamily: "monospace", fontWeight: 700, fontSize: 13 }}>
@@ -643,8 +643,8 @@ const Users = () => {
                               setShowResetConfirm(false);
                             }}
                             style={{
-                              background: "#FFF8E1",
-                              border: "1px solid #FFE082",
+                              background: theme.accentBg,
+                              border: `1px solid ${theme.accentBorder}`,
                               color: theme.warning,
                               borderRadius: 8,
                               padding: "5px 12px",

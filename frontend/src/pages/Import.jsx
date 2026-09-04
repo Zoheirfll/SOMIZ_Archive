@@ -376,9 +376,9 @@ const Import = () => {
             disabled={!file || loading}
             style={{
               width: "100%",
-              background: !file || loading ? `${theme.primary}66` : theme.primary,
-              border: "none",
-              color: "#fff",
+              background: !file || loading ? theme.borderLight : theme.primary,
+              border: !file || loading ? `1px solid ${theme.border}` : "none",
+              color: !file || loading ? theme.textMuted : "#fff",
               borderRadius: 12,
               padding: "15px",
               fontSize: 15,

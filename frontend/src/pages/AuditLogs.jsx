@@ -292,7 +292,7 @@ const AuditLogs = () => {
                     className="table-row-hover"
                     style={{
                       borderBottom: `1px solid ${theme.border}`,
-                      background: idx % 2 === 0 ? theme.surface : "#FAFBFC",
+                      background: idx % 2 === 0 ? theme.surface : theme.surfaceHover,
                     }}
                   >
                     <td style={{ padding: "11px 16px", color: theme.textSecondary, fontSize: 12, fontFamily: "monospace" }}>

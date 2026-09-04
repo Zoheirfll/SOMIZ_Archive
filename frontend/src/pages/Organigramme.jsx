@@ -6,43 +6,18 @@ import { useTheme } from "../context/ThemeContext";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
 
+// bg/border sont dérivés de color par transparence (voir OrgCard) pour
+// rester lisibles aussi bien en clair (fond blanc) qu'en sombre (fond
+// quasi noir) — colorDark est une variante éclaircie utilisée comme texte/
+// icône en mode sombre (contraste insuffisant avec la teinte saturée
+// d'origine, pensée pour du texte foncé sur fond clair).
 const LEVEL = {
-  direction: {
-    label: "Direction",
-    color: "#166534",
-    bg: "#F0FDF4",
-    border: "#BBF7D0",
-  },
-  pole: {
-    label: "Pôle",
-    color: "#0d9488",
-    bg: "#F0FDFA",
-    border: "#99F6E4",
-  },
-  departement: {
-    label: "Département",
-    color: "#1e40af",
-    bg: "#EFF6FF",
-    border: "#BFDBFE",
-  },
-  service: {
-    label: "Service",
-    color: "#6d28d9",
-    bg: "#F5F3FF",
-    border: "#DDD6FE",
-  },
-  cellule: {
-    label: "Cellule",
-    color: "#b45309",
-    bg: "#FFFBEB",
-    border: "#FDE68A",
-  },
-  section: {
-    label: "Section",
-    color: "#0369a1",
-    bg: "#F0F9FF",
-    border: "#BAE6FD",
-  },
+  direction: { label: "Direction", color: "#166534", colorDark: "#4ade80" },
+  pole: { label: "Pôle", color: "#0d9488", colorDark: "#2dd4bf" },
+  departement: { label: "Département", color: "#1e40af", colorDark: "#60a5fa" },
+  service: { label: "Service", color: "#6d28d9", colorDark: "#a78bfa" },
+  cellule: { label: "Cellule", color: "#b45309", colorDark: "#fbbf24" },
+  section: { label: "Section", color: "#0369a1", colorDark: "#38bdf8" },
 };
 
 const CHILD_LABEL = {
@@ -85,9 +60,10 @@ const ArrowRightIcon = ({ color }) => (
 const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible, responsableNom }) => {
   const theme = useTheme();
   const s = LEVEL[level];
-  const color = accessible ? s.color : "#64748B";
-  const bg = accessible ? s.bg : "#F1F5F9";
-  const border = accessible ? s.border : "#CBD5E1";
+  const baseColor = theme.mode === "dark" ? s.colorDark : s.color;
+  const color = accessible ? baseColor : theme.textMuted;
+  const bg = accessible ? `${baseColor}1F` : theme.borderLight;
+  const border = accessible ? `${baseColor}55` : theme.border;
   return (
     <div
       className="hover-lift"
@@ -145,9 +121,9 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
             style={{
               display: "inline-block",
               marginTop: 4,
-              background: "#E2E8F0",
-              border: "1px solid #94A3B8",
-              color: "#475569",
+              background: theme.borderLight,
+              border: `1px solid ${theme.border}`,
+              color: theme.textSecondary,
               borderRadius: 20,
               padding: "2px 8px",
               fontSize: 10,
