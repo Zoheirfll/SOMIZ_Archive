@@ -122,18 +122,21 @@ export const darkTheme = {
   cardRadius: 20,
   cardHover: "#212D45",
 
-  // Couleurs par niveau + dégradés (gradients déjà sombres — inchangés,
-  // les couleurs "plates" sont éclaircies pour rester lisibles en texte/icône)
+  // Couleurs par niveau + dégradés — l'extrémité claire des dégradés du
+  // mode clair (#15803d/#2563eb/#7c3aed) ne laisse que 4.5-4.7:1 de
+  // contraste au texte blanc (limite AA), sans marge pour un futur libellé
+  // fin dans ce coin. Assombrie ici (≥8:1) tout en restant visuellement
+  // distincte du palier central pour garder la profondeur du dégradé.
   directionColor:   "#4ade80",
-  directionGrad:    "linear-gradient(135deg, #052e16 0%, #166534 60%, #15803d 100%)",
+  directionGrad:    "linear-gradient(135deg, #052e16 0%, #166534 60%, #14532d 100%)",
   directionAccent:  "#0D2818",
 
   departementColor:  "#60a5fa",
-  departementGrad:   "linear-gradient(135deg, #1e1b4b 0%, #1e40af 60%, #2563eb 100%)",
+  departementGrad:   "linear-gradient(135deg, #1e1b4b 0%, #1e40af 60%, #1e3a8a 100%)",
   departementAccent: "#101A33",
 
   serviceColor:  "#a78bfa",
-  serviceGrad:   "linear-gradient(135deg, #2e1065 0%, #6d28d9 60%, #7c3aed 100%)",
+  serviceGrad:   "linear-gradient(135deg, #2e1065 0%, #6d28d9 60%, #5b21b6 100%)",
   serviceAccent: "#1A1130",
 
   // Badges
