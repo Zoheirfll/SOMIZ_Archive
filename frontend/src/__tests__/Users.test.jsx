@@ -4,12 +4,13 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
-  __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },
+  __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), put: jest.fn() },
 }));
 jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 jest.mock("../context/AuthContext", () => ({
@@ -18,6 +19,8 @@ jest.mock("../context/AuthContext", () => ({
 
 import api from "../services/api";
 import Users from "../pages/Users";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const makeUser = (id, username = "user1", role = "CONSULTANT", is_active = true) => ({
   id,
@@ -31,8 +34,11 @@ const makeUser = (id, username = "user1", role = "CONSULTANT", is_active = true)
 
 const renderPage = () =>
   render(
-    <MemoryRouter>
-      <Users />
+    <MemoryRouter initialEntries={["/users"]}>
+      <Routes>
+        <Route path="/users" element={<Users />} />
+        <Route path="/users/:id/perimetre" element={<div>PAGE PERIMETRE</div>} />
+      </Routes>
     </MemoryRouter>
   );
 
@@ -234,6 +240,18 @@ describe("Users — toggle actif/désactivé", () => {
         { is_active: false }
       );
     });
+  });
+});
+
+describe("Users — bouton Périmètre", () => {
+  test("cliquer sur Périmètre navigue vers /users/:id/perimetre", async () => {
+    api.get.mockResolvedValue({
+      data: { results: [makeUser("u1", "cons1", "CONSULTANT", true)] },
+    });
+    renderPage();
+    const perimetreBtn = await screen.findByRole("button", { name: "Périmètre" });
+    fireEvent.click(perimetreBtn);
+    expect(await screen.findByText("PAGE PERIMETRE")).toBeInTheDocument();
   });
 });
 

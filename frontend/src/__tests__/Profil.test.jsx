@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -24,6 +25,8 @@ jest.mock("react-router-dom", () => ({
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Profil from "../pages/Profil";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const adminUser = {
   id: "1",

@@ -3,6 +3,7 @@ from django.urls import path
 from employees.views import (
     EmployeeListCreateView,
     EmployeeDetailView,
+    EmployeeAdjacentView,
     EmployeePhotoView,
     EmployeeChampsPersonnalisesView,
     DocumentListUploadView,
@@ -20,6 +21,7 @@ from employees.views import (
     HistoriqueDetailView,
 )
 from employees.import_views import EmployeeImportView, EmployeeImportTemplateView
+from employees.export_views import EmployeeExportView, EmployeeExportAllView
 from employees.grh_integration import GRHEmployeeSyncView
 
 urlpatterns = [
@@ -30,12 +32,15 @@ urlpatterns = [
     path('employees/import/', EmployeeImportView.as_view(), name='employee-import'),
     path('employees/import/template/', EmployeeImportTemplateView.as_view(), name='employee-import-template'),
     path('employees/bulk-delete/', EmployeeBulkDeleteView.as_view(), name='employee-bulk-delete'),
+    path('employees/export/', EmployeeExportAllView.as_view(), name='employee-export-all'),
     # <str:pk> accepte l'UUID brut (anciens liens) ET le matricule, utilisé
     # comme URL lisible côté frontend (voir EmployeeDetailView.get_object) —
     # volontairement pas de nom dans l'URL (donnée personnelle, RGPD).
     path('employees/<str:pk>/', EmployeeDetailView.as_view(), name='employee-detail'),
+    path('employees/<str:pk>/adjacent/', EmployeeAdjacentView.as_view(), name='employee-adjacent'),
     path('employees/<str:pk>/photo/', EmployeePhotoView.as_view(), name='employee-photo'),
     path('employees/<str:pk>/champs/', EmployeeChampsPersonnalisesView.as_view(), name='employee-champs'),
+    path('employees/<str:pk>/export/', EmployeeExportView.as_view(), name='employee-export'),
 
     # Documents (sous-ressource d'un employé)
     path('employees/<str:emp_id>/documents/', DocumentListUploadView.as_view(), name='doc-list-upload'),

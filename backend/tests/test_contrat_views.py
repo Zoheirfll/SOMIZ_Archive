@@ -50,6 +50,9 @@ class TestContratListCreateView:
         assert resp.data[0]["numero_contrat"] == "CTR-2024-001"
 
     def test_consultant_can_list(self, consultant_user, employee, contrat):
+        # Depuis le 2026-09-01, un CONSULTANT sans périmètre n'a plus accès
+        # par défaut — ce test porte sur la lecture, pas le scoping.
+        consultant_user.scope_directions.set([employee.direction])
         client = auth_client(consultant_user)
         resp = client.get(contrats_url(employee.pk))
         assert resp.status_code == 200
@@ -107,6 +110,7 @@ class TestContratDetailView:
         assert "documents" in resp.data
 
     def test_consultant_can_view(self, consultant_user, contrat):
+        consultant_user.scope_directions.set([contrat.employee.direction])
         client = auth_client(consultant_user)
         resp = client.get(contrat_detail_url(contrat.pk))
         assert resp.status_code == 200
@@ -170,6 +174,7 @@ class TestContratDocumentListView:
         assert len(resp.data) == 1
 
     def test_consultant_can_list_docs(self, consultant_user, contrat):
+        consultant_user.scope_directions.set([contrat.employee.direction])
         client = auth_client(consultant_user)
         resp = client.get(contrat_docs_url(contrat.pk))
         assert resp.status_code == 200

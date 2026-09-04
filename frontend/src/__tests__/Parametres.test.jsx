@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -35,6 +36,8 @@ jest.mock("../context/KeyboardShortcutsContext", () => ({
 
 import api from "../services/api";
 import Parametres from "../pages/Parametres";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const makeItem = (id, nom, code = "") => ({ id, nom, code, is_active: true });
 
@@ -280,6 +283,54 @@ describe("Parametres — suppression", () => {
     await waitFor(() => {
       expect(screen.getByText("Impossible de supprimer : cet élément est utilisé.")).toBeInTheDocument();
     });
+  });
+});
+
+describe("Parametres — champs personnalisés — catégorie", () => {
+  test("affiche et permet de modifier la catégorie d'un champ système", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/ref/champs-personnalises/") {
+        return Promise.resolve({
+          data: [
+            { id: "uuid-matricule", nom: "Matricule", code: "matricule", type_champ: "texte", ordre: 0, is_active: true, is_systeme: true, categorie: "ADMINISTRATIF" },
+          ],
+        });
+      }
+      return Promise.resolve(emptyResponse);
+    });
+    api.patch.mockResolvedValue({ data: {} });
+
+    renderPage();
+    fireEvent.click(await screen.findByText("Champs personnalisés"));
+
+    const select = await screen.findByDisplayValue("Administratif");
+    fireEvent.change(select, { target: { value: "PERSONNEL" } });
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith(
+        "/ref/champs-personnalises/uuid-matricule/",
+        { categorie: "PERSONNEL" }
+      );
+    });
+  });
+
+  test("ne duplique pas les champs système (une seule provenance : le backend)", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/ref/champs-personnalises/") {
+        return Promise.resolve({
+          data: [
+            { id: "uuid-matricule", nom: "Matricule", code: "matricule", type_champ: "texte", ordre: 0, is_active: true, is_systeme: true, categorie: "ADMINISTRATIF" },
+          ],
+        });
+      }
+      return Promise.resolve(emptyResponse);
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByText("Champs personnalisés"));
+
+    await screen.findAllByText("Matricule");
+    expect(screen.getAllByText("Matricule")).toHaveLength(1);
   });
 });
 

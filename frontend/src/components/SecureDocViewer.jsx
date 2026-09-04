@@ -2,12 +2,13 @@ import { useState, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/esm/Page/AnnotationLayer.css";
 import "react-pdf/dist/esm/Page/TextLayer.css";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { PaperclipIcon } from "./icons";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.js`;
 
 const SecureDocViewer = ({ url, mimeType, fileName }) => {
+  const theme = useTheme();
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.2);

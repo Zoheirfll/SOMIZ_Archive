@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useConfirm } from "./ConfirmDialog";
 import api from "../services/api";
 
@@ -32,6 +32,7 @@ export function buildPageList(files, pageCounts) {
 }
 
 const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }) => {
+  const theme = useTheme();
   const { confirm, ConfirmDialog } = useConfirm();
   const [files, setFiles] = useState([]);
   const [pageCounts, setPageCounts] = useState([]);

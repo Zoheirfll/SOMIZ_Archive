@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import generics, serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -9,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from accounts.permissions import IsAdmin
 from audit.models import AuditLog
-from employees.models import Employee, EmployeeAccessGrant, TypeDocument
+from employees.models import ChampPersonnalise, Employee, EmployeeAccessGrant, TypeDocument
 
 User = get_user_model()
 
@@ -21,6 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
     scope_cellules_nom = serializers.SerializerMethodField()
     scope_sections_nom = serializers.SerializerMethodField()
     scope_types_documents_nom = serializers.SerializerMethodField()
+    scope_champs_personnels_nom = serializers.SerializerMethodField()
     employee_grants_count = serializers.SerializerMethodField()
 
     def get_employee_grants_count(self, obj):
@@ -49,6 +51,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_scope_types_documents_nom(self, obj):
         return list(obj.scope_types_documents.values_list('nom', flat=True))
 
+    def get_scope_champs_personnels_nom(self, obj):
+        return list(obj.scope_champs_personnels.values_list('nom', flat=True))
+
     class Meta:
         model = User
         fields = [
@@ -60,6 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
             'scope_cellules', 'scope_cellules_nom',
             'scope_sections', 'scope_sections_nom',
             'scope_types_documents', 'scope_types_documents_nom',
+            'scope_champs_personnels', 'scope_champs_personnels_nom',
             'employee_grants_count',
         ]
         read_only_fields = ['id', 'last_login']
@@ -69,6 +75,19 @@ class UserSerializer(serializers.ModelSerializer):
         if value == 'SUPERADMIN':
             raise serializers.ValidationError(
                 "Le rôle Super-administrateur ne peut pas être attribué depuis cette interface."
+            )
+        # Seul un SUPERADMIN peut attribuer/conserver le rôle ADMIN — un
+        # ADMIN ordinaire ne doit pas pouvoir se promouvoir ni promouvoir
+        # quelqu'un d'autre à ADMIN (il ne peut créer/gérer que des
+        # CONSULTANT). Un compte déjà ADMIN reste modifiable sur ses autres
+        # champs par un ADMIN sans que ce garde-fou ne bloque (valeur
+        # inchangée).
+        already_admin = self.instance and self.instance.role == 'ADMIN'
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if value == 'ADMIN' and not already_admin and not (user and user.is_superadmin):
+            raise serializers.ValidationError(
+                "Seul un Super-administrateur peut attribuer le rôle Administrateur."
             )
         return value
 
@@ -90,6 +109,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if value == 'SUPERADMIN' and not already_superadmin:
             raise serializers.ValidationError(
                 "Le rôle Super-administrateur ne peut pas être attribué depuis cette interface."
+            )
+        # Seul un SUPERADMIN peut créer un compte ADMIN — un ADMIN ordinaire
+        # ne peut créer que des comptes CONSULTANT.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if value == 'ADMIN' and not (user and user.is_superadmin):
+            raise serializers.ValidationError(
+                "Seul un Super-administrateur peut créer un compte Administrateur."
             )
         return value
 
@@ -120,10 +147,13 @@ class UserListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = User.objects.all().order_by('nom')
-        # Les comptes SUPERADMIN restent invisibles pour un ADMIN
-        # ordinaire — seul un SUPERADMIN peut les voir/gérer.
+        # Un ADMIN ordinaire ne voit ni les autres ADMIN ni les SUPERADMIN
+        # — seulement lui-même et les CONSULTANT qu'il administre. Seul un
+        # SUPERADMIN voit et gère tous les comptes (ADMIN et CONSULTANT).
         if not self.request.user.is_superadmin:
-            qs = qs.exclude(role='SUPERADMIN')
+            qs = qs.exclude(role='SUPERADMIN').exclude(
+                Q(role='ADMIN') & ~Q(pk=self.request.user.pk)
+            )
         return qs
 
     def get_serializer_class(self):
@@ -145,10 +175,14 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         qs = User.objects.all()
         # Un ADMIN ordinaire ne peut ni voir ni modifier/supprimer un
-        # compte SUPERADMIN (404, pas 403 — pour ne même pas révéler son
-        # existence) — même garde-fou que UserListCreateView.
+        # compte SUPERADMIN, ni un autre compte ADMIN (404, pas 403 — pour
+        # ne même pas révéler leur existence) — même garde-fou que
+        # UserListCreateView. Il garde l'accès à SA PROPRE fiche (ex. reset
+        # de son propre mot de passe via ce même endpoint).
         if not self.request.user.is_superadmin:
-            qs = qs.exclude(role='SUPERADMIN')
+            qs = qs.exclude(role='SUPERADMIN').exclude(
+                Q(role='ADMIN') & ~Q(pk=self.request.user.pk)
+            )
         return qs
 
     def perform_update(self, serializer):
@@ -173,6 +207,7 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
                 'scope_services': sorted(str(i) for i in u.scope_services.values_list('id', flat=True)),
                 'scope_cellules': sorted(str(i) for i in u.scope_cellules.values_list('id', flat=True)),
                 'scope_types_documents': sorted(str(i) for i in u.scope_types_documents.values_list('id', flat=True)),
+                'scope_champs_personnels': sorted(str(i) for i in u.scope_champs_personnels.values_list('id', flat=True)),
             }
 
         before = _scope_snapshot(target)
@@ -210,6 +245,11 @@ class EmployeeAccessGrantSerializer(serializers.Serializer):
         queryset=TypeDocument.objects.all(), allow_null=True, required=False
     )
     type_doc_nom = serializers.CharField(source='type_doc.nom', read_only=True, default=None)
+    champ_personnel = serializers.PrimaryKeyRelatedField(
+        queryset=ChampPersonnalise.objects.filter(categorie=ChampPersonnalise.Categorie.PERSONNEL),
+        allow_null=True, required=False,
+    )
+    champ_personnel_nom = serializers.CharField(source='champ_personnel.nom', read_only=True, default=None)
 
     def validate_type_doc(self, value):
         if value is not None and value.is_categorie:
@@ -217,6 +257,13 @@ class EmployeeAccessGrantSerializer(serializers.Serializer):
                 "Impossible d'accorder un accès sur une catégorie — choisissez un type de document précis."
             )
         return value
+
+    def validate(self, attrs):
+        if attrs.get('type_doc') is not None and attrs.get('champ_personnel') is not None:
+            raise serializers.ValidationError(
+                "Un grant ne peut pas cibler à la fois un type de document et un champ personnel."
+            )
+        return attrs
 
 
 class EmployeeGrantsView(APIView):
@@ -233,7 +280,7 @@ class EmployeeGrantsView(APIView):
 
     def get(self, request, pk):
         target = self._target(pk)
-        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc')
+        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc', 'champ_personnel')
         return Response({'grants': EmployeeAccessGrantSerializer(grants, many=True).data})
 
     def put(self, request, pk):
@@ -248,21 +295,30 @@ class EmployeeGrantsView(APIView):
                     user=target,
                     employee=row['employee'],
                     type_doc=row.get('type_doc'),
+                    champ_personnel=row.get('champ_personnel'),
                     granted_by=request.user,
                 )
                 for row in serializer.validated_data
             ]
-            # unique_together (user, employee, type_doc) : dédoublonner les
-            # lignes identiques envoyées par erreur par le frontend plutôt
-            # que de laisser bulk_create lever une IntegrityError.
+            # unique_together (user, employee, type_doc, champ_personnel) :
+            # dédoublonner les lignes identiques envoyées par erreur par le
+            # frontend plutôt que de laisser bulk_create lever une
+            # IntegrityError.
             seen = set()
             deduped = []
             for grant in created:
-                key = (grant.employee_id, grant.type_doc_id)
+                key = (grant.employee_id, grant.type_doc_id, grant.champ_personnel_id)
                 if key not in seen:
                     seen.add(key)
                     deduped.append(grant)
             EmployeeAccessGrant.objects.bulk_create(deduped)
+
+        def _cible(g):
+            if g.type_doc_id:
+                return g.type_doc.nom
+            if g.champ_personnel_id:
+                return f"champ personnel : {g.champ_personnel.nom}"
+            return 'dossier complet'
 
         AuditLog.log(
             request, AuditLog.Action.MODIFY_USER, target=target,
@@ -271,12 +327,12 @@ class EmployeeGrantsView(APIView):
                 'grants': [
                     {
                         'employee': g.employee.matricule,
-                        'type_doc': g.type_doc.nom if g.type_doc_id else 'dossier complet',
+                        'type_doc': _cible(g),
                     }
                     for g in deduped
                 ],
             },
         )
 
-        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc')
+        grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc', 'champ_personnel')
         return Response({'grants': EmployeeAccessGrantSerializer(grants, many=True).data})

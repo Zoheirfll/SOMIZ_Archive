@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import SecureDocViewer from "../components/SecureDocViewer";
 import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, ClipboardIcon, CheckIcon, TagIcon } from "../components/icons";
@@ -15,11 +15,11 @@ import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
 import { employeeSlug } from "../utils/employeeSlug";
 
-const STATUT_COLORS = {
+const getStatutColors = (theme) => ({
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
   archive:    { bg: "#F5F5F5",       border: "#BDBDBD",           color: "#616161",      label: "Archivé" },
   demobilise: { bg: theme.dangerBg,  border: theme.dangerBorder,  color: theme.danger,   label: "Démobilisé" },
-};
+});
 
 // Nom de fichier sans l'extension — l'utilisateur voit "Acte de naissance",
 // pas "Acte de naissance.png" (le type/mime reste géré côté serveur).
@@ -72,6 +72,8 @@ const groupDocsByVersion = (docs) => {
 };
 
 const ContratDetail = () => {
+  const theme = useTheme();
+  const STATUT_COLORS = getStatutColors(theme);
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();

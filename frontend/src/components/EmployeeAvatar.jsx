@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 
 const EmployeeAvatar = ({ employee, size = 56, fontSize = 20, light = false, shape = "circle" }) => {
+  const theme = useTheme();
   const [photoUrl, setPhotoUrl] = useState(null);
 
   useEffect(() => {

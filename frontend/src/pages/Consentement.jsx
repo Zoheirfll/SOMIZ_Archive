@@ -4,10 +4,11 @@ import api from "../services/api";
 import { logout } from "../services/auth";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import useIsMobile from "../hooks/useIsMobile";
 
 const Consentement = () => {
+  const theme = useTheme();
   const [checked, setChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

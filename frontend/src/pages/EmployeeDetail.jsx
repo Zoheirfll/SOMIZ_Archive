@@ -2,48 +2,20 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
-import SecureDocViewer from "../components/SecureDocViewer";
 import EmployeeAvatar from "../components/EmployeeAvatar";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
-import ScanImportModal from "../components/ScanImportModal";
-import { TrashIcon, PencilIcon, PaperclipIcon, FileTextIcon, ImageIcon, Spinner, TagIcon } from "../components/icons";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import InfoNotice from "../components/InfoNotice";
+import CarriereTab from "../components/employeeDetail/CarriereTab";
+import ContratsTab from "../components/employeeDetail/ContratsTab";
+import DossierTab from "../components/employeeDetail/DossierTab";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 
-// Nom de fichier sans l'extension — l'utilisateur voit "Acte de naissance",
-// pas "Acte de naissance.png" (le type/mime reste géré côté serveur).
-const stripExt = (name) => {
-  if (!name) return name;
-  const dotIndex = name.lastIndexOf(".");
-  return dotIndex > 0 ? name.slice(0, dotIndex) : name;
-};
-
-// file_size_kb vient du backend en Ko — affiché en Mo pour rester lisible
-// sur des documents scannés qui font souvent plusieurs Mo.
-const formatSizeMo = (kb) => {
-  if (kb === null || kb === undefined) return "";
-  return `${(kb / 1024).toFixed(2)} Mo`;
-};
-
-// Date + heure d'upload d'un fichier (ex. "27/08/2026 13:30").
-const formatDateTime = (isoString) => {
-  if (!isoString) return "";
-  const d = new Date(isoString);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
 // que l'historique est conservé (2026-08-30), plusieurs versions actives
@@ -68,6 +40,7 @@ const groupDocsByVersion = (docs) => {
 };
 
 const EmployeeDetail = () => {
+  const theme = useTheme();
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -77,6 +50,7 @@ const EmployeeDetail = () => {
   const isMobile = useIsMobile();
 
   const [employee, setEmployee] = useState(null);
+  const [adjacent, setAdjacent] = useState({ prev: null, next: null });
   const [contrats, setContrats] = useState([]);
   const [selectedContratId, setSelectedContratId] = useState(null);
   const [activeTab, setActiveTab] = useState(
@@ -133,7 +107,20 @@ const EmployeeDetail = () => {
     fetchHistorique();
     fetchAxeReferentiels();
     fetchSystemFieldOrder();
+    fetchAdjacent();
   }, [id]);
+
+  // Navigation Précédent/Suivant triée par N° Contrat — permet de parcourir
+  // les employés depuis la fiche sans repasser par la liste (respecte le
+  // périmètre de l'utilisateur côté serveur).
+  const fetchAdjacent = async () => {
+    try {
+      const r = await api.get(`/employees/${id}/adjacent/`);
+      setAdjacent({ prev: r.data.prev || null, next: r.data.next || null });
+    } catch {
+      setAdjacent({ prev: null, next: null });
+    }
+  };
 
   // Ordre des champs système (Matricule, Fonction...) tel que réglé dans
   // Paramètres > Champs personnalisés (flèches ↑/↓, mélangé avec les
@@ -319,6 +306,23 @@ const EmployeeDetail = () => {
     }
   };
 
+  const handleExportEmployee = async () => {
+    try {
+      const response = await api.get(`/employees/${id}/export/`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `employe_${employee.matricule}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: "error", text: "Impossible d'exporter cet employé." });
+    }
+  };
+
   const loadFile = async (file) => {
     setSelectedFile(file);
     setDocLoading(true);
@@ -415,52 +419,6 @@ const EmployeeDetail = () => {
     });
     return { orderMap, headerBefore, groupEnd };
   };
-
-  // Chaque dossier/sous-dossier est teinté avec la couleur configurée sur
-  // son TypeDocument (voir couleur/TYPE_DOCUMENT_DEFAULT_PALETTE côté
-  // backend) — fond + bordures dérivés de cette couleur, pas juste une
-  // pastille, pour que le "dossier" entier se lise avec sa couleur.
-  const hexToRgba = (hex, alpha) => {
-    if (!hex) return null;
-    const clean = hex.replace("#", "");
-    const r = parseInt(clean.substring(0, 2), 16);
-    const g = parseInt(clean.substring(2, 4), 16);
-    const b = parseInt(clean.substring(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  };
-
-  const FALLBACK_FOLDER_COLOR = theme.warning;
-
-  const folderHeaderStyle = (couleur) => {
-    const c = couleur || FALLBACK_FOLDER_COLOR;
-    return {
-      marginTop: 8,
-      padding: "7px 16px",
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      background: hexToRgba(c, 0.12),
-      border: `1px solid ${hexToRgba(c, 0.35)}`,
-      borderBottom: "none",
-      borderRadius: "8px 8px 0 0",
-      color: c,
-      fontSize: 11,
-      fontWeight: 700,
-      textTransform: "uppercase",
-      letterSpacing: "0.04em",
-    };
-  };
-
-  const folderRowExtraStyle = (couleur) => {
-    const c = couleur || FALLBACK_FOLDER_COLOR;
-    return {
-      background: hexToRgba(c, 0.05),
-      borderRight: `1px solid ${hexToRgba(c, 0.35)}`,
-    };
-  };
-
-  const folderRowBorder = (couleur) => `1px solid ${hexToRgba(couleur || FALLBACK_FOLDER_COLOR, 0.35)}`;
-
   // Upload multiple fichiers
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -617,7 +575,7 @@ const EmployeeDetail = () => {
     : null;
 
   const infoFields = [
-    { label: "Matricule", value: employee.matricule, mono: true, sortKey: systemOrdre("matricule") },
+    { label: "Matricule", value: employee.matricule, mono: true, code: "matricule", sortKey: systemOrdre("matricule") },
     {
       label: "N° Contrat",
       value: contrats[0]?.numero_contrat || "—",
@@ -629,6 +587,7 @@ const EmployeeDetail = () => {
       label: "Nom & Prénom",
       value: `${employee.nom} ${employee.prenom}`,
       bold: true,
+      code: "nom",
       sortKey: systemOrdre("nom"),
     },
     { label: "Date de naissance", value: employee.date_naissance || "—", code: "date_naissance", sortKey: systemOrdre("date_naissance") },
@@ -677,6 +636,15 @@ const EmployeeDetail = () => {
       sortKey: c.ordre ?? 0,
     })),
   ].sort((a, b) => a.sortKey - b.sortKey);
+
+  // Un champ absent de champs_categories n'est pas affiché pour l'utilisateur
+  // courant, quelle qu'en soit la raison (périmètre CONSULTANT sur un champ
+  // personnel non autorisé — voir CLAUDE.md "Panneau Informations — colonnes
+  // Personnel/Administratif" — le backend l'a déjà exclu du dict).
+  const champsCategories = employee.champs_categories || {};
+  const visibleInfoFields = infoFields.filter((f) => f.code in champsCategories);
+  const infoFieldsPersonnel = visibleInfoFields.filter((f) => champsCategories[f.code] === "PERSONNEL");
+  const infoFieldsAdministratif = visibleInfoFields.filter((f) => champsCategories[f.code] === "ADMINISTRATIF");
 
   const documentsAffiches = groupDocsByVersion(
     (employee.documents || []).filter(
@@ -770,6 +738,47 @@ const EmployeeDetail = () => {
                   {employee.prenom} {employee.nom}
                 </h1>
                 <InfoNotice text={PAGE_NOTICES.employeeDetail} />
+                <div style={{ display: "flex", gap: 6, marginLeft: 6 }}>
+                  <button
+                    onClick={() => navigate(`/employees/${adjacent.prev.id}`)}
+                    disabled={!adjacent.prev}
+                    title={adjacent.prev ? `${adjacent.prev.prenom} ${adjacent.prev.nom} (${adjacent.prev.matricule})` : "Aucun employé précédent"}
+                    className={adjacent.prev ? "btn-lift" : undefined}
+                    style={{
+                      background: "rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      color: adjacent.prev ? "#fff" : "rgba(255,255,255,0.35)",
+                      borderRadius: 8,
+                      width: 28,
+                      height: 28,
+                      fontSize: 14,
+                      cursor: adjacent.prev ? "pointer" : "default",
+                    }}
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={() => navigate(`/employees/${adjacent.next.id}`)}
+                    disabled={!adjacent.next}
+                    title={adjacent.next ? `${adjacent.next.prenom} ${adjacent.next.nom} (${adjacent.next.matricule})` : "Aucun employé suivant"}
+                    className={adjacent.next ? "btn-lift" : undefined}
+                    style={{
+                      background: "rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      color: adjacent.next ? "#fff" : "rgba(255,255,255,0.35)",
+                      borderRadius: 8,
+                      width: 28,
+                      height: 28,
+                      fontSize: 14,
+                      cursor: adjacent.next ? "pointer" : "default",
+                    }}
+                  >
+                    →
+                  </button>
+                </div>
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 2 }}>
+                Navigation triée par N° Contrat
               </div>
               <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 13, marginTop: 4, display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{employee.matricule}</span>
@@ -794,9 +803,14 @@ const EmployeeDetail = () => {
                 <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{employee.taux_completude}%</span>
               </div>
               {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                <button onClick={() => navigate(`/employees/${id}/modifier`)} className="btn-lift" style={{ marginTop: 10, background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                  Modifier
-                </button>
+                <div style={{ display: "flex", gap: 8, justifyContent: isMobile ? "flex-start" : "flex-end", marginTop: 10 }}>
+                  <button onClick={handleExportEmployee} className="btn-lift" style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    Exporter
+                  </button>
+                  <button onClick={() => navigate(`/employees/${id}/modifier`)} className="btn-lift" style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    Modifier
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -812,85 +826,101 @@ const EmployeeDetail = () => {
         )}
 
         {/* Infos employé */}
-        <div className="anim-slide-up" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, marginBottom: 24, boxShadow: theme.shadowMd }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.border}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <span style={{ color: theme.textSecondary, fontSize: 13, fontWeight: 500 }}>Informations</span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: 20,
-            }}
-          >
-            {infoFields.map((item) => (
-              <div key={item.label}>
-                <div
-                  onClick={champToDoc[item.code] ? () => handleFieldClick(item.code) : undefined}
-                  title={champToDoc[item.code] ? `Voir le document : ${champToDoc[item.code].nom}` : undefined}
-                  className={champToDoc[item.code] ? "hover-lift" : undefined}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    color: champToDoc[item.code] ? theme.primary : theme.textMuted,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    marginBottom: 6,
-                    ...(champToDoc[item.code]
-                      ? {
-                          cursor: "pointer",
-                          background: theme.primaryBg,
-                          border: `1px solid ${theme.primaryBorder}`,
-                          borderRadius: 6,
-                          padding: "3px 7px",
-                        }
-                      : {}),
-                  }}
-                >
-                  {champToDoc[item.code] && <span style={{ fontSize: 11 }}>🔗</span>}
-                  {item.label}
-                </div>
-                {item.badge ? (
-                  <span
-                    style={{
-                      background:
-                        employee.statut === "actif"
-                          ? theme.primaryBg
-                          : theme.dangerBg,
-                      color:
-                        employee.statut === "actif"
-                          ? theme.primary
-                          : theme.danger,
-                      border: `1px solid ${employee.statut === "actif" ? theme.border : theme.dangerBorder}`,
-                      borderRadius: 6,
-                      padding: "3px 10px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {employee.statut}
-                  </span>
-                ) : (
-                  <div
-                    style={{
-                      color: item.mono ? theme.primary : theme.text,
-                      fontFamily: item.mono ? "monospace" : "inherit",
-                      fontWeight: item.bold || item.mono ? 700 : 400,
-                      fontSize: item.mono ? 15 : 13,
-                    }}
-                  >
-                    {item.value}
-                  </div>
-                )}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gap: 24,
+            marginBottom: 24,
+          }}
+        >
+          {[
+            { title: "Informations personnelles", fields: infoFieldsPersonnel },
+            { title: "Informations administratives", fields: infoFieldsAdministratif },
+          ].map(({ title, fields }) => (
+            <div
+              key={title}
+              className="anim-slide-up"
+              style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${theme.border}` }}>
+                <span style={{ color: theme.textSecondary, fontSize: 13, fontWeight: 500 }}>{title}</span>
               </div>
-            ))}
-          </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 20,
+                }}
+              >
+                {fields.map((item) => (
+                  <div key={item.label}>
+                    <div
+                      onClick={champToDoc[item.code] ? () => handleFieldClick(item.code) : undefined}
+                      title={champToDoc[item.code] ? `Voir le document : ${champToDoc[item.code].nom}` : undefined}
+                      className={champToDoc[item.code] ? "hover-lift" : undefined}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        color: champToDoc[item.code] ? theme.primary : theme.textMuted,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 6,
+                        ...(champToDoc[item.code]
+                          ? {
+                              cursor: "pointer",
+                              background: theme.primaryBg,
+                              border: `1px solid ${theme.primaryBorder}`,
+                              borderRadius: 6,
+                              padding: "3px 7px",
+                            }
+                          : {}),
+                      }}
+                    >
+                      {champToDoc[item.code] && <span style={{ fontSize: 11 }}>🔗</span>}
+                      {item.label}
+                    </div>
+                    {item.badge ? (
+                      <span
+                        style={{
+                          background:
+                            employee.statut === "actif"
+                              ? theme.primaryBg
+                              : theme.dangerBg,
+                          color:
+                            employee.statut === "actif"
+                              ? theme.primary
+                              : theme.danger,
+                          border: `1px solid ${employee.statut === "actif" ? theme.border : theme.dangerBorder}`,
+                          borderRadius: 6,
+                          padding: "3px 10px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {employee.statut}
+                      </span>
+                    ) : (
+                      <div
+                        style={{
+                          color: item.mono ? theme.primary : theme.text,
+                          fontFamily: item.mono ? "monospace" : "inherit",
+                          fontWeight: item.bold || item.mono ? 700 : 400,
+                          fontSize: item.mono ? 15 : 13,
+                        }}
+                      >
+                        {item.value}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* Voie hiérarchique */}
@@ -955,1671 +985,90 @@ const EmployeeDetail = () => {
         </div>
 
         {/* Onglet Contrats */}
-        {activeTab === "contrats" && (
-          <div
-            className="tab-content"
-            style={{
-              background: theme.surface,
-              border: `1px solid ${theme.border}`,
-              borderRadius: 12,
-              overflow: "hidden",
-              boxShadow: theme.shadow,
-            }}
-          >
-            <div
-              style={{
-                padding: "14px 20px",
-                borderBottom: `1px solid ${theme.border}`,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                background: theme.primaryBg,
-              }}
-            >
-              <span
-                style={{
-                  color: theme.primary,
-                  fontWeight: 700,
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                Contrats de {employee.prenom} {employee.nom}
-              </span>
-              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                <button
-                  onClick={() => {
-                    if (!showNewContratForm) {
-                      setNewContrat({
-                        numero_contrat: "",
-                        type_contrat: "",
-                        date_debut: employee?.date_embauche || "",
-                        date_fin: "",
-                        statut: "actif",
-                        notes: "",
-                      });
-                    }
-                    setShowNewContratForm(!showNewContratForm);
-                  }}
-                  style={{
-                    background: theme.accent,
-                    border: "none",
-                    color: theme.text,
-                    borderRadius: 6,
-                    padding: "6px 14px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  + Nouveau contrat
-                </button>
-              )}
-            </div>
+        <ContratsTab
+          activeTab={activeTab}
+          employee={employee}
+          contrats={contrats}
+          navigate={navigate}
+          typesContrat={typesContrat}
+          showNewContratForm={showNewContratForm}
+          setShowNewContratForm={setShowNewContratForm}
+          newContrat={newContrat}
+          setNewContrat={setNewContrat}
+          savingContrat={savingContrat}
+          handleCreateContrat={handleCreateContrat}
+          user={user}
+          isMobile={isMobile}
+        />
 
-            {/* Formulaire nouveau contrat */}
-            {showNewContratForm && (
-              <form
-                onSubmit={handleCreateContrat}
-                style={{
-                  padding: 20,
-                  borderBottom: `1px solid ${theme.border}`,
-                  background: "#FAFFFE",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr",
-                    gap: 12,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div>
-                    <label
-                      style={{
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        display: "block",
-                        marginBottom: 4,
-                      }}
-                    >
-                      N° Contrat *
-                    </label>
-                    <input
-                      required
-                      value={newContrat.numero_contrat}
-                      onChange={(e) =>
-                        setNewContrat({
-                          ...newContrat,
-                          numero_contrat: e.target.value,
-                        })
-                      }
-                      placeholder=""
-                      className="input-focus"
-                      style={{
-                        width: "100%",
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 6,
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        color: theme.text,
-                        background: theme.surface,
-                        outline: "none",
-                        boxSizing: "border-box",
-                        fontFamily: "monospace",
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        display: "block",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Type de contrat
-                    </label>
-                    <select
-                      value={newContrat.type_contrat}
-                      onChange={(e) =>
-                        setNewContrat({
-                          ...newContrat,
-                          type_contrat: e.target.value,
-                        })
-                      }
-                      className="input-focus"
-                      style={{
-                        width: "100%",
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 6,
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        color: theme.text,
-                        background: theme.surface,
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      <option value="">— Sélectionner —</option>
-                      {typesContrat.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.nom}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        display: "block",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Statut
-                    </label>
-                    <select
-                      value={newContrat.statut}
-                      onChange={(e) =>
-                        setNewContrat({ ...newContrat, statut: e.target.value })
-                      }
-                      className="input-focus"
-                      style={{
-                        width: "100%",
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 6,
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        color: theme.text,
-                        background: theme.surface,
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      <option value="actif">Actif</option>
-                      <option value="archive">Archivé</option>
-                      <option value="demobilise">Démobilisé</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        display: "block",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Date début
-                    </label>
-                    <input
-                      type="date"
-                      value={newContrat.date_debut}
-                      onChange={(e) =>
-                        setNewContrat({
-                          ...newContrat,
-                          date_debut: e.target.value,
-                        })
-                      }
-                      className="input-focus"
-                      style={{
-                        width: "100%",
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 6,
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        color: theme.text,
-                        background: theme.surface,
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        display: "block",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Date fin
-                    </label>
-                    <input
-                      type="date"
-                      value={newContrat.date_fin}
-                      onChange={(e) =>
-                        setNewContrat({
-                          ...newContrat,
-                          date_fin: e.target.value,
-                        })
-                      }
-                      className="input-focus"
-                      style={{
-                        width: "100%",
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 6,
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        color: theme.text,
-                        background: theme.surface,
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label
-                    style={{
-                      color: theme.textMuted,
-                      fontSize: 11,
-                      textTransform: "uppercase",
-                      display: "block",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Notes
-                  </label>
-                  <textarea
-                    value={newContrat.notes}
-                    onChange={(e) =>
-                      setNewContrat({ ...newContrat, notes: e.target.value })
-                    }
-                    rows={2}
-                    className="input-focus"
-                    style={{
-                      width: "100%",
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: 6,
-                      padding: "8px 10px",
-                      fontSize: 13,
-                      color: theme.text,
-                      background: theme.surface,
-                      outline: "none",
-                      boxSizing: "border-box",
-                      resize: "vertical",
-                    }}
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="submit"
-                    disabled={savingContrat}
-                    style={{
-                      background: savingContrat
-                        ? `${theme.primary}88`
-                        : theme.primary,
-                      border: "none",
-                      color: "#fff",
-                      borderRadius: 6,
-                      padding: "8px 20px",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      cursor: savingContrat ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {savingContrat ? "Création..." : "Créer le contrat"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowNewContratForm(false)}
-                    style={{
-                      background: "transparent",
-                      border: `1px solid ${theme.border}`,
-                      color: theme.textSecondary,
-                      borderRadius: 6,
-                      padding: "8px 16px",
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Annuler
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Liste des contrats */}
-            {contrats.length === 0 ? (
-              <div
-                style={{
-                  padding: 40,
-                  textAlign: "center",
-                  color: theme.textMuted,
-                  fontSize: 13,
-                }}
-              >
-                Aucun contrat enregistré
-              </div>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ background: theme.bg }}>
-                    {[
-                      "N° Contrat",
-                      "Type",
-                      "Date début",
-                      "Date fin",
-                      "Statut",
-                      "Documents",
-                      "",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        style={{
-                          padding: "10px 16px",
-                          textAlign: "left",
-                          fontSize: 11,
-                          color: theme.textMuted,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.05em",
-                          fontWeight: 600,
-                          borderBottom: `1px solid ${theme.border}`,
-                        }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {contrats.map((c) => {
-                    const statutColors = {
-                      actif:      { bg: theme.primaryBg, border: theme.border, color: theme.primary,  label: "Actif" },
-                      archive:    { bg: "#F5F5F5",       border: "#BDBDBD",           color: "#616161",      label: "Archivé" },
-                      demobilise: { bg: theme.dangerBg,  border: theme.dangerBorder,  color: theme.danger,   label: "Démobilisé" },
-                    };
-                    const sc = statutColors[c.statut] || statutColors.actif;
-                    return (
-                      <tr
-                        key={c.id}
-                        onClick={() => navigate(`/contrats/${c.id}`)}
-                        style={{
-                          cursor: "pointer",
-                          borderBottom: `1px solid ${theme.border}`,
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.background = theme.primaryBg)
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.background = "transparent")
-                        }
-                      >
-                        <td
-                          style={{
-                            padding: "12px 16px",
-                            fontFamily: "monospace",
-                            fontSize: 13,
-                            color: theme.primary,
-                            fontWeight: 700,
-                          }}
-                        >
-                          {c.numero_contrat}
-                        </td>
-                        <td
-                          style={{
-                            padding: "12px 16px",
-                            fontSize: 13,
-                            color: theme.text,
-                          }}
-                        >
-                          {c.type_contrat_nom || "—"}
-                        </td>
-                        <td
-                          style={{
-                            padding: "12px 16px",
-                            fontSize: 13,
-                            color: theme.text,
-                          }}
-                        >
-                          {c.date_debut || "—"}
-                        </td>
-                        <td
-                          style={{
-                            padding: "12px 16px",
-                            fontSize: 13,
-                            color: theme.text,
-                          }}
-                        >
-                          {c.date_fin || "—"}
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <span
-                            style={{
-                              background: sc.bg,
-                              border: `1px solid ${sc.border}`,
-                              color: sc.color,
-                              borderRadius: 5,
-                              padding: "3px 10px",
-                              fontSize: 11,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {sc.label}
-                          </span>
-                        </td>
-                        <td
-                          style={{
-                            padding: "12px 16px",
-                            fontSize: 13,
-                            color: theme.textSecondary,
-                          }}
-                        >
-                          {c.nb_documents} doc(s)
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <span style={{ color: theme.primary, fontSize: 12 }}>
-                            Voir →
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-
-        {/* Carrière */}
-        {activeTab === "carriere" && (
-          <div
-            className="tab-content"
-            style={{
-              background: theme.surface,
-              border: `1px solid ${theme.border}`,
-              borderRadius: 12,
-              padding: 24,
-            }}
-          >
-            {[
-              {
-                axe: "fonctions",
-                title: "Fonction",
-                data: historiqueFonctions,
-                labelKey: "poste_nom",
-                currentValue: employee.poste_nom,
-              },
-              {
-                axe: "categories",
-                title: "Catégorie",
-                data: historiqueCategories,
-                labelKey: "categorie_nom",
-                currentValue: employee.categorie_nom,
-              },
-              {
-                axe: "echelles",
-                title: "Échelle",
-                data: historiqueEchelles,
-                labelKey: "echelle_nom",
-                currentValue: null,
-              },
-            ].map((axe) => (
-              <div key={axe.title} style={{ marginBottom: 28 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    color: theme.textSecondary,
-                    marginBottom: 10,
-                    borderLeft: `4px solid ${theme.primary}`,
-                    paddingLeft: 8,
-                  }}
-                >
-                  {axe.title}
-                </div>
-                {(() => {
-                  const hasOpenPeriod = axe.data.some((p) => !p.date_fin);
-                  if (hasOpenPeriod || !axe.currentValue) return null;
-                  // Aucune période "en cours" (soit aucun historique du tout,
-                  // soit uniquement des périodes déjà closes) — on affiche
-                  // quand même la valeur actuelle connue de l'employé, avec
-                  // comme date de départ soit la fin de la dernière période
-                  // enregistrée, soit sa date de recrutement s'il n'y a
-                  // aucun historique.
-                  const dernierDateFin = axe.data.length
-                    ? [...axe.data].sort(
-                        (a, b) => new Date(b.date_fin || 0) - new Date(a.date_fin || 0),
-                      )[0].date_fin
-                    : null;
-                  return (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "10px 14px",
-                        borderRadius: 8,
-                        marginBottom: 6,
-                        background: theme.primaryBg,
-                        border: `1px solid ${theme.primaryBorder}`,
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>{axe.currentValue}</span>
-                      <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                        {dernierDateFin || employee.date_embauche || "?"} → en cours
-                      </span>
-                    </div>
-                  );
-                })()}
-                {axe.data.length === 0 && !axe.currentValue ? (
-                  <div style={{ color: theme.textSecondary, fontSize: 13 }}>
-                    Aucun historique renseigné.
-                  </div>
-                ) : (
-                  [...axe.data]
-                    .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
-                    .map((periode) => (
-                      <div
-                        key={periode.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          padding: "10px 14px",
-                          borderRadius: 8,
-                          marginBottom: 6,
-                          background: periode.date_fin ? theme.surface : theme.primaryBg,
-                          border: `1px solid ${periode.date_fin ? theme.border : theme.primaryBorder}`,
-                        }}
-                      >
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>
-                          {periode[axe.labelKey]}
-                        </span>
-                        <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                          {periode.date_debut} → {periode.date_fin || "en cours"}
-                        </span>
-                      </div>
-                    ))
-                )}
-              </div>
-            ))}
-
-            {user?.role === "ADMIN" && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-                {[
-                  { axe: "fonctions", label: "Gérer l'historique Fonction" },
-                  { axe: "categories", label: "Gérer l'historique Catégorie" },
-                  { axe: "echelles", label: "Gérer l'historique Échelle" },
-                ].map((a) => (
-                  <button
-                    key={a.axe}
-                    onClick={() => setManagingAxe(a.axe)}
-                    className="btn-lift"
-                    style={{
-                      background: theme.surface,
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: 8,
-                      padding: "8px 14px",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  color: theme.textSecondary,
-                  marginBottom: 10,
-                  borderLeft: `4px solid ${theme.primary}`,
-                  paddingLeft: 8,
-                }}
-              >
-                Contrats
-              </div>
-              {contrats.length === 0 ? (
-                <div style={{ color: theme.textSecondary, fontSize: 13 }}>
-                  Aucun contrat.
-                </div>
-              ) : (
-                [...contrats]
-                  .sort((a, b) => new Date(b.date_debut) - new Date(a.date_debut))
-                  .map((c) => (
-                    <div
-                      key={c.id}
-                      onClick={() => navigate(`/contrats/${c.id}`)}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "10px 14px",
-                        borderRadius: 8,
-                        marginBottom: 6,
-                        background: theme.surface,
-                        border: `1px solid ${theme.border}`,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>
-                        {c.numero_contrat} — {c.type_contrat_nom || "—"}
-                      </span>
-                      <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                        {c.date_debut || "—"} → {c.date_fin || "en cours"}
-                      </span>
-                    </div>
-                  ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {managingAxe && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.4)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-            }}
-            onClick={() => setManagingAxe(null)}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                background: theme.surface,
-                borderRadius: 12,
-                padding: 24,
-                width: 480,
-                maxHeight: "80vh",
-                overflowY: "auto",
-              }}
-            >
-              <h3 style={{ margin: "0 0 16px" }}>
-                Historique —{" "}
-                {managingAxe === "fonctions"
-                  ? "Fonction"
-                  : managingAxe === "categories"
-                  ? "Catégorie"
-                  : "Échelle"}
-              </h3>
-
-              {(managingAxe === "fonctions"
-                ? historiqueFonctions
-                : managingAxe === "categories"
-                ? historiqueCategories
-                : historiqueEchelles
-              ).map((p) => (
-                <div
-                  key={p.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "8px 0",
-                    borderBottom: `1px solid ${theme.border}`,
-                  }}
-                >
-                  <span style={{ fontSize: 13 }}>
-                    {p.poste_nom || p.categorie_nom || p.echelle_nom} ({p.date_debut} →{" "}
-                    {p.date_fin || "en cours"})
-                  </span>
-                  <button
-                    onClick={async () => {
-                      if (!(await confirm("Supprimer cette période ?"))) return;
-                      await api.delete(`/historique/${managingAxe}/${p.id}/`);
-                      fetchHistorique(true);
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: theme.danger,
-                      cursor: "pointer",
-                      fontSize: 12,
-                    }}
-                  >
-                    Supprimer
-                  </button>
-                </div>
-              ))}
-
-              <div
-                style={{
-                  marginTop: 16,
-                  paddingTop: 16,
-                  borderTop: `1px solid ${theme.border}`,
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-                  Ajouter une période
-                </div>
-                <select
-                  aria-label="Valeur"
-                  value={newPeriode.valeur}
-                  onChange={(e) =>
-                    setNewPeriode({ ...newPeriode, valeur: e.target.value })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    marginBottom: 8,
-                    borderRadius: 6,
-                    border: `1px solid ${theme.border}`,
-                  }}
-                >
-                  <option value="">-- Sélectionner --</option>
-                  {(managingAxe === "fonctions"
-                    ? postes
-                    : managingAxe === "categories"
-                    ? categories
-                    : echelles
-                  ).map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.nom}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  aria-label="Date début"
-                  type="date"
-                  value={newPeriode.date_debut}
-                  onChange={(e) =>
-                    setNewPeriode({ ...newPeriode, date_debut: e.target.value })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    marginBottom: 8,
-                    borderRadius: 6,
-                    border: `1px solid ${theme.border}`,
-                  }}
-                />
-                <input
-                  aria-label="Date fin"
-                  type="date"
-                  value={newPeriode.date_fin}
-                  onChange={(e) =>
-                    setNewPeriode({ ...newPeriode, date_fin: e.target.value })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    marginBottom: 12,
-                    borderRadius: 6,
-                    border: `1px solid ${theme.border}`,
-                  }}
-                />
-                <button
-                  onClick={async () => {
-                    const fieldName =
-                      managingAxe === "fonctions"
-                        ? "poste"
-                        : managingAxe === "categories"
-                        ? "categorie"
-                        : "echelle";
-                    await api.post(`/employees/${id}/historique/${managingAxe}/`, {
-                      [fieldName]: newPeriode.valeur,
-                      date_debut: newPeriode.date_debut,
-                      date_fin: newPeriode.date_fin || null,
-                    });
-                    setNewPeriode({ valeur: "", date_debut: "", date_fin: "" });
-                    fetchHistorique(true);
-                  }}
-                  disabled={!newPeriode.valeur || !newPeriode.date_debut}
-                  className="btn-lift"
-                  style={{
-                    background: theme.primary,
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 8,
-                    padding: "10px 16px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    width: "100%",
-                  }}
-                >
-                  Ajouter une période
-                </button>
-              </div>
-
-              <button
-                onClick={() => setManagingAxe(null)}
-                style={{
-                  marginTop: 16,
-                  background: "none",
-                  border: "none",
-                  color: theme.textSecondary,
-                  cursor: "pointer",
-                  fontSize: 12,
-                }}
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
-        )}
+        <CarriereTab
+          activeTab={activeTab}
+          employee={employee}
+          user={user}
+          navigate={navigate}
+          id={id}
+          confirm={confirm}
+          contrats={contrats}
+          historiqueFonctions={historiqueFonctions}
+          historiqueCategories={historiqueCategories}
+          historiqueEchelles={historiqueEchelles}
+          managingAxe={managingAxe}
+          setManagingAxe={setManagingAxe}
+          newPeriode={newPeriode}
+          setNewPeriode={setNewPeriode}
+          postes={postes}
+          categories={categories}
+          echelles={echelles}
+          fetchHistorique={fetchHistorique}
+        />
 
         {/* Documents + Viewer */}
-        {activeTab === "dossier" && (
-          <div
-            ref={dossierSectionRef}
-            className="tab-content"
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "340px 1fr",
-              gap: 20,
-            }}
-          >
-            {/* Sidebar */}
-            <div
-              style={{
-                background: theme.surface,
-                border: `1px solid ${theme.border}`,
-                borderRadius: 12,
-                overflow: "hidden",
-                boxShadow: theme.shadow,
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <div
-                style={{
-                  order: -2,
-                  padding: "14px 16px",
-                  borderBottom: `1px solid ${theme.border}`,
-                  color: theme.primary,
-                  fontWeight: 700,
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  background: theme.primaryBg,
-                }}
-              >
-                Documents ({documentsAffiches.length})
-              </div>
-
-              {contrats.length > 0 && (
-                <div
-                  style={{
-                    order: -1,
-                    display: "flex",
-                    gap: 6,
-                    flexWrap: "wrap",
-                    padding: "10px 16px",
-                    borderBottom: `1px solid ${theme.border}`,
-                    background: theme.bg,
-                  }}
-                >
-                  {sortContratsByDate(contrats).map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        aria-pressed={selectedContratId === c.id}
-                        onClick={() => setSelectedContratId(c.id)}
-                        style={{
-                          background: selectedContratId === c.id ? theme.primary : theme.surface,
-                          border: `1px solid ${selectedContratId === c.id ? theme.primary : theme.border}`,
-                          color: selectedContratId === c.id ? "#fff" : theme.text,
-                          borderRadius: 6,
-                          padding: "4px 10px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          fontFamily: "monospace",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {c.numero_contrat}
-                      </button>
-                    ))}
-                </div>
-              )}
-
-              {/* Documents présents */}
-              {documentsAffiches.map((doc) => (
-                <div key={doc.id} style={{ order: docOrderMap.get(`p-${doc.id}`) ?? 0 }}>
-                {docHeaderBefore.get(`p-${doc.id}`) && (
-                  <div style={folderHeaderStyle(doc.couleur)}>
-                    📁 {docHeaderBefore.get(`p-${doc.id}`)}
-                  </div>
-                )}
-                <div
-                  style={{
-                    borderBottom: doc.type_document_parent ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
-                    borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : (doc.couleur || "transparent")}`,
-                    ...(doc.type_document_parent ? folderRowExtraStyle(doc.couleur) : {}),
-                    background: selectedDoc?.id === doc.id
-                      ? theme.primaryBg
-                      : hexToRgba(doc.couleur, doc.type_document_parent ? 0.05 : 0.045) || "transparent",
-                    ...(docGroupEnd.has(`p-${doc.id}`)
-                      ? { borderRadius: "0 0 8px 8px", borderBottom: folderRowBorder(doc.couleur), marginBottom: 10 }
-                      : {}),
-                  }}
-                >
-                  {/* En-tête du document */}
-                  <div
-                    onClick={() => handleSelectDoc(doc)}
-                    style={{
-                      padding: "10px 16px",
-                      cursor: "pointer",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span
-                          style={{
-                            color: theme.text,
-                            fontSize: 13,
-                            fontWeight: 600,
-                          }}
-                        >
-                          {typesDocuments[doc.type_document] || doc.type_document}
-                        </span>
-                        {doc.contrat && (() => {
-                          const c = contrats.find((c) => c.id === doc.contrat);
-                          return c ? (
-                            <span style={{
-                              background: theme.primaryBg, border: `1px solid ${theme.border}`,
-                              color: theme.primary, borderRadius: 4, padding: "1px 7px",
-                              fontSize: 10, fontWeight: 700, fontFamily: "monospace",
-                            }}>
-                              {c.numero_contrat}
-                            </span>
-                          ) : null;
-                        })()}
-                      </div>
-                    </div>
-                    {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                      <button
-                        onClick={(e) => handleDeleteDoc(doc, e)}
-                        title="Supprimer ce document"
-                        aria-label="Supprimer ce document"
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          color: theme.danger,
-                          cursor: "pointer",
-                          display: "flex",
-                          padding: "2px 4px",
-                          opacity: 0.5,
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.opacity = 1)
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.opacity = 0.5)
-                        }
-                      >
-                        <TrashIcon />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Fichiers du document — affichés si document sélectionné */}
-                  {selectedDoc?.id === doc.id && doc.fichiers?.length > 0 && (
-                    <div
-                      style={{
-                        borderTop: `1px dashed ${theme.border}`,
-                        background: theme.bg,
-                      }}
-                    >
-                      {doc.fichiers.map((file, index) => (
-                        <div
-                          key={file.id}
-                          onClick={() => loadFile(file)}
-                          style={{
-                            padding: "8px 16px 8px 24px",
-                            cursor: "pointer",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            background:
-                              selectedFile?.id === file.id
-                                ? `${theme.primary}18`
-                                : "transparent",
-                            borderLeft: `3px solid ${selectedFile?.id === file.id ? theme.primaryLight : "transparent"}`,
-                            transition: "all 0.15s",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                            }}
-                          >
-                            <span
-                              style={{ color: theme.textMuted, fontSize: 11, display: "flex" }}
-                            >
-                              {file.mime_type?.includes("pdf") ? <FileTextIcon size={13} /> : <ImageIcon size={13} />}
-                            </span>
-                            <div>
-                              <div
-                                title={file.file_name}
-                                style={{
-                                  color: theme.text,
-                                  fontSize: 12,
-                                  fontWeight:
-                                    selectedFile?.id === file.id ? 600 : 400,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                  maxWidth: 210,
-                                }}
-                              >
-                                {stripExt(file.file_name) || `Page ${index + 1}`}
-                              </div>
-                            </div>
-                          </div>
-                          {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                            <div style={{ display: "flex", gap: 6 }}>
-                            <button
-                              onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
-                              title="Renommer d'après le type de document"
-                              aria-label="Renommer d'après le type de document"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: theme.textSecondary,
-                                cursor: "pointer",
-                                display: "flex",
-                                opacity: 0.5,
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                              onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
-                            >
-                              <TagIcon size={16} />
-                            </button>
-                            <button
-                              onClick={(e) => handleRenameFile(file, e)}
-                              title="Renommer ce fichier"
-                              aria-label="Renommer ce fichier"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: theme.textSecondary,
-                                cursor: "pointer",
-                                display: "flex",
-                                opacity: 0.5,
-                              }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.opacity = 1)
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.opacity = 0.5)
-                              }
-                            >
-                              <PencilIcon size={16} />
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteFile(file, e)}
-                              title="Supprimer ce fichier"
-                              aria-label="Supprimer ce fichier"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: theme.danger,
-                                cursor: "pointer",
-                                display: "flex",
-                                opacity: 0.5,
-                              }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.opacity = 1)
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.opacity = 0.5)
-                              }
-                            >
-                              <TrashIcon size={16} />
-                            </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Historique — versions antérieures conservées (2026-08-30),
-                    repliées par défaut, consultables/supprimables une par une. */}
-                {doc.__history?.length > 0 && (
-                  <div style={{ borderTop: `1px dashed ${theme.border}`, background: theme.bg }}>
-                    <div
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExpandedHistory((prev) => {
-                          const next = new Set(prev);
-                          if (next.has(doc.id)) next.delete(doc.id);
-                          else next.add(doc.id);
-                          return next;
-                        });
-                      }}
-                      style={{
-                        padding: "6px 16px 6px 24px",
-                        cursor: "pointer",
-                        fontSize: 11,
-                        color: theme.textSecondary,
-                        fontWeight: 600,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      🕘 Historique ({doc.__history.length} version{doc.__history.length > 1 ? "s" : ""} antérieure{doc.__history.length > 1 ? "s" : ""}) {expandedHistory.has(doc.id) ? "▲" : "▼"}
-                    </div>
-                    {expandedHistory.has(doc.id) && doc.__history.map((h) => (
-                      <div
-                        key={h.id}
-                        onClick={() => handleSelectDoc(h)}
-                        style={{
-                          padding: "6px 16px 6px 34px",
-                          cursor: "pointer",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          background: selectedDoc?.id === h.id ? theme.primaryBg : "transparent",
-                          borderLeft: `3px solid ${selectedDoc?.id === h.id ? theme.primary : "transparent"}`,
-                        }}
-                      >
-                        <div style={{ fontSize: 11, color: theme.textMuted }}>
-                          v{h.version} · {formatDateTime(h.uploaded_at)}
-                          {h.file_size_kb ? ` · ${formatSizeMo(h.file_size_kb)}` : ""}
-                        </div>
-                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                          <button
-                            onClick={(e) => handleDeleteDoc(h, e)}
-                            title="Supprimer cette version"
-                            aria-label="Supprimer cette version"
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: theme.danger,
-                              cursor: "pointer",
-                              display: "flex",
-                              padding: "2px 4px",
-                              opacity: 0.5,
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
-                          >
-                            <TrashIcon size={13} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                </div>
-              ))}
-
-              {/* Documents manquants */}
-              {(employee.documents_manquants || []).map((doc) => (
-                <div key={doc.code} style={{ order: docOrderMap.get(`m-${doc.code}`) ?? 0 }}>
-                {docHeaderBefore.get(`m-${doc.code}`) && (
-                  <div style={folderHeaderStyle(doc.couleur)}>
-                    📁 {docHeaderBefore.get(`m-${doc.code}`)}
-                  </div>
-                )}
-                <div
-                  ref={(el) => { missingRowRefs.current[doc.code] = el; }}
-                  style={{
-                    padding: "10px 16px",
-                    borderBottom: doc.parent_nom ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
-                    borderLeft: `3px solid ${doc.couleur || "transparent"}`,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    ...(doc.parent_nom ? folderRowExtraStyle(doc.couleur) : {}),
-                    background: highlightedMissingCode === doc.code
-                      ? theme.primaryBg
-                      : (hexToRgba(doc.couleur, doc.parent_nom ? 0.05 : 0.035) || "#FAFAFA"),
-                    transition: "background 0.3s ease",
-                    ...(docGroupEnd.has(`m-${doc.code}`)
-                      ? { borderRadius: "0 0 8px 8px", borderBottom: folderRowBorder(doc.couleur), marginBottom: 10 }
-                      : {}),
-                  }}
-                >
-                  <div>
-                    <div style={{ color: theme.textMuted, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-                      {doc.required && (
-                        <span style={{ color: theme.danger, marginRight: 4 }}>
-                          *
-                        </span>
-                      )}
-                      {doc.label}
-                    </div>
-                    <div
-                      style={{
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        marginTop: 2,
-                        fontStyle: "italic",
-                      }}
-                    >
-                      Non uploadé
-                    </div>
-                  </div>
-                  {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                    <label
-                      title={`Uploader ${doc.label}`}
-                      aria-label={`Uploader ${doc.label}`}
-                      style={{
-                        background:
-                          quickUploadingCode === doc.code
-                            ? `${theme.primary}88`
-                            : theme.primaryBg,
-                        border: `1px solid ${theme.border}`,
-                        color: theme.primary,
-                        borderRadius: 6,
-                        padding: "4px 8px",
-                        display: "flex",
-                        alignItems: "center",
-                        cursor:
-                          quickUploadingCode === doc.code
-                            ? "not-allowed"
-                            : "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {quickUploadingCode === doc.code ? <Spinner size={13} /> : <PaperclipIcon size={13} />}
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png,.tiff"
-                        multiple
-                        style={{ display: "none" }}
-                        disabled={quickUploadingCode === doc.code}
-                        onChange={async (e) => {
-                          const files = Array.from(e.target.files);
-                          if (!files.length) return;
-                          setQuickUploadingCode(doc.code);
-                          const typeDoc = typesDocumentsList.find(
-                            (t) => t.code === doc.code,
-                          );
-                          const formData = new FormData();
-                          formData.append("type_doc", typeDoc?.id || doc.code);
-                          files.forEach((f) => formData.append("files", f));
-                          try {
-                            await api.post(
-                              `/employees/${id}/documents/`,
-                              formData,
-                              {
-                                headers: {
-                                  "Content-Type": "multipart/form-data",
-                                },
-                              },
-                            );
-                            setMessage({
-                              type: "success",
-                              text: `${doc.label} uploadé avec succès.`,
-                            });
-                            fetchEmployee(true);
-                          } catch (err) {
-                            setMessage({
-                              type: "error",
-                              text:
-                                err.response?.data?.files?.[0] ||
-                                "Erreur lors de l'upload.",
-                            });
-                          } finally {
-                            setQuickUploadingCode(null);
-                            e.target.value = "";
-                            setTimeout(() => setMessage(null), 4000);
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
-                </div>
-                </div>
-              ))}
-
-              {/* Upload ADMIN */}
-              {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                <div
-                  style={{
-                    order: 999999,
-                    padding: 16,
-                    borderTop: `2px solid ${theme.border}`,
-                    background: theme.bg,
-                  }}
-                >
-                  <button
-                    onClick={() => setShowScanImport(true)}
-                    className="btn-lift"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                      width: "100%",
-                      background: theme.surface,
-                      color: theme.primary,
-                      border: `1px solid ${theme.primaryBorder}`,
-                      borderRadius: 6,
-                      padding: "8px",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      marginBottom: 12,
-                    }}
-                  >
-                    <PaperclipIcon size={13} /> Scanner un dossier
-                  </button>
-                  <div
-                    style={{
-                      color: theme.text,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      marginBottom: 8,
-                    }}
-                  >
-                    Ajouter un document
-                  </div>
-                  <select
-                    value={uploadType}
-                    onChange={(e) => setUploadType(e.target.value)}
-                    className="input-focus"
-                    style={{
-                      width: "100%",
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: 6,
-                      padding: "7px 10px",
-                      fontSize: 12,
-                      color: theme.text,
-                      background: theme.surface,
-                      marginBottom: 8,
-                      outline: "none",
-                    }}
-                  >
-                    {typesDocumentsList.filter((t) => !t.parent_nom).map((t) => (
-                      <option key={t.code} value={t.code}>
-                        {t.nom}
-                      </option>
-                    ))}
-                    {Object.entries(
-                      typesDocumentsList
-                        .filter((t) => t.parent_nom)
-                        .reduce((acc, t) => {
-                          (acc[t.parent_nom] = acc[t.parent_nom] || []).push(t);
-                          return acc;
-                        }, {}),
-                    ).map(([label, items]) => (
-                      <optgroup key={label} label={label}>
-                        {items.map((t) => (
-                          <option key={t.code} value={t.code}>
-                            {t.nom}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 6,
-                      width: "100%",
-                      background: uploading
-                        ? `${theme.primary}88`
-                        : theme.primary,
-                      color: "#fff",
-                      borderRadius: 6,
-                      padding: "8px",
-                      textAlign: "center",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: uploading ? "not-allowed" : "pointer",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    {uploading ? "Upload en cours..." : <><PaperclipIcon size={13} /> Choisir fichier(s)</>}
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.tiff"
-                      onChange={handleUpload}
-                      style={{ display: "none" }}
-                      disabled={uploading}
-                      multiple
-                    />
-                  </label>
-                  <div
-                    style={{
-                      color: theme.textMuted,
-                      fontSize: 10,
-                      marginTop: 6,
-                      textAlign: "center",
-                    }}
-                  >
-                    Maintenez Ctrl pour sélectionner plusieurs fichiers
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Viewer */}
-            <div
-              style={{
-                background: theme.surface,
-                border: `1px solid ${theme.border}`,
-                borderRadius: 12,
-                overflow: "hidden",
-                boxShadow: theme.shadow,
-                minHeight: 600,
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              {selectedFile ? (
-                <>
-                  <div
-                    style={{
-                      padding: "14px 20px",
-                      borderBottom: `1px solid ${theme.border}`,
-                      background: theme.primaryBg,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <span
-                        style={{
-                          color: theme.text,
-                          fontWeight: 700,
-                          fontSize: 14,
-                        }}
-                      >
-                        {typesDocuments[selectedDoc?.type_document] ||
-                          selectedDoc?.type_document}
-                      </span>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          marginTop: 3,
-                        }}
-                      >
-                        <span
-                          title={selectedFile.file_name}
-                          style={{
-                            color: theme.textSecondary,
-                            fontSize: 12,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            maxWidth: 260,
-                          }}
-                        >
-                          {stripExt(selectedFile.file_name)}
-                        </span>
-                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                          <button
-                            onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
-                            title="Renommer d'après le type de document"
-                            aria-label="Renommer d'après le type de document"
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: theme.textSecondary,
-                              cursor: "pointer",
-                              display: "flex",
-                              opacity: 0.6,
-                              padding: 0,
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
-                          >
-                            <TagIcon size={16} />
-                          </button>
-                        )}
-                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                          <button
-                            onClick={(e) => handleRenameFile(selectedFile, e)}
-                            title="Renommer ce fichier"
-                            aria-label="Renommer ce fichier"
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: theme.textSecondary,
-                              cursor: "pointer",
-                              display: "flex",
-                              opacity: 0.6,
-                              padding: 0,
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
-                          >
-                            <PencilIcon size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 12 }}
-                    >
-                      {/* Onglets fichiers */}
-                      {selectedDoc?.fichiers?.length > 1 && (
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {selectedDoc.fichiers.map((file, index) => (
-                            <button
-                              key={file.id}
-                              onClick={() => loadFile(file)}
-                              title={file.file_name}
-                              style={{
-                                background:
-                                  selectedFile.id === file.id
-                                    ? theme.primary
-                                    : theme.primaryBg,
-                                border: `1px solid ${theme.border}`,
-                                color:
-                                  selectedFile.id === file.id
-                                    ? "#fff"
-                                    : theme.primary,
-                                borderRadius: 6,
-                                padding: "4px 10px",
-                                fontSize: 11,
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                maxWidth: 140,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {stripExt(file.file_name) || `Page ${index + 1}`}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <span
-                        style={{ color: theme.textSecondary, fontSize: 12 }}
-                      >
-                        {formatSizeMo(selectedFile.file_size_kb)} · {formatDateTime(selectedFile.uploaded_at)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {docLoading ? (
-                    <div
-                      style={{
-                        flex: 1,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: theme.textSecondary,
-                      }}
-                    >
-                      Chargement...
-                    </div>
-                  ) : docUrl ? (
-                    <SecureDocViewer
-                      url={docUrl}
-                      mimeType={selectedFile?.mime_type}
-                      fileName={selectedFile?.file_name}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        flex: 1,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: theme.danger,
-                      }}
-                    >
-                      Impossible de charger le fichier.
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: theme.textMuted,
-                  }}
-                >
-                  <div style={{ marginBottom: 16 }}><FileTextIcon size={48} /></div>
-                  <div style={{ fontSize: 14 }}>
-                    Sélectionnez un document pour le visualiser
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <DossierTab
+          activeTab={activeTab}
+          contrats={contrats}
+          docLoading={docLoading}
+          docUrl={docUrl}
+          documentsAffiches={documentsAffiches}
+          docOrderMap={docOrderMap}
+          docHeaderBefore={docHeaderBefore}
+          docGroupEnd={docGroupEnd}
+          employee={employee}
+          expandedHistory={expandedHistory}
+          setExpandedHistory={setExpandedHistory}
+          fetchEmployee={fetchEmployee}
+          fetchContrats={fetchContrats}
+          highlightedMissingCode={highlightedMissingCode}
+          isMobile={isMobile}
+          missingRowRefs={missingRowRefs}
+          quickUploadingCode={quickUploadingCode}
+          setQuickUploadingCode={setQuickUploadingCode}
+          selectedContratId={selectedContratId}
+          setSelectedContratId={setSelectedContratId}
+          selectedDoc={selectedDoc}
+          selectedFile={selectedFile}
+          showScanImport={showScanImport}
+          setShowScanImport={setShowScanImport}
+          setUploadType={setUploadType}
+          uploadType={uploadType}
+          uploading={uploading}
+          typesDocuments={typesDocuments}
+          typesDocumentsList={typesDocumentsList}
+          sortContratsByDate={sortContratsByDate}
+          loadFile={loadFile}
+          handleAutoRenameFile={handleAutoRenameFile}
+          handleDeleteDoc={handleDeleteDoc}
+          handleDeleteFile={handleDeleteFile}
+          handleRenameFile={handleRenameFile}
+          handleSelectDoc={handleSelectDoc}
+          handleUpload={handleUpload}
+          dossierSectionRef={dossierSectionRef}
+          setMessage={setMessage}
+          id={id}
+          user={user}
+        />
       </div>
       {ConfirmDialog}
       {PromptDialog}
-      {showScanImport && (
-        <ScanImportModal
-          employeeId={id}
-          typesDocumentsList={typesDocumentsList}
-          onClose={() => setShowScanImport(false)}
-          onImported={() => {
-            fetchEmployee(true);
-            fetchContrats();
-          }}
-        />
-      )}
     </PageBackground>
   );
 };

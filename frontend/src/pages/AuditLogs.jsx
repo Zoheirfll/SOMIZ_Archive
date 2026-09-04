@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
@@ -13,7 +13,7 @@ import { useAuth } from "../context/AuthContext";
 import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 
-const ACTION_COLORS = {
+const getActionColors = (theme) => ({
   VIEW: theme.primary,
   UPLOAD: "#1976D2",
   DELETE_DOC: theme.danger,
@@ -25,7 +25,7 @@ const ACTION_COLORS = {
   LOGOUT: theme.textSecondary,
   LOGIN_FAIL: theme.danger,
   VIEW_AUDIT_LOG: theme.textSecondary,
-};
+});
 
 // Champs d'affectation organisationnelle traçés par un transfert
 // d'employé (voir employees/views.py EmployeeDetailView.perform_update).
@@ -37,6 +37,8 @@ const TRANSFER_FIELD_LABELS = {
   section: "Section",
   poste: "Fonction",
   categorie: "Catégorie",
+  statut: "Statut",
+  motif_archivage: "Motif d'archivage",
 };
 
 // Résume le detail JSON d'un transfert en une ligne lisible, ex.
@@ -57,6 +59,8 @@ const IconSearch = () => (
 );
 
 const AuditLogs = () => {
+  const theme = useTheme();
+  const ACTION_COLORS = getActionColors(theme);
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "SUPERADMIN";
   const [logs, setLogs] = useState([]);
@@ -288,7 +292,7 @@ const AuditLogs = () => {
                     className="table-row-hover"
                     style={{
                       borderBottom: `1px solid ${theme.border}`,
-                      background: idx % 2 === 0 ? theme.surface : "#FAFBFC",
+                      background: idx % 2 === 0 ? theme.surface : theme.surfaceHover,
                     }}
                   >
                     <td style={{ padding: "11px 16px", color: theme.textSecondary, fontSize: 12, fontFamily: "monospace" }}>

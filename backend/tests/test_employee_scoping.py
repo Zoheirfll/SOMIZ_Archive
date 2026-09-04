@@ -69,9 +69,9 @@ class TestEmployeeScopeQ:
         assert admin_user.can_access_employee(employee) is True
         assert admin_user.employee_scope_q().children == []
 
-    def test_consultant_no_scope_unrestricted(self, consultant_user, employee):
-        """Comportement historique préservé : pas de scope assigné = accès complet."""
-        assert consultant_user.can_access_employee(employee) is True
+    def test_consultant_no_scope_denied(self, consultant_user, employee):
+        """Règle inversée le 2026-09-01 : pas de scope assigné = aucun accès."""
+        assert consultant_user.can_access_employee(employee) is False
 
     def test_consultant_matching_service_scope(self, scoped_consultant, employee, service):
         scoped_consultant.scope_services.set([service])
@@ -183,6 +183,10 @@ class TestDocumentViewerScoping:
         file_obj = doc.fichiers.first()
 
         scoped_consultant.scope_services.set([service])
+        # Depuis le 2026-09-01, l'axe "types de documents" est lui aussi
+        # default-deny — sans case cochée dessus, aucun type n'est visible
+        # même avec le périmètre organisationnel ok.
+        scoped_consultant.scope_types_documents.set([type_doc_obligatoire])
         client = auth_client(scoped_consultant)
         resp = client.get(f"/api/files/{file_obj.pk}/view/")
         assert resp.status_code == 200
@@ -323,15 +327,17 @@ class TestReferentielListScoping:
         assert direction.nom in noms
         assert other_direction.nom not in noms
 
-    def test_directions_list_full_for_unrestricted_consultant(
+    def test_directions_list_empty_for_unscoped_consultant(
         self, consultant_user, direction, other_direction
     ):
+        """Règle inversée le 2026-09-01 : un CONSULTANT sans aucune case
+        cochée ne voit plus aucune direction (au lieu de toutes)."""
         client = auth_client(consultant_user)
         resp = client.get("/api/ref/directions/")
         assert resp.status_code == 200
         noms = [d["nom"] for d in (resp.data if isinstance(resp.data, list) else resp.data.get("results"))]
-        assert direction.nom in noms
-        assert other_direction.nom in noms
+        assert direction.nom not in noms
+        assert other_direction.nom not in noms
 
     def test_directions_list_full_for_admin(self, admin_user, direction, other_direction):
         client = auth_client(admin_user)
@@ -379,6 +385,8 @@ class TestSectionScoping:
         scoped_consultant.scope_sections.set([section])
         assert scoped_consultant.can_access_employee(employee) is False
 
-    def test_accessible_sections_qs_unrestricted_by_default(self, consultant_user):
+    def test_accessible_sections_qs_empty_by_default(self, consultant_user):
+        """Règle inversée le 2026-09-01 : aucune case cochée = aucune
+        section visible (au lieu de toutes)."""
         Section.objects.create(nom="Section X", direction=Direction.objects.create(nom="Dir X", code="DX"))
-        assert consultant_user.accessible_sections_qs().count() == Section.objects.count()
+        assert consultant_user.accessible_sections_qs().count() == 0

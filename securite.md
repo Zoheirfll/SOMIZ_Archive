@@ -637,6 +637,91 @@ d'authentification/consentement existants, tracé en audit.
 
 ---
 
+## 31. Création de compte ADMIN réservée au SUPERADMIN (2026-09-02)
+
+**Contexte** : avant ce correctif, `UserCreateSerializer`/`UserSerializer`
+(`accounts/admin_views.py`) bloquaient uniquement l'attribution du rôle
+`SUPERADMIN`, mais tout compte `ADMIN` pouvait créer ou promouvoir un
+autre compte au rôle `ADMIN` — alors qu'`UserListCreateView`/
+`UserUpdateView` masquent déjà les comptes ADMIN entre eux à la lecture
+(un ADMIN ne voit pas les autres ADMIN dans `/users`), ce qui rendait la
+gestion des comptes ADMIN incohérente (création possible sans visibilité
+de gestion ultérieure).
+
+**Correctif** :
+- `UserCreateSerializer.validate_role()` (création) et
+  `UserSerializer.validate_role()` (mise à jour) refusent désormais
+  `role='ADMIN'` si `request.user.is_superadmin` est faux — sauf si le
+  compte cible est déjà ADMIN (mise à jour d'un ADMIN existant par un
+  autre ADMIN sur ses autres champs, valeur de rôle inchangée, non
+  bloquée).
+- Frontend (`Users.jsx`) : l'option "Administrateur" du select de rôle à
+  la création n'est rendue que si `user.role === 'SUPERADMIN'` — un ADMIN
+  ne voit et ne peut choisir que "Consultant". Purement UX, la garde
+  réelle reste côté serveur (`validate_role`).
+- Un ADMIN ordinaire peut donc désormais uniquement créer des comptes
+  CONSULTANT ; seul un SUPERADMIN (jamais assignable via l'UI/API, voir
+  point existant sur `validate_role` SUPERADMIN) peut créer/promouvoir un
+  ADMIN.
+
+**Verdict : corrigé.** Non re-testé automatiquement dans cette session
+(suite pytest backend non exécutable localement — `decouple` manquant
+dans l'environnement shell utilisé) — à valider par `cd backend && pytest`
+avant merge.
+
+---
+
+## 32. Archivage employé — suppression définitive désormais irréversible (2026-09-02)
+
+**Contexte** : chantier "Archivage employé" (voir CLAUDE.md, section du
+même nom, et `docs/superpowers/specs/2026-09-02-archivage-employes-design.md`)
+— les employés Inactif/Archivé/Démobilisé sortent du drill-down
+organisationnel (onglet séparé "Archivés"), avec un motif d'archivage
+configurable et facultatif (`MotifArchivage`). **Changement de politique
+délibéré, confirmé explicitement par l'utilisateur après avertissement** :
+la suppression d'un employé (`EmployeeDetailView.perform_destroy`,
+`EmployeeBulkDeleteView` action `delete`) n'est plus un soft-delete — elle
+supprime définitivement l'employé, ses contrats, documents et fichiers
+physiques, sans aucune récupération possible.
+
+**Garde-fous vérifiés** :
+- Suppression définitive **refusée côté serveur** (400, pas seulement
+  masquée côté UI) tant que l'employé est encore `statut=actif` — il faut
+  d'abord l'archiver (`perform_destroy` et `EmployeeBulkDeleteView`,
+  `backend/employees/views.py`). Un employé ne peut donc jamais être
+  supprimé définitivement en un clic direct depuis la vue organisationnelle.
+- `IsAdmin` inchangé sur les deux endpoints (PATCH archiver/restaurer
+  réutilise l'endpoint `EmployeeDetailView` déjà `IsAdmin` en écriture,
+  DELETE et bulk-delete déjà `IsAdmin`) — aucune nouvelle route, donc
+  aucune nouvelle surface de permission.
+- Fichiers physiques (documents + photo) supprimés du disque en best-effort
+  (`try/except OSError`, cohérent avec l'incident du 2026-07-22 documenté
+  dans CLAUDE.md — un fichier déjà absent ne doit jamais faire échouer
+  l'opération globale) avant le `delete()` DB, pour éviter les orphelins.
+- Chaque suppression définitive est tracée dans l'audit log
+  (`AuditLog.Action.DELETE_EMP`) avec un snapshot pris **avant**
+  suppression (matricule, nom, dernier statut, motif d'archivage) — seule
+  trace restante une fois l'employé supprimé.
+- `MotifArchivage.employees` (`SET_NULL`) et le champ `motif_archivage` de
+  `Employee` (forcé à `None` côté serveur dès que `statut=actif`, voir
+  `EmployeeCreateUpdateSerializer.validate()`) ne créent aucun nouveau
+  canal d'accès ou de contournement du scoping CONSULTANT — l'onglet
+  Archivés respecte le même `employee_scope_q()` que l'onglet
+  Organisation (seul le filtre `statut` change, pas le périmètre).
+- 413 tests backend passent après ce chantier (suite complète, 0
+  régression) — dont 2 tests existants adaptés au nouveau comportement
+  (`test_admin_delete_requires_archived_first`,
+  `test_bulk_delete_permanent`) et de nouveaux tests couvrant le
+  garde-fou (`test_bulk_delete_rejects_active_employee`), le filtre
+  `?vue=archives` et le forçage serveur du motif à `None`.
+
+**Verdict : changement de politique intentionnel, garde-fous en place.**
+Irréversibilité assumée et documentée, symétrique à la politique déjà en
+vigueur sur les documents (voir CLAUDE.md section "Documents employés —
+suppression définitive").
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

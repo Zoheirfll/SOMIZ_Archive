@@ -18,7 +18,7 @@ from employees.models import (
     TypeContrat, Categorie, TypeDocument,
     EmployeeDocument, EmployeeDocumentFile,
     ChampPersonnalise, SystemFieldLabel,
-    Pole, Cellule, Section, Echelle,
+    Pole, Cellule, Section, Echelle, MotifArchivage,
 )
 
 
@@ -180,7 +180,8 @@ class ServiceSerializer(serializers.ModelSerializer):
             'responsable', 'responsable_nom',
         ]
     def get_nb_employes(self, obj):
-        return obj.employees.count()
+        # Ne compte que les employés Actif — voir CLAUDE.md section Archivage.
+        return obj.employees.filter(statut='actif').count()
     def get_responsable_nom(self, obj):
         return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
@@ -198,7 +199,8 @@ class CelluleSerializer(serializers.ModelSerializer):
             'responsable', 'responsable_nom',
         ]
     def get_nb_employes(self, obj):
-        return obj.employees.count()
+        # Ne compte que les employés Actif — voir CLAUDE.md section Archivage.
+        return obj.employees.filter(statut='actif').count()
     def get_responsable_nom(self, obj):
         return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
@@ -396,7 +398,8 @@ class SectionSerializer(serializers.ModelSerializer):
             'responsable', 'responsable_nom',
         ]
     def get_nb_employes(self, obj):
-        return obj.employees.count()
+        # Ne compte que les employés Actif — voir CLAUDE.md section Archivage.
+        return obj.employees.filter(statut='actif').count()
     def get_responsable_nom(self, obj):
         return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
@@ -498,6 +501,29 @@ class EchelleDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdmin]
     queryset = Echelle.objects.all()
 
+
+class MotifArchivageSerializer(serializers.ModelSerializer):
+    nb_employes = serializers.SerializerMethodField()
+    class Meta:
+        model = MotifArchivage
+        fields = ['id', 'nom', 'description', 'is_active', 'nb_employes']
+    def get_nb_employes(self, obj):
+        return obj.employees.count()
+
+
+class MotifArchivageListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+    serializer_class = MotifArchivageSerializer
+    search_fields = ['nom']
+    def get_permissions(self):
+        return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
+    def get_queryset(self):
+        return self.filter_search(MotifArchivage.objects.all())
+
+class MotifArchivageDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = MotifArchivageSerializer
+    permission_classes = [IsAdmin]
+    queryset = MotifArchivage.objects.all()
+
 class TypeDocumentSerializer(serializers.ModelSerializer):
     nb_documents = serializers.SerializerMethodField()
     parent_nom = serializers.CharField(source='parent.nom', read_only=True)
@@ -524,6 +550,14 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
             attrs['obligatoire'] = False
             attrs['champ_source'] = ''
         return attrs
+
+    def validate_nom(self, value):
+        qs = TypeDocument.objects.filter(nom__iexact=value.strip())
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Un type de document avec ce nom existe déjà.")
+        return value
 
     def validate_couleur(self, value):
         if not value:
@@ -581,7 +615,8 @@ RESERVED_CHAMP_CODES = {
 class ChampPersonnaliseSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChampPersonnalise
-        fields = ['id', 'nom', 'code', 'type_champ', 'ordre', 'is_active']
+        fields = ['id', 'nom', 'code', 'type_champ', 'ordre', 'is_active', 'is_systeme', 'categorie']
+        read_only_fields = ['is_systeme']
 
     def validate_code(self, value):
         if value.strip().lower() in RESERVED_CHAMP_CODES:
@@ -590,6 +625,20 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
                 "dans l'import CSV) — choisissez un code différent."
             )
         return value
+
+    def validate(self, attrs):
+        # Un champ système (is_systeme=True) n'est jamais créable via ce
+        # serializer (is_systeme est read_only) — ici on protège l'édition :
+        # seule `categorie` peut changer sur une instance existante is_systeme.
+        instance = getattr(self, 'instance', None)
+        if instance is not None and instance.is_systeme:
+            mutable = set(attrs.keys()) - {'categorie'}
+            if mutable:
+                raise serializers.ValidationError(
+                    "Un champ système ne peut avoir que sa catégorie modifiée "
+                    "(nom, code, type, ordre et statut restent figés)."
+                )
+        return attrs
 
 
 class ChampPersonnaliseListCreateView(generics.ListCreateAPIView):
@@ -604,6 +653,15 @@ class ChampPersonnaliseDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ChampPersonnaliseSerializer
     permission_classes = [IsAdmin]
     queryset = ChampPersonnalise.objects.all()
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_systeme:
+            return Response(
+                {"detail": "Un champ système ne peut pas être supprimé."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class SystemFieldLabelSerializer(serializers.ModelSerializer):
@@ -708,6 +766,7 @@ class ReferentielBulkDeleteView(APIView):
         'types-contrat': TypeContrat,
         'categories': Categorie,
         'echelles': Echelle,
+        'motifs-archivage': MotifArchivage,
         'types-documents': TypeDocument,
         'champs-personnalises': ChampPersonnalise,
     }

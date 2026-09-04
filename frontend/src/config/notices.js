@@ -7,6 +7,7 @@ export const PAGE_NOTICES = {
   employeeForm: "Créez ou modifiez un employé. L'affectation (Direction/Département/Service ou Cellule ou Section) détermine qui peut voir cet employé selon le périmètre des comptes Consultant. Un changement d'affectation vous sera demandé de confirmer avant l'enregistrement.",
   contratDetail: "Détail d'un contrat et de ses documents propres (distincts du dossier général de l'employé). Modifiable uniquement par un Administrateur.",
   dashboard: "Vue d'ensemble des effectifs et de la complétude des dossiers RH sur l'ensemble de l'organisation.",
+  statistiques: "Statistiques RH détaillées : répartitions par direction/département/profil, évolution des recrutements et archivages, pyramides âge/ancienneté, contrats arrivant à échéance et complétude documentaire par unité. Filtrez par période et exportez en Excel ou PDF.",
   users: "Gérez les comptes Administrateur et Consultant. Le bouton \"Périmètre\" restreint un compte Consultant à une partie de l'organisation, à certains types de documents, et/ou à des employés précis.",
   audit: "Historique de toutes les actions effectuées dans SOMIZ (traçabilité RGPD / Loi 18-07). Un Administrateur voit ses propres actions et celles des comptes Consultant qu'il gère ; seul un compte Super-administrateur voit le journal complet.",
   parametres: "Gérez les référentiels organisationnels (Directions, Départements, Services, Cellules, Sections...), les types de documents et les champs personnalisés utilisés dans toute l'application.",
@@ -23,6 +24,6 @@ export const FIELD_NOTICES = {
     affectationExclusive: "Un employé est rattaché à un seul de ces trois champs à la fois : Service, Cellule ou Section. Choisir l'un vide automatiquement les deux autres.",
   },
   users: {
-    perimetre: "Trois niveaux de périmètre se combinent : le périmètre organisationnel (Direction/Département/Service/Cellule/Section, en OU entre les cases cochées), le périmètre \"Types de documents\" (combiné en ET avec l'organisationnel), et les accès ponctuels par employé (en OU en plus des deux autres). Aucune case cochée nulle part = accès non restreint.",
+    perimetre: "Trois niveaux de périmètre se combinent : le périmètre organisationnel (Direction/Département/Service/Cellule/Section, en OU entre les cases cochées), le périmètre \"Types de documents\" (combiné en ET avec l'organisationnel), et les accès ponctuels par employé (en OU en plus des deux autres). Aucune case cochée nulle part = aucun accès sur cette dimension — cochez au moins un élément, ou utilisez les accès ponctuels par employé.",
   },
 };

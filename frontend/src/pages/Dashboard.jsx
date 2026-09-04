@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
@@ -54,7 +54,9 @@ const IconFolder = () => (
   </svg>
 );
 
-const StatCard = ({ label, value, sub, color, icon, className }) => (
+const StatCard = ({ label, value, sub, color, icon, className }) => {
+  const theme = useTheme();
+  return (
   <div
     className={`card-lift${className ? ` ${className}` : ""}`}
     style={{
@@ -92,9 +94,11 @@ const StatCard = ({ label, value, sub, color, icon, className }) => (
       <div style={{ color, opacity: 0.65 }}>{icon}</div>
     </div>
   </div>
-);
+  );
+};
 
 const Dashboard = () => {
+  const theme = useTheme();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -296,7 +300,7 @@ const Dashboard = () => {
                       </span>
                     </div>
                     <div style={{
-                      background: theme.bg,
+                      background: theme.borderLight,
                       borderRadius: 6,
                       height: 8,
                       overflow: "hidden",
@@ -305,13 +309,13 @@ const Dashboard = () => {
                       <div
                         style={{
                           height: "100%",
-                          width: `${data.pourcentage}%`,
+                          width: `${Math.max(data.pourcentage, data.pourcentage > 0 ? 3 : 0)}%`,
                           background:
                             data.pourcentage >= 80
-                              ? "linear-gradient(90deg, #166534, #16a34a)"
+                              ? theme.success
                               : data.pourcentage >= 50
-                                ? "linear-gradient(90deg, #92400e, #b45309)"
-                                : "linear-gradient(90deg, #991b1b, #dc2626)",
+                                ? theme.warning
+                                : theme.danger,
                           borderRadius: 6,
                           transition: "width 0.6s ease",
                         }}

@@ -10,7 +10,7 @@ from datetime import date as date_cls
 from django.conf import settings
 from django.core.files.base import File
 from django.db import transaction
-from django.db.models import Q, Count, Exists, OuterRef, Subquery
+from django.db.models import Q, Count, Exists, OuterRef, Subquery, F
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
@@ -128,6 +128,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         dept = self.request.query_params.get('departement')
         service = self.request.query_params.get('service')
         statut = self.request.query_params.get('statut')
+        vue = self.request.query_params.get('vue')
         complet = self.request.query_params.get('dossier_complet')
         type_manquant = self.request.query_params.get('type_manquant')
 
@@ -155,8 +156,20 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         section = self.request.query_params.get('section')
         if section:
             qs = qs.filter(section=section)
+        # Onglet "Archivés" (?vue=archives) : les 3 statuts non-Actif
+        # sortent de l'organisation (voir CLAUDE.md section Archivage
+        # employé) — ?statut= reste utilisable en plus pour affiner à un
+        # seul des 3 (Inactif/Archivé/Démobilisé). Sans ?vue=archives, la
+        # vue Organisation ne montre que les employés Actif par défaut ;
+        # un ?statut= explicite reste possible pour un appel API direct.
         if statut:
             qs = qs.filter(statut=statut)
+        elif vue == 'archives':
+            qs = qs.filter(statut__in=[
+                Employee.Statut.INACTIF, Employee.Statut.ARCHIVE, Employee.Statut.DEMOBILISE,
+            ])
+        else:
+            qs = qs.filter(statut=Employee.Statut.ACTIF)
 
         if complet is not None:
             types_obligatoires = TypeDocument.objects.filter(
@@ -210,6 +223,51 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             target=employee,
             details={'matricule': employee.matricule}
         )
+
+
+class EmployeeAdjacentView(generics.GenericAPIView):
+    """
+    GET /api/employees/{id}/adjacent/ — employé précédent/suivant trié par
+    N° Contrat (numero_contrat_actif du dernier contrat), pour naviguer
+    directement depuis la fiche employé sans revenir à la liste. Respecte
+    le même périmètre que EmployeeDetailView (404 si l'employé courant est
+    hors périmètre — ne pas confirmer son existence).
+    """
+    permission_classes = [IsAdminOrConsultant]
+    queryset = Employee.objects.all()
+
+    def get_queryset(self):
+        return self.queryset.filter(self.request.user.employee_scope_q())
+
+    def get(self, request, pk):
+        queryset = self.filter_queryset(self.get_queryset())
+        employee = resolve_employee(pk, queryset)
+        self.check_object_permissions(request, employee)
+
+        latest_contrat = Contrat.objects.filter(
+            employee=OuterRef('pk')
+        ).order_by('-date_debut', '-id')
+        ordered_ids = list(
+            queryset.annotate(
+                numero_contrat_actif=Subquery(latest_contrat.values('numero_contrat')[:1]),
+            )
+            .order_by(F('numero_contrat_actif').asc(nulls_last=True), 'nom', 'prenom', 'id')
+            .values_list('id', flat=True)
+        )
+        try:
+            idx = ordered_ids.index(employee.id)
+        except ValueError:
+            idx = None
+
+        def summary(eid):
+            if eid is None:
+                return None
+            e = Employee.objects.only('id', 'nom', 'prenom', 'matricule').get(pk=eid)
+            return {'id': str(e.id), 'nom': e.nom, 'prenom': e.prenom, 'matricule': e.matricule}
+
+        prev_id = ordered_ids[idx - 1] if idx not in (None, 0) else None
+        next_id = ordered_ids[idx + 1] if idx is not None and idx < len(ordered_ids) - 1 else None
+        return Response({'prev': summary(prev_id), 'next': summary(next_id)})
 
 
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -276,6 +334,8 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
             field: getattr(instance, field)
             for field in self.CARRIERE_AXES
         }
+        old_statut_label = instance.get_statut_display()
+        old_motif_nom = instance.motif_archivage.nom if instance.motif_archivage_id else None
 
         employee = serializer.save()
 
@@ -321,6 +381,16 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
                 'vers': new_value.nom if new_value else None,
             }
 
+        # Changement de statut/motif d'archivage — Archiver/Restaurer se
+        # font via ce même PATCH générique (voir CLAUDE.md section
+        # Archivage employé), tracés dans le même détail "transfer" que le
+        # transfert organisationnel et la carrière.
+        if 'statut' in serializer.validated_data and old_statut_label != employee.get_statut_display():
+            changed['statut'] = {'de': old_statut_label, 'vers': employee.get_statut_display()}
+        new_motif_nom = employee.motif_archivage.nom if employee.motif_archivage_id else None
+        if 'motif_archivage' in serializer.validated_data and old_motif_nom != new_motif_nom:
+            changed['motif_archivage'] = {'de': old_motif_nom, 'vers': new_motif_nom}
+
         if changed:
             details['transfer'] = changed
 
@@ -331,14 +401,43 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
     def perform_destroy(self, instance):
-        """Soft delete — on archive, on ne supprime pas."""
+        """Suppression définitive et irréversible — employé, contrats,
+        documents, fichiers physiques (cascade DB + nettoyage disque). Un
+        employé Actif doit d'abord être archivé (voir action "Archiver",
+        PATCH statut=archive) : bloqué ici pour éviter une suppression
+        accidentelle en un clic depuis la vue organisationnelle (voir
+        CLAUDE.md section Archivage employé)."""
+        if instance.statut == Employee.Statut.ACTIF:
+            raise DRFValidationError(
+                "Archivez d'abord cet employé avant de le supprimer définitivement."
+            )
         AuditLog.log(
             self.request, AuditLog.Action.DELETE_EMP,
             target=instance,
-            details={'matricule': instance.matricule, 'nom': instance.full_name}
+            details={
+                'matricule': instance.matricule,
+                'nom': instance.full_name,
+                'dernier_statut': instance.get_statut_display(),
+                'motif_archivage': instance.motif_archivage.nom if instance.motif_archivage_id else None,
+            }
         )
-        instance.statut = Employee.Statut.ARCHIVE
-        instance.save(update_fields=['statut'])
+        file_paths = list(
+            EmployeeDocumentFile.objects.filter(
+                document__employee=instance
+            ).values_list('file', flat=True)
+        )
+        if instance.photo:
+            file_paths.append(instance.photo.name)
+        instance.delete()
+        for path in file_paths:
+            if not path:
+                continue
+            full_path = os.path.join(settings.MEDIA_ROOT, path)
+            if os.path.isfile(full_path):
+                try:
+                    os.remove(full_path)
+                except OSError:
+                    pass
 
 
 HISTORIQUE_AXES = {
@@ -1189,8 +1288,14 @@ def employee_search(request):
 class EmployeeBulkDeleteView(APIView):
     """
     POST /api/employees/bulk-delete/
-    action=archive → soft delete
-    action=delete  → suppression définitive (irréversible)
+    action=archive   → réversible, statut=Archivé + motif optionnel
+                        (body: motif_archivage=<uuid> ou absent/null)
+    action=restaurer → réversible, statut=Actif, motif vidé
+    action=delete    → suppression définitive (irréversible) — refusée si
+                        un des employés sélectionnés est encore Actif (voir
+                        CLAUDE.md section Archivage employé : il faut
+                        d'abord archiver, jamais un clic direct depuis la
+                        vue organisationnelle)
     """
     permission_classes = [IsAdmin]
 
@@ -1220,12 +1325,20 @@ class EmployeeBulkDeleteView(APIView):
             )
 
         if action == 'delete':
+            if employees.filter(statut=Employee.Statut.ACTIF).exists():
+                return Response(
+                    {'error': "Archivez d'abord les employés encore Actif avant de les supprimer définitivement."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             # Supprimer les fichiers physiques avant cascade DB pour éviter des orphelins
             file_paths = list(
                 EmployeeDocumentFile.objects.filter(
                     document__employee__in=employees
                 ).values_list('file', flat=True)
             )
+            file_paths += [
+                p for p in employees.exclude(photo='').values_list('photo', flat=True) if p
+            ]
             employees.delete()
             for path in file_paths:
                 if path:
@@ -1245,9 +1358,22 @@ class EmployeeBulkDeleteView(APIView):
                 details={'ids': ids, 'nb': nb, 'action': 'delete'},
             )
             return Response({'nb_supprimes': nb})
+        elif action == 'restaurer':
+            employees.update(statut=Employee.Statut.ACTIF, motif_archivage=None)
+            AuditLog.objects.create(
+                user=request.user,
+                username_snapshot=request.user.username,
+                action=AuditLog.Action.MODIFY_EMP,
+                target_model='Employee',
+                target_label=f'Restauration en masse — {nb} employé(s)',
+                ip_address=AuditLog._get_ip(request),
+                details={'ids': ids, 'nb': nb, 'action': 'restaurer'},
+            )
+            return Response({'nb_restaures': nb})
         else:
-            # Soft delete — archivage
-            employees.update(statut=Employee.Statut.ARCHIVE)
+            # Soft delete — archivage, motif optionnel
+            motif_id = request.data.get('motif_archivage') or None
+            employees.update(statut=Employee.Statut.ARCHIVE, motif_archivage_id=motif_id)
             AuditLog.objects.create(
                 user=request.user,
                 username_snapshot=request.user.username,
@@ -1255,7 +1381,7 @@ class EmployeeBulkDeleteView(APIView):
                 target_model='Employee',
                 target_label=f'Archivage en masse — {nb} employé(s)',
                 ip_address=AuditLog._get_ip(request),
-                details={'ids': ids, 'nb': nb, 'action': 'archive'},
+                details={'ids': ids, 'nb': nb, 'action': 'archive', 'motif_archivage': motif_id},
             )
             return Response({'nb_archives': nb})
 

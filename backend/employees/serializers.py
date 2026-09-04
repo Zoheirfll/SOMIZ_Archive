@@ -291,6 +291,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
+    motif_archivage_nom = serializers.CharField(source='motif_archivage.nom', read_only=True, default=None)
     has_photo = serializers.SerializerMethodField()
     champs_personnalises = serializers.SerializerMethodField()
 
@@ -301,7 +302,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             'date_naissance', 'date_embauche',
             'direction_nom', 'departement_nom', 'service_nom', 'cellule_nom', 'section_nom',
             'poste_nom', 'type_contrat_nom', 'categorie_nom', 'has_photo',
-            'statut', 'dossier_complet', 'taux_completude', 'nb_documents',
+            'statut', 'motif_archivage_nom', 'dossier_complet', 'taux_completude', 'nb_documents',
             'champs_personnalises',
         ]
 
@@ -315,7 +316,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         return {
             v.champ.code: v.valeur
             for v in obj.valeurs_personnalisees.all()
-            if v.champ.is_active
+            if v.champ.is_active and not v.champ.is_systeme
         }
 
     def get_dossier_complet(self, obj):
@@ -352,8 +353,10 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     poste_nom = serializers.CharField(source='poste.nom', read_only=True)
     type_contrat_nom = serializers.CharField(source='type_contrat.nom', read_only=True)
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
+    motif_archivage_nom = serializers.CharField(source='motif_archivage.nom', read_only=True, default=None)
     has_photo = serializers.SerializerMethodField()
     champs_personnalises = serializers.SerializerMethodField()
+    champs_categories = serializers.SerializerMethodField()
     voie_hierarchique = serializers.SerializerMethodField()
 
     class Meta:
@@ -361,6 +364,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut', 'has_photo',
+            'motif_archivage', 'motif_archivage_nom',
             'direction', 'direction_nom',
             'pole_nom',
             'departement', 'departement_nom',
@@ -372,6 +376,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'categorie', 'categorie_nom',
             'dossier_complet', 'taux_completude',
             'documents', 'documents_manquants', 'champs_personnalises',
+            'champs_categories',
             'voie_hierarchique',
             'created_by_name', 'created_at', 'updated_at',
         ]
@@ -391,8 +396,25 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
                 'valeur': valeurs.get(c.id, ''),
                 'ordre': c.ordre,
             }
-            for c in ChampPersonnalise.objects.filter(is_active=True)
+            for c in ChampPersonnalise.objects.filter(is_active=True, is_systeme=False)
         ]
+
+    def get_champs_categories(self, obj):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        # Calculé une seule fois pour cet employé (pas par champ) — combine
+        # périmètre organisationnel + périmètre global scope_champs_personnels
+        # + grants ponctuels (EmployeeAccessGrant.champ_personnel), voir
+        # User.accessible_champs_personnels_for_employee(). None = tous
+        # visibles (ADMIN ou CONSULTANT non restreint).
+        allowed_ids = user.accessible_champs_personnels_for_employee(obj) if user is not None else None
+        result = {}
+        for c in ChampPersonnalise.objects.filter(is_active=True):
+            if c.categorie == ChampPersonnalise.Categorie.PERSONNEL:
+                if allowed_ids is not None and c.id not in allowed_ids:
+                    continue
+            result[c.code] = c.categorie
+        return result
 
     def get_documents(self, obj):
         qs = obj.documents_actifs
@@ -437,6 +459,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'matricule', 'nom', 'prenom',
             'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut',
+            'motif_archivage',
             'direction', 'departement', 'service', 'cellule', 'section',
             'poste', 'type_contrat', 'categorie',
         ]
@@ -459,6 +482,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         # continue de fonctionner sans modification.
         cellule = attrs.get('cellule', getattr(self.instance, 'cellule', None))
         section = attrs.get('section', getattr(self.instance, 'section', None))
+        service = attrs.get('service', getattr(self.instance, 'service', None))
         if cellule is not None:
             attrs['service'] = None
             attrs['section'] = None
@@ -477,6 +501,26 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
             else:
                 attrs['departement'] = None
                 attrs['direction'] = section.direction
+        elif service is not None:
+            # Un Service appartient toujours à un Département — on aligne
+            # departement/direction dessus même si le client ne les a pas
+            # envoyés explicitement (cascade frontend normalement déjà
+            # cohérente, mais un appel API direct ne doit pas pouvoir
+            # laisser une fiche avec un Service sans son Département).
+            attrs['cellule'] = None
+            attrs['section'] = None
+            attrs['departement'] = service.departement
+            attrs['direction'] = service.departement.direction
+
+        # Un employé Actif n'a pas de motif d'archivage — le motif ne
+        # s'applique qu'à l'épisode d'archivage qui vient de se terminer
+        # (voir CLAUDE.md section Archivage employé, action "Restaurer").
+        # Forcé côté serveur pour rester cohérent même via un appel API
+        # direct, pas seulement depuis le formulaire (qui le vide déjà
+        # côté client).
+        statut = attrs.get('statut', getattr(self.instance, 'statut', None))
+        if statut == 'actif':
+            attrs['motif_archivage'] = None
         return attrs
 
 

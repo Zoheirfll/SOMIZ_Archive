@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { logout } from "../services/auth";
-import { theme } from "../styles/theme";
+import { useTheme, useThemeMode } from "../context/ThemeContext";
 import useIsMobile from "../hooks/useIsMobile";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
-import { KeyboardIcon } from "./icons";
+import { KeyboardIcon, SunIcon, MoonIcon } from "./icons";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -29,6 +29,43 @@ const Navbar = () => {
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { openHelp } = useKeyboardShortcutsHelp();
+  const theme = useTheme();
+  const { mode, toggleMode } = useThemeMode();
+
+  const ThemeToggleButton = ({ style = {} }) => (
+    <button
+      onClick={toggleMode}
+      aria-label={mode === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}
+      title={mode === "dark" ? "Mode clair" : "Mode sombre"}
+      style={{
+        background: "transparent",
+        border: `1px solid ${theme.border}`,
+        color: theme.textSecondary,
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "all 0.15s",
+        flexShrink: 0,
+        ...style,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = theme.primaryBg;
+        e.currentTarget.style.borderColor = theme.primaryBorder;
+        e.currentTarget.style.color = theme.primary;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+        e.currentTarget.style.borderColor = theme.border;
+        e.currentTarget.style.color = theme.textSecondary;
+      }}
+    >
+      {mode === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+    </button>
+  );
 
   const handleLogout = async () => {
     await logout();
@@ -41,6 +78,7 @@ const Navbar = () => {
     { path: "/organigramme", label: "Organigramme" },
     { path: "/import", label: "Import", adminOnly: true },
     { path: "/dashboard", label: "Dashboard", adminOnly: true },
+    { path: "/statistiques", label: "Statistiques", adminOnly: true },
     { path: "/users", label: "Utilisateurs", adminOnly: true },
     { path: "/parametres", label: "Paramètres", adminOnly: true },
     { path: "/audit", label: "Journal", adminOnly: true },
@@ -54,7 +92,7 @@ const Navbar = () => {
   return (
     <nav
       style={{
-        background: "#FFFFFF",
+        background: theme.surface,
         borderBottom: `1px solid ${theme.border}`,
         padding: isMobile ? "0 16px" : "0 32px",
         height: 64,
@@ -106,11 +144,11 @@ const Navbar = () => {
                   background: isActive ? theme.primaryBg : "transparent",
                   border: "none",
                   borderRadius: 8,
-                  color: isActive ? theme.primary : theme.textSecondary,
+                  color: theme.text,
                   padding: "7px 14px",
                   cursor: "pointer",
                   fontSize: 13,
-                  fontWeight: isActive ? 700 : 500,
+                  fontWeight: 700,
                   fontFamily: theme.fontFamily,
                   transition: "background 0.15s, color 0.15s",
                 }}
@@ -123,7 +161,7 @@ const Navbar = () => {
                 onMouseLeave={(e) => {
                   if (!isActive) {
                     e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = theme.textSecondary;
+                    e.currentTarget.style.color = theme.text;
                   }
                 }}
               >
@@ -212,6 +250,8 @@ const Navbar = () => {
               <KeyboardIcon size={16} />
             </button>
 
+            <ThemeToggleButton />
+
             <button
               onClick={handleLogout}
               style={{
@@ -266,6 +306,7 @@ const Navbar = () => {
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
             </div>
+            <ThemeToggleButton style={{ width: 38, height: 38 }} />
             <button
               aria-label={drawerOpen ? "Fermer le menu" : "Ouvrir le menu"}
               onClick={() => setDrawerOpen((v) => !v)}
@@ -355,12 +396,12 @@ const Navbar = () => {
                     background: isActive ? theme.primaryBg : "transparent",
                     border: "none",
                     borderRadius: 8,
-                    color: isActive ? theme.primary : theme.textSecondary,
+                    color: theme.text,
                     padding: "12px 14px",
                     textAlign: "left",
                     cursor: "pointer",
                     fontSize: 14,
-                    fontWeight: isActive ? 700 : 500,
+                    fontWeight: 700,
                     fontFamily: theme.fontFamily,
                   }}
                 >

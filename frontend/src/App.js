@@ -8,7 +8,9 @@ import Employees from "./pages/Employees";
 import EmployeeDetail from "./pages/EmployeeDetail";
 import EmployeeForm from "./pages/EmployeeForm";
 import Dashboard from "./pages/Dashboard";
+import Statistiques from "./pages/Statistiques";
 import Users from "./pages/Users";
+import UserPerimetre from "./pages/UserPerimetre";
 import AuditLogs from "./pages/AuditLogs";
 import Parametres from "./pages/Parametres";
 import Import from "./pages/Import";
@@ -82,10 +84,26 @@ function App() {
             }
           />
           <Route
+            path="/statistiques"
+            element={
+              <ProtectedRoute adminOnly>
+                <Statistiques />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/users"
             element={
               <ProtectedRoute adminOnly>
                 <Users />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users/:id/perimetre"
+            element={
+              <ProtectedRoute adminOnly>
+                <UserPerimetre />
               </ProtectedRoute>
             }
           />

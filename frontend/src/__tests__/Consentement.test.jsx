@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -22,6 +23,8 @@ jest.mock("../context/AuthContext", () => ({
 
 import api from "../services/api";
 import Consentement from "../pages/Consentement";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const renderPage = () =>
   render(

@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
-import { TrashIcon, PencilIcon, DownloadIcon, UploadIcon, FolderIcon, CheckIcon, XIcon, RocketIcon } from "../components/icons";
-import Skeleton from "../components/Skeleton";
+import { TrashIcon, DownloadIcon, UploadIcon } from "../components/icons";
 import PageBackground from "../components/PageBackground";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
@@ -12,543 +11,26 @@ import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import useIsMobile from "../hooks/useIsMobile";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES, FIELD_NOTICES } from "../config/notices";
+import {
+  TABS,
+  TAB_GROUPS,
+  IMPORT_UNSUPPORTED_TABS,
+} from "../config/parametresTabs";
+import RefModal from "../components/parametres/RefModal";
+import RefTable from "../components/parametres/RefTable";
+import { getRefColumns } from "../components/parametres/refColumns";
+import RefForm from "../components/parametres/RefForm";
+import ImportRefModal from "../components/parametres/ImportRefModal";
+import { getInputStyle } from "../components/parametres/formStyles";
 import "../styles/animations.css";
 
 const PAGE_SIZE = 25;
 
-// ─── COMPOSANTS RÉUTILISABLES ─────────────────────────────────────────────────
-
-const Badge = ({ count, color }) => (
-  <span
-    style={{
-      background: `${color}18`,
-      color,
-      border: `1px solid ${color}44`,
-      borderRadius: 10,
-      padding: "1px 8px",
-      fontSize: 11,
-      fontWeight: 700,
-      marginLeft: 6,
-    }}
-  >
-    {count}
-  </span>
-);
-
-const Modal = ({ title, onClose, onSubmit, saving, children }) => (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.3)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-    }}
-    onClick={onClose}
-  >
-    <div
-      style={{
-        background: theme.surface,
-        borderRadius: 16,
-        padding: 32,
-        width: 480,
-        maxWidth: "90vw",
-        maxHeight: "85vh",
-        overflowY: "auto",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-        border: `1px solid ${theme.primaryBorder}`,
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <h2
-        style={{
-          color: theme.text,
-          margin: "0 0 24px",
-          fontSize: 16,
-          fontWeight: 800,
-        }}
-      >
-        {title}
-      </h2>
-      {children}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          justifyContent: "flex-end",
-          marginTop: 24,
-        }}
-      >
-        <button
-          onClick={onClose}
-          style={{
-            background: "transparent",
-            border: `1px solid ${theme.primaryBorder}`,
-            color: theme.textSecondary,
-            borderRadius: 8,
-            padding: "8px 20px",
-            fontSize: 13,
-            cursor: "pointer",
-          }}
-        >
-          Annuler
-        </button>
-        <button
-          onClick={onSubmit}
-          disabled={saving}
-          style={{
-            background: saving ? `${theme.primary}88` : theme.primary,
-            border: "none",
-            color: "#fff",
-            borderRadius: 8,
-            padding: "8px 24px",
-            fontSize: 13,
-            fontWeight: 700,
-            cursor: saving ? "not-allowed" : "pointer",
-          }}
-        >
-          {saving ? "Enregistrement..." : "Enregistrer"}
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
-const inputStyle = {
-  width: "100%",
-  border: `1px solid ${theme.primaryBorder}`,
-  borderRadius: 8,
-  padding: "9px 14px",
-  color: theme.text,
-  fontSize: 13,
-  outline: "none",
-  background: theme.bg,
-  boxSizing: "border-box",
-  marginBottom: 12,
-};
-
-const labelStyle = {
-  color: theme.text,
-  fontSize: 12,
-  fontWeight: 600,
-  display: "block",
-  marginBottom: 5,
-};
-
-// Sélection d'un employé responsable — recherche serveur par nom/matricule
-// (même pattern que la recherche de grant ponctuel dans Users.jsx), pas un
-// <select> listant potentiellement des milliers d'employés.
-const ResponsableField = ({ label, value, currentLabel, onChange }) => {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (query.trim().length < 2) {
-      setResults([]);
-      return undefined;
-    }
-    setLoading(true);
-    const timeout = setTimeout(() => {
-      api.get(`/employees/search/?q=${encodeURIComponent(query.trim())}`)
-        .then((res) => setResults(res.data || []))
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [query]);
-
-  return (
-    <>
-      <label style={labelStyle}>{label}</label>
-      {value ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 8,
-            padding: "9px 14px",
-            marginBottom: 12,
-            fontSize: 13,
-            color: theme.text,
-            background: theme.bg,
-          }}
-        >
-          <span>{currentLabel || "Employé sélectionné"}</span>
-          <button
-            type="button"
-            onClick={() => onChange(null, null)}
-            style={{ background: "none", border: "none", color: theme.danger, cursor: "pointer", fontSize: 12, fontWeight: 600 }}
-          >
-            Retirer
-          </button>
-        </div>
-      ) : (
-        <div style={{ position: "relative", marginBottom: 12 }}>
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher un employé (nom, prénom, matricule)…"
-            className="input-focus"
-            style={{ ...inputStyle, marginBottom: 0 }}
-          />
-          {query.trim().length >= 2 && (
-            <div
-              style={{
-                position: "absolute",
-                top: "100%",
-                left: 0,
-                right: 0,
-                zIndex: 10,
-                background: theme.surface,
-                border: `1px solid ${theme.border}`,
-                borderRadius: 10,
-                marginTop: 4,
-                maxHeight: 180,
-                overflowY: "auto",
-                boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
-              }}
-            >
-              {loading ? (
-                <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Recherche…</div>
-              ) : results.length === 0 ? (
-                <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Aucun résultat.</div>
-              ) : (
-                results.map((emp) => (
-                  <div
-                    key={emp.id}
-                    onClick={() => {
-                      onChange(emp.id, `${emp.prenom} ${emp.nom}`);
-                      setQuery("");
-                      setResults([]);
-                    }}
-                    style={{ padding: "8px 12px", cursor: "pointer", fontSize: 13, borderBottom: `1px solid ${theme.borderLight}` }}
-                  >
-                    {emp.prenom} {emp.nom}{" "}
-                    <span style={{ color: theme.textMuted, fontFamily: "monospace", fontSize: 11 }}>
-                      ({emp.matricule})
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
-};
-
-// ─── TABLEAU GÉNÉRIQUE ────────────────────────────────────────────────────────
-
-const RefTable = ({
-  items, columns, onEdit, onDelete, onRenameSystem, loading, isAdmin,
-  sortConfig, onSort,
-  selectedIds, onToggleSelect, onToggleSelectAll,
-}) => {
-  const selectableItems = items.filter((i) => !i.system);
-  const allSelected = selectableItems.length > 0 && selectableItems.every((i) => selectedIds?.has(i.id));
-  return (
-  <div
-    style={{
-      background: theme.surface,
-      border: `1px solid ${theme.primaryBorder}`,
-      borderRadius: 12,
-      overflow: "hidden",
-      boxShadow: theme.shadow,
-    }}
-  >
-    {loading ? (
-      <div style={{ padding: 24 }}>
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 0" }}>
-            <Skeleton width={32} height={32} radius={16} />
-            <Skeleton width="40%" height={14} />
-          </div>
-        ))}
-      </div>
-    ) : items.length === 0 ? (
-      <div
-        style={{ color: theme.textSecondary, textAlign: "center", padding: 40 }}
-      >
-        Aucun élément. Cliquez sur "Ajouter" pour commencer.
-      </div>
-    ) : (
-      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: theme.primaryBg }}>
-            {isAdmin && onToggleSelectAll && (
-              <th
-                style={{
-                  padding: "11px 12px",
-                  borderBottom: `2px solid ${theme.primaryBorder}`,
-                  width: 36,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={() => onToggleSelectAll(selectableItems)}
-                  aria-label="Tout sélectionner"
-                  style={{ cursor: "pointer" }}
-                />
-              </th>
-            )}
-            {columns.map((c) => (
-              <th
-                key={c.key}
-                onClick={c.sortable === false || !onSort ? undefined : () => onSort(c.key)}
-                style={{
-                  padding: "11px 16px",
-                  textAlign: "left",
-                  color: theme.primary,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                  borderBottom: `2px solid ${theme.primaryBorder}`,
-                  cursor: c.sortable === false || !onSort ? "default" : "pointer",
-                  userSelect: "none",
-                }}
-              >
-                {c.label}
-                {onSort && c.sortable !== false && sortConfig?.key === c.key && (
-                  <span style={{ marginLeft: 4 }}>{sortConfig.dir === "asc" ? "▲" : "▼"}</span>
-                )}
-              </th>
-            ))}
-            {isAdmin && (
-              <th
-                style={{
-                  padding: "11px 16px",
-                  borderBottom: `2px solid ${theme.primaryBorder}`,
-                  color: theme.primary,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  width: 120,
-                }}
-              >
-                Actions
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, idx) => (
-            <tr
-              key={item.id}
-              className="table-row-hover"
-              style={{
-                borderBottom: `1px solid ${theme.primaryBorder}`,
-                background: item.system
-                  ? "#F1F5F9"
-                  : item.is_categorie
-                    ? "#FFFBEB"
-                    : item.parent_nom
-                      ? "#FFFDF7"
-                      : idx % 2 === 0 ? theme.surface : "#FAFBFC",
-              }}
-            >
-              {isAdmin && onToggleSelect && (
-                <td style={{ padding: "11px 12px" }}>
-                  {!item.system && (
-                    <input
-                      type="checkbox"
-                      checked={!!selectedIds?.has(item.id)}
-                      onChange={() => onToggleSelect(item.id)}
-                      aria-label={`Sélectionner ${item.nom}`}
-                      style={{ cursor: "pointer" }}
-                    />
-                  )}
-                </td>
-              )}
-              {columns.map((c) => (
-                <td
-                  key={c.key}
-                  style={{
-                    padding: "11px 16px",
-                    color: c.primary ? theme.primary : theme.text,
-                    fontSize: 13,
-                    fontFamily: c.mono ? "monospace" : "inherit",
-                    fontWeight: c.bold ? 600 : 400,
-                  }}
-                >
-                  {c.render ? c.render(item) : item[c.key] || "—"}
-                </td>
-              ))}
-              {isAdmin && (
-                <td style={{ padding: "11px 16px" }}>
-                  {item.system ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span
-                        title="Champ système — structure verrouillée pour préserver le fonctionnement de l'application"
-                        style={{
-                          color: theme.textMuted,
-                          fontSize: 11,
-                          fontStyle: "italic",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
-                      >
-                        🔒 Système
-                      </span>
-                      {onRenameSystem && (
-                        <button
-                          onClick={() => onRenameSystem(item)}
-                          title="Renommer le libellé affiché (n'affecte pas la structure)"
-                          aria-label="Renommer"
-                          style={{
-                            background: theme.primaryBg,
-                            border: `1px solid ${theme.primaryBorder}`,
-                            color: theme.primary,
-                            borderRadius: 6,
-                            padding: "4px 8px",
-                            display: "flex",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <PencilIcon size={12} />
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      onClick={() => onEdit(item)}
-                      title="Modifier"
-                      aria-label="Modifier"
-                      style={{
-                        background: theme.primaryBg,
-                        border: `1px solid ${theme.primaryBorder}`,
-                        color: theme.primary,
-                        borderRadius: 6,
-                        padding: "4px 10px",
-                        display: "flex",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <PencilIcon size={13} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(item)}
-                      title="Supprimer"
-                      aria-label="Supprimer"
-                      style={{
-                        background: theme.dangerBg,
-                        border: `1px solid ${theme.dangerBorder}`,
-                        color: theme.danger,
-                        borderRadius: 6,
-                        padding: "4px 10px",
-                        display: "flex",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <TrashIcon size={13} />
-                    </button>
-                  </div>
-                  )}
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-    )}
-  </div>
-  );
-};
-
-// ─── ONGLETS ──────────────────────────────────────────────────────────────────
-
-const TABS = [
-  { key: "directions", label: "Directions" },
-  { key: "poles", label: "Pôles" },
-  { key: "departements", label: "Départements" },
-  { key: "services", label: "Services" },
-  { key: "cellules", label: "Cellules" },
-  { key: "sections", label: "Sections" },
-  { key: "postes", label: "Postes" },
-  { key: "types-contrat", label: "Types de contrat" },
-  { key: "categories", label: "Catégories" },
-  { key: "echelles", label: "Échelles" },
-  { key: "types-documents", label: "Types de documents" },
-  { key: "champs-personnalises", label: "Champs personnalisés" },
-];
-
-// Tabs sans import/template CSV-XLSX côté backend (ReferentielImportView) —
-// "types-documents" a une hiérarchie catégorie/sous-type et
-// "champs-personnalises" un type de champ, tous deux trop spécifiques pour
-// le mécanisme générique d'import référentiel. Masquer les boutons
-// Template/Import plutôt que de les laisser échouer avec une erreur.
-const IMPORT_UNSUPPORTED_TABS = new Set(["types-documents", "champs-personnalises"]);
-
-// Colonnes obligatoires/optionnelles par onglet — reflète exactement
-// ReferentielImportView.MODELS (backend/employees/import_views.py), affiché
-// dans la modale d'import pour que l'admin sache quoi remplir sans deviner
-// (même principe que Import.jsx pour l'import employés).
-const REF_COLUMNS_INFO = {
-  directions: { obligatoires: ["nom"], optionnelles: ["code", "description"] },
-  poles: { obligatoires: ["nom", "direction"], optionnelles: ["code", "description"] },
-  departements: { obligatoires: ["nom", "direction"], optionnelles: ["code", "description"] },
-  services: {
-    obligatoires: ["nom", "departement"],
-    optionnelles: ["code", "direction", "description"],
-    note: '"direction" ne sert qu\'à lever l\'ambiguïté si plusieurs départements portent le même nom.',
-  },
-  cellules: {
-    obligatoires: ["nom"],
-    optionnelles: ["code", "direction", "departement", "description"],
-    note: 'Au moins une des deux colonnes "direction" ou "departement" doit être remplie par ligne. Si "departement" est rempli, "direction" devient facultative et sert seulement à lever l\'ambiguïté si plusieurs départements portent ce nom.',
-  },
-  sections: {
-    obligatoires: ["nom"],
-    optionnelles: ["code", "direction", "departement", "description"],
-    note: 'Au moins une des deux colonnes "direction" ou "departement" doit être remplie par ligne. Si "departement" est rempli, "direction" devient facultative et sert seulement à lever l\'ambiguïté si plusieurs départements portent ce nom.',
-  },
-  postes: { obligatoires: ["nom"], optionnelles: ["code", "description"] },
-  "types-contrat": { obligatoires: ["nom"], optionnelles: ["description"] },
-  categories: { obligatoires: ["nom"], optionnelles: ["description"] },
-  echelles: { obligatoires: ["nom"], optionnelles: ["description"] },
-};
-
-// Champs "système" de la fiche employé — pilotent le scoping/périmètre RGPD,
-// l'archivage, la recherche ou la logique métier (voir CLAUDE.md). Affichés
-// dans l'onglet "Champs personnalisés" pour vue d'ensemble complète, mais
-// jamais modifiables/supprimables depuis cet écran (`system: true`).
-const SYSTEM_FIELDS = [
-  { id: "sys-matricule", nom: "Matricule", code: "matricule", type_champ: "texte", system: true },
-  { id: "sys-numero_contrat", nom: "N° Contrat", code: "numero_contrat", type_champ: "texte", system: true },
-  { id: "sys-nom", nom: "Nom", code: "nom", type_champ: "texte", system: true },
-  { id: "sys-prenom", nom: "Prénom", code: "prenom", type_champ: "texte", system: true },
-  { id: "sys-statut", nom: "Statut", code: "statut", type_champ: "texte", system: true },
-  { id: "sys-direction", nom: "Direction", code: "direction", type_champ: "référentiel", system: true },
-  { id: "sys-pole", nom: "Pôle", code: "pole", type_champ: "référentiel", system: true },
-  { id: "sys-departement", nom: "Département", code: "departement", type_champ: "référentiel", system: true },
-  { id: "sys-section", nom: "Section", code: "section", type_champ: "référentiel", system: true },
-  { id: "sys-service", nom: "Service", code: "service", type_champ: "référentiel", system: true },
-  { id: "sys-cellule", nom: "Cellule", code: "cellule", type_champ: "référentiel", system: true },
-  { id: "sys-poste", nom: "Fonction", code: "poste", type_champ: "référentiel", system: true },
-  { id: "sys-type_contrat", nom: "Type de contrat", code: "type_contrat", type_champ: "référentiel", system: true },
-  { id: "sys-categorie", nom: "Catégorie", code: "categorie", type_champ: "référentiel", system: true },
-  { id: "sys-echelle", nom: "Échelle", code: "echelle", type_champ: "référentiel", system: true },
-  { id: "sys-date_naissance", nom: "Date de naissance", code: "date_naissance", type_champ: "date", system: true },
-  { id: "sys-date_embauche", nom: "Date de recrutement", code: "date_embauche", type_champ: "date", system: true },
-  { id: "sys-date_debut_contrat", nom: "Date de début de contrat", code: "date_debut_contrat", type_champ: "date", system: true },
-  { id: "sys-date_fin_contrat", nom: "Date de fin de contrat", code: "date_fin_contrat", type_champ: "date", system: true },
-];
-
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 
 const Parametres = () => {
+  const theme = useTheme();
+  const inputStyle = getInputStyle(theme);
   const { user } = useAuth();
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const isMobile = useIsMobile();
@@ -576,7 +58,11 @@ const Parametres = () => {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageMeta, setPageMeta] = useState({ count: 0, next: null, previous: null });
+  const [pageMeta, setPageMeta] = useState({
+    count: 0,
+    next: null,
+    previous: null,
+  });
   const [sortConfig, setSortConfig] = useState({ key: null, dir: "asc" });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -585,13 +71,20 @@ const Parametres = () => {
   const [directions, setDirections] = useState([]);
   const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
-  const [champsPersonnalisesOptions, setChampsPersonnalisesOptions] = useState([]);
+  const [champsPersonnalisesOptions, setChampsPersonnalisesOptions] = useState(
+    [],
+  );
 
   useEffect(() => {
-    api.get("/ref/champs-personnalises/").then((res) => {
-      const list = res.data.results || res.data;
-      setChampsPersonnalisesOptions(list.filter((c) => c.is_active));
-    }).catch(() => {});
+    api
+      .get("/ref/champs-personnalises/")
+      .then((res) => {
+        const list = res.data.results || res.data;
+        setChampsPersonnalisesOptions(
+          list.filter((c) => c.is_active && !c.is_systeme),
+        );
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -636,15 +129,24 @@ const Parametres = () => {
     try {
       const r = await api.get("/ref/system-field-labels/");
       const list = r.data.results || r.data;
-      setSystemLabels(Object.fromEntries(list.map((l) => [l.code, { label: l.label, ordre: l.ordre }])));
+      setSystemLabels(
+        Object.fromEntries(
+          list.map((l) => [l.code, { label: l.label, ordre: l.ordre }]),
+        ),
+      );
     } catch {}
   };
 
   const handleRenameSystemField = async (item) => {
-    const newLabel = await prompt("Nouveau libellé affiché :", systemLabels[item.code]?.label || item.nom);
+    const newLabel = await prompt(
+      "Nouveau libellé affiché :",
+      systemLabels[item.code]?.label || item.nom,
+    );
     if (newLabel === null) return;
     try {
-      await api.put(`/ref/system-field-labels/${item.code}/`, { label: newLabel.trim() });
+      await api.put(`/ref/system-field-labels/${item.code}/`, {
+        label: newLabel.trim(),
+      });
       showMessage("success", "Libellé mis à jour.");
       fetchSystemLabels();
     } catch (err) {
@@ -670,14 +172,18 @@ const Parametres = () => {
     try {
       const list = items;
       const idx = list.findIndex((i) =>
-        item.system ? i.system && i.code === item.code : !i.system && i.id === item.id
+        item.system
+          ? i.system && i.code === item.code
+          : !i.system && i.id === item.id,
       );
       const swapIdx = direction === "up" ? idx - 1 : idx + 1;
       if (idx === -1 || swapIdx < 0 || swapIdx >= list.length) return;
       const newList = [...list];
       [newList[idx], newList[swapIdx]] = [newList[swapIdx], newList[idx]];
       const order = newList.map((i) =>
-        i.system ? { type: "system", code: i.code } : { type: "custom", id: i.id }
+        i.system
+          ? { type: "system", code: i.code }
+          : { type: "custom", id: i.id },
       );
       await api.put("/ref/champs-personnalises/reorder/", { order });
       await Promise.all([
@@ -759,7 +265,8 @@ const Parametres = () => {
       const serverError = err.response?.data?.error;
       showMessage(
         "error",
-        serverError || "Impossible de supprimer — des employés y sont peut-être rattachés.",
+        serverError ||
+          "Impossible de supprimer — des employés y sont peut-être rattachés.",
       );
     }
   };
@@ -782,7 +289,9 @@ const Parametres = () => {
 
   const toggleSelectAll = (selectableItems) => {
     setSelectedIds((prev) => {
-      const allSelected = selectableItems.length > 0 && selectableItems.every((i) => prev.has(i.id));
+      const allSelected =
+        selectableItems.length > 0 &&
+        selectableItems.every((i) => prev.has(i.id));
       if (allSelected) return new Set();
       return new Set(selectableItems.map((i) => i.id));
     });
@@ -791,13 +300,19 @@ const Parametres = () => {
   const handleBulkDelete = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (!(await confirm(`Supprimer les ${ids.length} éléments sélectionnés ?`))) return;
+    if (!(await confirm(`Supprimer les ${ids.length} éléments sélectionnés ?`)))
+      return;
     setBulkDeleting(true);
     try {
-      const response = await api.post(`/ref/bulk-delete/${activeTab}/`, { ids });
+      const response = await api.post(`/ref/bulk-delete/${activeTab}/`, {
+        ids,
+      });
       const { nb_supprimes, nb_erreurs, erreurs } = response.data;
       if (nb_erreurs > 0) {
-        const detail = erreurs.slice(0, 3).map((e) => `"${e.nom}" : ${e.erreur}`).join(" — ");
+        const detail = erreurs
+          .slice(0, 3)
+          .map((e) => `"${e.nom}" : ${e.erreur}`)
+          .join(" — ");
         showMessage(
           "error",
           `${nb_supprimes} supprimé(s), ${nb_erreurs} échec(s) — ${detail}`,
@@ -808,7 +323,10 @@ const Parametres = () => {
       setSelectedIds(new Set());
       fetchTab(activeTab, page, search, true);
     } catch (err) {
-      showMessage("error", err.response?.data?.error || "Échec de la suppression en masse.");
+      showMessage(
+        "error",
+        err.response?.data?.error || "Échec de la suppression en masse.",
+      );
     } finally {
       setBulkDeleting(false);
     }
@@ -906,7 +424,9 @@ const Parametres = () => {
         children.get(t.parent).push(t);
       }
     });
-    children.forEach((arr) => arr.sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0)));
+    children.forEach((arr) =>
+      arr.sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0)),
+    );
     const roots = list
       .filter((t) => !t.parent || !byId.has(t.parent))
       .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
@@ -923,20 +443,25 @@ const Parametres = () => {
   // ordre géré par les flèches ↑/↓ pour "champs-personnalises" (système et
   // personnalisés peuvent désormais être mélangés librement, voir
   // handleMoveField).
-  const sortableTab = activeTab !== "types-documents" && activeTab !== "champs-personnalises";
+  const sortableTab =
+    activeTab !== "types-documents" && activeTab !== "champs-personnalises";
 
   const items =
     activeTab === "types-documents"
       ? sortTypesDocumentsHierarchy(data[activeTab] || [])
       : activeTab === "champs-personnalises"
-        ? [
-            ...SYSTEM_FIELDS.map((f, idx) => ({
-              ...f,
-              nom: systemLabels[f.code]?.label || f.nom,
-              ordre: systemLabels[f.code]?.ordre ?? idx * 10,
-            })),
-            ...(data[activeTab] || []),
-          ].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
+        ? (data[activeTab] || [])
+            .map((f) =>
+              f.is_systeme
+                ? {
+                    ...f,
+                    system: true,
+                    nom: systemLabels[f.code]?.label || f.nom,
+                    ordre: systemLabels[f.code]?.ordre ?? f.ordre,
+                  }
+                : { ...f, system: false },
+            )
+            .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))
         : data[activeTab] || [];
 
   const sortedItems = useMemo(() => {
@@ -948,1283 +473,56 @@ const Parametres = () => {
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
-      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
-      if (typeof av === "boolean" && typeof bv === "boolean") return (av === bv ? 0 : av ? -1 : 1) * dir;
-      return String(av).localeCompare(String(bv), "fr", { sensitivity: "base" }) * dir;
+      if (typeof av === "number" && typeof bv === "number")
+        return (av - bv) * dir;
+      if (typeof av === "boolean" && typeof bv === "boolean")
+        return (av === bv ? 0 : av ? -1 : 1) * dir;
+      return (
+        String(av).localeCompare(String(bv), "fr", { sensitivity: "base" }) *
+        dir
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, sortConfig, sortableTab]);
 
   // ─── Colonnes par onglet ───────────────────────────────────────────────────
+  // Définitions extraites dans components/parametres/refColumns.jsx (voir
+  // getRefColumns) pour garder cette page sous les 1000 lignes.
 
-  const getColumns = () => {
-    switch (activeTab) {
-      case "directions":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          {
-            key: "nb_departements",
-            label: "Départements",
-            render: (i) => (
-              <Badge count={i.nb_departements} color={theme.primary} />
-            ),
-          },
-          { key: "responsable_nom", label: "Directeur", render: (i) => i.responsable_nom || "—" },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "poles":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          { key: "direction_nom", label: "Direction" },
-          {
-            key: "nb_departements",
-            label: "Départements",
-            render: (i) => (
-              <Badge count={i.nb_departements} color={theme.primary} />
-            ),
-          },
-          { key: "responsable_nom", label: "Directeur", render: (i) => i.responsable_nom || "—" },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "departements":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          { key: "direction_nom", label: "Direction" },
-          { key: "pole_nom", label: "Pôle", render: (i) => i.pole_nom || "—" },
-          {
-            key: "nb_services",
-            label: "Services",
-            render: (i) => (
-              <Badge count={i.nb_services} color={theme.primary} />
-            ),
-          },
-          { key: "responsable_nom", label: "Chef de département", render: (i) => i.responsable_nom || "—" },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "services":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          { key: "departement_nom", label: "Département" },
-          { key: "direction_nom", label: "Direction" },
-          { key: "responsable_nom", label: "Chef de service", render: (i) => i.responsable_nom || "—" },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "cellules":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          {
-            key: "rattachement",
-            label: "Rattachée à",
-            sortable: false,
-            render: (i) =>
-              i.direction_nom
-                ? `Direction : ${i.direction_nom}`
-                : `Département : ${i.departement_nom}`,
-          },
-          {
-            key: "nb_employes",
-            label: "Employés",
-            render: (i) => (
-              <Badge count={i.nb_employes} color={theme.primary} />
-            ),
-          },
-          { key: "responsable_nom", label: "Chef de cellule", render: (i) => i.responsable_nom || "—" },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "sections":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          {
-            key: "rattachement",
-            label: "Rattachée à",
-            sortable: false,
-            render: (i) =>
-              i.direction_nom
-                ? `Direction : ${i.direction_nom}`
-                : `Département : ${i.departement_nom}`,
-          },
-          {
-            key: "nb_employes",
-            label: "Employés",
-            render: (i) => (
-              <Badge count={i.nb_employes} color={theme.primary} />
-            ),
-          },
-          { key: "responsable_nom", label: "Chef de section", render: (i) => i.responsable_nom || "—" },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "postes":
-        return [
-          { key: "nom", label: "Intitulé", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          {
-            key: "nb_employes",
-            label: "Employés",
-            render: (i) => (
-              <Badge count={i.nb_employes} color={theme.primary} />
-            ),
-          },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "types-contrat":
-      case "categories":
-      case "echelles":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "description", label: "Description" },
-          {
-            key: "nb_employes",
-            label: "Employés",
-            render: (i) => (
-              <Badge count={i.nb_employes} color={theme.primary} />
-            ),
-          },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "types-documents":
-        return [
-          {
-            key: "nom",
-            label: "Nom",
-            bold: true,
-            render: (i) =>
-              i.parent_nom ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 22 }}>
-                  <span style={{ color: theme.textMuted, fontSize: 13 }}>↳</span>
-                  {i.couleur && (
-                    <span
-                      style={{
-                        width: 10, height: 10, borderRadius: "50%",
-                        background: i.couleur, border: `1px solid ${theme.border}`,
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
-                  <span>{i.nom}</span>
-                </div>
-              ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {i.is_categorie && <span title="Catégorie">📁</span>}
-                  {i.couleur && (
-                    <span
-                      style={{
-                        width: 10, height: 10, borderRadius: "50%",
-                        background: i.couleur, border: `1px solid ${theme.border}`,
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
-                  <span style={{ fontWeight: 700 }}>{i.nom}</span>
-                </div>
-              ),
-          },
-          { key: "code", label: "Code", mono: true, primary: true },
-          {
-            key: "ordre",
-            label: "Ordre",
-            render: (i) =>
-              i.parent_nom ? (
-                <span style={{ color: theme.textMuted, fontSize: 12 }}>— (suit "{i.parent_nom}")</span>
-              ) : (
-                i.ordre ?? "—"
-              ),
-          },
-          {
-            key: "obligatoire",
-            label: "Obligatoire",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.obligatoire ? theme.dangerBg : theme.primaryBg,
-                  color: i.obligatoire ? theme.danger : theme.primary,
-                  border: `1px solid ${i.obligatoire ? theme.dangerBorder : theme.primaryBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.obligatoire ? "Obligatoire" : "Optionnel"}
-              </span>
-            ),
-          },
-          {
-            key: "champ_source",
-            label: "Champ source",
-            render: (i) => {
-              if (!i.champ_source) return <span style={{ color: theme.textMuted }}>—</span>;
-              const champ =
-                SYSTEM_FIELDS.find((f) => f.code === i.champ_source) ||
-                champsPersonnalisesOptions.find((c) => c.code === i.champ_source);
-              return <span style={{ fontSize: 12 }}>{champ?.nom || i.champ_source}</span>;
-            },
-          },
-          {
-            key: "nb_documents",
-            label: "Documents",
-            render: (i) => (
-              <Badge count={i.nb_documents} color={theme.primary} />
-            ),
-          },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) => (
-              <span
-                style={{
-                  background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                  color: i.is_active ? theme.primary : theme.danger,
-                  border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                  borderRadius: 6,
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                }}
-              >
-                {i.is_active ? "Actif" : "Inactif"}
-              </span>
-            ),
-          },
-        ];
-      case "champs-personnalises":
-        return [
-          { key: "nom", label: "Nom", bold: true },
-          { key: "code", label: "Code", mono: true, primary: true },
-          {
-            key: "type_champ",
-            label: "Type",
-            render: (i) => (
-              <span style={{ color: theme.textSecondary, fontSize: 12, textTransform: "capitalize" }}>
-                {i.type_champ}
-              </span>
-            ),
-          },
-          {
-            key: "ordre",
-            label: "Ordre",
-            sortable: false,
-            render: (i) => {
-              const idx = items.findIndex((it) =>
-                i.system ? it.system && it.code === i.code : !it.system && it.id === i.id
-              );
-              return (
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ color: theme.textSecondary, fontSize: 12, minWidth: 18, textAlign: "right" }}>
-                    {idx + 1}
-                  </span>
-                  {isAdmin && (() => {
-                    const busy = !!reorderingField;
-                    const upDisabled = idx <= 0 || busy;
-                    const downDisabled = idx >= items.length - 1 || busy;
-                    return (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveField(i, "up")}
-                          disabled={upDisabled}
-                          title="Monter"
-                          aria-label={`Monter ${i.nom}`}
-                          style={{
-                            background: "none", border: "none", padding: 0,
-                            lineHeight: 1, fontSize: 10,
-                            color: upDisabled ? theme.textMuted : theme.primary,
-                            cursor: upDisabled ? "default" : "pointer",
-                          }}
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleMoveField(i, "down")}
-                          disabled={downDisabled}
-                          title="Descendre"
-                          aria-label={`Descendre ${i.nom}`}
-                          style={{
-                            background: "none", border: "none", padding: 0,
-                            lineHeight: 1, fontSize: 10,
-                            color: downDisabled ? theme.textMuted : theme.primary,
-                            cursor: downDisabled ? "default" : "pointer",
-                          }}
-                        >
-                          ▼
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            },
-          },
-          {
-            key: "is_active",
-            label: "Statut",
-            render: (i) =>
-              i.system ? (
-                <span style={{ color: theme.textMuted, fontSize: 11, fontStyle: "italic" }}>—</span>
-              ) : (
-                <span
-                  style={{
-                    background: i.is_active ? theme.primaryBg : theme.dangerBg,
-                    color: i.is_active ? theme.primary : theme.danger,
-                    border: `1px solid ${i.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                    borderRadius: 6,
-                    padding: "2px 8px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  {i.is_active ? "Actif" : "Inactif"}
-                </span>
-              ),
-          },
-        ];
-      default:
-        return [];
-    }
-  };
+  const columns = getRefColumns({
+    activeTab,
+    champsPersonnalisesOptions,
+    items,
+    isAdmin,
+    theme,
+    reorderingField,
+    handleMoveField,
+    fetchTab,
+    page,
+    search,
+  });
 
   // ─── Formulaire par onglet ─────────────────────────────────────────────────
 
-  const renderForm = () => {
-    switch (activeTab) {
-      case "directions":
-        return (
-          <>
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Direction Générale"
-            />
-            <label style={labelStyle}>Code</label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="DG"
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-              placeholder="Description optionnelle"
-            />
-            <ResponsableField
-              label="Directeur"
-              value={form.responsable || null}
-              currentLabel={form.responsable_nom}
-              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-
-      case "poles":
-        return (
-          <>
-            <label style={labelStyle}>
-              Direction <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <select
-              name="direction"
-              value={form.direction || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="">-- Sélectionner --</option>
-              {directions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.nom}
-                </option>
-              ))}
-            </select>
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Pôle Machines Tournantes"
-            />
-            <label style={labelStyle}>Code</label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="PMT"
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            />
-            <ResponsableField
-              label="Directeur"
-              value={form.responsable || null}
-              currentLabel={form.responsable_nom}
-              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-
-      case "departements": {
-        const polesDeLaDirection = poles.filter((p) => p.direction === form.direction);
-        return (
-          <>
-            <label style={labelStyle}>
-              Direction <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <select
-              name="direction"
-              value={form.direction || ""}
-              onChange={(e) => setForm({ ...form, direction: e.target.value, pole: "" })}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="">-- Sélectionner --</option>
-              {directions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.nom}
-                </option>
-              ))}
-            </select>
-            <label style={labelStyle}>Pôle (optionnel)</label>
-            <select
-              name="pole"
-              value={form.pole || ""}
-              onChange={handleChange}
-              disabled={!form.direction || polesDeLaDirection.length === 0}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="">-- Aucun (rattaché directement à la Direction) --</option>
-              {polesDeLaDirection.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nom}
-                </option>
-              ))}
-            </select>
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Département Ressources Humaines"
-            />
-            <label style={labelStyle}>Code</label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="DRH"
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            />
-            <ResponsableField
-              label="Chef de département"
-              value={form.responsable || null}
-              currentLabel={form.responsable_nom}
-              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-      }
-
-      case "services":
-        return (
-          <>
-            <label style={labelStyle}>
-              Département <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <select
-              name="departement"
-              value={form.departement || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="">-- Sélectionner --</option>
-              {departements.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.nom} ({d.direction_nom})
-                </option>
-              ))}
-            </select>
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Service Paie"
-            />
-            <label style={labelStyle}>Code</label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="SP"
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            />
-            <ResponsableField
-              label="Chef de service"
-              value={form.responsable || null}
-              currentLabel={form.responsable_nom}
-              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-
-      case "cellules": {
-        const rattachement = rattachementChoice;
-        return (
-          <>
-            <label style={labelStyle}>
-              Rattachée à <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
-                <input
-                  type="radio"
-                  checked={rattachement === "direction"}
-                  onChange={() => {
-                    setRattachementChoice("direction");
-                    setForm({ ...form, direction: form.direction || "", departement: "" });
-                  }}
-                />
-                Une Direction
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
-                <input
-                  type="radio"
-                  checked={rattachement === "departement"}
-                  onChange={() => {
-                    setRattachementChoice("departement");
-                    setForm({ ...form, departement: form.departement || "", direction: "" });
-                  }}
-                />
-                Un Département
-              </label>
-            </div>
-            {rattachement === "direction" ? (
-              <select
-                name="direction"
-                value={form.direction || ""}
-                onChange={handleChange}
-                className="input-focus" style={inputStyle}
-              >
-                <option value="">-- Sélectionner une Direction --</option>
-                {directions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.nom}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <select
-                name="departement"
-                value={form.departement || ""}
-                onChange={handleChange}
-                className="input-focus" style={inputStyle}
-              >
-                <option value="">-- Sélectionner un Département --</option>
-                {departements.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.nom} ({d.direction_nom})
-                  </option>
-                ))}
-              </select>
-            )}
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Cellule Audit Interne"
-            />
-            <label style={labelStyle}>Code</label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="CAI"
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            />
-            <ResponsableField
-              label="Chef de cellule"
-              value={form.responsable || null}
-              currentLabel={form.responsable_nom}
-              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-      }
-
-      case "sections": {
-        const rattachement = rattachementChoice;
-        return (
-          <>
-            <label style={labelStyle}>
-              Rattachée à <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
-                <input
-                  type="radio"
-                  checked={rattachement === "direction"}
-                  onChange={() => {
-                    setRattachementChoice("direction");
-                    setForm({ ...form, direction: form.direction || "", departement: "" });
-                  }}
-                />
-                Une Direction
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
-                <input
-                  type="radio"
-                  checked={rattachement === "departement"}
-                  onChange={() => {
-                    setRattachementChoice("departement");
-                    setForm({ ...form, departement: form.departement || "", direction: "" });
-                  }}
-                />
-                Un Département
-              </label>
-            </div>
-            {rattachement === "direction" ? (
-              <select
-                name="direction"
-                value={form.direction || ""}
-                onChange={handleChange}
-                className="input-focus" style={inputStyle}
-              >
-                <option value="">-- Sélectionner une Direction --</option>
-                {directions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.nom}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <select
-                name="departement"
-                value={form.departement || ""}
-                onChange={handleChange}
-                className="input-focus" style={inputStyle}
-              >
-                <option value="">-- Sélectionner un Département --</option>
-                {departements.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.nom} ({d.direction_nom})
-                  </option>
-                ))}
-              </select>
-            )}
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Section Contrôle Qualité"
-            />
-            <label style={labelStyle}>Code</label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="SCQ"
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            />
-            <ResponsableField
-              label="Chef de section"
-              value={form.responsable || null}
-              currentLabel={form.responsable_nom}
-              onChange={(id, nom) => setForm({ ...form, responsable: id, responsable_nom: nom })}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-      }
-
-      case "postes":
-        return (
-          <>
-            <label style={labelStyle}>
-              Intitulé <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Ingénieur principal"
-            />
-            <label style={labelStyle}>Code</label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="ING-P"
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-
-      case "types-contrat":
-      case "categories":
-      case "echelles":
-        return (
-          <>
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder={
-                activeTab === "types-contrat"
-                  ? "CDI, CDD, Titulaire..."
-                  : activeTab === "echelles"
-                  ? "Échelle 10, Échelle 12..."
-                  : "Cadre, Technicien..."
-              }
-            />
-            <label style={labelStyle}>Description</label>
-            <textarea
-              name="description"
-              value={form.description || ""}
-              onChange={handleChange}
-              className="input-focus" style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-            />
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-      case "types-documents":
-        return (
-          <>
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Attestation de travail"
-            />
-
-            <label style={labelStyle}>
-              Code <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="ATTESTATION"
-            />
-
-            <label style={labelStyle}>Catégorie parente (optionnel)</label>
-            <select
-              name="parent"
-              value={form.parent || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="">-- Aucune (type racine) --</option>
-              {items
-                .filter((t) => !t.parent && t.id !== modal?.item?.id)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nom}
-                  </option>
-                ))}
-            </select>
-            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: -8, marginBottom: 12 }}>
-              Rattacher ce type à une catégorie (ex. "Acte de naissance" sous "État civil") pour l'afficher comme sous-dossier. Un type devenant lui-même une catégorie (une fois qu'il a des sous-types) n'est plus uploadable directement.
-            </div>
-
-            <label style={labelStyle}>Ordre d'affichage</label>
-            <input
-              type="number"
-              name="ordre"
-              value={form.ordre ?? 0}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              min="0"
-            />
-
-            <label style={labelStyle}>Obligatoire ?</label>
-            <select
-              name="obligatoire"
-              value={modal?.item?.is_categorie ? false : form.obligatoire ?? false}
-              onChange={(e) =>
-                setForm({ ...form, obligatoire: e.target.value === "true" })
-              }
-              disabled={modal?.item?.is_categorie}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="false">Optionnel</option>
-              <option value="true">Obligatoire</option>
-            </select>
-            {modal?.item?.is_categorie && (
-              <div style={{ color: theme.warning, fontSize: 11, marginTop: 4, marginBottom: 12 }}>
-                Cette catégorie a des sous-types — elle n'est plus uploadable directement, donc "Obligatoire" n'a aucun effet ici. Marquez le(s) sous-type(s) concerné(s) comme obligatoire(s) à la place.
-              </div>
-            )}
-
-            <label style={labelStyle}>Champ source (optionnel)</label>
-            <select
-              name="champ_source"
-              aria-label="Champ source"
-              value={modal?.item?.is_categorie ? "" : form.champ_source || ""}
-              onChange={handleChange}
-              disabled={modal?.item?.is_categorie}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="">-- Aucun --</option>
-              <optgroup label="Champs système">
-                {SYSTEM_FIELDS.map((f) => (
-                  <option key={f.code} value={f.code}>{f.nom}</option>
-                ))}
-              </optgroup>
-              {champsPersonnalisesOptions.length > 0 && (
-                <optgroup label="Champs personnalisés">
-                  {champsPersonnalisesOptions.map((c) => (
-                    <option key={c.code} value={c.code}>{c.nom}</option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: -8, marginBottom: 12 }}>
-              Le champ de la fiche employé que ce document justifie (ex. "Date de naissance" pour un Acte de naissance) — cliquer sur ce champ, côté fiche employé, ouvrira directement ce document.
-            </div>
-
-            <label style={labelStyle}>Couleur (optionnel)</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input
-                type="color"
-                value={form.couleur || "#166534"}
-                onChange={(e) => setForm({ ...form, couleur: e.target.value })}
-                style={{ width: 40, height: 34, padding: 2, border: `1px solid ${theme.border}`, borderRadius: 8, cursor: "pointer" }}
-              />
-              <input
-                name="couleur"
-                value={form.couleur || ""}
-                onChange={handleChange}
-                placeholder="#166534"
-                className="input-focus" style={{ ...inputStyle, flex: 1 }}
-              />
-              {form.couleur && (
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, couleur: "" })}
-                  style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
-                >
-                  Réinitialiser
-                </button>
-              )}
-            </div>
-            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4, marginBottom: 12 }}>
-              Colore le dossier/sous-dossier dans la sidebar Documents de la fiche employé. Un sous-type sans couleur propre hérite de la couleur de sa catégorie.
-            </div>
-
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-          </>
-        );
-
-      case "champs-personnalises":
-        return (
-          <>
-            <label style={labelStyle}>
-              Nom <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="nom"
-              value={form.nom || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="Permis de conduire"
-            />
-
-            <label style={labelStyle}>
-              Code <span style={{ color: theme.danger }}>*</span>
-            </label>
-            <input
-              name="code"
-              value={form.code || ""}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              placeholder="PERMIS"
-            />
-
-            <label style={labelStyle}>Type</label>
-            <select
-              name="type_champ"
-              value={form.type_champ || "texte"}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-            >
-              <option value="texte">Texte</option>
-              <option value="nombre">Nombre</option>
-              <option value="date">Date</option>
-              <option value="booleen">Booléen (Oui/Non)</option>
-            </select>
-
-            <label style={labelStyle}>Ordre d'affichage</label>
-            <input
-              type="number"
-              name="ordre"
-              value={form.ordre ?? 0}
-              onChange={handleChange}
-              className="input-focus" style={inputStyle}
-              min="0"
-            />
-
-            <label style={labelStyle}>Statut</label>
-            <select
-              name="is_active"
-              value={form.is_active ?? true}
-              onChange={(e) =>
-                setForm({ ...form, is_active: e.target.value === "true" })
-              }
-              className="input-focus" style={inputStyle}
-            >
-              <option value="true">Actif</option>
-              <option value="false">Inactif</option>
-            </select>
-            <div style={{ color: theme.textMuted, fontSize: 11, marginTop: -8 }}>
-              Ce champ apparaîtra sur la fiche de tous les employés (section "Informations complémentaires").
-            </div>
-          </>
-        );
-
-      default:
-        return null;
-    }
-  };
 
   const tabFieldNotice =
     activeTab === "cellules" || activeTab === "sections"
       ? FIELD_NOTICES.parametres.cellulesEtSections
       : activeTab === "types-documents"
-      ? FIELD_NOTICES.parametres.typesDocumentsCategories
-      : null;
+        ? FIELD_NOTICES.parametres.typesDocumentsCategories
+        : null;
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
-      <div className="anim-fade-in" style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1100, margin: "0 auto" }}>
+      <div
+        className="anim-fade-in"
+        style={{
+          padding: isMobile ? "16px" : "32px",
+          maxWidth: 1200,
+          margin: "0 auto",
+        }}
+      >
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <h1
@@ -2264,7 +562,7 @@ const Parametres = () => {
           </div>
         )}
 
-        {/* Onglets */}
+        {/* Navigation + contenu */}
         <div
           style={{
             background: theme.surface,
@@ -2272,47 +570,104 @@ const Parametres = () => {
             border: `1px solid ${theme.primaryBorder}`,
             boxShadow: theme.shadow,
             overflow: "hidden",
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: "stretch",
           }}
         >
-          {/* Tabs header */}
-          <div
-            style={{
-              display: "flex",
-              borderBottom: `2px solid ${theme.primaryBorder}`,
-              background: theme.bg,
-              overflowX: "auto",
-            }}
-          >
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                style={{
-                  background:
-                    activeTab === tab.key ? theme.surface : "transparent",
-                  border: "none",
-                  borderBottom:
-                    activeTab === tab.key
-                      ? `2px solid ${theme.primary}`
-                      : "2px solid transparent",
-                  color:
-                    activeTab === tab.key ? theme.primary : theme.textSecondary,
-                  padding: "13px 20px",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: activeTab === tab.key ? 700 : 400,
-                  whiteSpace: "nowrap",
-                  transition: "all 0.15s",
-                  marginBottom: -2,
-                }}
+          {isMobile ? (
+            /* Mobile : select natif regroupé par optgroup — évite le scroll
+               horizontal d'onglets illisible sur petit écran */
+            <div
+              style={{
+                borderBottom: `2px solid ${theme.primaryBorder}`,
+                background: theme.bg,
+                padding: 12,
+              }}
+            >
+              <select
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value)}
+                className="input-focus"
+                style={{ ...inputStyle, marginBottom: 0, fontWeight: 700 }}
               >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+                {TAB_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.keys.map((key) => {
+                      const tab = TABS.find((t) => t.key === key);
+                      return tab ? (
+                        <option key={tab.key} value={tab.key}>
+                          {tab.label}
+                        </option>
+                      ) : null;
+                    })}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          ) : (
+            /* Desktop : sidebar verticale groupée par catégorie */
+            <nav
+              style={{
+                width: 220,
+                flexShrink: 0,
+                borderRight: `2px solid ${theme.primaryBorder}`,
+                background: theme.bg,
+                padding: "16px 0",
+                overflowY: "auto",
+              }}
+            >
+              {TAB_GROUPS.map((group) => (
+                <div key={group.label} style={{ marginBottom: 18 }}>
+                  <div
+                    style={{
+                      color: theme.textMuted,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      padding: "0 16px 6px",
+                    }}
+                  >
+                    {group.label}
+                  </div>
+                  {group.keys.map((key) => {
+                    const tab = TABS.find((t) => t.key === key);
+                    if (!tab) return null;
+                    const active = activeTab === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          background: active ? theme.primaryBg : "transparent",
+                          border: "none",
+                          borderLeft: active
+                            ? `3px solid ${theme.primary}`
+                            : "3px solid transparent",
+                          color: active ? theme.primary : theme.textSecondary,
+                          padding: "9px 16px 9px 13px",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontWeight: active ? 700 : 500,
+                          whiteSpace: "nowrap",
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </nav>
+          )}
 
           {/* Contenu onglet */}
-          <div style={{ padding: 24 }}>
+          <div style={{ padding: 24, flex: 1, minWidth: 0 }}>
             <div
               style={{
                 display: "flex",
@@ -2323,8 +678,22 @@ const Parametres = () => {
                 gap: 12,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 200 }}>
-                <div style={{ color: theme.textSecondary, fontSize: 13, whiteSpace: "nowrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  flex: 1,
+                  minWidth: 200,
+                }}
+              >
+                <div
+                  style={{
+                    color: theme.textSecondary,
+                    fontSize: 13,
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {pageMeta.count} élément(s)
                 </div>
                 <InfoNotice text={tabFieldNotice} variant="field" />
@@ -2354,7 +723,9 @@ const Parametres = () => {
                       onClick={handleBulkDelete}
                       disabled={bulkDeleting}
                       style={{
-                        display: "flex", alignItems: "center", gap: 6,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                         background: theme.dangerBg,
                         border: `1px solid ${theme.dangerBorder}`,
                         color: theme.danger,
@@ -2366,7 +737,8 @@ const Parametres = () => {
                         opacity: bulkDeleting ? 0.6 : 1,
                       }}
                     >
-                      <TrashIcon size={13} /> Supprimer la sélection ({selectedIds.size})
+                      <TrashIcon size={13} /> Supprimer la sélection (
+                      {selectedIds.size})
                     </button>
                   )}
                   {!IMPORT_UNSUPPORTED_TABS.has(activeTab) && (
@@ -2374,7 +746,9 @@ const Parametres = () => {
                       <button
                         onClick={() => handleDownloadRefTemplate(activeTab)}
                         style={{
-                          display: "flex", alignItems: "center", gap: 6,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
                           background: theme.primaryBg,
                           border: `1px solid ${theme.primaryBorder}`,
                           color: theme.primary,
@@ -2394,7 +768,9 @@ const Parametres = () => {
                           setImportResult(null);
                         }}
                         style={{
-                          display: "flex", alignItems: "center", gap: 6,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
                           background: theme.primaryBg,
                           border: `1px solid ${theme.primaryBorder}`,
                           color: theme.primary,
@@ -2431,10 +807,14 @@ const Parametres = () => {
 
             <RefTable
               items={sortedItems}
-              columns={getColumns()}
+              columns={columns}
               onEdit={openEdit}
               onDelete={handleDelete}
-              onRenameSystem={activeTab === "champs-personnalises" ? handleRenameSystemField : undefined}
+              onRenameSystem={
+                activeTab === "champs-personnalises"
+                  ? handleRenameSystemField
+                  : undefined
+              }
               loading={loading}
               isAdmin={isAdmin}
               sortConfig={sortableTab ? sortConfig : null}
@@ -2495,265 +875,39 @@ const Parametres = () => {
 
       {/* Modal */}
       {modal && (
-        <Modal
+        <RefModal
           title={modal.mode === "add" ? "Ajouter" : "Modifier"}
           onClose={() => setModal(null)}
           onSubmit={handleSubmit}
           saving={saving}
         >
-          {renderForm()}
-        </Modal>
+          <RefForm
+            activeTab={activeTab}
+            form={form}
+            setForm={setForm}
+            handleChange={handleChange}
+            directions={directions}
+            poles={poles}
+            departements={departements}
+            rattachementChoice={rattachementChoice}
+            setRattachementChoice={setRattachementChoice}
+            champsPersonnalisesOptions={champsPersonnalisesOptions}
+            items={items}
+            modal={modal}
+          />
+        </RefModal>
       )}
       {/* Modal Import CSV */}
       {importModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.3)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-          onClick={() => setImportModal(null)}
-        >
-          <div
-            style={{
-              background: theme.surface,
-              borderRadius: 16,
-              padding: 32,
-              width: 520,
-              maxWidth: "90vw",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-              border: `1px solid ${theme.primaryBorder}`,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2
-              style={{
-                color: theme.text,
-                margin: "0 0 12px",
-                fontSize: 16,
-                fontWeight: 800,
-              }}
-            >
-              Import — {TABS.find((t) => t.key === importModal.tab)?.label}
-            </h2>
-
-            {/* Colonnes obligatoires/optionnelles — voir REF_COLUMNS_INFO,
-                reflète ReferentielImportView.MODELS côté backend */}
-            {REF_COLUMNS_INFO[importModal.tab] && (
-              <div
-                style={{
-                  background: theme.bg,
-                  border: `1px solid ${theme.primaryBorder}`,
-                  borderRadius: 8,
-                  padding: 12,
-                  marginBottom: 16,
-                  fontSize: 12,
-                  color: theme.textSecondary,
-                }}
-              >
-                <div style={{ marginBottom: 4 }}>
-                  <strong style={{ color: theme.danger }}>Obligatoire :</strong>{" "}
-                  {REF_COLUMNS_INFO[importModal.tab].obligatoires.join(", ")}
-                </div>
-                <div>
-                  <strong style={{ color: theme.primary }}>Optionnel :</strong>{" "}
-                  {REF_COLUMNS_INFO[importModal.tab].optionnelles.join(", ")}
-                </div>
-                {REF_COLUMNS_INFO[importModal.tab].note && (
-                  <div style={{ marginTop: 6, fontStyle: "italic" }}>
-                    {REF_COLUMNS_INFO[importModal.tab].note}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Zone dépôt */}
-            <div
-              onClick={() => document.getElementById("ref-csv-input").click()}
-              style={{
-                border: `2px dashed ${importFile ? theme.primary : theme.primaryBorder}`,
-                borderRadius: 10,
-                padding: 24,
-                textAlign: "center",
-                background: importFile ? theme.primaryBg : theme.bg,
-                cursor: "pointer",
-                marginBottom: 16,
-                transition: "all 0.2s",
-              }}
-            >
-              {importFile ? (
-                <div>
-                  <div style={{ color: theme.primary, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <CheckIcon size={14} /> {importFile.name}
-                  </div>
-                  <div
-                    style={{
-                      color: theme.textSecondary,
-                      fontSize: 12,
-                      marginTop: 4,
-                    }}
-                  >
-                    {(importFile.size / 1024).toFixed(1)} Ko — Cliquez pour
-                    changer
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ marginBottom: 8, display: "flex", justifyContent: "center", color: theme.textMuted }}><FolderIcon size={28} /></div>
-                  <div style={{ color: theme.text, fontSize: 14 }}>
-                    Cliquez pour choisir un fichier Excel (.xlsx) ou CSV
-                  </div>
-                </div>
-              )}
-              <input
-                id="ref-csv-input"
-                type="file"
-                accept=".csv,.xlsx"
-                onChange={(e) => setImportFile(e.target.files[0])}
-                style={{ display: "none" }}
-              />
-            </div>
-
-            {/* Résultat */}
-            {importResult && (
-              <div style={{ marginBottom: 16 }}>
-                {importResult.error ? (
-                  <div
-                    style={{
-                      background: theme.dangerBg,
-                      border: `1px solid ${theme.dangerBorder}`,
-                      borderRadius: 8,
-                      padding: 12,
-                      color: theme.danger,
-                      fontSize: 13,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <XIcon size={13} /> {importResult.error}
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-                      {[
-                        {
-                          label: "Créés",
-                          value: importResult.nb_crees,
-                          color: theme.primary,
-                        },
-                        {
-                          label: "Erreurs",
-                          value: importResult.nb_erreurs,
-                          color:
-                            importResult.nb_erreurs > 0
-                              ? theme.danger
-                              : theme.primary,
-                        },
-                      ].map((s) => (
-                        <div
-                          key={s.label}
-                          style={{
-                            flex: 1,
-                            textAlign: "center",
-                            padding: "10px",
-                            background: theme.bg,
-                            borderRadius: 8,
-                            border: `1px solid ${theme.primaryBorder}`,
-                          }}
-                        >
-                          <div
-                            style={{
-                              color: s.color,
-                              fontSize: 22,
-                              fontWeight: 800,
-                            }}
-                          >
-                            {s.value}
-                          </div>
-                          <div
-                            style={{ color: theme.textSecondary, fontSize: 12 }}
-                          >
-                            {s.label}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {importResult.nb_erreurs > 0 && (
-                      <div
-                        style={{
-                          background: theme.dangerBg,
-                          borderRadius: 8,
-                          padding: 10,
-                        }}
-                      >
-                        {importResult.erreurs.slice(0, 5).map((err, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              color: theme.danger,
-                              fontSize: 12,
-                              marginBottom: 3,
-                            }}
-                          >
-                            Ligne {err.ligne} — {err.nom} :{" "}
-                            {err.erreurs.join(", ")}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Boutons */}
-            <div
-              style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
-            >
-              <button
-                onClick={() => setImportModal(null)}
-                style={{
-                  background: "transparent",
-                  border: `1px solid ${theme.primaryBorder}`,
-                  color: theme.textSecondary,
-                  borderRadius: 8,
-                  padding: "8px 20px",
-                  fontSize: 13,
-                  cursor: "pointer",
-                }}
-              >
-                Fermer
-              </button>
-              <button
-                onClick={handleImportFile}
-                disabled={!importFile || importing}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background:
-                    !importFile || importing
-                      ? `${theme.primary}88`
-                      : theme.primary,
-                  border: "none",
-                  color: "#fff",
-                  borderRadius: 8,
-                  padding: "8px 24px",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: !importFile || importing ? "not-allowed" : "pointer",
-                }}
-              >
-                {importing ? "Import..." : <><RocketIcon size={13} /> Importer</>}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ImportRefModal
+          importModal={importModal}
+          setImportModal={setImportModal}
+          importFile={importFile}
+          setImportFile={setImportFile}
+          importResult={importResult}
+          importing={importing}
+          handleImportFile={handleImportFile}
+        />
       )}
       {ConfirmDialog}
       {PromptDialog}

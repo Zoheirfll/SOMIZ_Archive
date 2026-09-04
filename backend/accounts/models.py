@@ -115,6 +115,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         'employees.TypeDocument', blank=True, related_name='scoped_users',
         verbose_name="Périmètre — Types de documents"
     )
+    # Périmètre indépendant : restreint les CHAMPS personnels (colonne
+    # "Informations personnelles" de la fiche employé) visibles, combiné en
+    # ET avec les périmètres organisationnel et types de documents
+    # ci-dessus. Ne couvre que les champs categorie=PERSONNEL — la colonne
+    # Administrative reste toujours visible en entier. Vide = accès non
+    # restreint (même règle que les autres champs de scope).
+    scope_champs_personnels = models.ManyToManyField(
+        'employees.ChampPersonnalise', blank=True, related_name='scoped_users',
+        verbose_name="Périmètre — Champs personnels"
+    )
 
     objects = UserManager()
 
@@ -184,10 +194,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     def _org_employee_scope_q(self, prefix=''):
         """employee_scope_q() sans les grants ponctuels — périmètre
         organisationnel seul. Utilisé en interne par
-        accessible_type_doc_ids_for_employee()."""
+        accessible_type_doc_ids_for_employee().
+        ADMIN/SUPERADMIN : toujours non restreint (Q() vide). Pour un
+        CONSULTANT, aucune case cochée nulle part sur cette dimension =
+        accès à RIEN (Q(pk__in=[]), toujours faux) — voir CLAUDE.md
+        section Scoping, règle inversée le 2026-09-01."""
+        if self.is_admin:
+            return Q()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Q()
+            return Q(pk__in=[])
         q = Q()
         if direction_ids:
             q |= Q(**{f'{prefix}direction_id__in': direction_ids})
@@ -209,23 +225,28 @@ class User(AbstractBaseUser, PermissionsMixin):
         Employee via `prefix`, ex. prefix='employee__' pour un queryset
         Contrat) pour restreindre au périmètre de cet utilisateur — union du
         périmètre organisationnel (directions/pôles/départements/services/
-        cellules) ET des employés ayant un accès ponctuel accordé
+        cellules/sections) ET des employés ayant un accès ponctuel accordé
         (EmployeeAccessGrant, voir _granted_employee_ids). Q() vide = accès
-        non restreint (ADMIN, ou CONSULTANT sans périmètre ni grant —
-        comportement historique préservé).
+        non restreint (ADMIN/SUPERADMIN uniquement). Pour un CONSULTANT sans
+        aucune case cochée nulle part et sans grant, ne matche plus rien
+        (règle inversée le 2026-09-01, voir CLAUDE.md).
         """
         q = self._org_employee_scope_q(prefix=prefix)
         granted_ids = self._granted_employee_ids()
         if not granted_ids:
             return q
         grant_q = Q(**{f'{prefix}id__in': granted_ids})
-        return q | grant_q if q.children else grant_q
+        return q | grant_q
 
     def _org_can_access_employee(self, employee):
-        """can_access_employee() sans les grants ponctuels."""
+        """can_access_employee() sans les grants ponctuels. ADMIN/SUPERADMIN
+        toujours True ; CONSULTANT sans aucune case cochée nulle part :
+        False (règle inversée le 2026-09-01)."""
+        if self.is_admin:
+            return True
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return True
+            return False
         return (
             employee.direction_id in direction_ids
             or (employee.departement_id and employee.departement.pole_id in pole_ids)
@@ -245,11 +266,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def accessible_directions_qs(self):
         """Directions visibles pour ce compte (ex. filtre de la page Employés).
-        Non restreint pour ADMIN ou CONSULTANT sans périmètre."""
+        Non restreint pour ADMIN/SUPERADMIN ; aucune restriction configurée
+        pour un CONSULTANT = aucune direction visible (règle inversée le
+        2026-09-01)."""
         from employees.models import Direction
+        if self.is_admin:
+            return Direction.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Direction.objects.all()
+            return Direction.objects.none()
         return Direction.objects.filter(
             Q(id__in=direction_ids)
             | Q(poles__id__in=pole_ids)
@@ -264,9 +289,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_poles_qs(self):
         """Pôles visibles pour ce compte."""
         from employees.models import Pole
+        if self.is_admin:
+            return Pole.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Pole.objects.all()
+            return Pole.objects.none()
         return Pole.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(id__in=pole_ids)
@@ -277,9 +304,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_departements_qs(self):
         """Départements visibles pour ce compte."""
         from employees.models import Departement
+        if self.is_admin:
+            return Departement.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Departement.objects.all()
+            return Departement.objects.none()
         return Departement.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(pole_id__in=pole_ids)
@@ -292,9 +321,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_services_qs(self):
         """Services visibles pour ce compte."""
         from employees.models import Service
+        if self.is_admin:
+            return Service.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Service.objects.all()
+            return Service.objects.none()
         return Service.objects.filter(
             Q(departement__direction_id__in=direction_ids)
             | Q(departement__pole_id__in=pole_ids)
@@ -305,9 +336,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_cellules_qs(self):
         """Cellules visibles pour ce compte."""
         from employees.models import Cellule
+        if self.is_admin:
+            return Cellule.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Cellule.objects.all()
+            return Cellule.objects.none()
         return Cellule.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(departement_id__in=departement_ids)
@@ -317,9 +350,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_sections_qs(self):
         """Sections visibles pour ce compte."""
         from employees.models import Section
+        if self.is_admin:
+            return Section.objects.all()
         direction_ids, pole_ids, departement_ids, service_ids, cellule_ids, section_ids = self._scope_ids()
         if not (direction_ids or pole_ids or departement_ids or service_ids or cellule_ids or section_ids):
-            return Section.objects.all()
+            return Section.objects.none()
         return Section.objects.filter(
             Q(direction_id__in=direction_ids)
             | Q(departement_id__in=departement_ids)
@@ -343,27 +378,54 @@ class User(AbstractBaseUser, PermissionsMixin):
         EmployeeDocumentFile via prefix='document__type_doc_id') pour
         restreindre aux types de documents autorisés. Combiné en ET avec
         employee_scope_q() — ce sont deux périmètres indépendants (qui vs
-        quoi). Q() vide = accès non restreint.
+        quoi). Q() vide = accès non restreint (ADMIN/SUPERADMIN
+        uniquement) ; pour un CONSULTANT, aucun type coché nulle part =
+        accès à AUCUN type de document sur cet axe (règle inversée le
+        2026-09-01).
         """
+        if self.is_admin:
+            return Q()
         type_ids = self._type_doc_scope_ids()
         if not type_ids:
-            return Q()
+            return Q(pk__in=[])
         return Q(**{f'{prefix}__in': type_ids})
 
     def can_access_document_type(self, type_doc_id):
         """Vérification objet-par-objet équivalente à document_type_scope_q()."""
+        if self.is_admin:
+            return True
         type_ids = self._type_doc_scope_ids()
         if not type_ids:
-            return True
+            return False
         return type_doc_id in type_ids
 
     def _granted_type_doc_ids_for_employee(self, employee_id):
         """(full_dossier: bool, type_doc_ids: set) pour un employé donné.
-        full_dossier=True si un grant type_doc=None existe (couvre tout,
-        type_doc_ids est alors ignorable)."""
+        full_dossier=True si un grant type_doc=None ET champ_personnel=None
+        existe (le vrai grant "dossier complet", couvre tout — type_doc_ids
+        est alors ignorable). Une ligne champ_personnel=<Y> (type_doc=None
+        mais pas un dossier complet) est exclue avant de déterminer full."""
         if self.is_admin or not self.pk:
             return True, set()
-        rows = list(self.employee_grants.filter(employee_id=employee_id).values_list('type_doc_id', flat=True))
+        rows = list(
+            self.employee_grants.filter(employee_id=employee_id, champ_personnel__isnull=True)
+            .values_list('type_doc_id', flat=True)
+        )
+        if any(r is None for r in rows):
+            return True, set()
+        return False, set(rows)
+
+    def _granted_champ_personnel_ids_for_employee(self, employee_id):
+        """(full_dossier: bool, champ_personnel_ids: set) pour un employé
+        donné — symétrique de _granted_type_doc_ids_for_employee(). Le
+        "vrai" dossier complet (type_doc=None ET champ_personnel=None) est
+        partagé entre les deux méthodes."""
+        if self.is_admin or not self.pk:
+            return True, set()
+        rows = list(
+            self.employee_grants.filter(employee_id=employee_id, type_doc__isnull=True)
+            .values_list('champ_personnel_id', flat=True)
+        )
         if any(r is None for r in rows):
             return True, set()
         return False, set(rows)
@@ -381,6 +443,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         couvrent que le dossier général, jamais les documents de contrat) —
         seul un grant dossier complet (type_doc=None) ou le périmètre
         global s'applique alors.
+
+        Depuis le 2026-09-01, l'axe "types de documents" suit la même règle
+        inversée que le périmètre organisationnel : aucun type coché
+        globalement (scope_types_documents vide) n'est plus "non restreint"
+        mais "aucun type sur cet axe" — seul un grant précis (ou dossier
+        complet) peut encore débloquer un type dans ce cas.
         """
         if self.is_admin:
             return None
@@ -388,8 +456,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         global_type_ids = self._type_doc_scope_ids()
         full, grant_type_ids = self._granted_type_doc_ids_for_employee(employee.id)
         if full:
-            return None
-        if org_ok and not global_type_ids:
             return None
         allowed = set(global_type_ids) if org_ok else set()
         if not contrat_scope:
@@ -410,10 +476,78 @@ class User(AbstractBaseUser, PermissionsMixin):
     def accessible_types_documents_qs(self):
         """Types de documents visibles pour ce compte."""
         from employees.models import TypeDocument
+        if self.is_admin:
+            return TypeDocument.objects.all()
         type_ids = self._type_doc_scope_ids()
         if not type_ids:
-            return TypeDocument.objects.all()
+            return TypeDocument.objects.none()
         return TypeDocument.objects.filter(id__in=type_ids)
+
+    def _champ_personnel_scope_ids(self):
+        """IDs des ChampPersonnalise (categorie=PERSONNEL) sélectionnés —
+        set vide si aucune restriction."""
+        if self.is_admin or not self.pk:
+            return set()
+        return set(self.scope_champs_personnels.values_list('id', flat=True))
+
+    @property
+    def has_champ_personnel_scope_restriction(self):
+        """True si ce compte est restreint à certains champs personnels."""
+        return bool(self._champ_personnel_scope_ids())
+
+    def can_access_champ_personnel(self, champ_id):
+        """Vérification objet-par-objet pour un champ categorie=PERSONNEL.
+        ADMIN/SUPERADMIN toujours True ; CONSULTANT sans aucune case cochée
+        = False (règle inversée le 2026-09-01)."""
+        if self.is_admin:
+            return True
+        ids = self._champ_personnel_scope_ids()
+        if not ids:
+            return False
+        return champ_id in ids
+
+    def accessible_champs_personnels_qs(self):
+        """ChampPersonnalise visibles pour ce compte (tous pour ADMIN/
+        SUPERADMIN, quelle que soit la categorie — le filtre PERSONNEL
+        s'applique côté appelant, voir EmployeeDetailSerializer). Pour un
+        CONSULTANT sans aucune case cochée : aucun champ visible (règle
+        inversée le 2026-09-01)."""
+        from employees.models import ChampPersonnalise
+        if self.is_admin:
+            return ChampPersonnalise.objects.all()
+        ids = self._champ_personnel_scope_ids()
+        if not ids:
+            return ChampPersonnalise.objects.none()
+        return ChampPersonnalise.objects.filter(id__in=ids)
+
+    def accessible_champs_personnels_for_employee(self, employee):
+        """
+        IDs des ChampPersonnalise (categorie=PERSONNEL) visibles pour CET
+        employé précis, en tenant compte du périmètre organisationnel +
+        périmètre global (scope_champs_personnels) ET des grants ponctuels
+        (EmployeeAccessGrant) pour cet employé. Retourne None seulement pour
+        ADMIN/SUPERADMIN (tous visibles) ; pour un CONSULTANT, toujours un
+        set — jamais None — même quand un grant "dossier complet" existe
+        pour cet employé : depuis 2026-09-01, un grant dossier complet
+        (type_doc=None ET champ_personnel=None) ne débloque plus
+        automatiquement les champs personnels (découplé volontairement —
+        un ADMIN doit pouvoir donner accès aux documents/contrats d'un
+        employé sans lui exposer aucun de ses champs personnels). Seuls le
+        périmètre global (scope_champs_personnels) et les grants
+        champ_personnel précis pour CET employé débloquent un champ
+        personnel ; `_granted_champ_personnel_ids_for_employee` reste
+        utilisé pour ses ids précis, son flag `full` est ignoré ici (il ne
+        sert plus qu'à `_granted_type_doc_ids_for_employee`, côté
+        documents/contrats).
+        """
+        if self.is_admin:
+            return None
+        org_ok = self._org_can_access_employee(employee)
+        global_champ_ids = self._champ_personnel_scope_ids()
+        _, grant_champ_ids = self._granted_champ_personnel_ids_for_employee(employee.id)
+        allowed = set(global_champ_ids) if org_ok else set()
+        allowed |= grant_champ_ids
+        return allowed
 
     def is_locked(self):
         """Vérifie si le compte est bloqué suite aux tentatives échouées."""

@@ -82,8 +82,12 @@ Un CONSULTANT peut être restreint à un périmètre : `User.scope_directions`,
 `scope_poles`, `scope_departements`, `scope_services`, `scope_cellules`
 (ManyToMany, sélection multiple à chaque niveau — union : un employé est
 visible dès qu'il correspond à AU MOINS un élément choisi, peu importe le
-niveau). **Aucune sélection nulle part = accès non restreint**
-(comportement historique préservé pour tous les comptes existants).
+niveau). **Aucune sélection nulle part = accès à AUCUN employé sur cette
+dimension** (règle inversée le 2026-09-01 — l'ancien comportement,
+"vide = non restreint", est désormais réservé à ADMIN/SUPERADMIN ; un
+CONSULTANT sans aucune case cochée ne voit plus rien via le périmètre
+organisationnel, sauf accès ponctuel via `EmployeeAccessGrant`, voir
+section "Périmètre ponctuel — employés spécifiques" plus bas).
 `Employee` n'a pas de FK directe vers `Pole` (seulement via
 `departement.pole`) — un périmètre par Pôle se traduit donc en
 `departement__pole_id__in`.
@@ -104,7 +108,8 @@ ManyToMany vers `TypeDocument`). Ce périmètre est **indépendant** et se
 combine en **ET** avec le périmètre organisationnel (qui vs quoi) — un
 CONSULTANT restreint aux deux ne voit que les documents des types
 autorisés, pour les employés de son périmètre organisationnel. Aucune
-sélection = accès non restreint (même règle que les 3 champs ci-dessus).
+sélection = aucun type de document visible sur cet axe (règle inversée
+le 2026-09-01, même règle que le périmètre organisationnel ci-dessus).
 
 - `User.document_type_scope_q(prefix='type_doc_id')` — Q object pour `.filter()` sur un queryset `EmployeeDocument` (adapter le prefix, ex. `'document__type_doc_id'`, pour un queryset `EmployeeDocumentFile`).
 - `User.can_access_document_type(type_doc_id)` — équivalent objet-par-objet.
@@ -112,25 +117,35 @@ sélection = accès non restreint (même règle que les 3 champs ci-dessus).
 - Appliqué dans `DocumentListUploadView`, `ContratDocumentListUploadView`, `FileViewerView`, `DocumentViewerView`, et dans `EmployeeDetailSerializer.get_documents()` / `get_documents_manquants()`.
 - UI d'assignation : même modal "Périmètre" (page `/users`), section séparée "Types de documents" (pas de cascade, juste Tout/Aucun).
 
-### Périmètre ponctuel — employés spécifiques (2026-08-30)
+### Périmètre ponctuel — employés spécifiques (2026-08-30, étendu 2026-09-01)
 
 En plus des deux périmètres ci-dessus, un CONSULTANT peut recevoir un
 accès ponctuel à un ou plusieurs **employés précis**
-(`EmployeeAccessGrant`, `user` + `employee` + `type_doc` optionnel — une
-ligne par `(employé, type)`) — combiné en **OU** avec le périmètre
-organisationnel (l'employé devient visible en plus de son périmètre
-normal, pas à la place). Deux niveaux de grant, par employé :
-- Aucune ligne `type_doc` (ou toutes retirées) — dossier complet de cet
-  employé (documents + contrats).
+(`EmployeeAccessGrant`, `user` + `employee` + `type_doc` optionnel +
+`champ_personnel` optionnel — une ligne par `(employé, type)` ou par
+`(employé, champ personnel)`, jamais les deux sur la même ligne) —
+combiné en **OU** avec le périmètre organisationnel (l'employé devient
+visible en plus de son périmètre normal, pas à la place). Trois niveaux
+de grant, par employé :
+- Aucune ligne `type_doc` NI `champ_personnel` (ou toutes retirées) —
+  **dossier complet** de cet employé : documents + contrats + **tous les
+  champs personnels**, sans exception.
 - Une ou plusieurs lignes `type_doc=<X>` — uniquement les documents de ces
   types précis, dans le dossier général de l'employé (jamais les
   documents de contrat — un grant dossier complet est nécessaire pour
   couvrir aussi les contrats).
+- Une ou plusieurs lignes `champ_personnel=<Y>` — uniquement ces champs
+  personnels précis (`ChampPersonnalise.categorie=PERSONNEL`) pour cet
+  employé. Un grant `type_doc=<X>` seul ne débloque aucun champ
+  personnel, et symétriquement un grant `champ_personnel=<Y>` seul ne
+  débloque aucun document — seul le grant dossier complet (les deux
+  colonnes `None`) couvre les deux axes à la fois.
 
-Contrairement au périmètre "types de documents" global, ces grants sont
-**indépendants** de `scope_types_documents` — un grant ponctuel donne
-accès même si ce type n'est pas dans le périmètre global de l'utilisateur.
-Un type déjà couvert par le périmètre global n'a pas besoin d'un grant
+Contrairement au périmètre "types de documents"/"champs personnels"
+global, ces grants sont **indépendants** de `scope_types_documents`/
+`scope_champs_personnels` — un grant ponctuel donne accès même si
+l'élément n'est pas dans le périmètre global de l'utilisateur. Un
+type/champ déjà couvert par le périmètre global n'a pas besoin d'un grant
 séparé — l'UI l'affiche automatiquement coché (non modifiable) dans la
 liste par employé, pour éviter toute confusion sur ce qui est déjà
 accessible.
@@ -140,20 +155,31 @@ accessible.
   autorisés pour CET employé, tenant compte du périmètre organisationnel +
   global + des grants. `contrat_scope=True` ignore les grants type_doc
   précis (utilisé par `ContratDocumentListUploadView`).
+- `User.accessible_champs_personnels_for_employee(employee)` — même
+  principe, symétrique, pour les champs personnels (`None` ou `set`
+  d'ids de `ChampPersonnalise`). Utilisé par
+  `EmployeeDetailSerializer.get_champs_categories()` (calculé une seule
+  fois par employé, pas par champ).
 - `User.can_access_document(employee, type_doc_id, contrat_scope=False)`
   — équivalent objet-par-objet, combine `can_access_employee()` (étendu
   pour inclure les employés avec grant) et la méthode ci-dessus.
 - UI : même modale "Périmètre" (`/users`), section "Employés spécifiques"
   — recherche (nom, prénom, matricule, **n° contrat** — `employee_search`
-  cherche aussi sur `contrats__numero_contrat`) + liste à cocher
-  "Dossier complet" / un-ou-plusieurs types par employé.
+  cherche aussi sur `contrats__numero_contrat`) + deux listes à cocher par
+  employé : "Dossier complet" / un-ou-plusieurs types de documents, et
+  "Champs personnels" / un-ou-plusieurs champs précis. Cocher un champ
+  personnel précis sort naturellement du mode "Dossier complet" (même
+  mécanique que les types de documents : le dossier complet correspond à
+  `type_docs` ET `champs_personnels` vides tous les deux).
   `GET/PUT /api/admin-users/<id>/employee-grants/` (ADMIN only, PUT
   remplace l'ensemble des lignes de ce compte). Badge "Employés
   spécifiques" dans la colonne Périmètre de `/users`
   (`UserSerializer.employee_grants_count`, nombre d'employés distincts —
   pas de lignes de grant).
 - Un grant ne peut jamais référencer un `TypeDocument` catégorie
-  (`is_categorie`), même garde-fou que le reste du système.
+  (`is_categorie`), même garde-fou que le reste du système. Une ligne ne
+  peut jamais cibler `type_doc` ET `champ_personnel` en même temps
+  (`EmployeeAccessGrantSerializer.validate()`, 400 sinon).
 
 ### Référentiel "Section" (2026-08-30)
 
@@ -306,6 +332,34 @@ CONSULTANT, la recherche, l'archivage et l'audit (voir section Scoping).
   `statut` ou `poste` serait aussi capté par l'import CSV dynamique
   (`champs_actifs` dans `import_views.py`, matché par `code.lower()`) et
   entrerait en conflit silencieux avec la colonne structurelle du même nom.
+
+---
+
+## Panneau "Informations" — colonnes Personnel/Administratif (2026-09-01)
+
+Le panneau "Informations" de la fiche employé est divisé en 2 colonnes
+côte à côte (1 colonne empilée sous 768px) : "Informations personnelles"
+à gauche, "Informations administratives" à droite.
+
+- `ChampPersonnalise` (`backend/employees/models.py`) sert désormais de
+  **catalogue unifié** pour tous les champs de ce panneau : `is_systeme`
+  (bool, seedé une fois pour les 19 champs structurels, jamais
+  créable/supprimable via l'UI) et `categorie` (`PERSONNEL`/
+  `ADMINISTRATIF`, modifiable pour tout champ y compris système). Les
+  champs système restent des colonnes réelles sur `Employee` — ces lignes
+  ne servent que de registre de métadonnées, jamais de stockage EAV
+  (`is_systeme=True` exclu de `champs_actifs`/`champs_personnalises`).
+- UI `/parametres` → "Champs personnalisés" : colonne "Catégorie" (select),
+  éditable pour toutes les lignes.
+- Scoping CONSULTANT indépendant : `User.scope_champs_personnels` (M2M,
+  vide = aucun champ personnel visible sur cet axe, règle inversée le
+  2026-09-01) restreint quels champs `categorie=PERSONNEL` sont
+  visibles — la colonne Administrative n'est jamais restreinte. UI : section
+  "Champs personnels" dans la modale "Périmètre" de `/users`.
+- `EmployeeDetailSerializer.champs_categories` — dict `{code: categorie}`
+  déjà filtré selon le périmètre de l'utilisateur courant ; un champ
+  personnel non autorisé est absent du dict (donc du panneau), pas
+  seulement masqué côté frontend.
 
 ---
 
@@ -727,6 +781,119 @@ changements de poste/catégorie depuis). Spec complète :
 
 ---
 
+## Archivage employé (2026-09-02)
+
+Un employé Inactif/Archivé/Démobilisé (`Employee.statut`) sort du
+drill-down organisationnel de `/employees` (Direction → Département →
+Service) et vit dans un onglet séparé **"Archivés (N)"** sur la même
+page — l'onglet "Organisation" ne montre implicitement que les employés
+Actif (plus de filtre "Statut" à ce niveau). Spec complète :
+`docs/superpowers/specs/2026-09-02-archivage-employes-design.md`.
+
+- **`MotifArchivage`** — nouveau référentiel simple (`nom` unique,
+  `description`, `is_active`), même pattern que `Categorie`/`TypeContrat`
+  (CRUD `/ref/motifs-archivage/`, onglet "Motifs d'archivage" dans
+  `/parametres`, import xlsx). `Employee.motif_archivage` (FK nullable,
+  `SET_NULL`) est **toujours facultatif**.
+- **Un employé Actif n'a jamais de motif** — `EmployeeCreateUpdateSerializer.validate()`
+  force `motif_archivage=None` dès que `statut` résultant vaut `actif`,
+  même si le payload en envoie un (garde-fou serveur, pas seulement
+  côté formulaire).
+- **Trois actions**, toutes ADMIN only :
+  - **Archiver** (remplace l'ancien comportement de "Supprimer" tant que
+    l'employé est Actif) — `PATCH /api/employees/<id>/`
+    `{statut: 'archive', motif_archivage: <id|null>}`, réversible. Tracé
+    dans l'audit log existant (`MODIFY_EMP`, même clé `details.transfer`
+    que le transfert organisationnel/carrière — `TRANSFER_FIELD_LABELS`
+    dans `AuditLogs.jsx` inclut désormais `statut`/`motif_archivage`).
+  - **Restaurer** — `PATCH` `{statut: 'actif', motif_archivage: null}`,
+    réversible.
+  - **Supprimer définitivement** — `DELETE /api/employees/<id>/` ou
+    `POST /api/employees/bulk-delete/` (`action=delete`). **Changement de
+    politique (2026-09-02)** : ce n'est plus un soft-delete (l'ancien
+    commentaire "on archive, on ne supprime pas" ne s'applique plus) —
+    l'employé, ses contrats, documents et fichiers physiques sont
+    supprimés définitivement et irréversiblement. **Bloqué (400) tant que
+    l'employé est encore `statut=actif`** — il faut d'abord l'archiver,
+    jamais un clic direct depuis la vue organisationnelle
+    (`EmployeeDetailView.perform_destroy`/`EmployeeBulkDeleteView`,
+    `backend/employees/views.py`). Confirmation renforcée côté frontend
+    (saisie du mot "SUPPRIMER" via `usePrompt()`, `Employees.jsx`) en plus
+    du garde-fou serveur.
+- **Liste `/api/employees/`** : sans `?vue=archives` ni `?statut=`
+  explicite, ne renvoie désormais que les employés Actif par défaut
+  (`EmployeeListCreateView.get_queryset()`) — `?vue=archives` renvoie les
+  3 statuts non-Actif, combinable avec `?statut=` pour n'en garder qu'un.
+  `employee_search` (autocomplete) reste inchangé, volontairement limité
+  aux Actif comme avant ce chantier.
+- **Badges "N employé(s)"** sur les cartes Service/Cellule/Section
+  (`ServiceSerializer`/`CelluleSerializer`/`SectionSerializer.get_nb_employes`,
+  `referentiel_views.py`) ne comptent plus que les employés Actif — un
+  employé archivé "sort" visuellement de l'organisation, y compris dans
+  ces compteurs.
+- Colonne "Motif" ajoutée à la liste des colonnes configurables de
+  `/employees` (masquée par défaut, comme les autres colonnes ajoutées
+  récemment — voir section "Liste employés — colonnes configurables").
+- Dashboard **non modifié** par ce chantier (continue de compter tous les
+  statuts) — laissé hors scope volontairement.
+
+---
+
+## Page Statistiques (2026-09-02)
+
+`/statistiques` (ADMIN/SUPERADMIN, distincte de `/dashboard`) : analyse RH
+détaillée — répartitions Direction/Département/Catégorie/Type de
+contrat/Fonction, évolution mensuelle recrutements vs archivages,
+pyramides âge/ancienneté, contrats arrivant à échéance (90 jours),
+complétude par unité, filtres de date (préréglages + plage libre) avec
+comparaison à la période précédente, export Excel (`.xlsx`) et PDF
+(impression navigateur). Logique de calcul centralisée dans
+`backend/audit/stats.py` (`build_stats_detail()`), consommée par
+`GET /api/reporting/stats-detail/` (JSON) et
+`GET /api/reporting/stats-export.xlsx/` (export).
+
+### "Mon activité" — décompte des actions par compte
+
+Les statistiques principales (répartitions, évolution, pyramides,
+échéances, complétude) restent **toujours organisation-wide**, pour
+ADMIN comme SUPERADMIN — pas de restriction de périmètre sur cette
+partie de la page (essayé puis abandonné : un ADMIN doit garder la vue
+d'ensemble complète, exactement comme avant ce chantier).
+
+En complément, une section **"Mon activité"** donne à chaque compte
+ADMIN/SUPERADMIN le décompte de ses propres actions sur la période
+sélectionnée (mêmes filtres de date que le reste de la page) :
+employés créés/modifiés/archivés (`AuditLog` du compte, types
+`CREATE_EMP`/`MODIFY_EMP`, archivage = `MODIFY_EMP` avec
+`details.transfer.statut.vers` dans les libellés d'archivage),
+documents supprimés/modifiés (`AuditLog` `DELETE_DOC`/`MODIFY_DOC`), et
+**documents uploadés** — ce dernier compte les `EmployeeDocument`
+**actuellement présents** (`uploaded_by`, `is_active=True`,
+`uploaded_at` dans la période), pas les entrées `UPLOAD` du journal
+d'audit : celles-ci persistent après une suppression définitive (hard
+delete, voir section "Documents employés"), ce qui gonflerait
+indéfiniment ce compteur avec des documents qui n'existent plus. Upload
+manuel et "Scanner un dossier" (scan-import) sont comptés ensemble, sans
+distinction (même type d'objet créé).
+
+Un `SUPERADMIN` reçoit en plus **"Activité par administrateur"** — la
+même ventilation pour tous les comptes ADMIN/SUPERADMIN actifs, en
+tableau comparatif (`audit.stats._activite_par_admin()`). Logique
+commune dans `audit.stats._activity_counts(user, date_debut, date_fin)`,
+réutilisée par `_mon_activite()` (le compte connecté) et
+`_activite_par_admin()` (tous les comptes).
+
+Côté UI (`Statistiques.jsx`), un compteur/une colonne à zéro est
+masqué·e — seuls les indicateurs "présents" (valeur > 0) s'affichent,
+pour ne pas polluer la page de zéros sans intérêt sur une période donnée.
+
+Ce mécanisme est propre à `/statistiques` — il ne touche pas au scoping
+CONSULTANT (`employee_scope_q`/`can_access_employee`, voir section
+Scoping) ni à la visibilité du journal d'audit par rôle (voir en-tête de
+ce fichier), qui restent des mécanismes indépendants.
+
+---
+
 ## Consentement Loi 18-07 (2026-08-27)
 
 Tout accès à SOMIZ (ADMIN comme CONSULTANT, y compris les comptes créés
@@ -883,7 +1050,8 @@ pas utilisables directement pour les changements de layout structurels
 | `/employees/:id` | Détail employé + documents + contrats | Tous |
 | `/employees/:id/modifier` | Modifier employé | ADMIN |
 | `/contrats/:id` | Détail contrat | Tous |
-| `/dashboard` | Statistiques | ADMIN |
+| `/dashboard` | Tableau de bord (indicateurs instantanés) | ADMIN |
+| `/statistiques` | Statistiques RH détaillées (filtres, périmètre, export) | ADMIN |
 | `/users` | Gestion utilisateurs | ADMIN |
 | `/audit` | Logs d'audit | ADMIN |
 | `/parametres` | CRUD référentiels (Directions, Depts, Services, Postes...) | ADMIN |

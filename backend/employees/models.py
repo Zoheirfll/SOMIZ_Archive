@@ -280,6 +280,21 @@ class Categorie(models.Model):
         return self.nom
 
 
+class MotifArchivage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nom = models.CharField(max_length=100, unique=True, verbose_name="Motif d'archivage")
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'motifs_archivage'
+        verbose_name = "Motif d'archivage"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
 class Echelle(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=100, unique=True, verbose_name="Échelle")
@@ -479,6 +494,11 @@ class Employee(models.Model):
         Categorie, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='employees'
     )
+    motif_archivage = models.ForeignKey(
+        MotifArchivage, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='employees',
+        verbose_name="Motif d'archivage"
+    )
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True,
@@ -601,12 +621,32 @@ class ChampPersonnalise(models.Model):
         DATE = 'date', 'Date'
         BOOLEEN = 'booleen', 'Booléen (Oui/Non)'
 
+    class Categorie(models.TextChoices):
+        PERSONNEL = 'PERSONNEL', 'Personnel'
+        ADMINISTRATIF = 'ADMINISTRATIF', 'Administratif'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=100, verbose_name="Nom")
     code = models.CharField(max_length=50, unique=True, verbose_name="Code")
     type_champ = models.CharField(
         max_length=10, choices=TypeChamp.choices, default=TypeChamp.TEXTE,
         verbose_name="Type"
+    )
+    is_systeme = models.BooleanField(
+        default=False,
+        verbose_name="Champ système",
+        help_text=(
+            "True pour les 12 champs structurels de la fiche employé (Matricule, "
+            "Direction, Fonction...) — lignes seedées une fois par migration, jamais "
+            "créables/supprimables via l'UI. Sert de registre de métadonnées "
+            "(catégorie + permission), jamais de stockage de valeur : aucune "
+            "EmployeeChampValeur n'est créée pour un champ is_systeme=True."
+        ),
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, default=Categorie.ADMINISTRATIF,
+        verbose_name="Catégorie",
+        help_text="Colonne d'affichage sur la fiche employé (panneau Informations).",
     )
     ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
     is_active = models.BooleanField(default=True, verbose_name="Actif")
@@ -882,11 +922,15 @@ class EmployeeAccessGrant(models.Model):
     """
     Périmètre CONSULTANT ponctuel — donne accès à UN employé précis, en plus
     (union) du périmètre organisationnel de l'utilisateur (voir
-    User.employee_scope_q()). type_doc=None = dossier complet de cet
-    employé ; type_doc=<X> = uniquement les documents de ce type, dans le
-    dossier général de l'employé (jamais les documents de contrat — un
-    grant "dossier complet" est nécessaire pour couvrir aussi les
-    contrats).
+    User.employee_scope_q()). type_doc=None ET champ_personnel=None =
+    dossier complet de cet employé (tout, y compris les champs personnels) ;
+    type_doc=<X> = uniquement les documents de ce type, dans le dossier
+    général de l'employé (jamais les documents de contrat — un grant
+    "dossier complet" est nécessaire pour couvrir aussi les contrats) ;
+    champ_personnel=<Y> = uniquement ce champ personnel pour cet employé.
+    type_doc et champ_personnel ne sont jamais renseignés simultanément sur
+    la même ligne (validé côté serializer, pas de contrainte DB — voir
+    EmployeeAccessGrantSerializer.validate()).
     """
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
@@ -898,6 +942,9 @@ class EmployeeAccessGrant(models.Model):
     type_doc = models.ForeignKey(
         'TypeDocument', null=True, blank=True, on_delete=models.CASCADE
     )
+    champ_personnel = models.ForeignKey(
+        'ChampPersonnalise', null=True, blank=True, on_delete=models.CASCADE
+    )
     granted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
         related_name='+'
@@ -905,10 +952,15 @@ class EmployeeAccessGrant(models.Model):
     granted_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'employee', 'type_doc')
+        unique_together = ('user', 'employee', 'type_doc', 'champ_personnel')
         verbose_name = "Accès employé spécifique"
         verbose_name_plural = "Accès employés spécifiques"
 
     def __str__(self):
-        cible = self.type_doc.nom if self.type_doc_id else "dossier complet"
+        if self.type_doc_id:
+            cible = self.type_doc.nom
+        elif self.champ_personnel_id:
+            cible = self.champ_personnel.nom
+        else:
+            cible = "dossier complet"
         return f"{self.user.username} → {self.employee.matricule} ({cible})"

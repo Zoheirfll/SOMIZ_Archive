@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 jest.mock("../services/api", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), delete: jest.fn() } }));
@@ -27,6 +28,8 @@ jest.mock("react-router-dom", () => ({
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import EmployeeDetail from "../pages/EmployeeDetail";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const mockFile = { id: "file-1", file_name: "cin_recto.pdf", mime_type: "application/pdf", file_size: 102400 };
 const mockDoc = {
@@ -61,6 +64,27 @@ const mockEmployee = {
     { id: "type-3", code: "NIN_DOC", label: "Copie NIN" },
   ],
   champs_personnalises: [{ id: "cp-1", code: "nin", nom: "NIN", type_champ: "texte", valeur: "123456" }],
+  champs_categories: {
+    matricule: "ADMINISTRATIF",
+    numero_contrat: "ADMINISTRATIF",
+    nom: "ADMINISTRATIF",
+    date_naissance: "PERSONNEL",
+    date_embauche: "ADMINISTRATIF",
+    date_debut_contrat: "ADMINISTRATIF",
+    date_fin_contrat: "ADMINISTRATIF",
+    statut: "ADMINISTRATIF",
+    direction: "ADMINISTRATIF",
+    pole: "ADMINISTRATIF",
+    departement: "ADMINISTRATIF",
+    section: "ADMINISTRATIF",
+    service: "ADMINISTRATIF",
+    cellule: "ADMINISTRATIF",
+    poste: "ADMINISTRATIF",
+    type_contrat: "ADMINISTRATIF",
+    categorie: "ADMINISTRATIF",
+    echelle: "ADMINISTRATIF",
+    nin: "PERSONNEL",
+  },
 };
 const mockTypes = [
   { id: "type-1", code: "CIN", nom: "Carte Nationale", obligatoire: true, champ_source: "date_naissance" },
@@ -188,6 +212,20 @@ describe("EmployeeDetail — rendu initial", () => {
     await waitFor(() => {
       expect(screen.getByText(/75%/)).toBeInTheDocument();
     });
+  });
+
+  test("affiche les informations réparties en colonnes Personnel et Administratif", async () => {
+    renderPage();
+
+    const personnelHeading = await screen.findByText("Informations personnelles");
+    const adminHeading = await screen.findByText("Informations administratives");
+    expect(personnelHeading).toBeInTheDocument();
+    expect(adminHeading).toBeInTheDocument();
+
+    const personnelCard = personnelHeading.closest("div").parentElement;
+    const adminCard = adminHeading.closest("div").parentElement;
+    expect(within(personnelCard).getByText("1990-01-01")).toBeInTheDocument();
+    expect(within(adminCard).getByText("EMP-001")).toBeInTheDocument();
   });
 });
 

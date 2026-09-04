@@ -57,12 +57,40 @@ class TestEmployeeAccessGrantModel:
     def test_create_full_dossier_grant(self, scoped_consultant, employee):
         grant = EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee)
         assert grant.type_doc_id is None
+        assert grant.champ_personnel_id is None
 
     def test_create_type_specific_grant(self, scoped_consultant, employee, type_doc_obligatoire):
         grant = EmployeeAccessGrant.objects.create(
             user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire
         )
         assert grant.type_doc_id == type_doc_obligatoire.id
+
+    def test_create_champ_personnel_specific_grant(self, scoped_consultant, employee, champ_personnel):
+        grant = EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        )
+        assert grant.champ_personnel_id == champ_personnel.id
+        assert grant.type_doc_id is None
+
+    def test_str_full_dossier(self, scoped_consultant, employee):
+        grant = EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee)
+        assert "dossier complet" in str(grant)
+
+    def test_str_champ_personnel(self, scoped_consultant, employee, champ_personnel):
+        grant = EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        )
+        assert champ_personnel.nom in str(grant)
+
+    def test_unique_together_allows_type_doc_and_champ_personnel_rows_together(
+        self, scoped_consultant, employee, type_doc_obligatoire, champ_personnel
+    ):
+        """Une ligne type_doc=X et une ligne champ_personnel=Y peuvent coexister
+        pour le même (user, employee) — seule la combinaison identique est
+        bloquée par unique_together."""
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire)
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, champ_personnel=champ_personnel)
+        assert EmployeeAccessGrant.objects.filter(user=scoped_consultant, employee=employee).count() == 2
 
 
 class TestEmployeeScopeQWithGrants:
@@ -93,9 +121,23 @@ class TestAccessibleTypeDocIdsForEmployee:
     def test_admin_unrestricted(self, admin_user, employee):
         assert admin_user.accessible_type_doc_ids_for_employee(employee) is None
 
-    def test_org_scope_no_type_restriction(self, scoped_consultant, employee, service):
+    def test_org_scope_but_no_type_scope_configured_gives_no_types(self, scoped_consultant, employee, service):
+        """Depuis le 2026-09-01 : l'employé est dans le périmètre org, mais
+        aucun type de document n'est coché sur l'axe global — cet axe
+        n'étant plus "non restreint" par défaut, aucun type n'est visible
+        (seul un grant précis pourrait en débloquer)."""
         scoped_consultant.scope_services.set([service])
-        assert scoped_consultant.accessible_type_doc_ids_for_employee(employee) is None
+        assert scoped_consultant.accessible_type_doc_ids_for_employee(employee) == set()
+
+    def test_org_scope_and_explicit_type_scope_unrestricted(
+        self, scoped_consultant, employee, service, type_doc_obligatoire, type_doc_facultatif
+    ):
+        """Avec le périmètre org ET l'axe types explicitement configuré
+        (tous les types cochés), l'employé voit ces types."""
+        scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_types_documents.set([type_doc_obligatoire, type_doc_facultatif])
+        ids = scoped_consultant.accessible_type_doc_ids_for_employee(employee)
+        assert ids == {type_doc_obligatoire.id, type_doc_facultatif.id}
 
     def test_full_dossier_grant_unrestricted(self, scoped_consultant, employee, other_service):
         scoped_consultant.scope_services.set([other_service])
@@ -136,7 +178,14 @@ class TestAccessibleTypeDocIdsForEmployee:
 class TestCanAccessDocument:
     def test_org_scope_and_global_type_scope(self, scoped_consultant, employee, service, type_doc_obligatoire):
         scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_types_documents.set([type_doc_obligatoire])
         assert scoped_consultant.can_access_document(employee, type_doc_obligatoire.id) is True
+
+    def test_org_scope_without_type_scope_denied(self, scoped_consultant, employee, service, type_doc_obligatoire):
+        """Depuis le 2026-09-01 : périmètre org ok mais axe types de
+        documents vide (non configuré) = aucun accès sur cet axe."""
+        scoped_consultant.scope_services.set([service])
+        assert scoped_consultant.can_access_document(employee, type_doc_obligatoire.id) is False
 
     def test_no_access_outside_scope_and_grants(self, scoped_consultant, employee, other_service, type_doc_obligatoire):
         scoped_consultant.scope_services.set([other_service])
@@ -151,6 +200,81 @@ class TestCanAccessDocument:
         )
         assert scoped_consultant.can_access_document(employee, type_doc_obligatoire.id) is True
         assert scoped_consultant.can_access_document(employee, type_doc_facultatif.id) is False
+
+
+class TestAccessibleChampsPersonnelsForEmployee:
+    def test_admin_unrestricted(self, admin_user, employee):
+        assert admin_user.accessible_champs_personnels_for_employee(employee) is None
+
+    def test_org_scope_but_no_champ_scope_configured_gives_no_champs(self, scoped_consultant, employee, service):
+        """Depuis le 2026-09-01 : périmètre org ok mais axe champs
+        personnels non configuré = aucun champ visible (seul un grant
+        précis pourrait en débloquer)."""
+        scoped_consultant.scope_services.set([service])
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
+
+    def test_org_scope_with_global_champ_restriction(
+        self, scoped_consultant, employee, service, champ_personnel, champ_personnel_2
+    ):
+        scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_champs_personnels.set([champ_personnel])
+        ids = scoped_consultant.accessible_champs_personnels_for_employee(employee)
+        assert ids == {champ_personnel.id}
+
+    def test_no_org_scope_no_grant_gives_empty_set(self, scoped_consultant, employee, other_service):
+        scoped_consultant.scope_services.set([other_service])
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
+
+    def test_precise_champ_grant_outside_org_scope(
+        self, scoped_consultant, employee, other_service, champ_personnel, champ_personnel_2
+    ):
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, champ_personnel=champ_personnel)
+        ids = scoped_consultant.accessible_champs_personnels_for_employee(employee)
+        assert ids == {champ_personnel.id}
+
+    def test_full_dossier_grant_does_not_unlock_personal_fields(self, scoped_consultant, employee, other_service):
+        # Depuis 2026-09-01 : un grant "dossier complet" (type_doc=None,
+        # champ_personnel=None) couvre documents + contrats mais plus les
+        # champs personnels — découplé volontairement (un ADMIN doit
+        # pouvoir donner l'accès au dossier sans exposer les champs
+        # personnels de l'employé).
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee)
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
+
+    def test_precise_type_doc_grant_does_not_unlock_champs_personnels(
+        self, scoped_consultant, employee, other_service, type_doc_obligatoire
+    ):
+        """Un grant type_doc=X, champ_personnel=None n'est PAS un dossier
+        complet — ne doit pas débloquer les champs personnels."""
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, type_doc=type_doc_obligatoire
+        )
+        assert scoped_consultant.accessible_champs_personnels_for_employee(employee) == set()
+
+    def test_precise_champ_grant_does_not_unlock_type_docs(
+        self, scoped_consultant, employee, other_service, champ_personnel, type_doc_obligatoire
+    ):
+        """Symétriquement, un grant champ_personnel=Y ne débloque pas les
+        types de documents (full doit rester False sur ce seul grant)."""
+        scoped_consultant.scope_services.set([other_service])
+        EmployeeAccessGrant.objects.create(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        )
+        ids = scoped_consultant.accessible_type_doc_ids_for_employee(employee)
+        assert ids == set()
+
+    def test_champs_scope_combines_with_org_and_grant(
+        self, scoped_consultant, employee, service, champ_personnel, champ_personnel_2
+    ):
+        """Périmètre global (org_ok) UNION grant précis."""
+        scoped_consultant.scope_services.set([service])
+        scoped_consultant.scope_champs_personnels.set([champ_personnel])
+        EmployeeAccessGrant.objects.create(user=scoped_consultant, employee=employee, champ_personnel=champ_personnel_2)
+        ids = scoped_consultant.accessible_champs_personnels_for_employee(employee)
+        assert ids == {champ_personnel.id, champ_personnel_2.id}
 
 
 class TestEmployeeGrantsEndpoint:
@@ -228,6 +352,50 @@ class TestEmployeeGrantsEndpoint:
         assert resp.status_code == 200
         assert len(resp.data["grants"]) == 1
         assert resp.data["grants"][0]["employee_matricule"] == employee.matricule
+
+    def test_admin_can_set_champ_personnel_specific_grant(self, admin_user, scoped_consultant, employee, champ_personnel):
+        client = auth_client(admin_user)
+        resp = client.put(
+            f"/api/admin-users/{scoped_consultant.id}/employee-grants/",
+            {"grants": [{"employee": str(employee.id), "champ_personnel": str(champ_personnel.id)}]},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.data
+        assert EmployeeAccessGrant.objects.filter(
+            user=scoped_consultant, employee=employee, champ_personnel=champ_personnel
+        ).exists()
+        assert resp.data["grants"][0]["champ_personnel_nom"] == champ_personnel.nom
+
+    def test_rejects_both_type_doc_and_champ_personnel_on_same_row(
+        self, admin_user, scoped_consultant, employee, type_doc_obligatoire, champ_personnel
+    ):
+        client = auth_client(admin_user)
+        resp = client.put(
+            f"/api/admin-users/{scoped_consultant.id}/employee-grants/",
+            {"grants": [{
+                "employee": str(employee.id),
+                "type_doc": str(type_doc_obligatoire.id),
+                "champ_personnel": str(champ_personnel.id),
+            }]},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_put_dedupes_on_employee_type_doc_champ_personnel_triple(
+        self, admin_user, scoped_consultant, employee, type_doc_obligatoire, champ_personnel
+    ):
+        client = auth_client(admin_user)
+        resp = client.put(
+            f"/api/admin-users/{scoped_consultant.id}/employee-grants/",
+            {"grants": [
+                {"employee": str(employee.id), "type_doc": str(type_doc_obligatoire.id)},
+                {"employee": str(employee.id), "champ_personnel": str(champ_personnel.id)},
+                {"employee": str(employee.id), "champ_personnel": str(champ_personnel.id)},
+            ]},
+            format="json",
+        )
+        assert resp.status_code == 200, resp.data
+        assert EmployeeAccessGrant.objects.filter(user=scoped_consultant, employee=employee).count() == 2
 
 
 class TestGrantIntegrationInViews:

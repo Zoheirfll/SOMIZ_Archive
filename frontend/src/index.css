@@ -12,6 +12,15 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+/* Tout élément qui n'impose pas explicitement sa propre couleur inline
+   hérite de celle-ci — en mode sombre, "#0F172A" (quasi noir) resterait
+   invisible sur les fonds sombres (voir ThemeContext, data-theme posé sur
+   <html>). C'est le filet de sécurité, pas un remplacement des tokens
+   theme.text portés par les composants. */
+:root[data-theme="dark"] body {
+  background: #18191A;
+  color: #E4E6EB;
+}
 
 input,
 button,
@@ -42,4 +51,18 @@ textarea {
 html {
   scrollbar-color: #166534 #E2E8F0;
   scrollbar-width: auto;
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #242526;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #2F6B45;
+  border-color: #242526;
+}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #3a8256;
+}
+:root[data-theme="dark"] html {
+  scrollbar-color: #2F6B45 #242526;
 }
