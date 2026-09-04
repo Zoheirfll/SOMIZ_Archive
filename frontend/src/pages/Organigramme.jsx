@@ -388,7 +388,7 @@ const Organigramme = () => {
               ) : (
                 <div
                   style={{
-                    background: theme.text,
+                    background: "#0F172A",
                     color: "#fff",
                     borderRadius: 12,
                     padding: "14px 0",
