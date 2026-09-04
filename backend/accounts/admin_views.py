@@ -76,6 +76,19 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le rôle Super-administrateur ne peut pas être attribué depuis cette interface."
             )
+        # Seul un SUPERADMIN peut attribuer/conserver le rôle ADMIN — un
+        # ADMIN ordinaire ne doit pas pouvoir se promouvoir ni promouvoir
+        # quelqu'un d'autre à ADMIN (il ne peut créer/gérer que des
+        # CONSULTANT). Un compte déjà ADMIN reste modifiable sur ses autres
+        # champs par un ADMIN sans que ce garde-fou ne bloque (valeur
+        # inchangée).
+        already_admin = self.instance and self.instance.role == 'ADMIN'
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if value == 'ADMIN' and not already_admin and not (user and user.is_superadmin):
+            raise serializers.ValidationError(
+                "Seul un Super-administrateur peut attribuer le rôle Administrateur."
+            )
         return value
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -96,6 +109,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if value == 'SUPERADMIN' and not already_superadmin:
             raise serializers.ValidationError(
                 "Le rôle Super-administrateur ne peut pas être attribué depuis cette interface."
+            )
+        # Seul un SUPERADMIN peut créer un compte ADMIN — un ADMIN ordinaire
+        # ne peut créer que des comptes CONSULTANT.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if value == 'ADMIN' and not (user and user.is_superadmin):
+            raise serializers.ValidationError(
+                "Seul un Super-administrateur peut créer un compte Administrateur."
             )
         return value
 

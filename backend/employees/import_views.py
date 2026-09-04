@@ -5,6 +5,7 @@ Import CSV des employés en masse
 import csv
 import io
 import logging
+import re
 import openpyxl
 from django.conf import settings
 from django.db import transaction
@@ -15,10 +16,23 @@ from accounts.permissions import IsAdmin
 from employees.models import (
     Employee, Direction, Pole, Departement,
     Service, Cellule, Section, Poste, TypeContrat, Categorie, Contrat,
-    ChampPersonnalise, EmployeeChampValeur, Echelle,
+    ChampPersonnalise, EmployeeChampValeur, Echelle, MotifArchivage,
 )
 
 logger = logging.getLogger('audit')
+
+
+_EXCEL_ESCAPE_RE = re.compile(r'_x[0-9A-Fa-f]{4}_')
+
+
+def _strip_excel_escapes(value):
+    """Retire les échappements `_xHHHH_` qu'Excel/openpyxl laissent parfois
+    tels quels dans une cellule texte contenant un caractère de contrôle
+    (ex. "B+_x0001_" au lieu de "B+") — le caractère d'origine n'a aucune
+    valeur pour l'utilisateur, on le supprime plutôt que de le décoder."""
+    if not isinstance(value, str) or '_x' not in value:
+        return value
+    return _EXCEL_ESCAPE_RE.sub('', value)
 
 
 def _read_rows(file):
@@ -47,7 +61,7 @@ def _read_rows(file):
                 elif hasattr(value, 'isoformat'):  # date/datetime
                     row[key] = value.isoformat()[:10]
                 else:
-                    row[key] = str(value)
+                    row[key] = _strip_excel_escapes(str(value))
             rows.append(row)
         return fieldnames, rows
 
@@ -63,7 +77,11 @@ def _read_rows(file):
     reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
     if not reader.fieldnames:
         return None, []
-    return list(reader.fieldnames), list(reader)
+    rows = [
+        {k: _strip_excel_escapes(v) for k, v in row.items()}
+        for row in reader
+    ]
+    return list(reader.fieldnames), rows
 
 
 def _check_csv_size(file):
@@ -198,6 +216,16 @@ class EmployeeImportView(APIView):
             direction = directions.get(row.get('direction', '').upper())
             departement = departements.get(row.get('departement', '').upper())
             service = services.get(row.get('service', '').upper())
+            # Un Service appartient toujours à un Département — si la colonne
+            # "departement" du CSV est vide/absente mais qu'un Service a été
+            # résolu, on aligne quand même departement/direction dessus
+            # (même logique que EmployeeCreateUpdateSerializer.validate()
+            # pour Cellule/Section), sinon la fiche employé perd son
+            # Département alors que le Service l'affiche bien.
+            if service and not departement:
+                departement = service.departement
+            if departement and not direction:
+                direction = departement.direction
             poste = postes.get(row.get('poste', '').upper())
             type_contrat = types_contrat.get(row.get('type_contrat', '').upper())
             categorie = categories.get(row.get('categorie', '').upper())
@@ -447,6 +475,11 @@ class ReferentielImportView(APIView):
         },
         'echelles': {
             'model': Echelle,
+            'required': {'nom'},
+            'optional': {'description'},
+        },
+        'motifs-archivage': {
+            'model': MotifArchivage,
             'required': {'nom'},
             'optional': {'description'},
         },
@@ -715,6 +748,10 @@ class ReferentielImportTemplateView(APIView):
         'echelles': {
             'headers': ['nom', 'description'],
             'example': ['Echelle 10', ''],
+        },
+        'motifs-archivage': {
+            'headers': ['nom', 'description'],
+            'example': ['Fin de contrat', ''],
         },
     }
 

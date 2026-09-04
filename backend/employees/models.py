@@ -280,6 +280,21 @@ class Categorie(models.Model):
         return self.nom
 
 
+class MotifArchivage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nom = models.CharField(max_length=100, unique=True, verbose_name="Motif d'archivage")
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'motifs_archivage'
+        verbose_name = "Motif d'archivage"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
 class Echelle(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=100, unique=True, verbose_name="Échelle")
@@ -478,6 +493,11 @@ class Employee(models.Model):
     categorie = models.ForeignKey(
         Categorie, null=True, blank=True,
         on_delete=models.SET_NULL, related_name='employees'
+    )
+    motif_archivage = models.ForeignKey(
+        MotifArchivage, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='employees',
+        verbose_name="Motif d'archivage"
     )
 
     created_by = models.ForeignKey(

@@ -66,6 +66,25 @@ class TestEmployeeListView:
         resp = client.get(EMPLOYEES_URL, {"statut": "archive"})
         assert any(e["statut"] == "archive" for e in resp.data["results"])
 
+    def test_default_list_excludes_non_actif(self, admin_user, employee):
+        """Sans ?vue=archives ni ?statut=, seuls les employés Actif sortent
+        — un employé Archivé/Inactif/Démobilisé "sort" de l'organisation
+        (voir CLAUDE.md section Archivage employé)."""
+        employee.statut = "archive"
+        employee.save(update_fields=["statut"])
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL)
+        assert str(employee.pk) not in [e["id"] for e in resp.data["results"]]
+
+    def test_vue_archives_returns_only_non_actif(self, admin_user, employee):
+        employee.statut = "archive"
+        employee.save(update_fields=["statut"])
+        client = auth_client(admin_user)
+        resp = client.get(EMPLOYEES_URL, {"vue": "archives"})
+        assert resp.status_code == 200
+        assert all(e["statut"] != "actif" for e in resp.data["results"])
+        assert str(employee.pk) in [e["id"] for e in resp.data["results"]]
+
     def test_filter_by_section(self, admin_user, employee, direction):
         from employees.models import Section
         section = Section.objects.create(nom="Section Filtre", direction=direction)
@@ -233,12 +252,22 @@ class TestEmployeeDetailView:
         ).order_by('-timestamp').first()
         assert "transfer" not in log.details
 
-    def test_admin_delete_soft_deletes(self, admin_user, employee):
+    def test_admin_delete_requires_archived_first(self, admin_user, employee):
+        """Politique 2026-09-02 : un employé encore Actif ne peut pas être
+        supprimé directement — il faut d'abord l'archiver (voir CLAUDE.md
+        section Archivage employé)."""
         client = auth_client(admin_user)
         resp = client.delete(employee_url(employee.pk))
+        assert resp.status_code == 400
+        assert Employee.objects.filter(pk=employee.pk).exists()
+
+    def test_admin_delete_permanently_deletes_archived_employee(self, admin_user, employee):
+        client = auth_client(admin_user)
+        employee.statut = "archive"
+        employee.save(update_fields=["statut"])
+        resp = client.delete(employee_url(employee.pk))
         assert resp.status_code == 204
-        employee.refresh_from_db()
-        assert employee.statut == "archive"
+        assert not Employee.objects.filter(pk=employee.pk).exists()
 
     def test_consultant_cannot_delete(self, consultant_user, employee):
         client = auth_client(consultant_user)
@@ -304,8 +333,41 @@ class TestBulkDeleteView:
         employee.refresh_from_db()
         assert employee.statut == "archive"
 
+    def test_bulk_archive_with_motif(self, admin_user, employee):
+        from employees.models import MotifArchivage
+        motif = MotifArchivage.objects.create(nom="Fin de contrat")
+        client = auth_client(admin_user)
+        resp = client.post(
+            self.BULK_URL,
+            {"ids": [str(employee.pk)], "action": "archive", "motif_archivage": str(motif.pk)},
+            format="json",
+        )
+        assert resp.status_code == 200
+        employee.refresh_from_db()
+        assert employee.statut == "archive"
+        assert employee.motif_archivage_id == motif.pk
+
+    def test_bulk_restaurer(self, admin_user, employee):
+        from employees.models import MotifArchivage
+        motif = MotifArchivage.objects.create(nom="Fin de contrat")
+        employee.statut = "archive"
+        employee.motif_archivage = motif
+        employee.save(update_fields=["statut", "motif_archivage"])
+        client = auth_client(admin_user)
+        resp = client.post(
+            self.BULK_URL,
+            {"ids": [str(employee.pk)], "action": "restaurer"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        employee.refresh_from_db()
+        assert employee.statut == "actif"
+        assert employee.motif_archivage_id is None
+
     def test_bulk_delete_permanent(self, admin_user, employee):
         emp_pk = employee.pk
+        employee.statut = "archive"
+        employee.save(update_fields=["statut"])
         client = auth_client(admin_user)
         resp = client.post(
             self.BULK_URL,
@@ -314,6 +376,20 @@ class TestBulkDeleteView:
         )
         assert resp.status_code == 200
         assert not Employee.objects.filter(pk=emp_pk).exists()
+
+    def test_bulk_delete_rejects_active_employee(self, admin_user, employee):
+        """Politique 2026-09-02 : la suppression en masse est refusée si un
+        des employés sélectionnés est encore Actif — il faut d'abord
+        archiver."""
+        emp_pk = employee.pk
+        client = auth_client(admin_user)
+        resp = client.post(
+            self.BULK_URL,
+            {"ids": [str(emp_pk)], "action": "delete"},
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert Employee.objects.filter(pk=emp_pk).exists()
 
     def test_consultant_cannot_bulk_delete(self, consultant_user, employee):
         client = auth_client(consultant_user)
