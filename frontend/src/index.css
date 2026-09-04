@@ -18,8 +18,8 @@ body {
    <html>). C'est le filet de sécurité, pas un remplacement des tokens
    theme.text portés par les composants. */
 :root[data-theme="dark"] body {
-  background: #0A0F1A;
-  color: #F1F5F9;
+  background: #18191A;
+  color: #E4E6EB;
 }
 
 input,
@@ -54,15 +54,15 @@ html {
 }
 
 :root[data-theme="dark"] ::-webkit-scrollbar-track {
-  background: #131B2B;
+  background: #242526;
 }
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: #22633D;
-  border-color: #131B2B;
+  background: #2F6B45;
+  border-color: #242526;
 }
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: #2f7a4d;
+  background: #3a8256;
 }
 :root[data-theme="dark"] html {
-  scrollbar-color: #22633D #131B2B;
+  scrollbar-color: #2F6B45 #242526;
 }

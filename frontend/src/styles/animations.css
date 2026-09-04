@@ -132,7 +132,7 @@
   min-height: 100vh;
 }
 :root[data-theme="dark"] .page-root {
-  background: #0A0F1A;
+  background: #18191A;
 }
 .page-root::before {
   content: "";
