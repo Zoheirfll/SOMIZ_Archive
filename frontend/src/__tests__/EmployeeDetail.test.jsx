@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 jest.mock("../services/api", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), delete: jest.fn() } }));
@@ -27,6 +28,8 @@ jest.mock("react-router-dom", () => ({
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import EmployeeDetail from "../pages/EmployeeDetail";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const mockFile = { id: "file-1", file_name: "cin_recto.pdf", mime_type: "application/pdf", file_size: 102400 };
 const mockDoc = {

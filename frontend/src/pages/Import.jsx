@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { CheckIcon, FolderIcon } from "../components/icons";
 import HeroDecor from "../components/HeroDecor";
@@ -12,6 +12,7 @@ import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 
 const Import = () => {
+  const theme = useTheme();
   const { user } = useAuth();
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const isMobile = useIsMobile();
@@ -27,7 +28,11 @@ const Import = () => {
       .get("/ref/champs-personnalises/")
       .then((r) => {
         const list = r.data.results || r.data;
-        setChampsCodes(list.filter((c) => c.is_active).map((c) => c.code.toLowerCase()));
+        setChampsCodes(
+          list
+            .filter((c) => c.is_active && !c.is_systeme)
+            .map((c) => c.code.toLowerCase())
+        );
       })
       .catch(() => {});
   }, []);

@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
@@ -20,6 +21,8 @@ jest.mock("react-router-dom", () => ({
 
 import { login } from "../services/auth";
 import Login from "../pages/Login";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const renderLogin = () => render(<MemoryRouter><Login /></MemoryRouter>);
 

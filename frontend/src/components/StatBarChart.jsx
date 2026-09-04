@@ -1,6 +1,7 @@
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 
 const StatBarChart = ({ data, xKey, series, orientation = "vertical", height = 200 }) => {
+  const theme = useTheme();
   if (!data || data.length === 0) {
     return (
       <div style={{ color: theme.textMuted, fontSize: 13, textAlign: "center", padding: 20 }}>

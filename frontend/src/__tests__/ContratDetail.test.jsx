@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -25,6 +26,8 @@ jest.mock("react-router-dom", () => ({
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import ContratDetail from "../pages/ContratDetail";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const mockFile = {
   id: "file-1",

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 
 const DIACRITICS_RE = new RegExp("[\\u0300-\\u036f]", "g");
 
@@ -29,6 +29,7 @@ const SearchableSelect = ({
   className,
   style,
 }) => {
+  const theme = useTheme();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);

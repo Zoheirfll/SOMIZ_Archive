@@ -5,7 +5,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -24,6 +25,8 @@ jest.mock("react-router-dom", () => ({
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Statistiques from "../pages/Statistiques";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const baseStats = {
   periode: { debut: "2026-01-01", fin: "2026-12-31" },

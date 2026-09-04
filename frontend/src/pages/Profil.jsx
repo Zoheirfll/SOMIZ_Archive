@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
@@ -37,6 +37,7 @@ const EyeIcon = ({ open }) => open ? (
 );
 
 const Profil = () => {
+  const theme = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import { comboFromEvent } from "../hooks/useKeyboardShortcuts";
@@ -10,7 +10,9 @@ const isAdmin = (role) => ["ADMIN", "SUPERADMIN"].includes(role);
 
 const ARROW_LABEL = { ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓" };
 
-const Kbd = ({ children }) => (
+const Kbd = ({ children }) => {
+  const theme = useTheme();
+  return (
   <kbd
     style={{
       background: theme.bg,
@@ -29,9 +31,12 @@ const Kbd = ({ children }) => (
   >
     {children}
   </kbd>
-);
+  );
+};
 
-const Combo = ({ combo }) => (
+const Combo = ({ combo }) => {
+  const theme = useTheme();
+  return (
   <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
     {combo.split("+").map((k, i) => (
       <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -40,9 +45,11 @@ const Combo = ({ combo }) => (
       </span>
     ))}
   </span>
-);
+  );
+};
 
 function Row({ shortcut, combo, isCustom, isEditing, onEdit, onCancelEdit, onReset }) {
+  const theme = useTheme();
   return (
     <div
       style={{
@@ -106,7 +113,9 @@ function Row({ shortcut, combo, isCustom, isEditing, onEdit, onCancelEdit, onRes
   );
 }
 
-const Section = ({ title, children }) => (
+const Section = ({ title, children }) => {
+  const theme = useTheme();
+  return (
   <div style={{ marginBottom: 20 }}>
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
       <div style={{ width: 4, height: 14, borderRadius: 2, background: theme.primary }} />
@@ -124,9 +133,11 @@ const Section = ({ title, children }) => (
     </div>
     <div style={{ borderTop: `1px solid ${theme.borderLight}` }}>{children}</div>
   </div>
-);
+  );
+};
 
 export default function KeyboardShortcutsHelp({ onClose }) {
+  const theme = useTheme();
   const { user } = useAuth();
   const { overrides, setOverride, resetOverride, resetAllOverrides } = useKeyboardShortcutsHelp();
   const [editingId, setEditingId] = useState(null);

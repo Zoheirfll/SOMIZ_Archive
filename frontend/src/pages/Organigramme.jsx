@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
 
@@ -83,6 +83,7 @@ const ArrowRightIcon = ({ color }) => (
 // niveau (s'il a des enfants) ; le bouton flèche mène directement à la
 // liste des employés filtrée sur ce nœud.
 const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible, responsableNom }) => {
+  const theme = useTheme();
   const s = LEVEL[level];
   const color = accessible ? s.color : "#64748B";
   const bg = accessible ? s.bg : "#F1F5F9";
@@ -188,6 +189,7 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
 };
 
 const Organigramme = () => {
+  const theme = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [directions, setDirections] = useState([]);

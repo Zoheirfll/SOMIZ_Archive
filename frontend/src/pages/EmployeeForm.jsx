@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
@@ -13,7 +13,9 @@ import useIsMobile from "../hooks/useIsMobile";
 import { useConfirm } from "../components/ConfirmDialog";
 import SearchableSelect from "../components/SearchableSelect";
 
-const Field = ({ label, required, children }) => (
+const Field = ({ label, required, children }) => {
+  const theme = useTheme();
+  return (
   <div style={{ marginBottom: 18 }}>
     <label
       style={{
@@ -28,9 +30,12 @@ const Field = ({ label, required, children }) => (
     </label>
     {children}
   </div>
-);
+  );
+};
 
-const Input = ({ className, ...props }) => (
+const Input = ({ className, ...props }) => {
+  const theme = useTheme();
+  return (
   <input
     {...props}
     className={["input-focus", className].filter(Boolean).join(" ")}
@@ -49,9 +54,12 @@ const Input = ({ className, ...props }) => (
       ...props.style,
     }}
   />
-);
+  );
+};
 
-const Select = ({ children, className, ...props }) => (
+const Select = ({ children, className, ...props }) => {
+  const theme = useTheme();
+  return (
   <select
     {...props}
     className={["input-focus", className].filter(Boolean).join(" ")}
@@ -73,9 +81,12 @@ const Select = ({ children, className, ...props }) => (
   >
     {children}
   </select>
-);
+  );
+};
 
-const SectionHeader = ({ label, notice }) => (
+const SectionHeader = ({ label, notice }) => {
+  const theme = useTheme();
+  return (
   <div
     style={{
       display: "flex",
@@ -106,9 +117,11 @@ const SectionHeader = ({ label, notice }) => (
     </div>
     <InfoNotice text={notice} variant="field" size={16} />
   </div>
-);
+  );
+};
 
 const EmployeeForm = () => {
+  const theme = useTheme();
   const { user } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
@@ -129,6 +142,7 @@ const EmployeeForm = () => {
     date_naissance: "",
     date_embauche: "",
     statut: "actif",
+    motif_archivage: "",
     direction: "",
     departement: "",
     service: "",
@@ -155,6 +169,7 @@ const EmployeeForm = () => {
   const [postes, setPostes] = useState([]);
   const [typesContrat, setTypesContrat] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [motifsArchivage, setMotifsArchivage] = useState([]);
   const [champsDefinitions, setChampsDefinitions] = useState([]);
   const [champsValues, setChampsValues] = useState({});
   // Snapshot de l'affectation au chargement (mode édition), pour détecter
@@ -171,7 +186,7 @@ const EmployeeForm = () => {
 
   const fetchReferentiels = async () => {
     try {
-      const [dir, dept, srv, cel, sec, pos, tc, cat, champs] = await Promise.all([
+      const [dir, dept, srv, cel, sec, pos, tc, cat, champs, motifs] = await Promise.all([
         api.get("/ref/directions/"),
         api.get("/ref/departements/"),
         api.get("/ref/services/"),
@@ -181,6 +196,7 @@ const EmployeeForm = () => {
         api.get("/ref/types-contrat/"),
         api.get("/ref/categories/"),
         api.get("/ref/champs-personnalises/"),
+        api.get("/ref/motifs-archivage/"),
       ]);
       setDirections(dir.data.results || dir.data);
       setDepartements(dept.data.results || dept.data);
@@ -190,8 +206,13 @@ const EmployeeForm = () => {
       setPostes(pos.data.results || pos.data);
       setTypesContrat(tc.data.results || tc.data);
       setCategories(cat.data.results || cat.data);
+      setMotifsArchivage(
+        (motifs.data.results || motifs.data).filter((m) => m.is_active),
+      );
       setChampsDefinitions(
-        (champs.data.results || champs.data).filter((c) => c.is_active),
+        (champs.data.results || champs.data).filter(
+          (c) => c.is_active && !c.is_systeme,
+        ),
       );
     } catch (err) {
       console.error(err);
@@ -210,6 +231,7 @@ const EmployeeForm = () => {
         date_embauche: emp.date_embauche || "",
         date_fin_contrat: emp.date_fin_contrat || "",
         statut: emp.statut || "actif",
+        motif_archivage: emp.motif_archivage || "",
         direction: emp.direction || "",
         departement: emp.departement || "",
         service: emp.service || "",
@@ -569,7 +591,16 @@ const EmployeeForm = () => {
                 <Select
                   name="statut"
                   value={form.statut}
-                  onChange={handleChange}
+                  onChange={(e) => {
+                    const statut = e.target.value;
+                    setForm({
+                      ...form,
+                      statut,
+                      // Un employé Actif n'a pas de motif d'archivage — voir
+                      // CLAUDE.md section Archivage employé.
+                      motif_archivage: statut === "actif" ? "" : form.motif_archivage,
+                    });
+                  }}
                 >
                   <option value="actif">Actif</option>
                   <option value="inactif">Inactif</option>
@@ -577,6 +608,23 @@ const EmployeeForm = () => {
                   <option value="demobilise">Démobilisé</option>
                 </Select>
               </Field>
+
+              {form.statut !== "actif" && (
+                <Field label="Motif (optionnel)">
+                  <Select
+                    name="motif_archivage"
+                    value={form.motif_archivage || ""}
+                    onChange={handleChange}
+                  >
+                    <option value="">-- Aucun --</option>
+                    {motifsArchivage.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nom}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
 
               <Field label="Date de fin de contrat">
                 <Input

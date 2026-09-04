@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -35,6 +36,8 @@ jest.mock("../context/KeyboardShortcutsContext", () => ({
 
 import api from "../services/api";
 import Parametres from "../pages/Parametres";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const makeItem = (id, nom, code = "") => ({ id, nom, code, is_active: true });
 

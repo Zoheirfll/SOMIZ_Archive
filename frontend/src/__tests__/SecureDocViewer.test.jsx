@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 
 // Mock react-pdf (pas de référence à React dans le factory — règle jest.mock)
 jest.mock("react-pdf", () => {
@@ -25,6 +26,8 @@ jest.mock("react-pdf", () => {
 });
 
 import SecureDocViewer from "../components/SecureDocViewer";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 describe("SecureDocViewer — image", () => {
   const imageProps = { url: "http://localhost/img.jpg", mimeType: "image/jpeg", fileName: "img.jpg" };

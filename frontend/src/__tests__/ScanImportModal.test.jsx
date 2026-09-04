@@ -1,7 +1,10 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, waitFor } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import userEvent from "@testing-library/user-event";
 import ScanImportModal, { buildPageList } from "../components/ScanImportModal";
 import api from "../services/api";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 jest.mock("react-pdf", () => {
   const React = require("react");

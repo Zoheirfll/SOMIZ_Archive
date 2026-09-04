@@ -5,7 +5,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 jest.mock("../services/api", () => ({
@@ -31,6 +32,8 @@ import Import from "../pages/Import";
 import AuditLogs from "../pages/AuditLogs";
 import Parametres from "../pages/Parametres";
 import EmployeeForm from "../pages/EmployeeForm";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 beforeEach(() => {
   jest.clearAllMocks();

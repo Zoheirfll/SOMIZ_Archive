@@ -1,5 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import Skeleton from "../components/Skeleton";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 describe("Skeleton", () => {
   test("rend un élément avec data-testid skeleton", () => {

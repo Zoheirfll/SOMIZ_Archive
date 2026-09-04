@@ -1,6 +1,9 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import StatBarChart from "../components/StatBarChart";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const data = [
   { mois: "2026-01", recrutements: 4, archivages: 1 },

@@ -4,7 +4,8 @@
  */
 
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
@@ -15,6 +16,8 @@ jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 
 import api from "../services/api";
 import AuditLogs from "../pages/AuditLogs";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 const makeLog = (id, action = "VIEW", username = "admin") => ({
   id,

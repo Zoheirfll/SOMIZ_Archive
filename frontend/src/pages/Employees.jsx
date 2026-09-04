@@ -2,549 +2,43 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
-import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
-import EmployeeAvatar from "../components/EmployeeAvatar";
-import { useConfirm } from "../components/ConfirmDialog";
+import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import useIsMobile from "../hooks/useIsMobile";
-import { employeeSlug } from "../utils/employeeSlug";
 import { slugify } from "../utils/slugify";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
-
-// ─── SVG Icons ────────────────────────────────────────────────────────────────
-
-const IconDirection = ({ size = 32 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-    <polyline points="9 22 9 12 15 12 15 22" />
-  </svg>
-);
-
-const IconDepartement = ({ size = 32 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="2" y="7" width="20" height="14" rx="2" />
-    <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-    <line x1="12" y1="12" x2="12" y2="16" />
-    <line x1="10" y1="14" x2="14" y2="14" />
-  </svg>
-);
-
-const IconService = ({ size = 32 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="12" r="3" />
-    <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
-  </svg>
-);
-
-const IconPole = ({ size = 32 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="12" cy="6" r="3" />
-    <path d="M12 9v4M6 20v-2a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v2" />
-    <path d="M6 20h12" />
-  </svg>
-);
-
-const IconCellule = ({ size = 32 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <rect x="3" y="3" width="7" height="7" rx="1.5" />
-    <rect x="14" y="3" width="7" height="7" rx="1.5" />
-    <rect x="3" y="14" width="7" height="7" rx="1.5" />
-    <rect x="14" y="14" width="7" height="7" rx="1.5" />
-  </svg>
-);
-
-const IconSection = ({ size = 32 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M12 3l9 5-9 5-9-5 9-5z" />
-    <path d="M3 13l9 5 9-5" />
-  </svg>
-);
-
-const IconUsers = ({ size = 24, color = "currentColor" }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-  </svg>
-);
-
-const IconChevronRight = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
-
-const IconArrowRight = ({ size = 16 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="5" y1="12" x2="19" y2="12" />
-    <polyline points="12 5 19 12 12 19" />
-  </svg>
-);
-
-const IconImport = ({ size = 16 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <polyline points="7 10 12 15 17 10" />
-    <line x1="12" y1="15" x2="12" y2="3" />
-  </svg>
-);
-
-const IconPlus = ({ size = 16 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="12" y1="5" x2="12" y2="19" />
-    <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
-
-// ─── Carte hiérarchique premium ───────────────────────────────────────────────
-
-const HierarchyCard = ({
-  icon,
-  name,
-  code,
-  count,
-  countLabel,
-  gradient,
-  accentColor,
-  animClass,
-  onClick,
-}) => {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <div
-      className={animClass}
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: theme.surface,
-        borderRadius: theme.cardRadius,
-        overflow: "hidden",
-        cursor: "pointer",
-        boxShadow: hovered ? theme.shadowLg : theme.shadowMd,
-        transform: hovered
-          ? "translateY(-6px) scale(1.01)"
-          : "translateY(0) scale(1)",
-        transition: "all 0.25s cubic-bezier(0.34,1.1,0.64,1)",
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 240,
-        border: `1px solid ${hovered ? accentColor + "40" : theme.border}`,
-      }}
-    >
-      {/* Zone gradient supérieure */}
-      <div
-        style={{
-          background: gradient,
-          padding: "28px 24px 20px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        {/* Cercle décoratif */}
-        <div
-          style={{
-            position: "absolute",
-            top: -30,
-            right: -30,
-            width: 100,
-            height: 100,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.07)",
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: -20,
-            left: "30%",
-            width: 70,
-            height: 70,
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.05)",
-            pointerEvents: "none",
-          }}
-        />
-
-        {/* Avatar : abréviation du code si disponible, sinon icône générique */}
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 14,
-            background: "rgba(255,255,255,0.15)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#FFFFFF",
-            backdropFilter: "blur(4px)",
-            border: "1px solid rgba(255,255,255,0.2)",
-            fontWeight: 800,
-            fontSize: 15,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          {code ? code.slice(0, 4).toUpperCase() : icon}
-        </div>
-
-        {/* Compteur */}
-        {count != null && (
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              background: "rgba(255,255,255,0.18)",
-              borderRadius: 20,
-              padding: "4px 12px",
-              color: "rgba(255,255,255,0.95)",
-              fontSize: 12,
-              fontWeight: 600,
-              width: "fit-content",
-              backdropFilter: "blur(4px)",
-            }}
-          >
-            {count} {countLabel}
-          </div>
-        )}
-      </div>
-
-      {/* Zone informations basse */}
-      <div
-        style={{
-          padding: "18px 24px 20px",
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-        }}
-      >
-        <div>
-          <div
-            style={{
-              color: theme.text,
-              fontWeight: 700,
-              fontSize: 16,
-              lineHeight: 1.3,
-              marginBottom: code ? 8 : 0,
-              fontFamily: theme.fontFamily,
-            }}
-          >
-            {name}
-          </div>
-          {code && (
-            <div
-              style={{
-                color: accentColor,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                fontFamily: "monospace",
-                background: accentColor + "12",
-                display: "inline-block",
-                padding: "2px 8px",
-                borderRadius: 5,
-              }}
-            >
-              {code}
-            </div>
-          )}
-        </div>
-
-        {/* Lien explorer */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginTop: 14,
-            paddingTop: 14,
-            borderTop: `1px solid ${theme.border}`,
-          }}
-        >
-          <span
-            style={{
-              color: hovered ? accentColor : theme.textMuted,
-              fontSize: 12,
-              fontWeight: 600,
-              transition: "color 0.2s",
-            }}
-          >
-            Explorer
-          </span>
-          <div
-            style={{
-              color: hovered ? accentColor : theme.textMuted,
-              display: "flex",
-              alignItems: "center",
-              transition: "all 0.2s",
-              transform: hovered ? "translateX(4px)" : "translateX(0)",
-            }}
-          >
-            <IconArrowRight size={15} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── Breadcrumb ───────────────────────────────────────────────────────────────
-
-const Breadcrumb = ({ items }) => (
-  <nav
-    style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}
-  >
-    {items.map((item, idx) => (
-      <span key={idx} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        {idx > 0 && (
-          <span
-            style={{
-              color: theme.textMuted,
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            <IconChevronRight size={11} />
-          </span>
-        )}
-        <button
-          onClick={item.onClick}
-          disabled={!item.onClick || idx === items.length - 1}
-          style={{
-            background: "none",
-            border: "none",
-            padding: "3px 8px",
-            borderRadius: 6,
-            color: idx === items.length - 1 ? theme.text : theme.primary,
-            fontWeight: idx === items.length - 1 ? 700 : 500,
-            fontSize: 13,
-            cursor: idx === items.length - 1 ? "default" : "pointer",
-            fontFamily: theme.fontFamily,
-            transition: "background 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            if (idx < items.length - 1)
-              e.currentTarget.style.background = theme.primaryBg;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "none";
-          }}
-        >
-          {item.label}
-        </button>
-      </span>
-    ))}
-  </nav>
-);
-
-// ─── Section header ───────────────────────────────────────────────────────────
-
-const SectionHeader = ({ title, subtitle, color }) => (
-  <div style={{ marginBottom: 28 }}>
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        marginBottom: 6,
-      }}
-    >
-      <div
-        style={{
-          width: 4,
-          height: 28,
-          background: color,
-          borderRadius: 2,
-        }}
-      />
-      <h2
-        style={{
-          color: theme.text,
-          fontWeight: 800,
-          fontSize: 20,
-          margin: 0,
-          fontFamily: theme.fontFamily,
-        }}
-      >
-        {title}
-      </h2>
-    </div>
-    <p
-      style={{
-        color: theme.textSecondary,
-        fontSize: 13,
-        margin: "0 0 0 16px",
-        fontFamily: theme.fontFamily,
-      }}
-    >
-      {subtitle}
-    </p>
-  </div>
-);
-
-// ─── Colonnes optionnelles du tableau ─────────────────────────────────────────
-// Persistées côté navigateur (par utilisateur) — n'affecte que l'affichage,
-// aucune donnée n'est masquée côté serveur.
-// Par défaut : les colonnes fixes restent affichées telles qu'avant (aucun
-// changement du tableau existant) ; les champs personnalisés dynamiques,
-// eux, sont proposés dans le filtre mais MASQUÉS par défaut — l'utilisateur
-// les active volontairement via "Colonnes" s'il en a besoin. On ne
-// persiste que les choix explicites (overrides), pour que le comportement
-// par défaut reste correct même si de nouveaux champs sont ajoutés plus
-// tard dans /parametres.
-const COLUMN_OPTIONS_FIXED = [
-  { key: "numero_contrat", label: "N° Contrat" },
-  { key: "date_naissance", label: "Date de naissance" },
-  { key: "date_embauche", label: "Date de recrutement" },
-  { key: "direction", label: "Direction" },
-  { key: "departement", label: "Département" },
-  { key: "service", label: "Service" },
-  { key: "poste", label: "Fonction" },
-  { key: "type_contrat", label: "Type de contrat" },
-  { key: "categorie", label: "Catégorie" },
-  { key: "statut", label: "Statut" },
-  { key: "dossier", label: "Dossier" },
-];
-const COLUMNS_STORAGE_KEY = "somiz_employees_column_overrides";
-
-const loadColumnOverrides = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY));
-    if (saved && typeof saved === "object") return saved;
-  } catch {}
-  return {};
-};
-
-// Colonnes qui n'existaient pas dans le tableau avant l'ajout du filtre —
-// masquées par défaut comme les champs personnalisés, pour ne rien changer
-// à l'affichage existant tant que l'utilisateur ne les active pas lui-même.
-const NEWLY_ADDED_COLUMNS = new Set([
-  "date_naissance",
-  "date_embauche",
-  "type_contrat",
-  "categorie",
-]);
-const defaultColumnVisible = (key) =>
-  !key.startsWith("custom_") && !NEWLY_ADDED_COLUMNS.has(key);
+import {
+  IconUsers,
+  IconArrowRight,
+  IconImport,
+  IconPlus,
+} from "../components/employees/icons";
+import HierarchyView from "../components/employees/HierarchyView";
+import EmployeesTable from "../components/employees/EmployeesTable";
+import Breadcrumb from "../components/employees/Breadcrumb";
+import {
+  COLUMN_OPTIONS_FIXED,
+  COLUMNS_STORAGE_KEY,
+  loadColumnOverrides,
+  defaultColumnVisible,
+} from "../config/employeesColumns";
 
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 const Employees = () => {
+  const theme = useTheme();
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
+  const { prompt, PromptDialog } = usePrompt();
+  const [archivesCount, setArchivesCount] = useState(null);
+  const [activeEmployeesCount, setActiveEmployeesCount] = useState(null);
   const [view, setView] = useState("directions");
   const [selectedDirection, setSelectedDirection] = useState(null);
   const [selectedPole, setSelectedPole] = useState(null);
@@ -575,6 +69,9 @@ const Employees = () => {
   const [columnOverrides, setColumnOverrides] = useState(loadColumnOverrides);
   const [colsMenuOpen, setColsMenuOpen] = useState(false);
   const [customFields, setCustomFields] = useState([]); // champs personnalisés actifs
+  const [motifsArchivage, setMotifsArchivage] = useState([]);
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [archiveMotif, setArchiveMotif] = useState("");
 
   const isColumnVisible = (key) =>
     key in columnOverrides ? columnOverrides[key] : defaultColumnVisible(key);
@@ -603,6 +100,16 @@ const Employees = () => {
 
   useEffect(() => {
     api
+      .get("/ref/motifs-archivage/")
+      .then((r) => {
+        const list = r.data.results || r.data;
+        setMotifsArchivage(list.filter((m) => m.is_active));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api
       .get("/ref/champs-personnalises/")
       .then((r) => {
         const list = r.data.results || r.data;
@@ -617,6 +124,19 @@ const Employees = () => {
 
   const search = searchParams.get("q") || "";
   const statut = searchParams.get("statut") || "";
+  // Onglet "Organisation" (drill-down, Actif implicite) / "Archivés" (liste
+  // à plat, Inactif/Archivé/Démobilisé) — voir CLAUDE.md section Archivage
+  // employé.
+  const vue = searchParams.get("vue") === "archives" ? "archives" : "organisation";
+  const setVue = (val) =>
+    setSearchParams((p) => {
+      const n = new URLSearchParams(p);
+      if (val === "archives") n.set("vue", "archives");
+      else n.delete("vue");
+      n.delete("statut");
+      n.set("page", "1");
+      return n;
+    });
   const page = parseInt(searchParams.get("page") || "1", 10);
   const ordering = searchParams.get("ordering") || "nom";
   const dossierComplet = searchParams.get("dossier_complet");
@@ -834,19 +354,26 @@ const Employees = () => {
   // ─── Fetch employees ──────────────────────────────────────────────────────
 
   const fetchEmployees = useCallback(async () => {
-    if (view !== "employees") return;
+    if (view !== "employees" && vue !== "archives") return;
     setLoading(true);
     try {
       const params = { page };
       if (search) params.q = search;
-      if (statut) params.statut = statut;
       if (ordering) params.ordering = ordering;
-      if (dossierComplet !== null) params.dossier_complet = dossierComplet;
-      if (typeManquant) params.type_manquant = typeManquant;
-      if (orgFilter) params[orgFilter.type] = orgFilter.id;
-      else if (selectedService) params.service = selectedService.id;
-      else if (selectedDepartement) params.departement = selectedDepartement.id;
-      else if (selectedDirection) params.direction = selectedDirection.id;
+      if (vue === "archives") {
+        // Liste à plat, tous périmètres organisationnels confondus — voir
+        // CLAUDE.md section Archivage employé. Le filtre Statut, restreint
+        // aux 3 valeurs non-Actif dans ce mode, affine côté serveur.
+        params.vue = "archives";
+        if (statut) params.statut = statut;
+      } else {
+        if (dossierComplet !== null) params.dossier_complet = dossierComplet;
+        if (typeManquant) params.type_manquant = typeManquant;
+        if (orgFilter) params[orgFilter.type] = orgFilter.id;
+        else if (selectedService) params.service = selectedService.id;
+        else if (selectedDepartement) params.departement = selectedDepartement.id;
+        else if (selectedDirection) params.direction = selectedDirection.id;
+      }
       const response = await api.get("/employees/", { params });
       setEmployees(response.data.results || response.data);
       setTotalCount(response.data.count || 0);
@@ -858,6 +385,7 @@ const Employees = () => {
     }
   }, [
     view,
+    vue,
     search,
     statut,
     page,
@@ -869,6 +397,31 @@ const Employees = () => {
     selectedDirection,
     orgFilter,
   ]);
+
+  const handleExportAll = async () => {
+    try {
+      const params = {};
+      if (search) params.q = search;
+      if (statut) params.statut = statut;
+      if (vue === "archives") params.vue = "archives";
+      if (orgFilter) params[orgFilter.type] = orgFilter.id;
+      else if (selectedService) params.service = selectedService.id;
+      else if (selectedDepartement) params.departement = selectedDepartement.id;
+      else if (selectedDirection) params.direction = selectedDirection.id;
+      const response = await api.get("/employees/export/", {
+        params,
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "export_employes.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Arrivée depuis le dashboard (?dossier_complet=... ou ?type_manquant=...)
   // — bascule directement sur la liste, comme pour les liens Organigramme.
@@ -892,10 +445,31 @@ const Employees = () => {
   }, [typeManquant]);
 
   useEffect(() => {
-    if (view !== "employees") return;
+    if (view !== "employees" && vue !== "archives") return;
     const delay = setTimeout(fetchEmployees, 300);
     return () => clearTimeout(delay);
-  }, [fetchEmployees]);
+  }, [fetchEmployees, view, vue]);
+
+  // Une sélection faite dans un onglet n'a plus de sens dans l'autre
+  // (ids potentiellement hors de la nouvelle liste affichée).
+  useEffect(() => {
+    setSelected(new Set());
+  }, [vue]);
+
+  const fetchArchivesCount = useCallback(() => {
+    api
+      .get("/employees/", { params: { vue: "archives", page: 1 } })
+      .then((res) => setArchivesCount(res.data.count ?? 0))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchArchivesCount();
+    api
+      .get("/employees/", { params: { page: 1 } })
+      .then((res) => setActiveEmployeesCount(res.data.count ?? 0))
+      .catch(() => {});
+  }, [fetchArchivesCount]);
 
   // Arrivée depuis l'Organigramme (/employees?direction=<id> etc.) — bascule
   // directement sur la liste des employés filtrée, sans repasser par le
@@ -1109,29 +683,48 @@ const Employees = () => {
       ? setSelected(new Set())
       : setSelected(new Set(employees.map((e) => e.id)));
 
-  const handleBulkAction = async (action) => {
+  const handleBulkAction = async (action, motifArchivage = null) => {
     if (selected.size === 0) return;
-    const msg =
-      action === "delete"
-        ? `Supprimer définitivement ${selected.size} employé(s) ? Cette action est irréversible.`
-        : `Archiver ${selected.size} employé(s) ?`;
-    if (!(await confirm(msg))) return;
+    if (action === "delete") {
+      // Suppression définitive et irréversible — confirmation renforcée
+      // (voir CLAUDE.md section Archivage employé) : l'admin doit taper
+      // le mot "SUPPRIMER" pour l'activer, en plus du garde-fou serveur
+      // qui refuse tout employé encore Actif dans la sélection.
+      const typed = await prompt(
+        `Supprimer définitivement ${selected.size} employé(s), leurs contrats, documents et fichiers ? Cette action est IRRÉVERSIBLE.\n\nTapez SUPPRIMER pour confirmer :`,
+      );
+      if (typed !== "SUPPRIMER") return;
+    } else if (action === "restaurer") {
+      if (!(await confirm(`Restaurer ${selected.size} employé(s) (retour au statut Actif) ?`)))
+        return;
+    }
+    // "archive" est déjà confirmé via la modale dédiée (choix du motif) —
+    // pas de double confirmation ici.
     setDeleting(true);
     try {
       const response = await api.post("/employees/bulk-delete/", {
         ids: Array.from(selected),
         action,
+        ...(action === "archive" && motifArchivage
+          ? { motif_archivage: motifArchivage }
+          : {}),
       });
-      const nb = response.data.nb_supprimes || response.data.nb_archives;
+      const nb =
+        response.data.nb_supprimes ||
+        response.data.nb_archives ||
+        response.data.nb_restaures;
       setMessage({
         type: "success",
         text:
           action === "delete"
-            ? `${nb} employé(s) supprimé(s).`
-            : `${nb} employé(s) archivé(s).`,
+            ? `${nb} employé(s) supprimé(s) définitivement.`
+            : action === "restaurer"
+              ? `${nb} employé(s) restauré(s).`
+              : `${nb} employé(s) archivé(s).`,
       });
       setSelected(new Set());
       fetchEmployees();
+      fetchArchivesCount();
     } catch (err) {
       setMessage({
         type: "error",
@@ -1238,1427 +831,6 @@ const Employees = () => {
       ? [{ label: "Tous les employés", onClick: null }]
       : []),
   ];
-
-  const delayClass = (i) =>
-    [
-      "",
-      "delay-1",
-      "delay-2",
-      "delay-3",
-      "delay-4",
-      "delay-5",
-      "delay-6",
-      "delay-7",
-    ][Math.min(i, 7)];
-
-  // ─── Render hierarchy ─────────────────────────────────────────────────────
-
-  const renderHierarchy = () => {
-    if (hierarchyLoading) {
-      return (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-            gap: 20,
-          }}
-        >
-          {[...Array(4)].map((_, i) => (
-            <div
-              key={i}
-              style={{
-                background: theme.surface,
-                borderRadius: theme.cardRadius,
-                minHeight: 240,
-                border: `1px solid ${theme.border}`,
-                animation: "somizFadeIn 1s ease infinite alternate",
-                opacity: 0.5,
-              }}
-            />
-          ))}
-        </div>
-      );
-    }
-
-    // Style/comportement par type de nœud — un même écran (departements/
-    // services) peut mélanger plusieurs types (Pôle+Département+Cellule,
-    // ou Service+Cellule), donc le style se lit par item, pas par écran.
-    const TYPE_META = {
-      direction: {
-        color: theme.directionColor,
-        gradient: theme.directionGrad,
-        icon: <IconDirection size={28} />,
-        countLabel: "département(s)",
-        countKey: "nb_departements",
-        onSelect: selectDirection,
-      },
-      pole: {
-        color: "#0d9488",
-        gradient:
-          "linear-gradient(135deg, #042f2e 0%, #0d9488 60%, #14b8a6 100%)",
-        icon: <IconPole size={28} />,
-        countLabel: "département(s)",
-        countKey: "nb_departements",
-        onSelect: selectPole,
-      },
-      departement: {
-        color: theme.departementColor,
-        gradient: theme.departementGrad,
-        icon: <IconDepartement size={28} />,
-        countLabel: "service(s)",
-        countKey: "nb_services",
-        onSelect: selectDepartement,
-      },
-      service: {
-        color: theme.serviceColor,
-        gradient: theme.serviceGrad,
-        icon: <IconService size={28} />,
-        countLabel: "employé(s)",
-        countKey: "nb_employes",
-        onSelect: selectService,
-      },
-      cellule: {
-        color: "#b45309",
-        gradient:
-          "linear-gradient(135deg, #451a03 0%, #b45309 60%, #d97706 100%)",
-        icon: <IconCellule size={28} />,
-        countLabel: "employé(s)",
-        countKey: "nb_employes",
-        onSelect: selectCellule,
-      },
-      section: {
-        color: "#0369a1",
-        gradient:
-          "linear-gradient(135deg, #082f49 0%, #0369a1 60%, #0ea5e9 100%)",
-        icon: <IconSection size={28} />,
-        countLabel: "employé(s)",
-        countKey: "nb_employes",
-        onSelect: selectSection,
-      },
-    };
-
-    const configs = {
-      directions: {
-        title: "Directions",
-        subtitle: "Sélectionnez une direction pour explorer ses départements",
-        color: theme.directionColor,
-        items: directions.map((d) => {
-          // Badge composé : une Direction organisée en Pôles ou avec des
-          // Cellules directes ne doit pas afficher seulement "X
-          // département(s)" — trompeur si l'essentiel passe par des Pôles.
-          const parts = [];
-          if (d.nb_departements) parts.push(`${d.nb_departements} départ.`);
-          if (d.nb_poles) parts.push(`${d.nb_poles} pôle(s)`);
-          if (d.nb_cellules) parts.push(`${d.nb_cellules} cellule(s)`);
-          if (d.nb_sections) parts.push(`${d.nb_sections} section(s)`);
-          return {
-            ...d,
-            __type: "direction",
-            __badge: parts.length > 0 ? parts.join(" · ") : null,
-          };
-        }),
-      },
-      departements: selectedPole
-        ? {
-            title: `Départements · ${selectedPole.nom}`,
-            subtitle: "Sélectionnez un département pour voir ses services",
-            color: "#0d9488",
-            items: departementsDePole.map((d) => ({
-              ...d,
-              __type: "departement",
-            })),
-          }
-        : {
-            title: `Direction · ${selectedDirection?.nom}`,
-            subtitle:
-              "Pôles, départements directs et cellules de cette direction",
-            color: theme.directionColor,
-            items: [
-              ...poles.map((p) => ({ ...p, __type: "pole" })),
-              ...departements
-                .filter((d) => !d.pole)
-                .map((d) => ({ ...d, __type: "departement" })),
-              ...cellulesDirection.map((c) => ({ ...c, __type: "cellule" })),
-              ...sectionsDirection.map((s) => ({ ...s, __type: "section" })),
-            ],
-          },
-      services: {
-        title: `Département · ${selectedDepartement?.nom}`,
-        subtitle: "Services et cellules de ce département",
-        color: theme.departementColor,
-        items: [
-          ...services.map((s) => ({ ...s, __type: "service" })),
-          ...cellulesDepartement.map((c) => ({ ...c, __type: "cellule" })),
-          ...sectionsDepartement.map((s) => ({ ...s, __type: "section" })),
-        ],
-      },
-    };
-
-    const cfg = configs[view];
-    if (!cfg) return null;
-
-    return (
-      <div key={hierarchyKey} className="anim-fade-in">
-        <SectionHeader
-          title={cfg.title}
-          subtitle={cfg.subtitle}
-          color={cfg.color}
-        />
-
-        {cfg.items.length === 0 ? (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "64px 24px",
-              background: theme.surface,
-              border: `2px dashed ${theme.border}`,
-              borderRadius: theme.cardRadius,
-            }}
-          >
-            <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.25 }}>
-              ◈
-            </div>
-            <div
-              style={{
-                fontWeight: 700,
-                color: theme.text,
-                fontSize: 15,
-                fontFamily: theme.fontFamily,
-              }}
-            >
-              Aucun élément configuré
-            </div>
-            <div style={{ color: theme.textMuted, fontSize: 13, marginTop: 6 }}>
-              Configurez les référentiels dans Paramètres
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-              gap: 20,
-            }}
-          >
-            {cfg.items.map((item, idx) => {
-              const meta = TYPE_META[item.__type];
-              const hasBadge = item.__badge !== undefined;
-              return (
-                <HierarchyCard
-                  key={item.id}
-                  icon={meta.icon}
-                  name={item.nom}
-                  code={item.code}
-                  count={
-                    hasBadge
-                      ? item.__badge
-                      : item[meta.countKey] != null
-                        ? item[meta.countKey]
-                        : undefined
-                  }
-                  countLabel={hasBadge ? "" : meta.countLabel}
-                  gradient={meta.gradient}
-                  accentColor={meta.color}
-                  animClass={`anim-pop ${delayClass(idx)}`}
-                  onClick={() => meta.onSelect(item)}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {view === "directions" && (
-          <div
-            style={{
-              marginTop: 32,
-              paddingTop: 24,
-              borderTop: `1px solid ${theme.border}`,
-            }}
-          >
-            <button
-              onClick={goToAllEmployees}
-              className="btn-lift"
-              style={{
-                background: theme.surface,
-                border: `1.5px solid ${theme.border}`,
-                color: theme.textSecondary,
-                borderRadius: 12,
-                padding: "12px 24px",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 10,
-                fontFamily: theme.fontFamily,
-              }}
-            >
-              <IconUsers size={18} color={theme.textSecondary} />
-              Voir tous les employés sans filtre
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ─── Render employees table ───────────────────────────────────────────────
-
-  const renderEmployeesTable = () => (
-    <div className="anim-fade-in">
-      {/* Bannière filtre service actif */}
-      {selectedService && (
-        <div
-          style={{
-            background: theme.serviceColor + "0D",
-            border: `1px solid ${theme.serviceColor}25`,
-            borderRadius: 12,
-            padding: "12px 20px",
-            marginBottom: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ color: theme.serviceColor, display: "flex" }}>
-              <IconService size={16} />
-            </div>
-            <span
-              style={{
-                color: theme.serviceColor,
-                fontWeight: 600,
-                fontSize: 13,
-                fontFamily: theme.fontFamily,
-              }}
-            >
-              Filtré par service : <strong>{selectedService.nom}</strong>
-            </span>
-          </div>
-          <button
-            onClick={goToAllEmployees}
-            style={{
-              background: "none",
-              border: `1px solid ${theme.serviceColor}30`,
-              color: theme.serviceColor,
-              borderRadius: 6,
-              padding: "4px 12px",
-              fontSize: 12,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            Retirer le filtre
-          </button>
-        </div>
-      )}
-
-      {/* Bannière filtre Pôle/Cellule (arrivée depuis l'Organigramme) */}
-      {orgFilter && (
-        <div
-          style={{
-            background: "#b4530915",
-            border: "1px solid #FDE68A",
-            borderRadius: 12,
-            padding: "12px 20px",
-            marginBottom: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <span
-            style={{
-              color: "#b45309",
-              fontWeight: 600,
-              fontSize: 13,
-              fontFamily: theme.fontFamily,
-            }}
-          >
-            Filtré par {orgFilter.type === "pole" ? "pôle" : orgFilter.type === "section" ? "section" : "cellule"} :{" "}
-            <strong>{orgFilter.nom}</strong>
-          </span>
-          <button
-            onClick={() => setOrgFilter(null)}
-            style={{
-              background: "none",
-              border: "1px solid #FDE68A",
-              color: "#b45309",
-              borderRadius: 6,
-              padding: "4px 12px",
-              fontSize: 12,
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
-          >
-            Retirer le filtre
-          </button>
-        </div>
-      )}
-
-      {/* Filtres */}
-      <div
-        style={{
-          background: theme.surface,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 14,
-          padding: "16px 20px",
-          marginBottom: 16,
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: isMobile ? "wrap" : "nowrap",
-          boxShadow: theme.shadow,
-        }}
-      >
-        <form
-          onSubmit={handleTableSearchSubmit}
-          style={{ flex: isMobile ? "1 1 100%" : 1, display: "flex", gap: 8 }}
-        >
-          <div style={{ flex: 1, position: "relative" }}>
-            <div
-              style={{
-                position: "absolute",
-                left: 12,
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: theme.textMuted,
-                pointerEvents: "none",
-                display: "flex",
-              }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </div>
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Rechercher par nom, prénom, matricule..."
-              className="input-focus"
-              style={{
-                width: "100%",
-                boxSizing: "border-box",
-                border: `1.5px solid ${theme.border}`,
-                borderRadius: 10,
-                padding: "10px 14px 10px 40px",
-                color: theme.text,
-                fontSize: 14,
-                outline: "none",
-                background: theme.bg,
-                fontFamily: theme.fontFamily,
-              }}
-            />
-          </div>
-          <button
-            type="submit"
-            className="btn-lift"
-            style={{
-              background: theme.primary,
-              border: "none",
-              borderRadius: 10,
-              padding: "10px 20px",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
-              fontFamily: theme.fontFamily,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Rechercher
-          </button>
-        </form>
-        <select
-          value={statut}
-          onChange={(e) => setStatut(e.target.value)}
-          className="input-focus"
-          style={{
-            border: `1.5px solid ${theme.border}`,
-            borderRadius: 10,
-            padding: "10px 14px",
-            color: theme.text,
-            fontSize: 14,
-            outline: "none",
-            background: theme.bg,
-            cursor: "pointer",
-            fontFamily: theme.fontFamily,
-          }}
-        >
-          <option value="">Tous les statuts</option>
-          <option value="actif">Actif</option>
-          <option value="inactif">Inactif</option>
-          <option value="archive">Archivé</option>
-          <option value="demobilise">Démobilisé</option>
-        </select>
-        <div style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => setColsMenuOpen((o) => !o)}
-            className="btn-lift"
-            style={{
-              border: `1.5px solid ${theme.border}`,
-              borderRadius: 10,
-              padding: "10px 16px",
-              color: theme.text,
-              fontSize: 13,
-              fontWeight: 600,
-              background: theme.surface,
-              cursor: "pointer",
-              fontFamily: theme.fontFamily,
-              whiteSpace: "nowrap",
-            }}
-          >
-            Colonnes {colsMenuOpen ? "▲" : "▼"}
-          </button>
-          {colsMenuOpen && (
-            <>
-              <div
-                onClick={() => setColsMenuOpen(false)}
-                style={{ position: "fixed", inset: 0, zIndex: 10 }}
-              />
-              <div
-                className="anim-scale-in"
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: "calc(100% + 6px)",
-                  background: theme.surface,
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 10,
-                  boxShadow: theme.shadowMd,
-                  padding: 10,
-                  zIndex: 11,
-                  minWidth: 200,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "2px 8px 8px",
-                  }}
-                >
-                  <span
-                    style={{
-                      color: theme.textMuted,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    Colonnes affichées
-                  </span>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => setAllColumns(true)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: theme.primary,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      Tout
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAllColumns(false)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                    >
-                      Aucun
-                    </button>
-                  </div>
-                </div>
-                <div
-                  style={{
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 10,
-                    maxHeight: 220,
-                    overflowY: "auto",
-                    padding: "4px 8px",
-                    background: theme.bg,
-                  }}
-                >
-                  {COLUMN_OPTIONS.map((c) => (
-                    <label
-                      key={c.key}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "6px 4px",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        fontSize: 13,
-                        color: theme.text,
-                        fontFamily: theme.fontFamily,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isColumnVisible(c.key)}
-                        onChange={() => toggleColumn(c.key)}
-                        style={{
-                          cursor: "pointer",
-                          accentColor: theme.primary,
-                        }}
-                      />
-                      {c.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Chip filtre complétude (arrivée depuis le dashboard) */}
-      {(dossierComplet !== null || typeManquant) && (
-        <div
-          className="anim-slide-down"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            background: theme.primaryBg,
-            border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 20,
-            padding: "6px 8px 6px 14px",
-            marginBottom: 16,
-            fontSize: 13,
-            color: theme.primary,
-            fontWeight: 600,
-            fontFamily: theme.fontFamily,
-          }}
-        >
-          {typeManquant
-            ? `Manque : ${typeManquantLabel || "…"}`
-            : dossierComplet === "true"
-              ? "Dossiers complets"
-              : "Dossiers incomplets"}
-          <button
-            type="button"
-            onClick={clearCompletudeFilter}
-            style={{
-              background: "none",
-              border: "none",
-              color: theme.primary,
-              cursor: "pointer",
-              fontSize: 16,
-              lineHeight: 1,
-              padding: "2px 4px",
-            }}
-            aria-label="Effacer le filtre"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Barre actions bulk */}
-      {someSelected && ["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-        <div
-          className="anim-slide-down"
-          style={{
-            background: theme.primaryBg,
-            border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 12,
-            padding: "12px 20px",
-            marginBottom: 16,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            boxShadow: theme.shadow,
-          }}
-        >
-          <span
-            style={{
-              color: theme.primary,
-              fontWeight: 600,
-              fontSize: 14,
-              fontFamily: theme.fontFamily,
-            }}
-          >
-            {selected.size} employé(s) sélectionné(s)
-          </span>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              onClick={() => setSelected(new Set())}
-              style={{
-                background: "transparent",
-                border: `1px solid ${theme.border}`,
-                color: theme.textSecondary,
-                borderRadius: 8,
-                padding: "6px 14px",
-                fontSize: 13,
-                cursor: "pointer",
-                fontFamily: theme.fontFamily,
-              }}
-            >
-              Désélectionner
-            </button>
-            <button
-              onClick={() => handleBulkAction("archive")}
-              disabled={deleting}
-              style={{
-                background: "#FFFBEB",
-                border: `1px solid #FDE68A`,
-                color: "#92400E",
-                borderRadius: 8,
-                padding: "6px 14px",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: deleting ? "not-allowed" : "pointer",
-                fontFamily: theme.fontFamily,
-              }}
-            >
-              Archiver ({selected.size})
-            </button>
-            <button
-              onClick={() => handleBulkAction("delete")}
-              disabled={deleting}
-              style={{
-                background: theme.danger,
-                border: "none",
-                color: "#fff",
-                borderRadius: 8,
-                padding: "6px 14px",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: deleting ? "not-allowed" : "pointer",
-                fontFamily: theme.fontFamily,
-              }}
-            >
-              Supprimer ({selected.size})
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Table */}
-      <div
-        style={{
-          background: theme.surface,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 16,
-          overflow: "hidden",
-          boxShadow: theme.shadowMd,
-        }}
-      >
-        {loading ? (
-          <div style={{ padding: 24 }}>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: "14px 0",
-                }}
-              >
-                <Skeleton width={36} height={36} radius={18} />
-                <div style={{ flex: 1 }}>
-                  <Skeleton
-                    width="30%"
-                    height={13}
-                    style={{ marginBottom: 6 }}
-                  />
-                  <Skeleton width="50%" height={11} />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : employees.length === 0 ? (
-          <div
-            style={{ padding: 80, textAlign: "center", color: theme.textMuted }}
-          >
-            <div style={{ marginBottom: 16, opacity: 0.35 }}>
-              <IconUsers size={56} color={theme.textMuted} />
-            </div>
-            <div
-              style={{
-                fontFamily: theme.fontFamily,
-                fontWeight: 700,
-                fontSize: 16,
-                color: theme.text,
-                marginBottom: 6,
-              }}
-            >
-              Aucun employé trouvé
-            </div>
-            <div style={{ fontFamily: theme.fontFamily, fontSize: 13 }}>
-              {search
-                ? "Essayez un autre terme de recherche."
-                : "Ce service ne contient pas encore d'employés."}
-            </div>
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontFamily: theme.fontFamily,
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    background: theme.bg,
-                    borderBottom: `2px solid ${theme.border}`,
-                  }}
-                >
-                  {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                    <th style={{ padding: "13px 16px", width: 40 }}>
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={toggleSelectAll}
-                        style={{
-                          cursor: "pointer",
-                          width: 15,
-                          height: 15,
-                          accentColor: theme.primary,
-                        }}
-                      />
-                    </th>
-                  )}
-                  {[
-                    { id: "avatar", label: "", key: null, col: null },
-                    {
-                      id: "matricule",
-                      label: "Matricule",
-                      key: "matricule",
-                      col: null,
-                    },
-                    {
-                      id: "numero_contrat",
-                      label: "N° Contrat",
-                      key: null,
-                      col: "numero_contrat",
-                    },
-                    { id: "nom", label: "Nom & Prénom", key: "nom", col: null },
-                    {
-                      id: "date_naissance",
-                      label: "Date de naissance",
-                      key: "date_naissance",
-                      col: "date_naissance",
-                    },
-                    {
-                      id: "date_embauche",
-                      label: "Date de recrutement",
-                      key: "date_embauche",
-                      col: "date_embauche",
-                    },
-                    {
-                      id: "direction",
-                      label: "Direction",
-                      key: "direction__nom",
-                      col: "direction",
-                    },
-                    {
-                      id: "departement",
-                      label: "Département",
-                      key: "departement__nom",
-                      col: "departement",
-                    },
-                    {
-                      id: "service",
-                      label: "Service",
-                      key: "service__nom",
-                      col: "service",
-                    },
-                    {
-                      id: "poste",
-                      label: "Fonction",
-                      key: "poste__nom",
-                      col: "poste",
-                    },
-                    {
-                      id: "type_contrat",
-                      label: "Type de contrat",
-                      key: "type_contrat__nom",
-                      col: "type_contrat",
-                    },
-                    {
-                      id: "categorie",
-                      label: "Catégorie",
-                      key: null,
-                      col: "categorie",
-                    },
-                    {
-                      id: "statut",
-                      label: "Statut",
-                      key: "statut",
-                      col: "statut",
-                    },
-                    ...customFields.map((c) => ({
-                      id: `custom_${c.code}`,
-                      label: c.nom,
-                      key: null,
-                      col: `custom_${c.code}`,
-                    })),
-                    {
-                      id: "dossier",
-                      label: "Dossier",
-                      key: null,
-                      col: "dossier",
-                    },
-                    { id: "actions", label: "", key: null, col: null },
-                  ]
-                    .filter((h) => !h.col || isColumnVisible(h.col))
-                    .map((h) => (
-                      <th
-                        key={h.id}
-                        onClick={() => {
-                          if (!h.key) return;
-                          setOrdering((prev) =>
-                            prev === h.key ? `-${h.key}` : h.key,
-                          );
-                        }}
-                        style={{
-                          padding: "13px 16px",
-                          textAlign: "left",
-                          color: theme.textSecondary,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          whiteSpace: "nowrap",
-                          cursor: h.key ? "pointer" : "default",
-                          userSelect: "none",
-                        }}
-                      >
-                        {h.label}
-                        {h.key && (
-                          <span
-                            style={{
-                              marginLeft: 4,
-                              opacity:
-                                ordering === h.key || ordering === `-${h.key}`
-                                  ? 1
-                                  : 0.3,
-                              fontSize: 10,
-                            }}
-                          >
-                            {ordering === `-${h.key}` ? "↓" : "↑"}
-                          </span>
-                        )}
-                      </th>
-                    ))}
-                </tr>
-              </thead>
-              <tbody>
-                {employees.map((emp, idx) => (
-                  <tr
-                    key={emp.id}
-                    className="table-row-hover"
-                    style={{
-                      borderBottom: `1px solid ${theme.borderLight}`,
-                      background: selected.has(emp.id)
-                        ? theme.primaryBg
-                        : idx % 2 === 0
-                          ? theme.surface
-                          : "#FAFBFC",
-                    }}
-                  >
-                    {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                      <td
-                        style={{ padding: "13px 16px" }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSelect(emp.id);
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected.has(emp.id)}
-                          onChange={() => toggleSelect(emp.id)}
-                          style={{
-                            cursor: "pointer",
-                            width: 15,
-                            height: 15,
-                            accentColor: theme.primary,
-                          }}
-                        />
-                      </td>
-                    )}
-                    <td
-                      onClick={() =>
-                        navigate(`/employees/${employeeSlug(emp)}`)
-                      }
-                      style={{ padding: "13px 16px", cursor: "pointer" }}
-                    >
-                      <EmployeeAvatar
-                        employee={emp}
-                        size={48}
-                        fontSize={16}
-                        shape="square"
-                      />
-                    </td>
-                    <td
-                      onClick={() =>
-                        navigate(`/employees/${employeeSlug(emp)}`)
-                      }
-                      style={{ padding: "13px 16px", cursor: "pointer" }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: "monospace",
-                          fontWeight: 700,
-                          fontSize: 13,
-                          color: theme.primary,
-                          background: theme.primaryBg,
-                          border: `1px solid ${theme.primaryBorder}`,
-                          borderRadius: 6,
-                          padding: "3px 8px",
-                        }}
-                      >
-                        {emp.matricule}
-                      </span>
-                    </td>
-                    {isColumnVisible("numero_contrat") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{
-                          padding: "13px 16px",
-                          whiteSpace: "nowrap",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {emp.numero_contrat_actif ? (
-                          <span
-                            style={{
-                              fontFamily: "monospace",
-                              fontWeight: 600,
-                              fontSize: 12,
-                              color: theme.departementColor,
-                              background: theme.departementAccent || "#eff6ff",
-                              border: "1px solid #bfdbfe",
-                              borderRadius: 6,
-                              padding: "3px 8px",
-                            }}
-                          >
-                            {emp.numero_contrat_actif}
-                          </span>
-                        ) : (
-                          <span
-                            style={{ color: theme.textMuted, fontSize: 12 }}
-                          >
-                            —
-                          </span>
-                        )}
-                      </td>
-                    )}
-                    <td
-                      onClick={() =>
-                        navigate(`/employees/${employeeSlug(emp)}`)
-                      }
-                      style={{
-                        padding: "13px 16px",
-                        color: theme.text,
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                        cursor: "pointer",
-                        fontSize: 14,
-                      }}
-                    >
-                      {emp.nom} {emp.prenom}
-                    </td>
-                    {isColumnVisible("date_naissance") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{
-                          padding: "13px 16px",
-                          color: theme.textSecondary,
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {emp.date_naissance || (
-                          <span style={{ color: theme.textMuted }}>—</span>
-                        )}
-                      </td>
-                    )}
-                    {isColumnVisible("date_embauche") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{
-                          padding: "13px 16px",
-                          color: theme.textSecondary,
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {emp.date_embauche || (
-                          <span style={{ color: theme.textMuted }}>—</span>
-                        )}
-                      </td>
-                    )}
-                    {isColumnVisible("direction") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{
-                          padding: "13px 16px",
-                          color: theme.textSecondary,
-                          fontSize: 13,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {emp.direction_nom || (
-                          <span style={{ color: theme.textMuted }}>—</span>
-                        )}
-                      </td>
-                    )}
-                    {isColumnVisible("departement") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{
-                          padding: "13px 16px",
-                          color: theme.textSecondary,
-                          fontSize: 13,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {emp.departement_nom || (
-                          <span style={{ color: theme.textMuted }}>—</span>
-                        )}
-                      </td>
-                    )}
-                    {isColumnVisible("service") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{
-                          padding: "13px 16px",
-                          color: theme.textSecondary,
-                          fontSize: 13,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {emp.service_nom ||
-                          (emp.cellule_nom ? (
-                            `Cellule : ${emp.cellule_nom}`
-                          ) : (
-                            <span style={{ color: theme.textMuted }}>—</span>
-                          ))}
-                      </td>
-                    )}
-                    {isColumnVisible("poste") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{
-                          padding: "13px 16px",
-                          color: theme.textSecondary,
-                          fontSize: 13,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {emp.poste_nom || (
-                          <span style={{ color: theme.textMuted }}>—</span>
-                        )}
-                      </td>
-                    )}
-                    {isColumnVisible("statut") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{ padding: "13px 16px", cursor: "pointer" }}
-                      >
-                        <span
-                          style={{
-                            background:
-                              emp.statut === "actif"
-                                ? theme.primaryBg
-                                : emp.statut === "archive"
-                                  ? "#F8FAFC"
-                                  : theme.dangerBg,
-                            color:
-                              emp.statut === "actif"
-                                ? theme.primary
-                                : emp.statut === "archive"
-                                  ? "#64748B"
-                                  : theme.danger,
-                            border: `1px solid ${emp.statut === "actif" ? theme.primaryBorder : emp.statut === "archive" ? theme.border : theme.dangerBorder}`,
-                            borderRadius: 20,
-                            padding: "3px 12px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {emp.statut}
-                        </span>
-                      </td>
-                    )}
-                    {customFields
-                      .filter((c) => isColumnVisible(`custom_${c.code}`))
-                      .map((c) => (
-                        <td
-                          key={c.code}
-                          onClick={() =>
-                            navigate(`/employees/${employeeSlug(emp)}`)
-                          }
-                          style={{
-                            padding: "13px 16px",
-                            color: theme.textSecondary,
-                            fontSize: 13,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {emp.champs_personnalises?.[c.code] || (
-                            <span style={{ color: theme.textMuted }}>—</span>
-                          )}
-                        </td>
-                      ))}
-                    {isColumnVisible("dossier") && (
-                      <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        style={{ padding: "13px 16px", cursor: "pointer" }}
-                      >
-                        <span
-                          style={{
-                            background: emp.dossier_complet
-                              ? theme.primaryBg
-                              : "#FFFBEB",
-                            color: emp.dossier_complet
-                              ? theme.primary
-                              : "#92400E",
-                            border: `1px solid ${emp.dossier_complet ? theme.primaryBorder : "#FDE68A"}`,
-                            borderRadius: 20,
-                            padding: "3px 12px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {emp.dossier_complet
-                            ? "✓ Complet"
-                            : `${emp.taux_completude}%`}
-                        </span>
-                      </td>
-                    )}
-                    <td
-                      style={{ padding: "13px 16px" }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
-                        className="btn-lift"
-                        style={{
-                          background: theme.primary,
-                          border: "none",
-                          color: "#fff",
-                          borderRadius: 8,
-                          padding: "6px 14px",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          fontFamily: theme.fontFamily,
-                        }}
-                      >
-                        Voir →
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "14px 20px",
-              borderTop: `1px solid ${theme.border}`,
-              background: theme.bg,
-              fontFamily: theme.fontFamily,
-            }}
-          >
-            <div style={{ color: theme.textSecondary, fontSize: 13 }}>
-              {(page - 1) * PAGE_SIZE + 1} —{" "}
-              {Math.min(page * PAGE_SIZE, totalCount)} sur {totalCount}
-            </div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              {[
-                { label: "«", action: () => setPage(1), disabled: page === 1 },
-                {
-                  label: "‹ Précédent",
-                  action: () => setPage((p) => Math.max(1, p - 1)),
-                  disabled: page === 1,
-                },
-              ].map((b) => (
-                <button
-                  key={b.label}
-                  onClick={b.action}
-                  disabled={b.disabled}
-                  style={{
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
-                    color: theme.textSecondary,
-                    borderRadius: 8,
-                    padding: "6px 12px",
-                    fontSize: 13,
-                    cursor: b.disabled ? "not-allowed" : "pointer",
-                    opacity: b.disabled ? 0.4 : 1,
-                  }}
-                >
-                  {b.label}
-                </button>
-              ))}
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(
-                  (p) =>
-                    p === 1 ||
-                    p === totalPages ||
-                    (p >= page - 2 && p <= page + 2),
-                )
-                .map((p, idx, arr) => (
-                  <span key={p}>
-                    {idx > 0 && arr[idx - 1] !== p - 1 && (
-                      <span
-                        style={{ color: theme.textMuted, padding: "0 4px" }}
-                      >
-                        …
-                      </span>
-                    )}
-                    <button
-                      onClick={() => setPage(p)}
-                      style={{
-                        background: p === page ? theme.primary : theme.surface,
-                        border: `1.5px solid ${p === page ? theme.primary : theme.border}`,
-                        color: p === page ? "#fff" : theme.textSecondary,
-                        borderRadius: 8,
-                        padding: "6px 11px",
-                        fontSize: 13,
-                        fontWeight: p === page ? 700 : 400,
-                        cursor: "pointer",
-                        minWidth: 36,
-                      }}
-                    >
-                      {p}
-                    </button>
-                  </span>
-                ))}
-              {[
-                {
-                  label: "Suivant ›",
-                  action: () => setPage((p) => Math.min(totalPages, p + 1)),
-                  disabled: page === totalPages,
-                },
-                {
-                  label: "»",
-                  action: () => setPage(totalPages),
-                  disabled: page === totalPages,
-                },
-              ].map((b) => (
-                <button
-                  key={b.label}
-                  onClick={b.action}
-                  disabled={b.disabled}
-                  style={{
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
-                    color: theme.textSecondary,
-                    borderRadius: 8,
-                    padding: "6px 12px",
-                    fontSize: 13,
-                    cursor: b.disabled ? "not-allowed" : "pointer",
-                    opacity: b.disabled ? 0.4 : 1,
-                  }}
-                >
-                  {b.label}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: theme.textSecondary, fontSize: 13 }}>
-                Aller à
-              </span>
-              <input
-                type="number"
-                min="1"
-                max={totalPages}
-                defaultValue={page}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const v = parseInt(e.target.value);
-                    if (v >= 1 && v <= totalPages) setPage(v);
-                  }
-                }}
-                className="input-focus"
-                style={{
-                  width: 56,
-                  border: `1.5px solid ${theme.border}`,
-                  borderRadius: 8,
-                  padding: "6px 8px",
-                  fontSize: 13,
-                  color: theme.text,
-                  background: theme.surface,
-                  outline: "none",
-                  textAlign: "center",
-                  fontFamily: theme.fontFamily,
-                }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -2812,6 +984,27 @@ const Employees = () => {
               {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <>
                   <button
+                    onClick={handleExportAll}
+                    className="btn-lift"
+                    style={{
+                      background: "rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      color: "#fff",
+                      borderRadius: 10,
+                      padding: "10px 18px",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      backdropFilter: "blur(4px)",
+                    }}
+                  >
+                    <IconImport size={15} />
+                    Exporter
+                  </button>
+                  <button
                     onClick={() => navigate("/import")}
                     className="btn-lift"
                     style={{
@@ -2868,8 +1061,121 @@ const Employees = () => {
           margin: "0 auto",
         }}
       >
+        {/* Onglets Organisation / Archivés — voir CLAUDE.md section
+            Archivage employé : un employé Inactif/Archivé/Démobilisé
+            "sort" de l'organisation et vit dans une liste séparée. */}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 20,
+            borderBottom: `1px solid ${theme.border}`,
+          }}
+        >
+          {[
+            { key: "organisation", label: "Organisation" },
+            {
+              key: "archives",
+              label:
+                archivesCount !== null
+                  ? `Archivés (${archivesCount})`
+                  : "Archivés",
+            },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setVue(tab.key)}
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom:
+                  vue === tab.key
+                    ? `2px solid ${theme.primary}`
+                    : "2px solid transparent",
+                color: vue === tab.key ? theme.primary : theme.textSecondary,
+                fontWeight: vue === tab.key ? 700 : 600,
+                fontSize: 14,
+                padding: "8px 4px",
+                marginBottom: -1,
+                cursor: "pointer",
+                fontFamily: theme.fontFamily,
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Accès rapide "Voir tous les employés" — mis en avant en haut de
+            page (racine du drill-down uniquement) plutôt qu'enfoui en bas
+            de la grille des directions, pour un accès direct sans devoir
+            d'abord parcourir l'arborescence. */}
+        {vue === "organisation" && view === "directions" && (
+          <button
+            onClick={goToAllEmployees}
+            className="btn-lift anim-fade-in"
+            style={{
+              width: "100%",
+              background: theme.primaryBg,
+              border: `1.5px solid ${theme.primaryBorder}`,
+              borderRadius: 14,
+              padding: "16px 20px",
+              marginBottom: 20,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              textAlign: "left",
+              fontFamily: theme.fontFamily,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  background: theme.primary,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <IconUsers size={20} color="#fff" />
+              </div>
+              <div>
+                <div
+                  style={{
+                    color: theme.primary,
+                    fontWeight: 700,
+                    fontSize: 15,
+                  }}
+                >
+                  Voir tous les employés
+                </div>
+                <div
+                  style={{
+                    color: theme.textSecondary,
+                    fontSize: 13,
+                    marginTop: 1,
+                  }}
+                >
+                  {activeEmployeesCount !== null
+                    ? `${activeEmployeesCount} employé(s) actif(s), toutes directions confondues`
+                    : "Liste complète, sans filtre par direction/service"}
+                </div>
+              </div>
+            </div>
+            <span style={{ color: theme.primary, display: "flex" }}>
+              <IconArrowRight size={18} />
+            </span>
+          </button>
+        )}
+
         {/* Breadcrumb */}
-        {breadcrumbItems.length > 1 && (
+        {vue === "organisation" && breadcrumbItems.length > 1 && (
           <div
             className="anim-slide-down"
             style={{
@@ -2905,9 +1211,194 @@ const Employees = () => {
           </div>
         )}
 
-        {view === "employees" ? renderEmployeesTable() : renderHierarchy()}
+        {vue === "archives" || view === "employees" ? (
+          <EmployeesTable
+            employees={employees}
+            loading={loading}
+            selected={selected}
+            setSelected={setSelected}
+            someSelected={someSelected}
+            allSelected={allSelected}
+            statut={statut}
+            setStatut={setStatut}
+            ordering={ordering}
+            setOrdering={setOrdering}
+            page={page}
+            setPage={setPage}
+            totalPages={totalPages}
+            totalCount={totalCount}
+            search={search}
+            searchInput={searchInput}
+            setSearchInput={setSearchInput}
+            colsMenuOpen={colsMenuOpen}
+            setColsMenuOpen={setColsMenuOpen}
+            orgFilter={orgFilter}
+            setOrgFilter={setOrgFilter}
+            selectedService={selectedService}
+            vue={vue}
+            deleting={deleting}
+            customFields={customFields}
+            isColumnVisible={isColumnVisible}
+            dossierComplet={dossierComplet}
+            typeManquant={typeManquant}
+            typeManquantLabel={typeManquantLabel}
+            isMobile={isMobile}
+            user={user}
+            setAllColumns={setAllColumns}
+            toggleColumn={toggleColumn}
+            toggleSelect={toggleSelect}
+            toggleSelectAll={toggleSelectAll}
+            clearCompletudeFilter={clearCompletudeFilter}
+            goToAllEmployees={goToAllEmployees}
+            handleBulkAction={handleBulkAction}
+            handleExportAll={handleExportAll}
+            handleTableSearchSubmit={handleTableSearchSubmit}
+            navigate={navigate}
+            PAGE_SIZE={PAGE_SIZE}
+            COLUMN_OPTIONS={COLUMN_OPTIONS}
+            setArchiveMotif={setArchiveMotif}
+            setArchiveModalOpen={setArchiveModalOpen}
+          />
+        ) : (
+          <HierarchyView
+            hierarchyLoading={hierarchyLoading}
+            hierarchyKey={hierarchyKey}
+            view={view}
+            directions={directions}
+            poles={poles}
+            departements={departements}
+            services={services}
+            selectedDirection={selectedDirection}
+            selectedPole={selectedPole}
+            selectedDepartement={selectedDepartement}
+            departementsDePole={departementsDePole}
+            cellulesDirection={cellulesDirection}
+            sectionsDirection={sectionsDirection}
+            cellulesDepartement={cellulesDepartement}
+            sectionsDepartement={sectionsDepartement}
+            selectDirection={selectDirection}
+            selectPole={selectPole}
+            selectDepartement={selectDepartement}
+            selectService={selectService}
+            selectCellule={selectCellule}
+            selectSection={selectSection}
+          />
+        )}
       </div>
       {ConfirmDialog}
+      {PromptDialog}
+      {archiveModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+            backdropFilter: "blur(2px)",
+          }}
+          onClick={() => setArchiveModalOpen(false)}
+        >
+          <div
+            style={{
+              background: theme.surface,
+              borderRadius: 16,
+              padding: 28,
+              width: 420,
+              maxWidth: "90vw",
+              boxShadow: "0 16px 48px rgba(15,23,42,0.25)",
+              border: `1px solid ${theme.border}`,
+              fontFamily: theme.fontFamily,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 700, color: theme.text, marginBottom: 6 }}>
+              Archiver {selected.size} employé(s) ?
+            </div>
+            <div style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 16 }}>
+              Ils sortiront de l'organisation et rejoindront l'onglet
+              "Archivés". Action réversible (bouton "Restaurer").
+            </div>
+            <label
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: theme.textSecondary,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
+              Motif (optionnel)
+            </label>
+            <select
+              value={archiveMotif}
+              onChange={(e) => setArchiveMotif(e.target.value)}
+              className="input-focus"
+              style={{
+                width: "100%",
+                border: `1.5px solid ${theme.border}`,
+                borderRadius: 10,
+                padding: "10px 14px",
+                color: theme.text,
+                fontSize: 14,
+                outline: "none",
+                background: theme.bg,
+                cursor: "pointer",
+                fontFamily: theme.fontFamily,
+                marginBottom: 20,
+              }}
+            >
+              <option value="">-- Aucun --</option>
+              {motifsArchivage.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nom}
+                </option>
+              ))}
+            </select>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                onClick={() => setArchiveModalOpen(false)}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${theme.border}`,
+                  color: theme.textSecondary,
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: theme.fontFamily,
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => {
+                  setArchiveModalOpen(false);
+                  handleBulkAction("archive", archiveMotif || null);
+                }}
+                style={{
+                  background: "#FFFBEB",
+                  border: `1px solid #FDE68A`,
+                  color: "#92400E",
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: theme.fontFamily,
+                }}
+              >
+                Archiver
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageBackground>
   );
 };

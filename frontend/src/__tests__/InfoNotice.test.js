@@ -1,5 +1,8 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
+import { ThemeProvider } from "../context/ThemeContext";
 import InfoNotice from "../components/InfoNotice";
+
+const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
 
 describe("InfoNotice", () => {
   it("renders nothing when text is not provided", () => {

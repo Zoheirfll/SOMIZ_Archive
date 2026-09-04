@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 
 /**
  * Remplace window.prompt() par une modale stylée avec un champ texte,
@@ -14,6 +14,7 @@ import { theme } from "../styles/theme";
  * return <>{PromptDialog}...</>;
  */
 export function usePrompt() {
+  const theme = useTheme();
   const [state, setState] = useState(null); // { message, value, resolve }
 
   const prompt = useCallback((message, defaultValue = "") => {
@@ -136,6 +137,7 @@ export function usePrompt() {
  * return <>{ConfirmDialog}...</>;
  */
 export function useConfirm() {
+  const theme = useTheme();
   const [state, setState] = useState(null); // { message, danger, resolve }
 
   const confirm = useCallback((message, options = {}) => {

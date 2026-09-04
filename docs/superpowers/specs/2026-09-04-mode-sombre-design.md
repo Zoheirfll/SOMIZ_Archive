@@ -38,8 +38,10 @@ maintenance d'un objet "par défaut".
 
 - `ThemeProvider` — état `mode` (`'light'|'dark'`) :
   - lecture initiale : `localStorage.getItem('somiz_theme_mode')` si
-    `'light'` ou `'dark'`, sinon `window.matchMedia('(prefers-color-scheme: dark)').matches`
-    → `'dark'`, sinon `'light'`.
+    `'light'` ou `'dark'`, sinon `'light'` par défaut (ne suit pas
+    `prefers-color-scheme` — décision prise en cours de chantier : un
+    utilisateur dont l'OS est en sombre ne doit pas se retrouver en mode
+    sombre sur SOMIZ sans l'avoir explicitement activé).
   - pose `document.documentElement.dataset.theme = mode` (effet), pour
     que `color-scheme` CSS natif (scrollbars, `<select>`, inputs) suive
     aussi — une règle CSS globale minimale (`animations.css` ou nouveau

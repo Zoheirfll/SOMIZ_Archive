@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
@@ -54,7 +54,9 @@ const IconFolder = () => (
   </svg>
 );
 
-const StatCard = ({ label, value, sub, color, icon, className }) => (
+const StatCard = ({ label, value, sub, color, icon, className }) => {
+  const theme = useTheme();
+  return (
   <div
     className={`card-lift${className ? ` ${className}` : ""}`}
     style={{
@@ -92,9 +94,11 @@ const StatCard = ({ label, value, sub, color, icon, className }) => (
       <div style={{ color, opacity: 0.65 }}>{icon}</div>
     </div>
   </div>
-);
+  );
+};
 
 const Dashboard = () => {
+  const theme = useTheme();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

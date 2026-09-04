@@ -2,12 +2,13 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login } from "../services/auth";
 import { useAuth } from "../context/AuthContext";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { EyeIcon } from "../components/icons";
 import useIsMobile from "../hooks/useIsMobile";
 import "../styles/animations.css";
 
 const Login = () => {
+  const theme = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");

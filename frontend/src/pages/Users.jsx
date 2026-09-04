@@ -1,40 +1,19 @@
 import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import InfoNotice from "../components/InfoNotice";
-import { PAGE_NOTICES, FIELD_NOTICES } from "../config/notices";
+import { PAGE_NOTICES } from "../config/notices";
 import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
 import { useConfirm } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
-
-// Regroupe chaque catégorie de type de document (ex. "ETAT CIVIL") avec ses
-// sous-types juste en dessous, comme dans /parametres — sinon la liste plate
-// (triée par ordre brut) décroche les sous-types de leur catégorie.
-const sortTypesDocumentsHierarchy = (list) => {
-  const byId = new Map(list.map((t) => [t.id, t]));
-  const children = new Map();
-  list.forEach((t) => {
-    if (t.parent && byId.has(t.parent)) {
-      if (!children.has(t.parent)) children.set(t.parent, []);
-      children.get(t.parent).push(t);
-    }
-  });
-  children.forEach((arr) => arr.sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0)));
-  const roots = list
-    .filter((t) => !t.parent || !byId.has(t.parent))
-    .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0));
-  const ordered = [];
-  roots.forEach((r) => {
-    ordered.push(r);
-    (children.get(r.id) || []).forEach((c) => ordered.push(c));
-  });
-  return ordered;
-};
+import useOrgScopeForm from "../hooks/useOrgScopeForm";
+import ScopeLevel from "../components/userScope/ScopeLevel";
 
 // SVG icons
 const IconPlus = () => (
@@ -62,7 +41,10 @@ const EyeIcon = ({ open }) => open ? (
 );
 
 const Users = () => {
+  const theme = useTheme();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const { confirm, ConfirmDialog } = useConfirm();
@@ -89,425 +71,43 @@ const Users = () => {
   const [showResetMdp, setShowResetMdp] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Périmètre d'accès (scoping organisation-wide — sélection multiple à
-  // chaque niveau, indépendamment : un employé est visible dès qu'il
-  // correspond à au moins une direction/département/service choisi).
-  const [scopeModal, setScopeModal] = useState(null);
-  const [directions, setDirections] = useState([]);
-  const [poles, setPoles] = useState([]);
-  const [departements, setDepartements] = useState([]);
-  const [services, setServices] = useState([]);
-  const [cellules, setCellules] = useState([]);
-  const [sections, setSections] = useState([]);
-  const [typesDocuments, setTypesDocuments] = useState([]);
-  const [champsPersonnels, setChampsPersonnels] = useState([]);
-  const [scopeForm, setScopeForm] = useState({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
-  const [savingScope, setSavingScope] = useState(false);
-
-  // Périmètre "employés spécifiques" — grants ponctuels indépendants du
-  // périmètre organisationnel (voir docs/superpowers/specs/2026-08-30-perimetre-employes-specifiques-design.md).
-  const [employeeGrants, setEmployeeGrants] = useState([]); // [{employee, employee_nom, employee_prenom, employee_matricule, type_docs: []}]
-  const [grantSearch, setGrantSearch] = useState("");
-  const [grantSearchResults, setGrantSearchResults] = useState([]);
-  const [grantSearchLoading, setGrantSearchLoading] = useState(false);
+  // Périmètre d'accès (scoping organisation-wide) pour la section "Périmètre
+  // d'accès (optionnel)" inline du formulaire de création — extrait dans
+  // useOrgScopeForm (partagé avec UserPerimetre.jsx, qui édite le périmètre
+  // d'un compte existant sur sa propre page, /users/:id/perimetre).
+  const {
+    directions,
+    typesDocuments,
+    champsPersonnels,
+    scopeForm,
+    setScopeForm,
+    visiblePoles,
+    visibleDepartements,
+    visibleServices,
+    visibleCellules,
+    visibleSections,
+    toggleDirection,
+    togglePole,
+    toggleDepartement,
+    toggleService,
+    toggleCellule,
+    toggleSection,
+    toggleTypeDocument,
+    isTypeDocChecked,
+    toggleChampPersonnel,
+    selectAllInLevel,
+    clearLevel,
+  } = useOrgScopeForm();
 
   useEffect(() => {
-    fetchUsers();
-    // ?all=1 — un compte ADMIN doit voir l'intégralité du référentiel pour
-    // pouvoir attribuer n'importe quel périmètre, indépendamment de son
-    // propre périmètre (toujours non restreint pour ADMIN, mais garde le
-    // même paramètre que /organigramme par cohérence).
-    api.get("/ref/directions/?all=1").then((res) => setDirections(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/poles/?all=1").then((res) => setPoles(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/departements/?all=1").then((res) => setDepartements(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/services/?all=1").then((res) => setServices(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/cellules/?all=1").then((res) => setCellules(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/sections/?all=1").then((res) => setSections(res.data.results || res.data)).catch(() => {});
-    api.get("/ref/types-documents/").then((res) => {
-      setTypesDocuments(sortTypesDocumentsHierarchy(res.data.results || res.data));
-    }).catch(() => {});
-    api.get("/ref/champs-personnalises/").then((res) => {
-      const list = res.data.results || res.data;
-      setChampsPersonnels(list.filter((c) => c.categorie === "PERSONNEL"));
-    }).catch(() => {});
-  }, []);
-
-  const openScopeModal = (u) => {
-    setScopeModal(u);
-    setScopeForm({
-      directions: u.scope_directions || [],
-      poles: u.scope_poles || [],
-      departements: u.scope_departements || [],
-      services: u.scope_services || [],
-      cellules: u.scope_cellules || [],
-      sections: u.scope_sections || [],
-      types_documents: u.scope_types_documents || [],
-      champs_personnels: u.scope_champs_personnels || [],
-    });
-    setEmployeeGrants([]);
-    setGrantSearch("");
-    setGrantSearchResults([]);
-    api.get(`/admin-users/${u.id}/employee-grants/`)
-      .then((res) => {
-        // L'API renvoie une ligne par (employé, type de document) — un
-        // employé en "dossier complet" a une ligne unique type_doc=null.
-        // On regroupe ici en une entrée par employé, type_docs = liste des
-        // types autorisés (vide = dossier complet).
-        const byEmployee = new Map();
-        (res.data.grants || []).forEach((row) => {
-          if (!byEmployee.has(row.employee)) {
-            byEmployee.set(row.employee, {
-              employee: row.employee,
-              employee_nom: row.employee_nom,
-              employee_prenom: row.employee_prenom,
-              employee_matricule: row.employee_matricule,
-              type_docs: [],
-              champs_personnels: [],
-            });
-          }
-          if (row.type_doc) byEmployee.get(row.employee).type_docs.push(row.type_doc);
-          if (row.champ_personnel) byEmployee.get(row.employee).champs_personnels.push(row.champ_personnel);
-        });
-        setEmployeeGrants(Array.from(byEmployee.values()));
-      })
-      .catch(() => {});
-  };
-
-  // Listes affichées en cascade : cocher une direction ne laisse apparaître
-  // que ses pôles/départements/cellules ; cocher un pôle ou un département ne
-  // laisse apparaître que ses départements/services. Sans direction cochée,
-  // tout est visible (pour un scoping direct à un niveau inférieur sans
-  // passer par la direction).
-  const visiblePoles = scopeForm.directions.length > 0
-    ? poles.filter((p) => scopeForm.directions.includes(p.direction))
-    : poles;
-
-  const visibleDepartements = (() => {
-    let list = departements;
-    if (scopeForm.directions.length > 0) list = list.filter((d) => scopeForm.directions.includes(d.direction));
-    if (scopeForm.poles.length > 0) list = list.filter((d) => scopeForm.poles.includes(d.pole));
-    return list;
-  })();
-
-  const visibleServices = scopeForm.departements.length > 0
-    ? services.filter((s) => scopeForm.departements.includes(s.departement))
-    : scopeForm.directions.length > 0 || scopeForm.poles.length > 0
-      ? services.filter((s) => visibleDepartements.some((d) => d.id === s.departement))
-      : services;
-
-  // Une Cellule est rattachée soit directement à une Direction, soit à un
-  // Département — les deux filtres (Directions cochées / Départements
-  // cochés) s'appliquent donc en OR, pas en cascade exclusive, sinon une
-  // cellule directement sous une Direction disparaît dès qu'un Département
-  // est aussi coché.
-  const visibleCellules =
-    scopeForm.directions.length === 0 && scopeForm.departements.length === 0
-      ? cellules
-      : cellules.filter((c) =>
-          (c.direction && scopeForm.directions.includes(c.direction)) ||
-          (c.departement && scopeForm.departements.includes(c.departement))
-        );
-
-  // Une Section suit exactement la même règle qu'une Cellule (rattachée à
-  // une Direction OU un Département, filtrage OR non exclusif).
-  const visibleSections =
-    scopeForm.directions.length === 0 && scopeForm.departements.length === 0
-      ? sections
-      : sections.filter((s) =>
-          (s.direction && scopeForm.directions.includes(s.direction)) ||
-          (s.departement && scopeForm.departements.includes(s.departement))
-        );
-
-  // Cocher une Direction/un Département coche aussi automatiquement, en
-  // cascade, tout ce qu'il contient (Départements/Services, Cellules,
-  // Sections) — visuellement explicite sur ce que l'accès couvre déjà de
-  // toute façon via employee_scope_q() (un match sur `direction_id` seul
-  // suffit à voir tout le monde en dessous), plutôt que de laisser des
-  // niveaux inférieurs vides après avoir coché un niveau supérieur.
-  // Décocher ne fait qu'enlever ce qui n'est plus dans la cascade visible
-  // (comportement existant, inchangé) — pas de "décoche en cascade" needed
-  // puisque retirer un parent retire déjà tous ses enfants de la sélection.
-  const toggleDirection = (id) => {
-    setScopeForm((prev) => {
-      const adding = !prev.directions.includes(id);
-      const nextDirections = adding
-        ? [...prev.directions, id]
-        : prev.directions.filter((x) => x !== id);
-      // Retire les pôles/départements/services/cellules qui ne sont plus dans la cascade visible.
-      const stillVisiblePoleIds = nextDirections.length > 0
-        ? poles.filter((p) => nextDirections.includes(p.direction)).map((p) => p.id)
-        : poles.map((p) => p.id);
-      let nextPoles = prev.poles.filter((poleId) => stillVisiblePoleIds.includes(poleId));
-      const stillVisibleDeps = nextDirections.length > 0
-        ? departements.filter((d) => nextDirections.includes(d.direction)).map((d) => d.id)
-        : departements.map((d) => d.id);
-      let nextDepartements = prev.departements.filter((depId) => stillVisibleDeps.includes(depId));
-      let nextServices = prev.services;
-      let nextCellules = prev.cellules;
-      let nextSections = prev.sections;
-      if (adding) {
-        const cascadePoleIds = poles.filter((p) => p.direction === id).map((p) => p.id);
-        nextPoles = [...new Set([...nextPoles, ...cascadePoleIds])];
-        const cascadeDepIds = departements.filter((d) => d.direction === id).map((d) => d.id);
-        nextDepartements = [...new Set([...nextDepartements, ...cascadeDepIds])];
-        const cascadeServiceIds = services.filter((s) => cascadeDepIds.includes(s.departement)).map((s) => s.id);
-        nextServices = [...new Set([...prev.services, ...cascadeServiceIds])];
-        const cascadeCelluleIds = cellules
-          .filter((c) => c.direction === id || cascadeDepIds.includes(c.departement))
-          .map((c) => c.id);
-        nextCellules = [...new Set([...prev.cellules, ...cascadeCelluleIds])];
-        const cascadeSectionIds = sections
-          .filter((s) => s.direction === id || cascadeDepIds.includes(s.departement))
-          .map((s) => s.id);
-        nextSections = [...new Set([...prev.sections, ...cascadeSectionIds])];
-      }
-      const stillVisibleDepSet = new Set(nextDepartements);
-      nextServices = nextServices.filter((svcId) => {
-        const svc = services.find((s) => s.id === svcId);
-        return svc && stillVisibleDepSet.has(svc.departement);
-      });
-      nextCellules = nextCellules.filter((celId) => {
-        const cel = cellules.find((c) => c.id === celId);
-        if (!cel) return false;
-        if (cel.departement) return stillVisibleDeps.includes(cel.departement);
-        return nextDirections.length === 0 || nextDirections.includes(cel.direction);
-      });
-      nextSections = nextSections.filter((secId) => {
-        const sec = sections.find((s) => s.id === secId);
-        if (!sec) return false;
-        if (sec.departement) return stillVisibleDeps.includes(sec.departement);
-        return nextDirections.length === 0 || nextDirections.includes(sec.direction);
-      });
-      return { ...prev, directions: nextDirections, poles: nextPoles, departements: nextDepartements, services: nextServices, cellules: nextCellules, sections: nextSections };
-    });
-  };
-
-  const togglePole = (id) => {
-    setScopeForm((prev) => {
-      const next = prev.poles.includes(id) ? prev.poles.filter((x) => x !== id) : [...prev.poles, id];
-      return { ...prev, poles: next };
-    });
-  };
-
-  const toggleDepartement = (id) => {
-    setScopeForm((prev) => {
-      const adding = !prev.departements.includes(id);
-      const nextDepartements = adding
-        ? [...prev.departements, id]
-        : prev.departements.filter((x) => x !== id);
-      let nextServices = prev.services;
-      let nextCellules = prev.cellules;
-      let nextSections = prev.sections;
-      if (adding) {
-        const cascadeServiceIds = services.filter((s) => s.departement === id).map((s) => s.id);
-        nextServices = [...new Set([...prev.services, ...cascadeServiceIds])];
-        const cascadeCelluleIds = cellules.filter((c) => c.departement === id).map((c) => c.id);
-        nextCellules = [...new Set([...prev.cellules, ...cascadeCelluleIds])];
-        const cascadeSectionIds = sections.filter((s) => s.departement === id).map((s) => s.id);
-        nextSections = [...new Set([...prev.sections, ...cascadeSectionIds])];
-      }
-      nextServices = nextServices.filter((svcId) => {
-        const svc = services.find((s) => s.id === svcId);
-        return svc && nextDepartements.includes(svc.departement);
-      });
-      return { ...prev, departements: nextDepartements, services: nextDepartements.length > 0 ? nextServices : prev.services, cellules: nextCellules, sections: nextSections };
-    });
-  };
-
-  const toggleService = (id) => {
-    setScopeForm((prev) => {
-      const next = prev.services.includes(id) ? prev.services.filter((x) => x !== id) : [...prev.services, id];
-      return { ...prev, services: next };
-    });
-  };
-
-  const toggleCellule = (id) => {
-    setScopeForm((prev) => {
-      const next = prev.cellules.includes(id) ? prev.cellules.filter((x) => x !== id) : [...prev.cellules, id];
-      return { ...prev, cellules: next };
-    });
-  };
-
-  const toggleSection = (id) => {
-    setScopeForm((prev) => {
-      const next = prev.sections.includes(id) ? prev.sections.filter((x) => x !== id) : [...prev.sections, id];
-      return { ...prev, sections: next };
-    });
-  };
-
-  // Cocher une catégorie (ex. "ETAT CIVIL") ne fait rien à elle seule pour le
-  // périmètre — seuls les sous-types (feuilles) sont réellement rattachés à
-  // un document, la catégorie elle-même ne l'est jamais. Cocher la case
-  // "catégorie" sélectionne donc tous ses sous-types d'un coup ; son propre
-  // id n'est jamais ajouté à scope_types_documents.
-  const toggleTypeDocument = (id) => {
-    const children = typesDocuments.filter((t) => t.parent === id);
-    setScopeForm((prev) => {
-      if (children.length > 0) {
-        const childIds = children.map((c) => c.id);
-        const allSelected = childIds.every((cid) => prev.types_documents.includes(cid));
-        const next = allSelected
-          ? prev.types_documents.filter((x) => !childIds.includes(x))
-          : [...new Set([...prev.types_documents, ...childIds])];
-        return { ...prev, types_documents: next };
-      }
-      const next = prev.types_documents.includes(id)
-        ? prev.types_documents.filter((x) => x !== id)
-        : [...prev.types_documents, id];
-      return { ...prev, types_documents: next };
-    });
-  };
-
-  // État "coché" d'une ligne Types de documents — pour une catégorie, reflète
-  // si TOUS ses sous-types sont sélectionnés (son propre id n'est jamais
-  // dans scope_types_documents, voir toggleTypeDocument).
-  const isTypeDocChecked = (item) => {
-    if (item.is_categorie) {
-      const childIds = typesDocuments.filter((t) => t.parent === item.id).map((c) => c.id);
-      return childIds.length > 0 && childIds.every((cid) => scopeForm.types_documents.includes(cid));
-    }
-    return scopeForm.types_documents.includes(item.id);
-  };
-
-  const toggleChampPersonnel = (id) => {
-    setScopeForm((prev) => {
-      const next = prev.champs_personnels.includes(id)
-        ? prev.champs_personnels.filter((x) => x !== id)
-        : [...prev.champs_personnels, id];
-      return { ...prev, champs_personnels: next };
-    });
-  };
-
-  const selectAllInLevel = (level, items) => {
-    // Pour les types de documents, ne jamais ajouter l'id d'une catégorie —
-    // elle n'est jamais rattachée à un document, seuls ses sous-types comptent.
-    const ids = level === "types_documents"
-      ? items.filter((item) => !item.is_categorie).map((item) => item.id)
-      : items.map((item) => item.id);
-    setScopeForm((prev) => ({ ...prev, [level]: ids }));
-  };
-
-  const clearLevel = (level) => {
-    setScopeForm((prev) => ({ ...prev, [level]: [] }));
-  };
-
-  const handleSaveScope = async () => {
-    setSavingScope(true);
-    try {
-      await Promise.all([
-        api.patch(`/admin-users/${scopeModal.id}/`, {
-          scope_directions: scopeForm.directions,
-          scope_poles: scopeForm.poles,
-          scope_departements: scopeForm.departements,
-          scope_services: scopeForm.services,
-          scope_cellules: scopeForm.cellules,
-          scope_sections: scopeForm.sections,
-          scope_types_documents: scopeForm.types_documents,
-          scope_champs_personnels: scopeForm.champs_personnels,
-        }),
-        api.put(`/admin-users/${scopeModal.id}/employee-grants/`, {
-          // Dossier complet (type_docs=[]) et champs personnels sont
-          // découplés depuis 2026-09-01 : la ligne "dossier complet"
-          // (type_doc=null) ne dépend plus de champs_personnels, et doit
-          // toujours être envoyée dès que type_docs est vide — même quand
-          // des champs personnels précis sont aussi sélectionnés (sinon
-          // l'accès documents/contrats se perdait silencieusement).
-          grants: employeeGrants.flatMap((g) => [
-            ...(g.type_docs.length === 0
-              ? [{ employee: g.employee, type_doc: null }]
-              : g.type_docs.map((typeDocId) => ({ employee: g.employee, type_doc: typeDocId }))),
-            ...g.champs_personnels.map((champId) => ({ employee: g.employee, champ_personnel: champId })),
-          ]),
-        }),
-      ]);
-      setMessage({ type: "success", text: "Périmètre mis à jour." });
-      setScopeModal(null);
-      fetchUsers(true);
-    } catch (err) {
-      setMessage({ type: "error", text: err.response?.data?.error || "Erreur lors de la mise à jour du périmètre." });
-    } finally {
-      setSavingScope(false);
+    if (location.state?.message) {
+      setMessage(location.state.message);
+      window.history.replaceState({}, "");
       setTimeout(() => setMessage(null), 4000);
     }
-  };
-
-  useEffect(() => {
-    if (grantSearch.trim().length < 2) {
-      setGrantSearchResults([]);
-      return;
-    }
-    setGrantSearchLoading(true);
-    const timeout = setTimeout(() => {
-      api.get(`/employees/search/?q=${encodeURIComponent(grantSearch.trim())}`)
-        .then((res) => setGrantSearchResults(res.data || []))
-        .catch(() => setGrantSearchResults([]))
-        .finally(() => setGrantSearchLoading(false));
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [grantSearch]);
-
-  // Un employé peut être limité à PLUSIEURS types de documents à la fois
-  // (ex. "Contrat de travail" + "Carte chifa") — type_docs=[] signifie
-  // "dossier complet" (aucune restriction), sinon la liste des types
-  // autorisés pour cet employé. Le backend stocke un EmployeeAccessGrant
-  // par (employé, type) — voir handleSaveScope pour l'aplatissement.
-  const addEmployeeGrant = (employee) => {
-    setEmployeeGrants((prev) => {
-      if (prev.some((g) => g.employee === employee.id)) return prev;
-      return [
-        ...prev,
-        {
-          employee: employee.id,
-          employee_nom: employee.nom,
-          employee_prenom: employee.prenom,
-          employee_matricule: employee.matricule,
-          type_docs: [],
-          champs_personnels: [],
-        },
-      ];
-    });
-    setGrantSearch("");
-    setGrantSearchResults([]);
-  };
-
-  const removeEmployeeGrant = (employeeId) => {
-    setEmployeeGrants((prev) => prev.filter((g) => g.employee !== employeeId));
-  };
-
-  const setGrantFullDossier = (employeeId) => {
-    // Dossier complet ne couvre que documents + contrats (type_docs=[]) —
-    // les champs personnels sont découplés depuis 2026-09-01 : un accès
-    // dossier complet ne doit plus exposer automatiquement tous les champs
-    // personnels de l'employé, donc on ne touche plus à champs_personnels
-    // ici (voir backend User.accessible_champs_personnels_for_employee).
-    setEmployeeGrants((prev) =>
-      prev.map((g) => (g.employee === employeeId ? { ...g, type_docs: [] } : g))
-    );
-  };
-
-  const toggleGrantTypeDoc = (employeeId, typeDocId) => {
-    setEmployeeGrants((prev) =>
-      prev.map((g) => {
-        if (g.employee !== employeeId) return g;
-        const next = g.type_docs.includes(typeDocId)
-          ? g.type_docs.filter((id) => id !== typeDocId)
-          : [...g.type_docs, typeDocId];
-        return { ...g, type_docs: next };
-      })
-    );
-  };
-
-  const toggleGrantChampPersonnel = (employeeId, champId) => {
-    setEmployeeGrants((prev) =>
-      prev.map((g) => {
-        if (g.employee !== employeeId) return g;
-        const next = g.champs_personnels.includes(champId)
-          ? g.champs_personnels.filter((id) => id !== champId)
-          : [...g.champs_personnels, champId];
-        return { ...g, champs_personnels: next };
-      })
-    );
-  };
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchUsers = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -685,7 +285,7 @@ const Users = () => {
           {isAdmin && (
             <button
               onClick={() => {
-                if (!showForm) setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [] });
+                if (!showForm) setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
                 setShowForm(!showForm);
               }}
               style={{
@@ -768,7 +368,9 @@ const Users = () => {
                   <label style={labelStyle}>Rôle</label>
                   <select name="role" value={form.role} onChange={handleChange} className="input-focus" style={inputStyle}>
                     <option value="CONSULTANT">Consultant (lecture seule)</option>
-                    <option value="ADMIN">Administrateur</option>
+                    {user?.role === "SUPERADMIN" && (
+                      <option value="ADMIN">Administrateur</option>
+                    )}
                   </select>
                 </div>
 
@@ -822,55 +424,17 @@ const Users = () => {
                     { level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument },
                     { level: "champs_personnels", label: "Champs personnels", items: champsPersonnels, onToggle: toggleChampPersonnel },
                   ].map(({ level, label, items, onToggle }) => (
-                    <div key={level} style={{ marginBottom: 16 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
-                        <div style={{ display: "flex", gap: 10 }}>
-                          <button
-                            type="button"
-                            onClick={() => selectAllInLevel(level, items)}
-                            style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                          >
-                            Tout
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => clearLevel(level)}
-                            style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                          >
-                            Aucun
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 10,
-                        maxHeight: 140,
-                        overflowY: "auto",
-                        padding: "8px 12px",
-                        background: theme.bg,
-                      }}>
-                        {items.length === 0 ? (
-                          <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
-                        ) : (
-                          items.map((item) => (
-                            <label
-                              key={item.id}
-                              style={{ display: "flex", alignItems: "center", gap: 8, padding: `4px 0 4px ${item.parent_nom ? 20 : 0}px`, fontSize: 13, color: theme.text, cursor: "pointer" }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={level === "types_documents" ? isTypeDocChecked(item) : scopeForm[level].includes(item.id)}
-                                onChange={() => onToggle(item.id)}
-                              />
-                              {item.parent_nom && <span style={{ color: theme.textMuted, fontSize: 12 }}>↳</span>}
-                              {!item.parent_nom && item.is_categorie && <span title="Catégorie">📁</span>}
-                              <span style={item.is_categorie ? { fontWeight: 700 } : undefined}>{item.nom}</span>
-                            </label>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                    <ScopeLevel
+                      key={level}
+                      level={level}
+                      label={label}
+                      items={items}
+                      scopeForm={scopeForm}
+                      onToggle={onToggle}
+                      onSelectAll={selectAllInLevel}
+                      onClear={clearLevel}
+                      isChecked={level === "types_documents" ? isTypeDocChecked : undefined}
+                    />
                   ))}
                 </div>
               )}
@@ -1097,7 +661,7 @@ const Users = () => {
                           </button>
                           {u.role === "CONSULTANT" && (
                             <button
-                              onClick={() => openScopeModal(u)}
+                              onClick={() => navigate(`/users/${u.id}/perimetre`)}
                               style={{
                                 background: theme.primaryBg,
                                 border: `1px solid ${theme.primaryBorder}`,
@@ -1307,441 +871,6 @@ const Users = () => {
         </div>
       )}
 
-      {/* Modal Périmètre d'accès */}
-      {scopeModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            backdropFilter: "blur(2px)",
-          }}
-          onClick={() => setScopeModal(null)}
-        >
-          <div
-            style={{
-              background: theme.surface,
-              borderRadius: 16,
-              width: 520,
-              maxWidth: "90vw",
-              maxHeight: "85vh",
-              display: "flex",
-              flexDirection: "column",
-              boxShadow: "0 16px 48px rgba(15,23,42,0.2)",
-              border: `1px solid ${theme.border}`,
-              fontFamily: theme.fontFamily,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-          <div style={{ padding: "32px 32px 0", overflowY: "auto", flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <h2 style={{ color: theme.text, margin: 0, fontSize: 17, fontWeight: 800 }}>
-                Périmètre d'accès
-              </h2>
-              <InfoNotice text={FIELD_NOTICES.users.perimetre} variant="field" />
-            </div>
-            <div style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 20 }}>
-              Compte :{" "}
-              <strong style={{ color: theme.primary }}>{scopeModal.username}</strong>
-              {" "}— {scopeModal.prenom} {scopeModal.nom}
-            </div>
-            <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 20 }}>
-              Cocher une direction filtre les départements affichés à ceux qu'elle contient ; cocher un département filtre les services de la même façon. Aucune case cochée = aucun accès sur cette dimension — cochez au moins un élément, ou utilisez "Employés spécifiques" pour un accès ponctuel.
-            </div>
-
-            {[
-              { level: "directions", label: "Directions", items: directions, onToggle: toggleDirection },
-              { level: "poles", label: "Pôles", items: visiblePoles, onToggle: togglePole },
-              { level: "departements", label: "Départements", items: visibleDepartements, onToggle: toggleDepartement },
-              { level: "services", label: "Services", items: visibleServices, onToggle: toggleService },
-              { level: "cellules", label: "Cellules", items: visibleCellules, onToggle: toggleCellule },
-              { level: "sections", label: "Sections", items: visibleSections, onToggle: toggleSection },
-            ].map(({ level, label, items, onToggle }) => (
-              <div key={level} style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button
-                      type="button"
-                      onClick={() => selectAllInLevel(level, items)}
-                      style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                    >
-                      Tout
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => clearLevel(level)}
-                      style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                    >
-                      Aucun
-                    </button>
-                  </div>
-                </div>
-                <div style={{
-                  border: `1px solid ${theme.border}`,
-                  borderRadius: 10,
-                  maxHeight: 140,
-                  overflowY: "auto",
-                  padding: "8px 12px",
-                  background: theme.bg,
-                }}>
-                  {items.length === 0 ? (
-                    <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
-                  ) : (
-                    items.map((item) => (
-                      <label
-                        key={item.id}
-                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={scopeForm[level].includes(item.id)}
-                          onChange={() => onToggle(item.id)}
-                        />
-                        {item.nom}
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-            ))}
-
-            <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 16 }}>
-              <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
-                Périmètre indépendant : restreint en plus les <strong>types de documents</strong> visibles (combiné en ET avec le périmètre organisationnel ci-dessus). Aucune case cochée = aucun type visible sur cet axe.
-              </div>
-              {[{ level: "types_documents", label: "Types de documents", items: typesDocuments, onToggle: toggleTypeDocument }].map(({ level, label, items, onToggle }) => (
-                <div key={level}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <button
-                        type="button"
-                        onClick={() => selectAllInLevel(level, items)}
-                        style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                      >
-                        Tout
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => clearLevel(level)}
-                        style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                      >
-                        Aucun
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 10,
-                    maxHeight: 140,
-                    overflowY: "auto",
-                    padding: "8px 12px",
-                    background: theme.bg,
-                  }}>
-                    {items.length === 0 ? (
-                      <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
-                    ) : (
-                      items.map((item) => (
-                        <label
-                          key={item.id}
-                          style={{ display: "flex", alignItems: "center", gap: 8, padding: `4px 0 4px ${item.parent_nom ? 20 : 0}px`, fontSize: 13, color: theme.text, cursor: "pointer" }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isTypeDocChecked(item)}
-                            onChange={() => onToggle(item.id)}
-                          />
-                          {item.parent_nom && <span style={{ color: theme.textMuted, fontSize: 12 }}>↳</span>}
-                          {!item.parent_nom && item.is_categorie && <span title="Catégorie">📁</span>}
-                          <span style={item.is_categorie ? { fontWeight: 700 } : undefined}>{item.nom}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 16 }}>
-              <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 12 }}>
-                Périmètre indépendant : restreint en plus les <strong>champs personnels</strong> visibles sur la fiche employé (combiné en ET avec le périmètre organisationnel ci-dessus). La colonne Administrative n'est jamais restreinte. Aucune case cochée = aucun champ personnel visible sur cet axe.
-              </div>
-              {[{ level: "champs_personnels", label: "Champs personnels", items: champsPersonnels, onToggle: toggleChampPersonnel }].map(({ level, label, items, onToggle }) => (
-                <div key={level}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>{label}</label>
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <button
-                        type="button"
-                        onClick={() => selectAllInLevel(level, items)}
-                        style={{ background: "none", border: "none", color: theme.primary, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                      >
-                        Tout
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => clearLevel(level)}
-                        style={{ background: "none", border: "none", color: theme.textMuted, fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                      >
-                        Aucun
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 10,
-                    maxHeight: 140,
-                    overflowY: "auto",
-                    padding: "8px 12px",
-                    background: theme.bg,
-                  }}>
-                    {items.length === 0 ? (
-                      <div style={{ color: theme.textMuted, fontSize: 12, padding: "4px 0" }}>Aucun élément.</div>
-                    ) : (
-                      items.map((item) => (
-                        <label
-                          key={item.id}
-                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 13, color: theme.text, cursor: "pointer" }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={scopeForm.champs_personnels.includes(item.id)}
-                            onChange={() => onToggle(item.id)}
-                          />
-                          {item.nom}
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 16, marginTop: 4, marginBottom: 8 }}>
-              <label style={{ ...labelStyle, marginBottom: 6 }}>Employés spécifiques</label>
-              <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 10 }}>
-                Accès ponctuel à un employé précis, en plus (union) du périmètre ci-dessus — dossier complet (documents + contrats) ou un ou plusieurs types de documents. Les champs personnels sont indépendants du dossier complet : à cocher séparément, y compris quand le dossier complet est actif — aucune case cochée = aucun champ personnel visible pour cet employé. Les éléments déjà couverts par le périmètre global apparaissent cochés automatiquement.
-              </div>
-              <div style={{ position: "relative", marginBottom: 10 }}>
-                <input
-                  type="text"
-                  value={grantSearch}
-                  onChange={(e) => setGrantSearch(e.target.value)}
-                  placeholder="Rechercher un employé (nom, prénom, matricule, n° contrat)…"
-                  className="input-focus"
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                    border: `1.5px solid ${theme.border}`,
-                    borderRadius: 10,
-                    padding: "9px 12px",
-                    fontSize: 13,
-                    fontFamily: "inherit",
-                    color: theme.text,
-                  }}
-                />
-                {grantSearch.trim().length >= 2 && (
-                  <div style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    right: 0,
-                    zIndex: 10,
-                    background: theme.surface,
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 10,
-                    marginTop: 4,
-                    maxHeight: 180,
-                    overflowY: "auto",
-                    boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
-                  }}>
-                    {grantSearchLoading ? (
-                      <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Recherche…</div>
-                    ) : grantSearchResults.length === 0 ? (
-                      <div style={{ padding: 10, fontSize: 12, color: theme.textMuted }}>Aucun résultat.</div>
-                    ) : (
-                      grantSearchResults.map((emp) => (
-                        <div
-                          key={emp.id}
-                          onClick={() => addEmployeeGrant(emp)}
-                          style={{ padding: "8px 12px", fontSize: 13, color: theme.text, cursor: "pointer" }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = theme.bg)}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                        >
-                          {emp.prenom} {emp.nom} <span style={{ color: theme.textMuted }}>({emp.matricule})</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {employeeGrants.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {employeeGrants.map((g) => (
-                    <div
-                      key={g.employee}
-                      style={{
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 10,
-                        padding: "10px 12px",
-                        background: theme.bg,
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>
-                          {g.employee_prenom} {g.employee_nom} <span style={{ color: theme.textMuted, fontWeight: 400 }}>({g.employee_matricule})</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeEmployeeGrant(g.employee)}
-                          style={{ background: "none", border: "none", color: theme.danger, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 0 }}
-                        >
-                          Retirer
-                        </button>
-                      </div>
-                      <div style={{
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 8,
-                        maxHeight: 130,
-                        overflowY: "auto",
-                        padding: "6px 8px",
-                        background: theme.surface,
-                      }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12, fontWeight: 700, color: theme.text, cursor: "pointer" }}>
-                          <input
-                            type="checkbox"
-                            checked={g.type_docs.length === 0}
-                            onChange={() => setGrantFullDossier(g.employee)}
-                          />
-                          Dossier complet
-                        </label>
-                        <div style={{ borderTop: `1px solid ${theme.border}`, margin: "4px 0" }} />
-                        {typesDocuments.filter((t) => !t.is_categorie).map((t) => {
-                          // Un type déjà couvert par le périmètre global "Types
-                          // de documents" (section ci-dessus) n'a pas besoin
-                          // d'être re-coché ici — on l'affiche coché et non
-                          // modifiable pour que l'admin voie tout de suite
-                          // qu'il est déjà accessible, sans double-saisie.
-                          const coveredByGlobalScope = scopeForm.types_documents.includes(t.id);
-                          return (
-                            <label
-                              key={t.id}
-                              style={{
-                                display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12,
-                                color: coveredByGlobalScope ? theme.textMuted : theme.text,
-                                cursor: coveredByGlobalScope ? "default" : "pointer",
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={coveredByGlobalScope || g.type_docs.includes(t.id)}
-                                disabled={coveredByGlobalScope}
-                                onChange={() => toggleGrantTypeDoc(g.employee, t.id)}
-                              />
-                              {t.parent_nom && <span style={{ color: theme.textMuted, fontSize: 11 }}>↳</span>}
-                              {t.nom}
-                              {coveredByGlobalScope && <span style={{ fontStyle: "italic" }}>(périmètre global)</span>}
-                            </label>
-                          );
-                        })}
-                      </div>
-                      {champsPersonnels.length > 0 && (
-                        <>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: theme.textMuted, textTransform: "uppercase", letterSpacing: "0.04em", margin: "8px 0 4px" }}>
-                            Champs personnels
-                          </div>
-                          <div style={{
-                            border: `1px solid ${theme.border}`,
-                            borderRadius: 8,
-                            maxHeight: 130,
-                            overflowY: "auto",
-                            padding: "6px 8px",
-                            background: theme.surface,
-                          }}>
-                            {champsPersonnels.map((c) => {
-                              // Découplé de "Dossier complet" depuis
-                              // 2026-09-01 : ce dernier ne couvre plus les
-                              // champs personnels (voir setGrantFullDossier)
-                              // — un champ personnel n'est coché que via le
-                              // périmètre global ou une sélection explicite
-                              // ici, jamais implicitement par le dossier
-                              // complet.
-                              const coveredByGlobalChampScope = scopeForm.champs_personnels.includes(c.id);
-                              const checked = coveredByGlobalChampScope || g.champs_personnels.includes(c.id);
-                              return (
-                                <label
-                                  key={c.id}
-                                  style={{
-                                    display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 12,
-                                    color: coveredByGlobalChampScope ? theme.textMuted : theme.text,
-                                    cursor: coveredByGlobalChampScope ? "default" : "pointer",
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={coveredByGlobalChampScope}
-                                    onChange={() => toggleGrantChampPersonnel(g.employee, c.id)}
-                                  />
-                                  {c.nom}
-                                  {coveredByGlobalChampScope && <span style={{ fontStyle: "italic" }}>(périmètre global)</span>}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", padding: "16px 32px", borderTop: `1px solid ${theme.border}`, flexShrink: 0 }}>
-              <button
-                onClick={() => setScopeModal(null)}
-                style={{
-                  background: theme.surface,
-                  border: `1.5px solid ${theme.border}`,
-                  color: theme.textSecondary,
-                  borderRadius: 10,
-                  padding: "9px 20px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleSaveScope}
-                disabled={savingScope}
-                style={{
-                  background: savingScope ? `${theme.primary}88` : theme.primary,
-                  border: "none",
-                  color: "#fff",
-                  borderRadius: 10,
-                  padding: "9px 24px",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: savingScope ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                {savingScope ? "Enregistrement..." : "Enregistrer"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {ConfirmDialog}
     </PageBackground>
   );

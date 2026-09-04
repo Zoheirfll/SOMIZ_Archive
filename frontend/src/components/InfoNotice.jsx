@@ -1,27 +1,28 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { theme } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { InfoIcon } from "./icons";
-
-const VARIANTS = {
-  hero: {
-    background: theme.primaryLight,
-    border: "1px solid rgba(255,255,255,0.6)",
-    color: "#fff",
-  },
-  field: {
-    background: theme.primaryBg,
-    border: `1px solid ${theme.primaryBorder}`,
-    color: theme.primary,
-  },
-};
 
 const POPOVER_WIDTH = 260;
 
 export default function InfoNotice({ text, variant = "hero", size = 18 }) {
+  const theme = useTheme();
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState(null);
   const buttonRef = useRef(null);
+
+  const VARIANTS = {
+    hero: {
+      background: theme.primaryLight,
+      border: "1px solid rgba(255,255,255,0.6)",
+      color: "#fff",
+    },
+    field: {
+      background: theme.primaryBg,
+      border: `1px solid ${theme.primaryBorder}`,
+      color: theme.primary,
+    },
+  };
 
   if (!text) return null;
 

@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
-import { theme, heroPadding, contentPadding } from "../styles/theme";
+import { heroPadding, contentPadding } from "../styles/theme";
+import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
@@ -15,6 +16,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import StatBarChart from "../components/StatBarChart";
 
 const KpiCard = ({ label, value, variationPct, className }) => {
+  const theme = useTheme();
   const hasVariation = variationPct !== null && variationPct !== undefined;
   const isPositive = hasVariation && variationPct >= 0;
   return (
@@ -54,7 +56,9 @@ const KpiCard = ({ label, value, variationPct, className }) => {
   );
 };
 
-const RepartitionBar = ({ label, count, displayValue, max, color, onClick, sub }) => (
+const RepartitionBar = ({ label, count, displayValue, max, color, onClick, sub }) => {
+  const theme = useTheme();
+  return (
   <div onClick={onClick} style={{ marginBottom: 14, cursor: onClick ? "pointer" : "default" }}>
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
       <span style={{ color: theme.text, fontSize: 13 }}>
@@ -67,7 +71,8 @@ const RepartitionBar = ({ label, count, displayValue, max, color, onClick, sub }
       <div style={{ height: "100%", width: `${max ? (count / max) * 100 : 0}%`, background: color, borderRadius: 6, transition: "width 0.6s ease" }} />
     </div>
   </div>
-);
+  );
+};
 
 const presetToRange = (preset) => {
   const fin = new Date();
@@ -82,6 +87,7 @@ const presetToRange = (preset) => {
 };
 
 const Statistiques = () => {
+  const theme = useTheme();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

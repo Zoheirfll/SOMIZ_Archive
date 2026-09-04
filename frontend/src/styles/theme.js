@@ -1,4 +1,4 @@
-export const theme = {
+export const lightTheme = {
   // ─── Police ──────────────────────────────────────────────────────────────
   fontFamily: "'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif",
 
@@ -17,7 +17,7 @@ export const theme = {
   // ─── Textes ───────────────────────────────────────────────────────────────
   text: "#0F172A",             // slate-900
   textSecondary: "#475569",    // slate-600
-  textMuted: "#94A3B8",        // slate-400
+  textMuted: "#1E293B",        // slate-800 (assombri à la demande — labels type "Matricule")
 
   // ─── Bordures ─────────────────────────────────────────────────────────────
   border: "#E2E8F0",           // slate-200
@@ -67,7 +67,88 @@ export const theme = {
   pageBg: "#F1F5F9",             // base — identique à bg, les halos sont en CSS
   // ─── Cartes — liseré supérieur dégradé ───────────────────────────────────
   cardBorderTopGrad: "linear-gradient(90deg, #166534 0%, #F59E0B 100%)",
+
+  mode: "light",
 };
+
+export const darkTheme = {
+  // ─── Police ──────────────────────────────────────────────────────────────
+  fontFamily: "'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif",
+
+  // ─── Palette principale (vert SOMIZ — brand identity) ────────────────────
+  primary: "#4ade80",          // green-400 — plus clair pour contraster sur fond sombre
+  primaryLight: "#22c55e",     // green-500
+  primaryBg: "#0D2818",        // vert très sombre (fond de badge/bloc)
+  primaryBorder: "#22633D",    // vert moyen — visible sur fond sombre (pas trop foncé)
+
+  // ─── Couleurs de page — échelle d'élévation (Material dark theme : plus la
+  // surface est "haute", plus elle est claire, jamais d'ombre pure sur noir) ─
+  bg: "#0A0F1A",               // fond général — proche noir, pas OLED pur (moins de halo)
+  surface: "#131B2B",          // niveau 1 — cartes, tables
+  surfaceElevated: "#1B2538",
+  surfaceHover: "#212D45",
+
+  // ─── Textes ───────────────────────────────────────────────────────────────
+  text: "#F1F5F9",             // slate-100 — ~15.5:1 sur bg (AAA)
+  textSecondary: "#A3AFC2",    // ~7.3:1 sur bg (AAA) — plus clair que l'ancien slate-400 (4.9:1, limite)
+  textMuted: "#CBD5E1",        // slate-300
+
+  // ─── Bordures ─────────────────────────────────────────────────────────────
+  border: "#2E3A52",           // visible sans dominer (contraste ~1.6:1 sur bg, suffisant pour un liseré)
+  borderLight: "#212D45",
+
+  // ─── États ────────────────────────────────────────────────────────────────
+  success: "#4ade80",
+  warning: "#fbbf24",
+  danger: "#f87171",
+  dangerBg: "#2C1417",
+  dangerBorder: "#5C2328",
+
+  // ─── Accent chaleureux (identité "vivante") ──────────────────────────────
+  accent: "#fbbf24",         // amber-400
+  accentLight: "#fcd34d",    // amber-300
+  accentBg: "#2A2110",       // ambre très sombre
+  accentBorder: "#78350f",   // amber-900
+
+  // ─── Ombres (élévation) — renforcées : sur fond déjà sombre, l'ombre seule
+  // ne suffit pas à distinguer les niveaux, elle reste utile pour les
+  // éléments flottants (modales, dropdowns) au-dessus du contenu ──────────
+  shadow:    "0 1px 3px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.4)",
+  shadowMd:  "0 4px 14px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.4)",
+  shadowLg:  "0 16px 36px rgba(0,0,0,0.65), 0 6px 12px rgba(0,0,0,0.45)",
+  shadowXl:  "0 28px 56px rgba(0,0,0,0.7), 0 10px 20px rgba(0,0,0,0.5)",
+
+  // ─── Cartes hiérarchiques ─────────────────────────────────────────────────
+  cardRadius: 20,
+  cardHover: "#212D45",
+
+  // Couleurs par niveau + dégradés (gradients déjà sombres — inchangés,
+  // les couleurs "plates" sont éclaircies pour rester lisibles en texte/icône)
+  directionColor:   "#4ade80",
+  directionGrad:    "linear-gradient(135deg, #052e16 0%, #166534 60%, #15803d 100%)",
+  directionAccent:  "#0D2818",
+
+  departementColor:  "#60a5fa",
+  departementGrad:   "linear-gradient(135deg, #1e1b4b 0%, #1e40af 60%, #2563eb 100%)",
+  departementAccent: "#101A33",
+
+  serviceColor:  "#a78bfa",
+  serviceGrad:   "linear-gradient(135deg, #2e1065 0%, #6d28d9 60%, #7c3aed 100%)",
+  serviceAccent: "#1A1130",
+
+  // Badges
+  badgeBg:    "rgba(74,222,128,0.14)",
+  badgeColor: "#4ade80",
+
+  // ─── Fond de page vivant ──────────────────────────────────────────────────
+  pageBg: "#0A0F1A",
+  // ─── Cartes — liseré supérieur dégradé ───────────────────────────────────
+  cardBorderTopGrad: "linear-gradient(90deg, #4ade80 0%, #fbbf24 100%)",
+
+  mode: "dark",
+};
+
+export const getTheme = (mode) => (mode === "dark" ? darkTheme : lightTheme);
 
 // ─── Helpers responsives (voir hooks/useIsMobile.js) ───────────────────────
 // Pattern hero header commun à toutes les pages (CLAUDE.md) : padding fixe
