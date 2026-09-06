@@ -51,6 +51,7 @@ LOCAL_APPS = [
     'employees',
     'documents',
     'audit',
+    'ocr',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -110,6 +111,15 @@ else:
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         }
     }
+
+# ─── CELERY (traitement OCR en tâche de fond) ─────────────────────────────────
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=REDIS_URL or 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+# True en dev/CI sans worker dédié : la tâche s'exécute alors de façon
+# synchrone dans le process appelant, plutôt que d'être publiée sur le broker.
+CELERY_TASK_ALWAYS_EAGER = config('CELERY_TASK_ALWAYS_EAGER', default=False, cast=bool)
 
 # ─── AUTHENTIFICATION ─────────────────────────────────────────────────────────
 AUTH_USER_MODEL = 'accounts.User'

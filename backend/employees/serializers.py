@@ -19,14 +19,19 @@ from employees.models import (
 
 class EmployeeDocumentFileSerializer(serializers.ModelSerializer):
     file_size_kb = serializers.FloatField(read_only=True)
+    ocr_status = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeDocumentFile
         fields = [
             'id', 'file_name', 'file_size', 'file_size_kb',
-            'mime_type', 'ordre', 'is_active', 'uploaded_at',
+            'mime_type', 'ordre', 'is_active', 'uploaded_at', 'ocr_status',
         ]
         read_only_fields = ['id', 'file_size', 'mime_type', 'uploaded_at']
+
+    def get_ocr_status(self, obj):
+        result = getattr(obj, 'ocr_result', None)
+        return result.status if result else None
 
 
 class EmployeeDocumentSerializer(serializers.ModelSerializer):

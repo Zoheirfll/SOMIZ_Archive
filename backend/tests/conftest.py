@@ -122,6 +122,23 @@ def employee(db, admin_user, direction, departement, service, poste, type_contra
 
 
 @pytest.fixture
+def employee_document_file(db, employee, type_doc_facultatif, admin_user):
+    from employees.models import EmployeeDocument, EmployeeDocumentFile
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    doc = EmployeeDocument.objects.create(
+        employee=employee, type_doc=type_doc_facultatif, uploaded_by=admin_user
+    )
+    return EmployeeDocumentFile.objects.create(
+        document=doc,
+        file=SimpleUploadedFile("test.pdf", b"%PDF-1.4 fake", content_type="application/pdf"),
+        file_name="test.pdf",
+        file_size=13,
+        mime_type="application/pdf",
+    )
+
+
+@pytest.fixture
 def contrat(db, employee, type_contrat, admin_user):
     return Contrat.objects.create(
         numero_contrat="CTR-2024-001",

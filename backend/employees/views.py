@@ -53,6 +53,20 @@ from employees.serializers import (
     HistoriqueEchelleSerializer,
 )
 from employees.pdf_utils import pdf_page_count, extract_pdf_pages, PdfExtractionError
+from ocr.tasks import run_ocr
+
+
+def _enqueue_ocr(file_obj):
+    """
+    Enfile l'analyse OCR sans jamais faire échouer l'upload — un broker
+    Redis momentanément indisponible ne doit pas empêcher un ADMIN
+    d'uploader un document (l'OCR n'est qu'une fonctionnalité annexe,
+    voir docs/superpowers/specs/2026-09-06-ocr-documents-design.md).
+    """
+    try:
+        run_ocr.delay(str(file_obj.id))
+    except Exception:
+        pass
 
 
 def resolve_employee(raw, queryset=None):
@@ -192,6 +206,15 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
                 documents__type_doc__code=type_manquant,
                 documents__is_active=True,
             )
+
+        # Recherche plein texte sur le contenu OCR des documents (voir
+        # docs/superpowers/specs/2026-09-06-ocr-documents-design.md) —
+        # indépendante du filtre `q` (nom/prénom/matricule/n° contrat).
+        q_contenu = self.request.query_params.get('q_contenu', '').strip()
+        if q_contenu:
+            qs = qs.filter(
+                documents__fichiers__ocr_result__raw_text__icontains=q_contenu
+            ).distinct()
 
         return qs
 
@@ -738,7 +761,7 @@ class DocumentListUploadView(APIView):
             file.seek(0)
             mime = magic.from_buffer(file.read(2048), mime=True)
             file.seek(0)
-            EmployeeDocumentFile.objects.create(
+            file_obj = EmployeeDocumentFile.objects.create(
                 document=doc,
                 file=file,
                 file_name=file.name,
@@ -746,6 +769,7 @@ class DocumentListUploadView(APIView):
                 mime_type=mime,
                 ordre=ordre,
             )
+            _enqueue_ocr(file_obj)
 
         AuditLog.log(
             request, AuditLog.Action.UPLOAD,
@@ -834,7 +858,7 @@ class ScanImportView(APIView):
                         file_to_save.seek(0)
                         mime = magic.from_buffer(file_to_save.read(2048), mime=True)
                         file_to_save.seek(0)
-                        EmployeeDocumentFile.objects.create(
+                        file_obj = EmployeeDocumentFile.objects.create(
                             document=doc,
                             file=file_to_save,
                             file_name=file_name,
@@ -842,6 +866,7 @@ class ScanImportView(APIView):
                             mime_type=mime,
                             ordre=ordre,
                         )
+                        _enqueue_ocr(file_obj)
 
                 AuditLog.log(
                     request, AuditLog.Action.UPLOAD,
@@ -1219,7 +1244,7 @@ class ContratDocumentListUploadView(APIView):
             file.seek(0)
             mime = magic.from_buffer(file.read(2048), mime=True)
             file.seek(0)
-            EmployeeDocumentFile.objects.create(
+            file_obj = EmployeeDocumentFile.objects.create(
                 document=doc,
                 file=file,
                 file_name=file.name,
@@ -1227,6 +1252,7 @@ class ContratDocumentListUploadView(APIView):
                 mime_type=mime,
                 ordre=ordre,
             )
+            _enqueue_ocr(file_obj)
 
         AuditLog.log(
             request, AuditLog.Action.UPLOAD,
