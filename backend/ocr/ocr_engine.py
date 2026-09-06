@@ -13,14 +13,20 @@ class OcrEngineError(Exception):
     pass
 
 
+# Documents RH algériens : rédigés en arabe (état civil, CNI...), parfois en
+# français, occasionnellement avec du texte anglais — les 3 packs sont
+# chargés ensemble (Tesseract choisit le meilleur script par bloc).
+OCR_LANGUAGES = 'ara+fra+eng'
+
+
 def _confidence_from_data(data):
     scores = [int(c) for c in data.get('conf', []) if c not in ('-1', -1)]
     return sum(scores) / len(scores) if scores else 0.0
 
 
 def _ocr_image(image):
-    text = pytesseract.image_to_string(image)
-    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    text = pytesseract.image_to_string(image, lang=OCR_LANGUAGES)
+    data = pytesseract.image_to_data(image, lang=OCR_LANGUAGES, output_type=pytesseract.Output.DICT)
     return text, _confidence_from_data(data)
 
 

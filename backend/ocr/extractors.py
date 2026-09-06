@@ -34,7 +34,11 @@ CHAMP_SOURCE_EXTRACTORS = {
 
 
 def extract_fields(champ_source, text):
-    extractor = CHAMP_SOURCE_EXTRACTORS.get(champ_source)
+    # champ_source est un CharField libre (saisi dans /parametres) — la casse
+    # n'est pas garantie (ex. "NIN" vs "nin") alors que le registre est
+    # indexé en minuscules ; normaliser ici évite de perdre silencieusement
+    # une extraction pour un simple écart de casse.
+    extractor = CHAMP_SOURCE_EXTRACTORS.get((champ_source or '').lower())
     if extractor is None or not text:
         return []
     return extractor(text)

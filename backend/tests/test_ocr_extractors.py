@@ -29,3 +29,11 @@ def test_unknown_champ_source_returns_empty_list():
 
 def test_no_match_returns_empty_list():
     assert extract_fields('nin', "aucun numéro ici") == []
+
+
+def test_champ_source_lookup_is_case_insensitive():
+    """champ_source est un champ texte libre saisi dans /parametres — un
+    admin qui tape "NIN" au lieu de "nin" ne doit pas perdre l'extraction."""
+    text = "NIN: 123456789012345678"
+    assert extract_fields('NIN', text) == extract_fields('nin', text)
+    assert len(extract_fields('NIN', text)) == 1
