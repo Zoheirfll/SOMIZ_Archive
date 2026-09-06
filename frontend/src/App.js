@@ -18,6 +18,7 @@ import Profil from "./pages/Profil";
 import ContratDetail from "./pages/ContratDetail";
 import Organigramme from "./pages/Organigramme";
 import Consentement from "./pages/Consentement";
+import RechercheDocuments from "./pages/RechercheDocuments";
 
 function App() {
   return (
@@ -88,6 +89,14 @@ function App() {
             element={
               <ProtectedRoute adminOnly>
                 <Statistiques />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/recherche-documents"
+            element={
+              <ProtectedRoute adminOnly>
+                <RechercheDocuments />
               </ProtectedRoute>
             }
           />

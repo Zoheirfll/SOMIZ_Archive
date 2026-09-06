@@ -79,6 +79,7 @@ const Navbar = () => {
     { path: "/import", label: "Import", adminOnly: true },
     { path: "/dashboard", label: "Dashboard", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
+    { path: "/recherche-documents", label: "Recherche", adminOnly: true },
     { path: "/users", label: "Utilisateurs", adminOnly: true },
     { path: "/parametres", label: "Paramètres", adminOnly: true },
     { path: "/audit", label: "Journal", adminOnly: true },
