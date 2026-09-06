@@ -810,6 +810,15 @@ const DossierTab = ({
                         style={{ color: theme.textSecondary, fontSize: 12 }}
                       >
                         {formatSizeMo(selectedFile.file_size_kb)} · {formatDateTime(selectedFile.uploaded_at)}
+                        {selectedFile.ocr_status === "pending" && (
+                          <span style={{ marginLeft: 8 }}>⏳ Analyse en cours</span>
+                        )}
+                        {selectedFile.ocr_status === "done" && (
+                          <span style={{ marginLeft: 8, color: theme.primary }}>✓ Analysé</span>
+                        )}
+                        {selectedFile.ocr_status === "failed" && (
+                          <span style={{ marginLeft: 8, color: theme.danger }}>✗ Échec d'analyse</span>
+                        )}
                       </span>
                     </div>
                   </div>
