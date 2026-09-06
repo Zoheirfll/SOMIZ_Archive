@@ -13,9 +13,13 @@ import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useCountUp from "../hooks/useCountUp";
 import useIsMobile from "../hooks/useIsMobile";
-import StatBarChart from "../components/StatBarChart";
+import StatAreaChart from "../components/charts/StatAreaChart";
+import StatDonutChart from "../components/charts/StatDonutChart";
+import StatRadarChart from "../components/charts/StatRadarChart";
+import StatHistogram from "../components/charts/StatHistogram";
+import StatSparkline from "../components/charts/StatSparkline";
 
-const KpiCard = ({ label, value, variationPct, className }) => {
+const KpiCard = ({ label, value, variationPct, className, sparklineData, sparklineKey, color }) => {
   const theme = useTheme();
   const hasVariation = variationPct !== null && variationPct !== undefined;
   const isPositive = hasVariation && variationPct >= 0;
@@ -29,6 +33,7 @@ const KpiCard = ({ label, value, variationPct, className }) => {
         padding: "20px 24px",
         boxShadow: theme.shadowMd,
         fontFamily: theme.fontFamily,
+        overflow: "hidden",
       }}
     >
       <div style={{
@@ -52,6 +57,11 @@ const KpiCard = ({ label, value, variationPct, className }) => {
           <span style={{ color: theme.textMuted, fontSize: 13 }}>—</span>
         )}
       </div>
+      {sparklineData && sparklineData.length >= 2 && (
+        <div style={{ marginTop: 8, marginLeft: -4, marginRight: -4 }}>
+          <StatSparkline data={sparklineData} dataKey={sparklineKey} color={color || theme.primary} />
+        </div>
+      )}
     </div>
   );
 };
@@ -298,86 +308,63 @@ const Statistiques = () => {
           display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 16, marginBottom: 32,
         }}>
-          <KpiCard label="Recrutements" value={countRecrutements ?? 0} variationPct={stats?.indicateurs?.recrutements?.variation_pct} className="anim-slide-up delay-1" />
-          <KpiCard label="Archivages" value={countArchivages ?? 0} variationPct={stats?.indicateurs?.archivages?.variation_pct} className="anim-slide-up delay-2" />
-          <KpiCard label="Dossiers complétés" value={countDossiers ?? 0} variationPct={stats?.indicateurs?.dossiers_completes?.variation_pct} className="anim-slide-up delay-3" />
+          <KpiCard
+            label="Recrutements" value={countRecrutements ?? 0}
+            variationPct={stats?.indicateurs?.recrutements?.variation_pct} className="anim-slide-up delay-1"
+            sparklineData={stats.evolution_mensuelle} sparklineKey="recrutements" color={theme.primary}
+          />
+          <KpiCard
+            label="Archivages" value={countArchivages ?? 0}
+            variationPct={stats?.indicateurs?.archivages?.variation_pct} className="anim-slide-up delay-2"
+            sparklineData={stats.evolution_mensuelle} sparklineKey="archivages" color={theme.danger}
+          />
+          <KpiCard
+            label="Dossiers complétés" value={countDossiers ?? 0}
+            variationPct={stats?.indicateurs?.dossiers_completes?.variation_pct} className="anim-slide-up delay-3"
+            sparklineData={stats.evolution_mensuelle} sparklineKey="dossiers_completes" color={theme.departementColor}
+          />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20, marginBottom: 20 }}>
           <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Répartition par Direction</h2>
-            {stats.repartition_direction.length === 0 ? (
-              <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
-            ) : (
-              (() => {
-                const max = Math.max(...stats.repartition_direction.map((r) => r.count));
-                return stats.repartition_direction.map((r) => (
-                  <RepartitionBar
-                    key={r.id}
-                    label={r.nom}
-                    count={r.count}
-                    max={max}
-                    color={theme.directionColor}
-                    onClick={() => navigate(`/employees?direction=${r.id}`)}
-                  />
-                ));
-              })()
-            )}
+            <StatDonutChart
+              data={stats.repartition_direction}
+              onSliceClick={(entry) => navigate(`/employees?direction=${entry.id}`)}
+            />
           </div>
 
           <div className="anim-fade-in delay-1" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Répartition par Département</h2>
-            {stats.repartition_departement.length === 0 ? (
-              <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
-            ) : (
-              (() => {
-                const max = Math.max(...stats.repartition_departement.map((r) => r.count));
-                return stats.repartition_departement.map((r) => (
-                  <RepartitionBar
-                    key={r.id}
-                    label={r.nom}
-                    sub={r.direction_nom}
-                    count={r.count}
-                    max={max}
-                    color={theme.departementColor}
-                    onClick={() => navigate(`/employees?departement=${r.id}`)}
-                  />
-                ));
-              })()
-            )}
+            <StatDonutChart
+              data={stats.repartition_departement}
+              onSliceClick={(entry) => navigate(`/employees?departement=${entry.id}`)}
+            />
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
           {[
-            { title: "Par Catégorie", data: stats.repartition_categorie, color: theme.serviceColor },
-            { title: "Par Type de contrat", data: stats.repartition_type_contrat, color: theme.accent },
-            { title: "Par Fonction", data: stats.repartition_fonction, color: theme.primary },
-          ].map(({ title, data, color }) => (
+            { title: "Par Catégorie", data: stats.repartition_categorie },
+            { title: "Par Type de contrat", data: stats.repartition_type_contrat },
+            { title: "Par Fonction", data: stats.repartition_fonction },
+          ].map(({ title, data }) => (
             <div key={title} className="anim-fade-in delay-2" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 20, boxShadow: theme.shadowMd }}>
               <h2 style={{ color: theme.text, margin: "0 0 14px", fontSize: 14, fontWeight: 700 }}>{title}</h2>
-              {data.length === 0 ? (
-                <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
-              ) : (
-                (() => {
-                  const max = Math.max(...data.map((r) => r.count));
-                  return data.map((r) => (
-                    <RepartitionBar key={r.nom} label={r.nom} count={r.count} max={max} color={color} />
-                  ));
-                })()
-              )}
+              <StatDonutChart data={data} height={220} />
             </div>
           ))}
         </div>
 
         <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd, marginBottom: 20 }}>
-          <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Évolution — recrutements vs archivages</h2>
-          <StatBarChart
+          <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Évolution — recrutements, archivages, dossiers complétés</h2>
+          <StatAreaChart
             data={stats.evolution_mensuelle}
             xKey="mois"
             series={[
               { key: "recrutements", label: "Recrutements", color: theme.primary },
               { key: "archivages", label: "Archivages", color: theme.danger },
+              { key: "dossiers_completes", label: "Dossiers complétés", color: theme.departementColor },
             ]}
           />
         </div>
@@ -385,21 +372,11 @@ const Statistiques = () => {
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20, marginBottom: 20 }}>
           <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Pyramide des âges</h2>
-            <StatBarChart
-              data={stats.pyramide_age}
-              xKey="tranche"
-              series={[{ key: "count", label: "Effectif", color: theme.departementColor }]}
-              orientation="horizontal"
-            />
+            <StatHistogram data={stats.pyramide_age} xKey="tranche" dataKey="count" color={theme.departementColor} />
           </div>
           <div className="anim-fade-in delay-1" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Pyramide d'ancienneté</h2>
-            <StatBarChart
-              data={stats.pyramide_anciennete}
-              xKey="tranche"
-              series={[{ key: "count", label: "Effectif", color: theme.serviceColor }]}
-              orientation="horizontal"
-            />
+            <StatHistogram data={stats.pyramide_anciennete} xKey="tranche" dataKey="count" color={theme.serviceColor} />
           </div>
         </div>
 
@@ -449,24 +426,29 @@ const Statistiques = () => {
           )}
         </div>
 
-        <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd, marginBottom: 20 }}>
-          <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Complétude par unité</h2>
-          {stats.completude_par_direction.length === 0 && stats.completude_par_departement.length === 0 ? (
-            <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
-          ) : (
-            <>
-              {stats.completude_par_direction.map((r) => (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20, marginBottom: 20 }}>
+          <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
+            <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Complétude par Direction (radar)</h2>
+            <StatRadarChart data={stats.completude_par_direction} />
+          </div>
+          <div className="anim-fade-in delay-1" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
+            <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Complétude par Département</h2>
+            {stats.completude_par_departement.length === 0 ? (
+              <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
+            ) : (
+              stats.completude_par_departement.map((r) => (
                 <RepartitionBar
                   key={r.id}
                   label={r.nom}
+                  sub={r.direction_nom}
                   count={r.taux}
                   displayValue={`${r.taux}%`}
                   max={100}
                   color={r.taux >= 80 ? theme.primary : r.taux >= 50 ? theme.accent : theme.danger}
                 />
-              ))}
-            </>
-          )}
+              ))
+            )}
+          </div>
         </div>
 
         {stats.mon_activite && (() => {

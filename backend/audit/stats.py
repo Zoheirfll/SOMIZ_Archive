@@ -141,6 +141,16 @@ def _evolution_mensuelle(date_debut, date_fin):
         months.append(cursor)
         cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
 
+    types_obligatoires = list(TypeDocument.objects.filter(
+        obligatoire=True, is_active=True, sous_types__isnull=True
+    ))
+
+    def dossiers_completes(debut, fin):
+        qs = Employee.objects.filter(statut='actif', date_embauche__range=[debut, fin])
+        for t in types_obligatoires:
+            qs = qs.filter(documents__type_doc=t, documents__is_active=True)
+        return qs.distinct().count()
+
     result = []
     for m in months:
         last_day = monthrange(m.year, m.month)[1]
@@ -151,7 +161,12 @@ def _evolution_mensuelle(date_debut, date_fin):
             timestamp__date__range=[m_debut, m_fin],
             details__transfer__statut__vers__in=STATUTS_ARCHIVE,
         ).count()
-        result.append({'mois': m.strftime('%Y-%m'), 'recrutements': recrutements, 'archivages': archivages})
+        result.append({
+            'mois': m.strftime('%Y-%m'),
+            'recrutements': recrutements,
+            'archivages': archivages,
+            'dossiers_completes': dossiers_completes(m_debut, m_fin),
+        })
     return result
 
 

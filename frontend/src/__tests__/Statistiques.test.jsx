@@ -161,7 +161,7 @@ describe("Statistiques — évolution et pyramides", () => {
       },
     });
     renderPage();
-    expect(await screen.findByText("Évolution — recrutements vs archivages")).toBeInTheDocument();
+    expect(await screen.findByText("Évolution — recrutements, archivages, dossiers complétés")).toBeInTheDocument();
     expect(screen.getByText("Pyramide des âges")).toBeInTheDocument();
     expect(screen.getByText("Pyramide d'ancienneté")).toBeInTheDocument();
   });
@@ -173,7 +173,7 @@ describe("Statistiques — contrats à échéance et complétude", () => {
       data: {
         ...baseStats,
         contrats_echeance: [{ id: "c1", numero_contrat: "CTR-1", employee_id: "e1", employee_nom: "Jean Dupont", date_fin: "2026-10-01", jours_restants: 10 }],
-        completude_par_direction: [{ id: "d1", nom: "Direction Générale", total: 10, complets: 6, taux: 60 }],
+        completude_par_departement: [{ id: "d1", nom: "Paie", direction_nom: "Direction Générale", total: 10, complets: 6, taux: 60 }],
       },
     });
     renderPage();
