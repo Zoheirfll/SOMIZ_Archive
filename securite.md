@@ -722,6 +722,45 @@ suppression définitive").
 
 ---
 
+## 33. OCR des documents employés (2026-09-06) — ✅ Implémenté
+
+**Contexte** : ajout d'un pipeline OCR (Tesseract, traitement 100% local)
+déclenché automatiquement à chaque upload de document, pour alimenter une
+recherche plein texte et suggérer le remplissage de certains champs
+employé. Spec complète :
+`docs/superpowers/specs/2026-09-06-ocr-documents-design.md`.
+
+- **Traitement 100% local** — aucun appel réseau/API cloud, tout tourne
+  via Tesseract (`pytesseract`) et un worker Celery local. Aucune donnée
+  RH ne quitte l'infrastructure SOMIZ (conformité Loi 18-07/RGPD).
+- **Aucune écriture automatique** sur `Employee`/`EmployeeChampValeur` —
+  toute extraction (`OcrResult.extracted_fields`) reste `en_attente`
+  jusqu'à une action explicite ADMIN ("Appliquer"), tracée dans l'audit
+  log (`AuditLog.Action.MODIFY_EMP`, `details.transfer`) au même titre
+  qu'une modification manuelle.
+- **Accès ADMIN uniquement** — `OcrSuggestionListView`/
+  `OcrSuggestionActionView` (`ocr/views.py`) utilisent `IsAdmin`, pas de
+  scoping CONSULTANT à ce stade (aucune exposition du texte OCR brut ni
+  des suggestions à ce rôle).
+- **Suppression en cascade** — `OcrResult.file` est un `OneToOneField(
+  on_delete=CASCADE)` vers `EmployeeDocumentFile` : le texte OCR d'un
+  document supprimé (hard delete, voir section "Documents employés —
+  suppression définitive" de CLAUDE.md) disparaît avec lui, aucune trace
+  résiduelle.
+- **Résilience de l'upload** — l'enfilage de la tâche Celery
+  (`_enqueue_ocr()`, `employees/views.py`) est encapsulé dans un
+  try/except : un broker Redis indisponible ne bloque jamais un upload de
+  document, l'OCR est une fonctionnalité annexe qui échoue silencieusement
+  plutôt que de casser le flux principal.
+- 22 tests backend + 3 tests frontend ajoutés, suite complète (473 tests
+  backend / 349 tests frontend) sans régression introduite par ce
+  chantier.
+
+**Verdict : traitement conforme (local, opt-in, tracé), pas de nouveau
+canal d'accès ou de contournement du scoping existant.**
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

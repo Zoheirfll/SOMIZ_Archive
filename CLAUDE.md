@@ -839,6 +839,60 @@ Actif (plus de filtre "Statut" à ce niveau). Spec complète :
 
 ---
 
+## OCR des documents (2026-09-06)
+
+Chaque fichier uploadé (upload classique, "Scanner un dossier", upload
+contrat) déclenche automatiquement une analyse OCR **locale** (Tesseract,
+jamais d'API cloud — conformité Loi 18-07/RGPD), en tâche de fond via
+Celery + Redis (broker déjà utilisé par SOMIZ comme cache/rate-limit).
+Objectifs : recherche plein texte des documents et suggestions de
+remplissage de champs employé — **jamais d'écriture automatique**. Spec
+complète : `docs/superpowers/specs/2026-09-06-ocr-documents-design.md`.
+
+- **App `ocr`** (`backend/ocr/`) : modèle `OcrResult` (`OneToOneField`
+  vers `EmployeeDocumentFile`, `on_delete=CASCADE` — supprimé avec le
+  fichier), champs `status` (`pending`/`done`/`failed`), `raw_text`,
+  `confidence`, `extracted_fields` (JSON, liste de `{champ_code, valeur,
+  confiance, statut}`).
+- **Extraction de champs** — `ocr/extractors.py`, un registre
+  `CHAMP_SOURCE_EXTRACTORS` indexé par le même code que
+  `TypeDocument.champ_source` (voir section "Champs cliquables vers le
+  document source") : seuls les types de document ayant un
+  `champ_source` renseigné déclenchent une extraction (pas de règles
+  génériques bruitées sur tout document).
+- **Déclenchement** — `employees/views.py`, helper `_enqueue_ocr(file_obj)`
+  appelé après chaque création de `EmployeeDocumentFile`
+  (`DocumentListUploadView`, `ScanImportView`,
+  `ContratDocumentListUploadView`) ; encapsule `run_ocr.delay(...)` dans
+  un try/except pour qu'un broker Redis indisponible ne bloque jamais un
+  upload — l'OCR est une fonctionnalité annexe, pas un pré-requis.
+- **Suggestions — validation manuelle ADMIN uniquement** —
+  `GET /api/ocr/employees/<id>/suggestions/`,
+  `POST /api/ocr/suggestions/<ocr_result_id>/<field_index>/{appliquer,ignorer}/`
+  (`ocr/views.py`, `IsAdmin`). "Appliquer" écrit dans `Employee` (champs
+  système) ou `EmployeeChampValeur` (champs personnalisés) et trace
+  l'action dans l'audit log existant (`MODIFY_EMP`, `details.transfer`,
+  même format que le transfert organisationnel/carrière/archivage) —
+  aucune suggestion n'est jamais appliquée automatiquement, quelle que
+  soit la confiance Tesseract.
+- **UI** — panneau "Suggestions OCR" (`components/OcrSuggestionsPanel.jsx`,
+  monté sur `EmployeeDetail.jsx`, ADMIN/SUPERADMIN only) : liste les
+  suggestions en attente, boutons Appliquer (avec confirmation
+  `useConfirm()`) / Ignorer. Badge de statut (⏳/✓/✗) sur le fichier
+  sélectionné dans `DossierTab.jsx` (`EmployeeDocumentFileSerializer.
+  ocr_status`).
+- **Recherche plein texte** — paramètre `?q_contenu=` sur
+  `GET /api/employees/` (`EmployeeListCreateView.get_queryset()`), filtre
+  sur `OcrResult.raw_text__icontains` via
+  `documents__fichiers__ocr_result__raw_text`.
+- **Infra à prévoir hors pip** : binaires système `tesseract-ocr` et
+  `poppler` (rendu PDF→image via `pdf2image`), et un worker Celery dédié
+  (`celery -A config worker -l info`) à superviser en plus de
+  Django/Postgres/Redis — `CELERY_TASK_ALWAYS_EAGER=True` en `.env`
+  permet un traitement synchrone en dev sans worker séparé.
+
+---
+
 ## Page Statistiques (2026-09-02)
 
 `/statistiques` (ADMIN/SUPERADMIN, distincte de `/dashboard`) : analyse RH
