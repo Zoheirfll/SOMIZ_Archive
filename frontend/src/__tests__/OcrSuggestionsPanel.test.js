@@ -61,3 +61,14 @@ test("ignore une suggestion sans confirmation", async () => {
     expect(api.post).toHaveBeenCalledWith("/ocr/suggestions/1/0/ignorer/")
   );
 });
+
+test("affiche un message clair (pas de crash) si le document a été supprimé entre-temps", async () => {
+  api.get.mockResolvedValueOnce({ data: [suggestion] });
+  api.get.mockResolvedValueOnce({ data: [] });
+  api.post.mockRejectedValueOnce({ response: { status: 404 } });
+  render(<OcrSuggestionsPanel employeeId="e1" />);
+
+  fireEvent.click(await screen.findByRole("button", { name: /ignorer/i }));
+
+  expect(await screen.findByText(/supprimé/i)).toBeInTheDocument();
+});

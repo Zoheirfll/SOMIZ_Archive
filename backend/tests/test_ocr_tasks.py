@@ -20,8 +20,17 @@ def test_run_ocr_creates_done_result_with_no_champ_source(mock_engine, employee_
 
 
 @patch('ocr.tasks.run_ocr_on_file')
-def test_run_ocr_extracts_fields_when_champ_source_set(mock_engine, employee_document_file):
-    employee_document_file.document.type_doc.champ_source = 'nin'
+def test_run_ocr_extracts_fields_when_champ_has_ocr_pattern_configured(
+    mock_engine, employee_document_file, champ_personnel_2
+):
+    """champ_personnel_2 a le code 'NIN' (voir conftest) — configurer son
+    ocr_pattern='NIN' est la seule action requise pour activer
+    l'extraction, sans toucher au code (voir ChampPersonnalise.OcrPattern
+    et le point soulevé par l'utilisateur : un champ ajouté dans 6 mois ne
+    doit pas nécessiter de nouveau code)."""
+    champ_personnel_2.ocr_pattern = 'NIN'
+    champ_personnel_2.save()
+    employee_document_file.document.type_doc.champ_source = 'NIN'
     employee_document_file.document.type_doc.save()
     mock_engine.return_value = ("NIN: 123456789012345678", 92.0)
 
@@ -29,8 +38,41 @@ def test_run_ocr_extracts_fields_when_champ_source_set(mock_engine, employee_doc
 
     result = OcrResult.objects.get(file=employee_document_file)
     assert len(result.extracted_fields) == 1
-    assert result.extracted_fields[0]['champ_code'] == 'nin'
+    assert result.extracted_fields[0]['champ_code'] == 'NIN'
+    assert result.extracted_fields[0]['valeur'] == '123456789012345678'
     assert result.extracted_fields[0]['statut'] == 'en_attente'
+
+
+@patch('ocr.tasks.run_ocr_on_file')
+def test_run_ocr_no_suggestion_when_champ_has_no_ocr_pattern(
+    mock_engine, employee_document_file, champ_personnel_2
+):
+    """champ_source pointe vers un champ existant mais sans ocr_pattern
+    configuré — aucune suggestion, aucune erreur (cas normal, pas un bug :
+    c'est le scénario exact rencontré avec "Acte de résidence" avant que
+    ocr_pattern soit renseigné sur LIEU_NAISSANCE)."""
+    assert champ_personnel_2.ocr_pattern == ''
+    employee_document_file.document.type_doc.champ_source = 'NIN'
+    employee_document_file.document.type_doc.save()
+    mock_engine.return_value = ("NIN: 123456789012345678", 92.0)
+
+    run_ocr(str(employee_document_file.id))
+
+    result = OcrResult.objects.get(file=employee_document_file)
+    assert result.status == OcrResult.Status.DONE
+    assert result.extracted_fields == []
+
+
+@patch('ocr.tasks.run_ocr_on_file')
+def test_run_ocr_no_suggestion_when_champ_source_matches_nothing(mock_engine, employee_document_file):
+    employee_document_file.document.type_doc.champ_source = 'CHAMP_INEXISTANT'
+    employee_document_file.document.type_doc.save()
+    mock_engine.return_value = ("peu importe", 50.0)
+
+    run_ocr(str(employee_document_file.id))
+
+    result = OcrResult.objects.get(file=employee_document_file)
+    assert result.extracted_fields == []
 
 
 @patch('ocr.tasks.run_ocr_on_file')

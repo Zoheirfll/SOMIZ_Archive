@@ -1,10 +1,14 @@
 """
 ocr/extractors.py
 Règles d'extraction de champs structurés à partir du texte OCR brut,
-indexées par le même code `champ_source` que TypeDocument.champ_source
-(voir section "Champs cliquables vers le document source" de CLAUDE.md).
-Volontairement pas de règles génériques appliquées à tout document —
-seuls les champ_source enregistrés ici déclenchent une extraction.
+indexées par un MOTIF fixe (ChampPersonnalise.OcrPattern) — pas par le
+code du champ lui-même. Ce découplage est volontaire : associer un motif
+existant à un nouveau champ personnalisé (ex. dans 6 mois) se fait
+entièrement depuis /parametres (choix dans un menu déroulant), sans
+jamais toucher à ce fichier. Seul l'ajout d'un motif réellement nouveau
+(un format qu'aucun des motifs ci-dessous ne couvre) nécessite du code —
+voir ChampPersonnalise.OcrPattern et
+docs/superpowers/specs/2026-09-06-ocr-documents-design.md.
 """
 
 import re
@@ -102,35 +106,27 @@ def _extract_lieu_naissance(text):
     return results
 
 
-# Clé = champ_source en minuscules (voir extract_fields) — ce sont les
-# mêmes codes que TypeDocument.champ_source / ChampPersonnalise.code,
-# insensibles à la casse.
-CHAMP_SOURCE_EXTRACTORS = {
-    'nin': _extract_nin,
-    'date_naissance': _extract_date,
-    'date_embauche': _extract_date,
-    'groupe_sanguin': _extract_groupe_sanguin,
-    'num_secu': _extract_num_secu,
-    'rib': _extract_rib,
-    'telephone': _extract_telephone,
-    'lieu_naissance': _extract_lieu_naissance,
+# Clé = ChampPersonnalise.OcrPattern (ex. 'NIN', 'DATE'...) — catalogue
+# fixe de motifs, indépendant du code ou du nom du champ personnalisé qui
+# le référence (voir ChampPersonnalise.ocr_pattern).
+PATTERN_EXTRACTORS = {
+    'NIN': _extract_nin,
+    'DATE': _extract_date,
+    'GROUPE_SANGUIN': _extract_groupe_sanguin,
+    'NUM_SECU': _extract_num_secu,
+    'RIB': _extract_rib,
+    'TELEPHONE': _extract_telephone,
+    'LIEU_NAISSANCE': _extract_lieu_naissance,
 }
 
 
-def extract_fields(champ_source, text):
-    # champ_source est un CharField libre (saisi dans /parametres) — la casse
-    # n'est pas garantie (ex. "NIN" vs "nin") alors que le registre est
-    # indexé en minuscules ; normaliser ici évite de perdre silencieusement
-    # une extraction pour un simple écart de casse. Le champ_code renvoyé
-    # dans chaque résultat reprend en revanche la valeur ORIGINALE de
-    # champ_source (pas la version minuscule) — c'est ce code qui sera
-    # utilisé ensuite pour résoudre le champ cible réel (voir
-    # ocr/views.py::_appliquer_champ), et il doit donc correspondre
-    # exactement au ChampPersonnalise.code tel qu'il existe en base.
-    extractor = CHAMP_SOURCE_EXTRACTORS.get((champ_source or '').lower())
+def extract_fields(pattern, text):
+    """
+    pattern : une valeur de ChampPersonnalise.OcrPattern (ex. 'NIN'), ou
+    toute chaîne vide/inconnue — retourne alors [] sans erreur (c'est le
+    cas normal d'un champ dont `ocr_pattern` n'a pas été configuré).
+    """
+    extractor = PATTERN_EXTRACTORS.get((pattern or '').upper())
     if extractor is None or not text:
         return []
-    return [
-        {'champ_code': champ_source, **candidate}
-        for candidate in extractor(text)
-    ]
+    return extractor(text)

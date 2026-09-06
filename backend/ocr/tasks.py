@@ -15,6 +15,22 @@ from ocr.ocr_engine import run_ocr_on_file, OcrEngineError
 from ocr.extractors import extract_fields
 
 
+def _resolve_ocr_pattern(champ_source):
+    """
+    champ_source identifie QUEL champ employé un document justifie (ex.
+    'NIN') — le MOTIF d'extraction associé se lit sur le
+    ChampPersonnalise correspondant (son ocr_pattern), pas sur
+    champ_source lui-même. C'est ce niveau d'indirection qui permet de
+    brancher un nouveau champ personnalisé sur un motif existant sans
+    toucher au code (voir ocr/extractors.py). Retourne '' si aucun champ
+    ne correspond ou si son ocr_pattern n'est pas configuré.
+    """
+    from employees.models import ChampPersonnalise
+
+    champ = ChampPersonnalise.objects.filter(code__iexact=champ_source).first()
+    return champ.ocr_pattern if champ else ''
+
+
 @shared_task
 def run_ocr(file_id):
     from employees.models import EmployeeDocumentFile
@@ -40,8 +56,9 @@ def run_ocr(file_id):
     champ_source = file_obj.document.type_doc.champ_source
     fields = []
     if champ_source:
-        for candidate in extract_fields(champ_source, text):
-            fields.append({**candidate, 'statut': 'en_attente'})
+        pattern = _resolve_ocr_pattern(champ_source)
+        for candidate in extract_fields(pattern, text):
+            fields.append({'champ_code': champ_source, **candidate, 'statut': 'en_attente'})
 
     result.status = OcrResult.Status.DONE
     result.raw_text = text

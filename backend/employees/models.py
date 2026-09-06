@@ -625,6 +625,24 @@ class ChampPersonnalise(models.Model):
         PERSONNEL = 'PERSONNEL', 'Personnel'
         ADMINISTRATIF = 'ADMINISTRATIF', 'Administratif'
 
+    class OcrPattern(models.TextChoices):
+        """
+        Catalogue fixe de motifs de reconnaissance OCR (voir
+        ocr/extractors.py) — choisir un motif ici suffit à activer les
+        suggestions OCR pour ce champ, sans aucune modification de code.
+        Un futur champ personnalisé se configure de la même façon dès sa
+        création, tant qu'un des motifs existants lui correspond ; ajouter
+        un nouveau MOTIF (pas juste un nouveau champ) reste le seul cas qui
+        nécessite du code, voir docs/superpowers/specs/2026-09-06-ocr-documents-design.md.
+        """
+        NIN = 'NIN', 'NIN algérien (18 chiffres)'
+        DATE = 'DATE', 'Date (JJ/MM/AAAA)'
+        TELEPHONE = 'TELEPHONE', 'Téléphone algérien'
+        RIB = 'RIB', 'RIB (20 chiffres)'
+        NUM_SECU = 'NUM_SECU', 'N° Sécurité Sociale (15 chiffres)'
+        GROUPE_SANGUIN = 'GROUPE_SANGUIN', 'Groupe sanguin'
+        LIEU_NAISSANCE = 'LIEU_NAISSANCE', 'Lieu de naissance (wilaya)'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=100, verbose_name="Nom")
     code = models.CharField(max_length=50, unique=True, verbose_name="Code")
@@ -650,6 +668,15 @@ class ChampPersonnalise(models.Model):
     )
     ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
     is_active = models.BooleanField(default=True, verbose_name="Actif")
+    ocr_pattern = models.CharField(
+        max_length=20, choices=OcrPattern.choices, blank=True,
+        verbose_name="Motif OCR",
+        help_text=(
+            "Optionnel — active les suggestions OCR pour ce champ dès qu'un "
+            "document dont le champ_source pointe vers ce champ est "
+            "uploadé/scanné. Vide = pas d'extraction automatique."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -362,6 +362,45 @@ export function getRefColumns({
           ),
         },
         {
+          key: "ocr_pattern",
+          label: "Motif OCR",
+          sortable: false,
+          render: (i) =>
+            i.system && !i.id ? (
+              <span style={{ color: theme.textMuted, fontSize: 11, fontStyle: "italic" }}>
+                —
+              </span>
+            ) : (
+              <select
+                value={i.ocr_pattern || ""}
+                onChange={async (e) => {
+                  await api.patch(`/ref/champs-personnalises/${i.id}/`, {
+                    ocr_pattern: e.target.value,
+                  });
+                  fetchTab(activeTab, page, search, true);
+                }}
+                className="input-focus"
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  borderRadius: 6,
+                  padding: "3px 6px",
+                  fontSize: 12,
+                  color: theme.text,
+                  background: theme.surface,
+                }}
+              >
+                <option value="">Aucun</option>
+                <option value="NIN">NIN algérien (18 chiffres)</option>
+                <option value="DATE">Date (JJ/MM/AAAA)</option>
+                <option value="TELEPHONE">Téléphone algérien</option>
+                <option value="RIB">RIB (20 chiffres)</option>
+                <option value="NUM_SECU">N° Sécurité Sociale (15 chiffres)</option>
+                <option value="GROUPE_SANGUIN">Groupe sanguin</option>
+                <option value="LIEU_NAISSANCE">Lieu de naissance (wilaya)</option>
+              </select>
+            ),
+        },
+        {
           key: "ordre",
           label: "Ordre",
           sortable: false,

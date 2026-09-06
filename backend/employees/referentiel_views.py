@@ -257,6 +257,17 @@ class ReferentielSearchMixin:
     search_fields = ['nom', 'code']
     pagination_class = ReferentielPagination
 
+    def finalize_response(self, request, response, *args, **kwargs):
+        # Ces référentiels (Direction, Poste, TypeContrat...) changent rarement
+        # et sont rechargés à chaque ouverture de formulaire/filtre — un court
+        # cache HTTP évite de les retélécharger en boucle. `private` car le
+        # contenu dépend du périmètre CONSULTANT de l'utilisateur (pas un cache
+        # partageable par un proxy intermédiaire).
+        response = super().finalize_response(request, response, *args, **kwargs)
+        if request.method == 'GET':
+            response['Cache-Control'] = 'private, max-age=60'
+        return response
+
     def filter_search(self, qs):
         q = self.request.query_params.get('q', '').strip()
         if q:
@@ -615,7 +626,10 @@ RESERVED_CHAMP_CODES = {
 class ChampPersonnaliseSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChampPersonnalise
-        fields = ['id', 'nom', 'code', 'type_champ', 'ordre', 'is_active', 'is_systeme', 'categorie']
+        fields = [
+            'id', 'nom', 'code', 'type_champ', 'ordre', 'is_active',
+            'is_systeme', 'categorie', 'ocr_pattern',
+        ]
         read_only_fields = ['is_systeme']
 
     def validate_code(self, value):
@@ -629,14 +643,16 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         # Un champ système (is_systeme=True) n'est jamais créable via ce
         # serializer (is_systeme est read_only) — ici on protège l'édition :
-        # seule `categorie` peut changer sur une instance existante is_systeme.
+        # seules `categorie` et `ocr_pattern` peuvent changer sur une
+        # instance existante is_systeme (le motif OCR reste configurable
+        # même pour un champ système, ex. date_naissance).
         instance = getattr(self, 'instance', None)
         if instance is not None and instance.is_systeme:
-            mutable = set(attrs.keys()) - {'categorie'}
+            mutable = set(attrs.keys()) - {'categorie', 'ocr_pattern'}
             if mutable:
                 raise serializers.ValidationError(
-                    "Un champ système ne peut avoir que sa catégorie modifiée "
-                    "(nom, code, type, ordre et statut restent figés)."
+                    "Un champ système ne peut avoir que sa catégorie et son motif "
+                    "OCR modifiés (nom, code, type, ordre et statut restent figés)."
                 )
         return attrs
 

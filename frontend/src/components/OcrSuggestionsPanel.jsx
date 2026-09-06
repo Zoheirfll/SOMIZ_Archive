@@ -7,6 +7,7 @@ export default function OcrSuggestionsPanel({ employeeId }) {
   const theme = useTheme();
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
 
   const fetchSuggestions = useCallback(
@@ -36,9 +37,22 @@ export default function OcrSuggestionsPanel({ employeeId }) {
       );
       if (!ok) return;
     }
-    await api.post(
-      `/ocr/suggestions/${suggestion.ocr_result_id}/${suggestion.field_index}/${action}/`
-    );
+    setError("");
+    try {
+      await api.post(
+        `/ocr/suggestions/${suggestion.ocr_result_id}/${suggestion.field_index}/${action}/`
+      );
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        // Le document/fichier source a été supprimé entre-temps (hard
+        // delete, voir CLAUDE.md section "Documents employés — suppression
+        // définitive") — la suggestion affichée est obsolète, pas une
+        // vraie erreur à remonter à l'utilisateur.
+        setError("Ce document a été supprimé — la suggestion n'est plus disponible.");
+      } else {
+        setError("Une erreur est survenue, réessayez.");
+      }
+    }
     fetchSuggestions(true);
   };
 
@@ -50,7 +64,7 @@ export default function OcrSuggestionsPanel({ employeeId }) {
     );
   }
 
-  if (suggestions.length === 0) {
+  if (suggestions.length === 0 && !error) {
     return null;
   }
 
@@ -77,6 +91,11 @@ export default function OcrSuggestionsPanel({ employeeId }) {
       >
         Suggestions OCR
       </div>
+      {error && (
+        <div style={{ color: theme.danger, fontSize: 12, marginBottom: 10 }}>
+          {error}
+        </div>
+      )}
       {suggestions.map((s) => (
         <div
           key={`${s.ocr_result_id}-${s.field_index}`}
