@@ -13,6 +13,21 @@ from employees.models import (
 User = get_user_model()
 
 
+@pytest.fixture(autouse=True)
+def _celery_eager_for_tests(settings):
+    """
+    Sans ceci, chaque test qui déclenche un upload (`_enqueue_ocr()`,
+    voir employees/views.py) publie une VRAIE tâche Celery sur le Redis
+    de dev (le même que `manage.py runserver`/le worker réel) — les
+    tests polluaient silencieusement la file d'attente en production
+    locale, provoquant un arriéré de tâches fantômes référençant des
+    fichiers de la base de test (déjà détruite) traitées bien plus tard
+    par le worker de dev. CELERY_TASK_ALWAYS_EAGER exécute la tâche en
+    synchrone dans le process de test, sans jamais toucher au broker.
+    """
+    settings.CELERY_TASK_ALWAYS_EAGER = True
+
+
 @pytest.fixture
 def admin_user(db):
     return User.objects.create_user(
