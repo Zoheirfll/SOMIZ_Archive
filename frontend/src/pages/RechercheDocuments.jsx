@@ -6,6 +6,9 @@ import { useTheme } from "../context/ThemeContext";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
+import InfoNotice from "../components/InfoNotice";
+import { PAGE_NOTICES } from "../config/notices";
 
 const IconSearch = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -31,6 +34,7 @@ function highlight(snippet, query, theme) {
 }
 
 export default function RechercheDocuments() {
+  usePageTitle("Recherche documentaire");
   const theme = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -73,9 +77,12 @@ export default function RechercheDocuments() {
       <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 24px" : "32px 32px 36px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
         <div style={{ maxWidth: 1000, margin: "0 auto" }}>
-          <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
-            Recherche documentaire
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h1 style={{ color: "#FFFFFF", margin: 0, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "inherit" }}>
+              Recherche documentaire
+            </h1>
+            <InfoNotice text={PAGE_NOTICES.rechercheDocuments} />
+          </div>
           <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginTop: 6 }}>
             Recherche plein texte dans le contenu OCR de tous les documents — retrouve une
             personne même si elle n'est mentionnée que dans le document d'un tiers (ex. un

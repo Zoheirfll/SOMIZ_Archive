@@ -28,6 +28,7 @@ const Navbar = () => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const { openHelp } = useKeyboardShortcutsHelp();
   const theme = useTheme();
   const { mode, toggleMode } = useThemeMode();
@@ -74,16 +75,21 @@ const Navbar = () => {
   };
 
   const navLinks = [
-    { path: "/employees", label: "Employés" },
+    { path: "/employees", label: "Personnel" },
     { path: "/organigramme", label: "Organigramme" },
-    { path: "/import", label: "Import", adminOnly: true },
-    { path: "/dashboard", label: "Dashboard", adminOnly: true },
+    { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
-    { path: "/recherche-documents", label: "Recherche", adminOnly: true },
-    { path: "/users", label: "Utilisateurs", adminOnly: true },
-    { path: "/parametres", label: "Paramètres", adminOnly: true },
-    { path: "/audit", label: "Journal", adminOnly: true },
+    { path: "/recherche-documents", label: "Recherche OCR", adminOnly: true },
   ].filter((item) => !item.adminOnly || ["ADMIN", "SUPERADMIN"].includes(user?.role));
+
+  const adminMenuLinks = [
+    { path: "/import", label: "Import" },
+    { path: "/users", label: "Utilisateurs" },
+    { path: "/parametres", label: "Configuration" },
+    { path: "/audit", label: "Journal" },
+  ];
+  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
+  const isAdminMenuActive = adminMenuLinks.some((item) => location.pathname === item.path);
 
   const goTo = (path) => {
     setDrawerOpen(false);
@@ -151,6 +157,7 @@ const Navbar = () => {
                   fontSize: 13,
                   fontWeight: 700,
                   fontFamily: theme.fontFamily,
+                  whiteSpace: "nowrap",
                   transition: "background 0.15s, color 0.15s",
                 }}
                 onMouseEnter={(e) => {
@@ -170,6 +177,103 @@ const Navbar = () => {
               </button>
             );
           })}
+
+          {isAdmin && (
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => setAdminMenuOpen((v) => !v)}
+                style={{
+                  background: isAdminMenuActive || adminMenuOpen ? theme.primaryBg : "transparent",
+                  border: "none",
+                  borderRadius: 8,
+                  color: theme.text,
+                  padding: "7px 14px",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: theme.fontFamily,
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  transition: "background 0.15s, color 0.15s",
+                }}
+                onMouseEnter={(e) => {
+                  if (!isAdminMenuActive && !adminMenuOpen) {
+                    e.currentTarget.style.background = theme.bg;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isAdminMenuActive && !adminMenuOpen) {
+                    e.currentTarget.style.background = "transparent";
+                  }
+                }}
+              >
+                Administration
+                <span style={{ fontSize: 10, transform: adminMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+              </button>
+
+              {adminMenuOpen && (
+                <>
+                  <div
+                    onClick={() => setAdminMenuOpen(false)}
+                    style={{ position: "fixed", inset: 0, zIndex: 199 }}
+                  />
+                  <div
+                    className="anim-slide-down"
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      right: 0,
+                      background: theme.surface,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 10,
+                      boxShadow: theme.shadowMd,
+                      padding: 6,
+                      minWidth: 170,
+                      zIndex: 200,
+                    }}
+                  >
+                    {adminMenuLinks.map((item) => {
+                      const isActive = location.pathname === item.path;
+                      return (
+                        <button
+                          key={item.path}
+                          onClick={() => {
+                            setAdminMenuOpen(false);
+                            navigate(item.path);
+                          }}
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            textAlign: "left",
+                            background: isActive ? theme.primaryBg : "transparent",
+                            border: "none",
+                            borderRadius: 8,
+                            color: theme.text,
+                            padding: "8px 12px",
+                            cursor: "pointer",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            fontFamily: theme.fontFamily,
+                            whiteSpace: "nowrap",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isActive) e.currentTarget.style.background = theme.bg;
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) e.currentTarget.style.background = "transparent";
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -387,7 +491,7 @@ const Navbar = () => {
               </div>
             </div>
 
-            {navLinks.map((item) => {
+            {[...navLinks, ...(isAdmin ? adminMenuLinks : [])].map((item) => {
               const isActive = location.pathname === item.path;
               return (
                 <button

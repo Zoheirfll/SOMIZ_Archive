@@ -11,6 +11,7 @@ import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import { slugify } from "../utils/slugify";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
@@ -33,6 +34,7 @@ import {
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 const Employees = () => {
+  usePageTitle("Employés");
   const theme = useTheme();
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -1378,18 +1380,21 @@ const Employees = () => {
               </button>
               <button
                 onClick={() => {
+                  if (deleting) return;
                   setArchiveModalOpen(false);
                   handleBulkAction("archive", archiveMotif || null);
                 }}
+                disabled={deleting}
                 style={{
                   background: "#FFFBEB",
                   border: `1px solid #FDE68A`,
                   color: "#92400E",
                   borderRadius: 8,
                   padding: "8px 16px",
+                  cursor: deleting ? "not-allowed" : "pointer",
+                  opacity: deleting ? 0.6 : 1,
                   fontSize: 13,
                   fontWeight: 700,
-                  cursor: "pointer",
                   fontFamily: theme.fontFamily,
                 }}
               >

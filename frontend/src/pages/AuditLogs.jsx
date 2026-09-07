@@ -9,6 +9,7 @@ import PageBackground from "../components/PageBackground";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import { useAuth } from "../context/AuthContext";
 import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
@@ -59,6 +60,7 @@ const IconSearch = () => (
 );
 
 const AuditLogs = () => {
+  usePageTitle("Journal d'audit");
   const theme = useTheme();
   const ACTION_COLORS = getActionColors(theme);
   const { user } = useAuth();

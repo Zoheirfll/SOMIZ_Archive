@@ -9,6 +9,7 @@ import PageBackground from "../components/PageBackground";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import "../styles/animations.css";
 
 // SVG icons
@@ -37,6 +38,7 @@ const EyeIcon = ({ open }) => open ? (
 );
 
 const Profil = () => {
+  usePageTitle("Mon profil");
   const theme = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();

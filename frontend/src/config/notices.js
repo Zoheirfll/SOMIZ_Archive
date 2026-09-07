@@ -13,6 +13,7 @@ export const PAGE_NOTICES = {
   parametres: "Gérez les référentiels organisationnels (Directions, Départements, Services, Cellules, Sections...), les types de documents et les champs personnalisés utilisés dans toute l'application.",
   import: "Importez plusieurs employés en une fois depuis un fichier Excel (.xlsx) ou CSV. Téléchargez le modèle pour connaître les colonnes attendues avant de préparer votre fichier.",
   profil: "Consultez vos informations de compte et modifiez votre mot de passe.",
+  rechercheDocuments: "Recherche plein texte dans le contenu OCR de tous les documents. Retrouve une personne même si elle n'est mentionnée que dans le document d'un tiers (ex. un conjoint ou un enfant cité dans un acte de naissance).",
 };
 
 export const FIELD_NOTICES = {

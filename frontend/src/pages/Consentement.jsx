@@ -6,8 +6,10 @@ import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useTheme } from "../context/ThemeContext";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 
 const Consentement = () => {
+  usePageTitle("Consentement");
   const theme = useTheme();
   const [checked, setChecked] = useState(false);
   const [loading, setLoading] = useState(false);

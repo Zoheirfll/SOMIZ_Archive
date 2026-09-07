@@ -10,8 +10,10 @@ import PageBackground from "../components/PageBackground";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 
 const Import = () => {
+  usePageTitle("Import employés");
   const theme = useTheme();
   const { user } = useAuth();
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);

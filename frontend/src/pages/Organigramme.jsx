@@ -5,6 +5,7 @@ import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 
 // bg/border sont dérivés de color par transparence (voir OrgCard) pour
 // rester lisibles aussi bien en clair (fond blanc) qu'en sombre (fond
@@ -165,6 +166,7 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
 };
 
 const Organigramme = () => {
+  usePageTitle("Organigramme");
   const theme = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();

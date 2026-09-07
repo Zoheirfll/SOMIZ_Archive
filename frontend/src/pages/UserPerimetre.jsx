@@ -9,6 +9,7 @@ import InfoNotice from "../components/InfoNotice";
 import { FIELD_NOTICES } from "../config/notices";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import useOrgScopeForm from "../hooks/useOrgScopeForm";
 import ScopeLevel from "../components/userScope/ScopeLevel";
 
@@ -22,6 +23,7 @@ const getCardStyle = (theme) => ({
 });
 
 const UserPerimetre = () => {
+  usePageTitle("Périmètre utilisateur");
   const theme = useTheme();
   const cardStyle = getCardStyle(theme);
   const { id } = useParams();

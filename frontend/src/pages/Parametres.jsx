@@ -9,6 +9,7 @@ import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import { usePaginationShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES, FIELD_NOTICES } from "../config/notices";
 import {
@@ -29,6 +30,7 @@ const PAGE_SIZE = 25;
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 
 const Parametres = () => {
+  usePageTitle("Paramètres");
   const theme = useTheme();
   const inputStyle = getInputStyle(theme);
   const { user } = useAuth();
@@ -38,6 +40,10 @@ const Parametres = () => {
   const { prompt, PromptDialog } = usePrompt();
   const [systemLabels, setSystemLabels] = useState({});
   const [reorderingField, setReorderingField] = useState(null);
+  // Clé de l'élément en cours de suppression/renommage (id pour un item,
+  // "system:<code>" pour un champ système) — bloque le double-clic.
+  const [busyKey, setBusyKey] = useState(null);
+  const [errors, setErrors] = useState({});
   const [activeTab, setActiveTab] = useState("directions");
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
@@ -138,11 +144,14 @@ const Parametres = () => {
   };
 
   const handleRenameSystemField = async (item) => {
+    const busy = `system:${item.code}`;
+    if (busyKey === busy) return;
     const newLabel = await prompt(
       "Nouveau libellé affiché :",
       systemLabels[item.code]?.label || item.nom,
     );
     if (newLabel === null) return;
+    setBusyKey(busy);
     try {
       await api.put(`/ref/system-field-labels/${item.code}/`, {
         label: newLabel.trim(),
@@ -151,6 +160,8 @@ const Parametres = () => {
       fetchSystemLabels();
     } catch (err) {
       showMessage("error", "Impossible de mettre à jour le libellé.");
+    } finally {
+      setBusyKey(null);
     }
   };
 
@@ -245,18 +256,22 @@ const Parametres = () => {
 
   const openAdd = () => {
     setForm({});
+    setErrors({});
     setRattachementChoice("direction");
     setModal({ mode: "add" });
   };
 
   const openEdit = (item) => {
     setForm({ ...item });
+    setErrors({});
     setRattachementChoice(item.departement ? "departement" : "direction");
     setModal({ mode: "edit", item });
   };
 
   const handleDelete = async (item) => {
+    if (busyKey === item.id) return;
     if (!(await confirm(`Supprimer "${item.nom}" ?`))) return;
+    setBusyKey(item.id);
     try {
       await api.delete(`/ref/${activeTab}/${item.id}/`);
       showMessage("success", "Supprimé avec succès.");
@@ -268,6 +283,8 @@ const Parametres = () => {
         serverError ||
           "Impossible de supprimer — des employés y sont peut-être rattachés.",
       );
+    } finally {
+      setBusyKey(null);
     }
   };
   const handleSort = (key) => {
@@ -392,10 +409,16 @@ const Parametres = () => {
       fetchDepartements();
     } catch (err) {
       const data = err.response?.data;
-      showMessage(
-        "error",
-        data ? Object.values(data)[0] : "Une erreur est survenue.",
-      );
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        const { error, detail, non_field_errors, ...fieldErrors } = data;
+        if (Object.keys(fieldErrors).length > 0) setErrors(fieldErrors);
+        const globalMsg = error || detail || non_field_errors?.[0];
+        if (globalMsg) showMessage("error", globalMsg);
+        else if (Object.keys(fieldErrors).length === 0)
+          showMessage("error", "Une erreur est survenue.");
+      } else {
+        showMessage("error", "Une erreur est survenue.");
+      }
     } finally {
       setSaving(false);
     }
@@ -408,6 +431,7 @@ const Parametres = () => {
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+    if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: null });
   };
 
   // Pour les types de documents : au lieu de trier à plat par `ordre` (ce
@@ -822,6 +846,7 @@ const Parametres = () => {
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
               onToggleSelectAll={toggleSelectAll}
+              busyKey={busyKey}
             />
 
             {(pageMeta.next || pageMeta.previous) && (
@@ -894,6 +919,7 @@ const Parametres = () => {
             champsPersonnalisesOptions={champsPersonnalisesOptions}
             items={items}
             modal={modal}
+            errors={errors}
           />
         </RefModal>
       )}

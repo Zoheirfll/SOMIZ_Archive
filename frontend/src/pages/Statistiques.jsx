@@ -13,6 +13,7 @@ import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useCountUp from "../hooks/useCountUp";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import StatAreaChart from "../components/charts/StatAreaChart";
 import StatDonutChart from "../components/charts/StatDonutChart";
 import StatRadarChart from "../components/charts/StatRadarChart";
@@ -97,6 +98,7 @@ const presetToRange = (preset) => {
 };
 
 const Statistiques = () => {
+  usePageTitle("Statistiques");
   const theme = useTheme();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);

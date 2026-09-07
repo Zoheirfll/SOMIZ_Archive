@@ -67,6 +67,7 @@ const DossierTab = ({
   setMessage,
   id,
   user,
+  busyIds,
 }) => {
   const theme = useTheme();
   return (
@@ -205,16 +206,17 @@ const DossierTab = ({
                     {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                       <button
                         onClick={(e) => handleDeleteDoc(doc, e)}
+                        disabled={busyIds?.has(doc.id)}
                         title="Supprimer ce document"
                         aria-label="Supprimer ce document"
                         style={{
                           background: "transparent",
                           border: "none",
                           color: theme.danger,
-                          cursor: "pointer",
+                          cursor: busyIds?.has(doc.id) ? "not-allowed" : "pointer",
                           display: "flex",
                           padding: "2px 4px",
-                          opacity: 0.5,
+                          opacity: busyIds?.has(doc.id) ? 0.3 : 0.5,
                         }}
                         onMouseEnter={(e) =>
                           (e.currentTarget.style.opacity = 1)
@@ -288,15 +290,16 @@ const DossierTab = ({
                             <div style={{ display: "flex", gap: 6 }}>
                             <button
                               onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
+                              disabled={busyIds?.has(file.id)}
                               title="Renommer d'après le type de document"
                               aria-label="Renommer d'après le type de document"
                               style={{
                                 background: "transparent",
                                 border: "none",
                                 color: theme.textSecondary,
-                                cursor: "pointer",
+                                cursor: busyIds?.has(file.id) ? "not-allowed" : "pointer",
                                 display: "flex",
-                                opacity: 0.5,
+                                opacity: busyIds?.has(file.id) ? 0.3 : 0.5,
                               }}
                               onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                               onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
@@ -305,15 +308,16 @@ const DossierTab = ({
                             </button>
                             <button
                               onClick={(e) => handleRenameFile(file, e)}
+                              disabled={busyIds?.has(file.id)}
                               title="Renommer ce fichier"
                               aria-label="Renommer ce fichier"
                               style={{
                                 background: "transparent",
                                 border: "none",
                                 color: theme.textSecondary,
-                                cursor: "pointer",
+                                cursor: busyIds?.has(file.id) ? "not-allowed" : "pointer",
                                 display: "flex",
-                                opacity: 0.5,
+                                opacity: busyIds?.has(file.id) ? 0.3 : 0.5,
                               }}
                               onMouseEnter={(e) =>
                                 (e.currentTarget.style.opacity = 1)
@@ -326,15 +330,16 @@ const DossierTab = ({
                             </button>
                             <button
                               onClick={(e) => handleDeleteFile(file, e)}
+                              disabled={busyIds?.has(file.id)}
                               title="Supprimer ce fichier"
                               aria-label="Supprimer ce fichier"
                               style={{
                                 background: "transparent",
                                 border: "none",
                                 color: theme.danger,
-                                cursor: "pointer",
+                                cursor: busyIds?.has(file.id) ? "not-allowed" : "pointer",
                                 display: "flex",
-                                opacity: 0.5,
+                                opacity: busyIds?.has(file.id) ? 0.3 : 0.5,
                               }}
                               onMouseEnter={(e) =>
                                 (e.currentTarget.style.opacity = 1)
@@ -401,16 +406,17 @@ const DossierTab = ({
                         {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                           <button
                             onClick={(e) => handleDeleteDoc(h, e)}
+                            disabled={busyIds?.has(h.id)}
                             title="Supprimer cette version"
                             aria-label="Supprimer cette version"
                             style={{
                               background: "transparent",
                               border: "none",
                               color: theme.danger,
-                              cursor: "pointer",
+                              cursor: busyIds?.has(h.id) ? "not-allowed" : "pointer",
                               display: "flex",
                               padding: "2px 4px",
-                              opacity: 0.5,
+                              opacity: busyIds?.has(h.id) ? 0.3 : 0.5,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
@@ -546,13 +552,25 @@ const DossierTab = ({
                 </div>
               ))}
 
-              {/* Upload ADMIN */}
+              {documentsAffiches.length === 0 && (employee.documents_manquants || []).length === 0 && (
+                <div style={{ padding: 24, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>
+                  Aucun document
+                </div>
+              )}
+
+              {/* Upload ADMIN — remonté en haut de la sidebar sur mobile
+                  (order négatif) : en layout 1 colonne, le laisser tout en
+                  bas obligeait à scroller sous la liste complète des
+                  documents pour accéder à une action pourtant fréquente
+                  (upload). Inchangé sur desktop, où la sidebar entière
+                  reste visible. */}
               {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <div
                   style={{
-                    order: 999999,
+                    order: isMobile ? -3 : 999999,
                     padding: 16,
-                    borderTop: `2px solid ${theme.border}`,
+                    borderTop: isMobile ? "none" : `2px solid ${theme.border}`,
+                    borderBottom: isMobile ? `2px solid ${theme.border}` : "none",
                     background: theme.bg,
                   }}
                 >
@@ -730,15 +748,16 @@ const DossierTab = ({
                         {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                           <button
                             onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
+                            disabled={busyIds?.has(selectedFile.id)}
                             title="Renommer d'après le type de document"
                             aria-label="Renommer d'après le type de document"
                             style={{
                               background: "transparent",
                               border: "none",
                               color: theme.textSecondary,
-                              cursor: "pointer",
+                              cursor: busyIds?.has(selectedFile.id) ? "not-allowed" : "pointer",
                               display: "flex",
-                              opacity: 0.6,
+                              opacity: busyIds?.has(selectedFile.id) ? 0.3 : 0.6,
                               padding: 0,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
@@ -750,15 +769,16 @@ const DossierTab = ({
                         {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                           <button
                             onClick={(e) => handleRenameFile(selectedFile, e)}
+                            disabled={busyIds?.has(selectedFile.id)}
                             title="Renommer ce fichier"
                             aria-label="Renommer ce fichier"
                             style={{
                               background: "transparent",
                               border: "none",
                               color: theme.textSecondary,
-                              cursor: "pointer",
+                              cursor: busyIds?.has(selectedFile.id) ? "not-allowed" : "pointer",
                               display: "flex",
-                              opacity: 0.6,
+                              opacity: busyIds?.has(selectedFile.id) ? 0.3 : 0.6,
                               padding: 0,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}

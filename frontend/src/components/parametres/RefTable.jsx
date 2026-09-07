@@ -17,6 +17,7 @@ const RefTable = ({
   selectedIds,
   onToggleSelect,
   onToggleSelectAll,
+  busyKey,
 }) => {
   const theme = useTheme();
   const selectableItems = items.filter((i) => !i.system);
@@ -202,6 +203,7 @@ const RefTable = ({
                           {onRenameSystem && (
                             <button
                               onClick={() => onRenameSystem(item)}
+                              disabled={busyKey === `system:${item.code}`}
                               title="Renommer le libellé affiché (n'affecte pas la structure)"
                               aria-label="Renommer"
                               style={{
@@ -211,7 +213,8 @@ const RefTable = ({
                                 borderRadius: 6,
                                 padding: "4px 8px",
                                 display: "flex",
-                                cursor: "pointer",
+                                cursor: busyKey === `system:${item.code}` ? "not-allowed" : "pointer",
+                                opacity: busyKey === `system:${item.code}` ? 0.5 : 1,
                               }}
                             >
                               <PencilIcon size={12} />
@@ -238,6 +241,7 @@ const RefTable = ({
                           </button>
                           <button
                             onClick={() => onDelete(item)}
+                            disabled={busyKey === item.id}
                             title="Supprimer"
                             aria-label="Supprimer"
                             style={{
@@ -247,7 +251,8 @@ const RefTable = ({
                               borderRadius: 6,
                               padding: "4px 10px",
                               display: "flex",
-                              cursor: "pointer",
+                              cursor: busyKey === item.id ? "not-allowed" : "pointer",
+                              opacity: busyKey === item.id ? 0.5 : 1,
                             }}
                           >
                             <TrashIcon size={13} />

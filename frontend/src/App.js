@@ -1,24 +1,41 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { KeyboardShortcutsProvider } from "./context/KeyboardShortcutsContext";
 import GlobalShortcuts from "./components/GlobalShortcuts";
 import ProtectedRoute from "./components/ProtectedRoute";
+import RouteFallback from "./components/RouteFallback";
 import Login from "./pages/Login";
-import Employees from "./pages/Employees";
-import EmployeeDetail from "./pages/EmployeeDetail";
-import EmployeeForm from "./pages/EmployeeForm";
-import Dashboard from "./pages/Dashboard";
-import Statistiques from "./pages/Statistiques";
-import Users from "./pages/Users";
-import UserPerimetre from "./pages/UserPerimetre";
-import AuditLogs from "./pages/AuditLogs";
-import Parametres from "./pages/Parametres";
-import Import from "./pages/Import";
-import Profil from "./pages/Profil";
-import ContratDetail from "./pages/ContratDetail";
-import Organigramme from "./pages/Organigramme";
-import Consentement from "./pages/Consentement";
-import RechercheDocuments from "./pages/RechercheDocuments";
+import NotFound from "./pages/NotFound";
+
+// Chargées à la demande (par route) plutôt qu'au premier accès — le
+// bundle unique dépassait 400 kB gzip (react-pdf, Chart.js et une
+// vingtaine de pages tous chargés d'un coup dès /login). Login et
+// NotFound restent en import direct : ce sont les toutes premières pages
+// vues, pas de bénéfice à les découper.
+const Employees = lazy(() => import("./pages/Employees"));
+const EmployeeDetail = lazy(() => import("./pages/EmployeeDetail"));
+const EmployeeForm = lazy(() => import("./pages/EmployeeForm"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Statistiques = lazy(() => import("./pages/Statistiques"));
+const Users = lazy(() => import("./pages/Users"));
+const UserPerimetre = lazy(() => import("./pages/UserPerimetre"));
+const AuditLogs = lazy(() => import("./pages/AuditLogs"));
+const Parametres = lazy(() => import("./pages/Parametres"));
+const Import = lazy(() => import("./pages/Import"));
+const Profil = lazy(() => import("./pages/Profil"));
+const ContratDetail = lazy(() => import("./pages/ContratDetail"));
+const Organigramme = lazy(() => import("./pages/Organigramme"));
+const Consentement = lazy(() => import("./pages/Consentement"));
+const RechercheDocuments = lazy(() => import("./pages/RechercheDocuments"));
+
+// Route racine "/" — jamais un vrai écran, juste un aiguillage vers la
+// connexion ou l'accueil selon l'état de session.
+const RootRedirect = () => {
+  const { authenticated, authChecked } = useAuth();
+  if (!authChecked) return null;
+  return <Navigate to={authenticated ? "/employees" : "/login"} replace />;
+};
 
 function App() {
   return (
@@ -26,7 +43,9 @@ function App() {
       <KeyboardShortcutsProvider>
       <BrowserRouter>
         <GlobalShortcuts />
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
           <Route
             path="/consentement"
@@ -124,7 +143,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<NotFound />} />
           <Route
             path="/parametres"
             element={
@@ -158,6 +177,7 @@ function App() {
             }
           />
         </Routes>
+        </Suspense>
       </BrowserRouter>
       </KeyboardShortcutsProvider>
     </AuthProvider>

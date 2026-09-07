@@ -16,6 +16,7 @@ import DossierTab from "../components/employeeDetail/DossierTab";
 import OcrSuggestionsPanel from "../components/OcrSuggestionsPanel";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
@@ -51,6 +52,7 @@ const EmployeeDetail = () => {
   const isMobile = useIsMobile();
 
   const [employee, setEmployee] = useState(null);
+  usePageTitle(employee ? `${employee.prenom} ${employee.nom}` : "Employé");
   const [adjacent, setAdjacent] = useState({ prev: null, next: null });
   const [contrats, setContrats] = useState([]);
   const [selectedContratId, setSelectedContratId] = useState(null);
@@ -66,6 +68,7 @@ const EmployeeDetail = () => {
   const [docLoading, setDocLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [busyIds, setBusyIds] = useState(() => new Set());
   const [showScanImport, setShowScanImport] = useState(false);
   const [uploadType, setUploadType] = useState("");
   const [message, setMessage] = useState(null);
@@ -461,71 +464,96 @@ const EmployeeDetail = () => {
     }
   };
 
+  // Empêche un double-clic (ou deux prompts empilés) de déclencher deux
+  // appels API concurrents sur le même fichier/document.
+  const withBusyGuard = (busyId, fn) => async (...args) => {
+    if (busyIds.has(busyId)) return;
+    setBusyIds((prev) => new Set(prev).add(busyId));
+    try {
+      await fn(...args);
+    } finally {
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(busyId);
+        return next;
+      });
+    }
+  };
+
   const handleDeleteFile = async (file, e) => {
     e.stopPropagation();
+    if (busyIds.has(file.id)) return;
     if (!(await confirm(`Supprimer "${file.file_name}" ?`))) return;
-    try {
-      await api.delete(`/files/${file.id}/`);
-      setMessage({ type: "success", text: "Fichier supprimé." });
-      if (selectedFile?.id === file.id) {
-        setSelectedFile(null);
-        setDocUrl(null);
+    await withBusyGuard(file.id, async () => {
+      try {
+        await api.delete(`/files/${file.id}/`);
+        setMessage({ type: "success", text: "Fichier supprimé." });
+        if (selectedFile?.id === file.id) {
+          setSelectedFile(null);
+          setDocUrl(null);
+        }
+        fetchEmployee(true);
+      } catch (err) {
+        setMessage({ type: "error", text: "Erreur lors de la suppression." });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
       }
-      fetchEmployee(true);
-    } catch (err) {
-      setMessage({ type: "error", text: "Erreur lors de la suppression." });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    })();
   };
 
   const handleRenameFile = async (file, e) => {
     e?.stopPropagation();
+    if (busyIds.has(file.id)) return;
     const dotIndex = (file.file_name || "").lastIndexOf(".");
     const baseName = dotIndex > 0 ? file.file_name.slice(0, dotIndex) : file.file_name || "";
     const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
     const newBaseName = await prompt("Nouveau nom du fichier :", baseName);
     if (newBaseName === null || !newBaseName || newBaseName === baseName) return;
     const newName = `${newBaseName}${ext}`;
-    try {
-      await api.patch(`/files/${file.id}/`, { file_name: newName });
-      setMessage({ type: "success", text: "Fichier renommé." });
-      fetchEmployee(true);
-    } catch (err) {
-      setMessage({
-        type: "error",
-        text: err.response?.data?.error || "Erreur lors du renommage.",
-      });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    await withBusyGuard(file.id, async () => {
+      try {
+        await api.patch(`/files/${file.id}/`, { file_name: newName });
+        setMessage({ type: "success", text: "Fichier renommé." });
+        fetchEmployee(true);
+      } catch (err) {
+        setMessage({
+          type: "error",
+          text: err.response?.data?.error || "Erreur lors du renommage.",
+        });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
+      }
+    })();
   };
 
   // Renomme un fichier d'après le libellé de son type de document
   // ("Acte de naissance" au lieu du nom technique du scan), en un clic.
   const handleAutoRenameFile = async (file, label, e) => {
     e?.stopPropagation();
-    if (!label) return;
+    if (!label || busyIds.has(file.id)) return;
     const dotIndex = (file.file_name || "").lastIndexOf(".");
     const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
     const newName = `${label}${ext}`;
     if (newName === file.file_name) return;
-    try {
-      await api.patch(`/files/${file.id}/`, { file_name: newName });
-      setMessage({ type: "success", text: "Fichier renommé." });
-      fetchEmployee(true);
-    } catch (err) {
-      setMessage({
-        type: "error",
-        text: err.response?.data?.error || "Erreur lors du renommage.",
-      });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    await withBusyGuard(file.id, async () => {
+      try {
+        await api.patch(`/files/${file.id}/`, { file_name: newName });
+        setMessage({ type: "success", text: "Fichier renommé." });
+        fetchEmployee(true);
+      } catch (err) {
+        setMessage({
+          type: "error",
+          text: err.response?.data?.error || "Erreur lors du renommage.",
+        });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
+      }
+    })();
   };
 
   const handleDeleteDoc = async (doc, e) => {
     e.stopPropagation();
+    if (busyIds.has(doc.id)) return;
     const nomType = typesDocuments[doc.type_document] || doc.type_document;
     if (
       !(await confirm(
@@ -533,20 +561,22 @@ const EmployeeDetail = () => {
       ))
     )
       return;
-    try {
-      await api.delete(`/documents/${doc.id}/`);
-      setMessage({ type: "success", text: "Document supprimé." });
-      if (selectedDoc?.id === doc.id) {
-        setSelectedDoc(null);
-        setSelectedFile(null);
-        setDocUrl(null);
+    await withBusyGuard(doc.id, async () => {
+      try {
+        await api.delete(`/documents/${doc.id}/`);
+        setMessage({ type: "success", text: "Document supprimé." });
+        if (selectedDoc?.id === doc.id) {
+          setSelectedDoc(null);
+          setSelectedFile(null);
+          setDocUrl(null);
+        }
+        fetchEmployee(true);
+      } catch (err) {
+        setMessage({ type: "error", text: "Erreur lors de la suppression." });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
       }
-      fetchEmployee(true);
-    } catch (err) {
-      setMessage({ type: "error", text: "Erreur lors de la suppression." });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    })();
   };
 
   if (loading)
@@ -1066,6 +1096,7 @@ const EmployeeDetail = () => {
           setMessage={setMessage}
           id={id}
           user={user}
+          busyIds={busyIds}
         />
 
         {["ADMIN", "SUPERADMIN"].includes(user?.role) && (

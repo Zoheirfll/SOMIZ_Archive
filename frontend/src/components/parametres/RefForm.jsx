@@ -20,10 +20,22 @@ const RefForm = ({
   champsPersonnalisesOptions,
   items,
   modal,
+  errors = {},
 }) => {
     const theme = useTheme();
     const inputStyle = getInputStyle(theme);
     const labelStyle = getLabelStyle(theme);
+    // Erreur de validation serveur (champ dupliqué, requis...) affichée sous
+    // le champ concerné — DRF renvoie {champ: ["message"]} ou {champ: "message"}.
+    const FieldError = ({ name }) => {
+      const msg = Array.isArray(errors[name]) ? errors[name][0] : errors[name];
+      if (!msg) return null;
+      return (
+        <div style={{ color: theme.danger, fontSize: 12, marginTop: -8, marginBottom: 12 }}>
+          {msg}
+        </div>
+      );
+    };
     switch (activeTab) {
       case "directions":
         return (
@@ -39,6 +51,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Direction Générale"
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
             <input
               name="code"
@@ -48,6 +61,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="DG"
             />
+            <FieldError name="code" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -112,6 +126,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Pôle Machines Tournantes"
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
             <input
               name="code"
@@ -121,6 +136,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="PMT"
             />
+            <FieldError name="code" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -207,6 +223,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Département Ressources Humaines"
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
             <input
               name="code"
@@ -216,6 +233,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="DRH"
             />
+            <FieldError name="code" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -280,6 +298,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Service Paie"
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
             <input
               name="code"
@@ -289,6 +308,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="SP"
             />
+            <FieldError name="code" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -420,6 +440,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Cellule Audit Interne"
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
             <input
               name="code"
@@ -429,6 +450,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="CAI"
             />
+            <FieldError name="code" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -561,6 +583,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Section Contrôle Qualité"
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
             <input
               name="code"
@@ -570,6 +593,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="SCQ"
             />
+            <FieldError name="code" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -617,6 +641,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Ingénieur principal"
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
             <input
               name="code"
@@ -626,6 +651,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="ING-P"
             />
+            <FieldError name="code" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -675,6 +701,7 @@ const RefForm = ({
                       : "Cadre, Technicien..."
               }
             />
+            <FieldError name="nom" />
             <label style={labelStyle}>Description</label>
             <textarea
               name="description"
@@ -712,6 +739,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Attestation de travail"
             />
+            <FieldError name="nom" />
 
             <label style={labelStyle}>
               Code <span style={{ color: theme.danger }}>*</span>
@@ -724,6 +752,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="ATTESTATION"
             />
+            <FieldError name="code" />
 
             <label style={labelStyle}>Catégorie parente (optionnel)</label>
             <select
@@ -922,6 +951,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="Permis de conduire"
             />
+            <FieldError name="nom" />
 
             <label style={labelStyle}>
               Code <span style={{ color: theme.danger }}>*</span>
@@ -934,6 +964,7 @@ const RefForm = ({
               style={inputStyle}
               placeholder="PERMIS"
             />
+            <FieldError name="code" />
 
             <label style={labelStyle}>Type</label>
             <select

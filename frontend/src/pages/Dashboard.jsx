@@ -12,6 +12,7 @@ import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useCountUp from "../hooks/useCountUp";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 
 // SVG icons
 const IconUsers = () => (
@@ -98,6 +99,7 @@ const StatCard = ({ label, value, sub, color, icon, className }) => {
 };
 
 const Dashboard = () => {
+  usePageTitle("Tableau de bord");
   const theme = useTheme();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);

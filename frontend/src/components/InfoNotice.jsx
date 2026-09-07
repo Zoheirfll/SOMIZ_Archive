@@ -13,14 +13,10 @@ export default function InfoNotice({ text, variant = "hero", size = 18 }) {
 
   const VARIANTS = {
     hero: {
-      background: theme.primaryLight,
-      border: "1px solid rgba(255,255,255,0.6)",
-      color: "#fff",
+      color: "rgba(255,255,255,0.75)",
     },
     field: {
-      background: theme.primaryBg,
-      border: `1px solid ${theme.primaryBorder}`,
-      color: theme.primary,
+      color: theme.textMuted,
     },
   };
 
@@ -50,9 +46,8 @@ export default function InfoNotice({ text, variant = "hero", size = 18 }) {
         style={{
           width: size,
           height: size,
-          borderRadius: "50%",
-          border: colors.border,
-          background: colors.background,
+          border: "none",
+          background: "none",
           color: colors.color,
           display: "flex",
           alignItems: "center",
@@ -60,9 +55,10 @@ export default function InfoNotice({ text, variant = "hero", size = 18 }) {
           cursor: "pointer",
           padding: 0,
           flexShrink: 0,
+          opacity: open ? 1 : 0.8,
         }}
       >
-        <InfoIcon size={Math.round(size * 0.6)} />
+        <InfoIcon size={size} />
       </button>
       {open && coords &&
         createPortal(

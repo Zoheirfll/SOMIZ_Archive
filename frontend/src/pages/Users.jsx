@@ -12,6 +12,7 @@ import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
 import { useConfirm } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import useOrgScopeForm from "../hooks/useOrgScopeForm";
 import ScopeLevel from "../components/userScope/ScopeLevel";
 
@@ -41,6 +42,7 @@ const EyeIcon = ({ open }) => open ? (
 );
 
 const Users = () => {
+  usePageTitle("Utilisateurs");
   const theme = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -495,6 +497,10 @@ const Users = () => {
                   <Skeleton width="35%" height={14} />
                 </div>
               ))}
+            </div>
+          ) : users.length === 0 ? (
+            <div style={{ color: theme.textSecondary, textAlign: "center", padding: 40 }}>
+              Aucun utilisateur trouvé.
             </div>
           ) : (
             <div style={{ overflowX: "auto" }}>

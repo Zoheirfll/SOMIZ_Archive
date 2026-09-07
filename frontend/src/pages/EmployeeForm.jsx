@@ -10,6 +10,7 @@ import PageBackground from "../components/PageBackground";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES, FIELD_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import { useConfirm } from "../components/ConfirmDialog";
 import SearchableSelect from "../components/SearchableSelect";
 
@@ -126,6 +127,7 @@ const EmployeeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = !!id;
+  usePageTitle(isEdit ? "Modifier employé" : "Nouvel employé");
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
 

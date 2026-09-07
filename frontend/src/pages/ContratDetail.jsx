@@ -13,6 +13,7 @@ import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
+import usePageTitle from "../hooks/usePageTitle";
 import { employeeSlug } from "../utils/employeeSlug";
 
 const getStatutColors = (theme) => ({
@@ -82,6 +83,7 @@ const ContratDetail = () => {
   const isMobile = useIsMobile();
 
   const [contrat, setContrat] = useState(null);
+  usePageTitle(contrat ? `Contrat ${contrat.numero_contrat}` : "Contrat");
   const [selectedDoc, setSelectedDoc] = useState(null);
   // Ids des documents dont l'historique (versions antérieures conservées)
   // est déplié dans la sidebar — replié par défaut.
@@ -91,6 +93,7 @@ const ContratDetail = () => {
   const [docLoading, setDocLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [busyIds, setBusyIds] = useState(() => new Set());
   const [uploadType, setUploadType] = useState("");
   const [message, setMessage] = useState(null);
   const [typesDocuments, setTypesDocuments] = useState({});
@@ -305,80 +308,107 @@ const ContratDetail = () => {
     }
   };
 
+  // Empêche un double-clic (ou deux prompts empilés) de déclencher deux
+  // appels API concurrents sur le même fichier/document.
+  const withBusyGuard = (busyId, fn) => async (...args) => {
+    if (busyIds.has(busyId)) return;
+    setBusyIds((prev) => new Set(prev).add(busyId));
+    try {
+      await fn(...args);
+    } finally {
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(busyId);
+        return next;
+      });
+    }
+  };
+
   const handleDeleteFile = async (file, e) => {
     e.stopPropagation();
+    if (busyIds.has(file.id)) return;
     if (!(await confirm(`Supprimer "${file.file_name}" ?`))) return;
-    try {
-      await api.delete(`/files/${file.id}/`);
-      setMessage({ type: "success", text: "Fichier supprimé." });
-      if (selectedFile?.id === file.id) { setSelectedFile(null); setDocUrl(null); }
-      fetchContrat(true);
-    } catch (err) {
-      setMessage({ type: "error", text: "Erreur lors de la suppression." });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    await withBusyGuard(file.id, async () => {
+      try {
+        await api.delete(`/files/${file.id}/`);
+        setMessage({ type: "success", text: "Fichier supprimé." });
+        if (selectedFile?.id === file.id) { setSelectedFile(null); setDocUrl(null); }
+        fetchContrat(true);
+      } catch (err) {
+        setMessage({ type: "error", text: "Erreur lors de la suppression." });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
+      }
+    })();
   };
 
   const handleRenameFile = async (file, e) => {
     e?.stopPropagation();
+    if (busyIds.has(file.id)) return;
     const dotIndex = (file.file_name || "").lastIndexOf(".");
     const baseName = dotIndex > 0 ? file.file_name.slice(0, dotIndex) : file.file_name || "";
     const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
     const newBaseName = await prompt("Nouveau nom du fichier :", baseName);
     if (newBaseName === null || !newBaseName || newBaseName === baseName) return;
     const newName = `${newBaseName}${ext}`;
-    try {
-      await api.patch(`/files/${file.id}/`, { file_name: newName });
-      setMessage({ type: "success", text: "Fichier renommé." });
-      fetchContrat(true);
-    } catch (err) {
-      setMessage({
-        type: "error",
-        text: err.response?.data?.error || "Erreur lors du renommage.",
-      });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    await withBusyGuard(file.id, async () => {
+      try {
+        await api.patch(`/files/${file.id}/`, { file_name: newName });
+        setMessage({ type: "success", text: "Fichier renommé." });
+        fetchContrat(true);
+      } catch (err) {
+        setMessage({
+          type: "error",
+          text: err.response?.data?.error || "Erreur lors du renommage.",
+        });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
+      }
+    })();
   };
 
   // Renomme un fichier d'après le libellé de son type de document
   // ("Acte de naissance" au lieu du nom technique du scan), en un clic.
   const handleAutoRenameFile = async (file, label, e) => {
     e?.stopPropagation();
-    if (!label) return;
+    if (!label || busyIds.has(file.id)) return;
     const dotIndex = (file.file_name || "").lastIndexOf(".");
     const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
     const newName = `${label}${ext}`;
     if (newName === file.file_name) return;
-    try {
-      await api.patch(`/files/${file.id}/`, { file_name: newName });
-      setMessage({ type: "success", text: "Fichier renommé." });
-      fetchContrat(true);
-    } catch (err) {
-      setMessage({
-        type: "error",
-        text: err.response?.data?.error || "Erreur lors du renommage.",
-      });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    await withBusyGuard(file.id, async () => {
+      try {
+        await api.patch(`/files/${file.id}/`, { file_name: newName });
+        setMessage({ type: "success", text: "Fichier renommé." });
+        fetchContrat(true);
+      } catch (err) {
+        setMessage({
+          type: "error",
+          text: err.response?.data?.error || "Erreur lors du renommage.",
+        });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
+      }
+    })();
   };
 
   const handleDeleteDoc = async (doc, e) => {
     e.stopPropagation();
+    if (busyIds.has(doc.id)) return;
     const nomType = typesDocuments[doc.type_document] || doc.type_document;
     if (!(await confirm(`Supprimer "${nomType} v${doc.version}" et ses ${doc.nb_fichiers} fichier(s) ?`))) return;
-    try {
-      await api.delete(`/documents/${doc.id}/`);
-      setMessage({ type: "success", text: "Document supprimé." });
-      if (selectedDoc?.id === doc.id) { setSelectedDoc(null); setSelectedFile(null); setDocUrl(null); }
-      fetchContrat(true);
-    } catch (err) {
-      setMessage({ type: "error", text: "Erreur lors de la suppression." });
-    } finally {
-      setTimeout(() => setMessage(null), 4000);
-    }
+    await withBusyGuard(doc.id, async () => {
+      try {
+        await api.delete(`/documents/${doc.id}/`);
+        setMessage({ type: "success", text: "Document supprimé." });
+        if (selectedDoc?.id === doc.id) { setSelectedDoc(null); setSelectedFile(null); setDocUrl(null); }
+        fetchContrat(true);
+      } catch (err) {
+        setMessage({ type: "error", text: "Erreur lors de la suppression." });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
+      }
+    })();
   };
 
   if (loading)
@@ -628,12 +658,13 @@ const ContratDetail = () => {
                   {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                     <button
                       onClick={(e) => handleDeleteDoc(doc, e)}
+                      disabled={busyIds.has(doc.id)}
                       title="Supprimer ce document"
                       aria-label="Supprimer ce document"
                       style={{
                         background: "transparent", border: "none",
-                        color: theme.danger, cursor: "pointer", display: "flex",
-                        padding: "2px 4px", opacity: 0.5,
+                        color: theme.danger, cursor: busyIds.has(doc.id) ? "not-allowed" : "pointer", display: "flex",
+                        padding: "2px 4px", opacity: busyIds.has(doc.id) ? 0.3 : 0.5,
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                       onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
@@ -677,11 +708,12 @@ const ContratDetail = () => {
                           <div style={{ display: "flex", gap: 6 }}>
                           <button
                             onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
+                            disabled={busyIds.has(file.id)}
                             title="Renommer d'après le type de document"
                             aria-label="Renommer d'après le type de document"
                             style={{
                               background: "transparent", border: "none",
-                              color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.5,
+                              color: theme.textSecondary, cursor: busyIds.has(file.id) ? "not-allowed" : "pointer", display: "flex", opacity: busyIds.has(file.id) ? 0.3 : 0.5,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
@@ -690,11 +722,12 @@ const ContratDetail = () => {
                           </button>
                           <button
                             onClick={(e) => handleRenameFile(file, e)}
+                            disabled={busyIds.has(file.id)}
                             title="Renommer ce fichier"
                             aria-label="Renommer ce fichier"
                             style={{
                               background: "transparent", border: "none",
-                              color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.5,
+                              color: theme.textSecondary, cursor: busyIds.has(file.id) ? "not-allowed" : "pointer", display: "flex", opacity: busyIds.has(file.id) ? 0.3 : 0.5,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
@@ -703,11 +736,12 @@ const ContratDetail = () => {
                           </button>
                           <button
                             onClick={(e) => handleDeleteFile(file, e)}
+                            disabled={busyIds.has(file.id)}
                             title="Supprimer ce fichier"
                             aria-label="Supprimer ce fichier"
                             style={{
                               background: "transparent", border: "none",
-                              color: theme.danger, cursor: "pointer", display: "flex", opacity: 0.5,
+                              color: theme.danger, cursor: busyIds.has(file.id) ? "not-allowed" : "pointer", display: "flex", opacity: busyIds.has(file.id) ? 0.3 : 0.5,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                             onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
@@ -770,16 +804,17 @@ const ContratDetail = () => {
                       {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                         <button
                           onClick={(e) => handleDeleteDoc(h, e)}
+                          disabled={busyIds.has(h.id)}
                           title="Supprimer cette version"
                           aria-label="Supprimer cette version"
                           style={{
                             background: "transparent",
                             border: "none",
                             color: theme.danger,
-                            cursor: "pointer",
+                            cursor: busyIds.has(h.id) ? "not-allowed" : "pointer",
                             display: "flex",
                             padding: "2px 4px",
-                            opacity: 0.5,
+                            opacity: busyIds.has(h.id) ? 0.3 : 0.5,
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                           onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
@@ -890,11 +925,12 @@ const ContratDetail = () => {
                       {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                         <button
                           onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
+                          disabled={busyIds.has(selectedFile.id)}
                           title="Renommer d'après le type de document"
                           aria-label="Renommer d'après le type de document"
                           style={{
                             background: "transparent", border: "none",
-                            color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.6, padding: 0,
+                            color: theme.textSecondary, cursor: busyIds.has(selectedFile.id) ? "not-allowed" : "pointer", display: "flex", opacity: busyIds.has(selectedFile.id) ? 0.3 : 0.6, padding: 0,
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                           onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
@@ -905,11 +941,12 @@ const ContratDetail = () => {
                       {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                         <button
                           onClick={(e) => handleRenameFile(selectedFile, e)}
+                          disabled={busyIds.has(selectedFile.id)}
                           title="Renommer ce fichier"
                           aria-label="Renommer ce fichier"
                           style={{
                             background: "transparent", border: "none",
-                            color: theme.textSecondary, cursor: "pointer", display: "flex", opacity: 0.6, padding: 0,
+                            color: theme.textSecondary, cursor: busyIds.has(selectedFile.id) ? "not-allowed" : "pointer", display: "flex", opacity: busyIds.has(selectedFile.id) ? 0.3 : 0.6, padding: 0,
                           }}
                           onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
                           onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
