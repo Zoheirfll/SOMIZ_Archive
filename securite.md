@@ -989,12 +989,23 @@ chaque test apparu en échec dans un run bruyant a été confirmé passant à
 l'exécution isolée (contention PostgreSQL sur la base de test, pas un
 problème applicatif).
 
-**Laissé de côté** — le reste des vulnérabilités npm (arbre de
-dépendances de build de `react-scripts` : `webpack-dev-server`, `postcss`,
-`svgo`, `nth-check`...) n'a de correctif que via une réinstallation
-forcée de `react-scripts`, avec un risque réel de casser le build (Create
-React App n'est plus maintenu). Impact réel limité : dépendances de
-build/dev, jamais expédiées dans le bundle de production.
+**Suite (même jour)** — le reste de l'arbre `react-scripts` (`postcss`,
+`svgo`, `nth-check`, `css-select`, `serialize-javascript`, `uuid`) a
+finalement été corrigé via `overrides` dans `package.json`, en forçant
+chaque sous-dépendance vers sa plus petite version patchée **sans** saut
+de génération majeure (`nth-check` 1.x→2.1.1, `svgo`→2.8.4, `postcss`
+→8.5.28, etc.) — validé par `npm run build` (production) et `npm start`
+(dev server) toujours fonctionnels, 375/375 tests frontend au vert.
+
+`webpack-dev-server` reste **non corrigé** (2 vulnérabilités modérées,
+CWE-346/CWE-749, `GHSA-9jgg-88mc-972h`/`GHSA-4v9v-hfq4-rm2v`) — la seule
+version patchée est la 5.x, testée puis abandonnée : react-scripts 5.0.1
+lui passe encore les options `onAfterSetupMiddleware`/
+`onBeforeSetupMiddleware`, supprimées en v5 (`npm start` plante avec
+"Invalid options object"). Risque accepté et documenté : outil de dev
+local uniquement, nécessite qu'un utilisateur visite un site malveillant
+pendant que le serveur de dev tourne — aucune exposition en production
+(ces dépendances ne sont jamais expédiées dans le bundle buildé).
 
 ---
 
