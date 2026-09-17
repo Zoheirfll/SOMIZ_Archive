@@ -672,29 +672,42 @@ class ReferentielImportView(APIView):
 
         def resoudre_departement(row, ligne_erreurs, label='Departement'):
             """Resout un Departement par 'departement' (+ 'direction'
-            optionnelle pour lever l'ambiguite). Retourne None et ajoute une
-            erreur a ligne_erreurs si non trouve/ambigu."""
-            dept_nom = row.get('departement', '').strip().upper()
+            optionnelle pour lever l'ambiguite). Cree automatiquement le
+            Departement (et sa Direction si elle aussi absente) quand la
+            Direction est non ambigue (colonne 'direction' renseignee).
+            Retourne None et ajoute une erreur a ligne_erreurs uniquement
+            en cas d'absence de Direction pour trancher/creer, ou
+            d'homonymie sans Direction pour departager."""
+            dept_nom_brut = row.get('departement', '').strip()
+            dept_nom = dept_nom_brut.upper()
             if not dept_nom:
                 return None
-            dir_nom = row.get('direction', '').strip().upper()
+            dir_nom_brut = row.get('direction', '').strip()
+            dir_nom = dir_nom_brut.upper()
             if dir_nom:
                 dept = departements_par_cle.get((dir_nom, dept_nom))
-                if not dept:
-                    ligne_erreurs.append(
-                        f'{label} "{row.get("departement")}" introuvable sous la direction "{row.get("direction")}"'
-                    )
-                return dept
+                if dept:
+                    return dept
+                direction = directions_cache.get(dir_nom)
+                if not direction:
+                    direction = Direction.objects.create(nom=dir_nom_brut)
+                    directions_cache[dir_nom] = direction
+                nouveau = Departement.objects.create(nom=dept_nom_brut, direction=direction)
+                departements_par_cle[(dir_nom, dept_nom)] = nouveau
+                departements_par_nom.setdefault(dept_nom, []).append(nouveau)
+                return nouveau
             matches = departements_par_nom.get(dept_nom, [])
-            if not matches:
-                ligne_erreurs.append(f'{label} "{row.get("departement")}" introuvable')
-                return None
+            if len(matches) == 1:
+                return matches[0]
             if len(matches) > 1:
                 ligne_erreurs.append(
                     f'Plusieurs departements nommes "{row.get("departement")}" existent, precisez la colonne "direction"'
                 )
                 return None
-            return matches[0]
+            ligne_erreurs.append(
+                f'{label} "{row.get("departement")}" introuvable — renseignez la colonne "direction" pour le creer automatiquement'
+            )
+            return None
 
         ModelClass = config['model']
 
@@ -737,12 +750,14 @@ class ReferentielImportView(APIView):
             departement = None
 
             if model in ('poles', 'departements'):
-                dir_nom = row.get('direction', '').upper()
+                dir_nom_brut = row.get('direction', '').strip()
+                dir_nom = dir_nom_brut.upper()
                 direction = directions_cache.get(dir_nom)
                 if not dir_nom:
                     ligne_erreurs.append("Direction manquante")
                 elif not direction:
-                    ligne_erreurs.append(f'Direction "{row.get("direction")}" introuvable')
+                    direction = Direction.objects.create(nom=dir_nom_brut)
+                    directions_cache[dir_nom] = direction
                 cle_doublon = (direction.id if direction else None, nom.upper())
 
             elif model == 'services':
@@ -764,10 +779,12 @@ class ReferentielImportView(APIView):
                 if a_departement:
                     departement = resoudre_departement(row, ligne_erreurs, label='Departement')
                 elif a_direction:
-                    dir_nom = row.get('direction', '').strip().upper()
+                    dir_nom_brut = row.get('direction', '').strip()
+                    dir_nom = dir_nom_brut.upper()
                     direction = directions_cache.get(dir_nom)
                     if not direction:
-                        ligne_erreurs.append(f'Direction "{row.get("direction")}" introuvable')
+                        direction = Direction.objects.create(nom=dir_nom_brut)
+                        directions_cache[dir_nom] = direction
                 else:
                     ligne_erreurs.append('Direction ou Departement requis (exactement un des deux)')
                 cle_doublon = (
