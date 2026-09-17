@@ -352,6 +352,72 @@ CONSULTANT, la recherche, l'archivage et l'audit (voir section Scoping).
 
 ---
 
+## Champ personnalisé conditionnel (2026-09-17)
+
+Un `ChampPersonnalise` peut être rattaché à un autre via
+`condition_champ` (FK vers `self`, `SET_NULL`) + `condition_valeur`
+(`CharField`) : il n'est alors affiché (fiche, formulaire d'édition, liste
+`/employees`) que si l'employé a exactement cette valeur sur le champ
+référencé. Cas d'usage type : "Salaire unique" (montant) visible
+seulement si "Situation familiale" = "Marié" (champ de type `liste`, voir
+section "Champ personnalisé liste" plus haut).
+
+- `ChampPersonnaliseSerializer.validate()` refuse qu'un champ dépende de
+  lui-même, et force `condition_valeur=''` dès que `condition_champ` est
+  vide (jamais de valeur requise orpheline).
+- `champ_condition_remplie(champ, valeurs_par_champ_id)`
+  (`employees/serializers.py`) — fonction partagée, utilisée par
+  `EmployeeDetailSerializer.get_champs_personnalises()` (fiche + pré-remplissage
+  du formulaire d'édition) et `EmployeeListSerializer.get_champs_personnalises()`
+  (colonnes configurables `/employees`) : un champ dont la condition n'est
+  pas remplie est **absent** de la réponse API, pas seulement masqué côté
+  frontend — la valeur (ex. un salaire) n'est jamais renvoyée à un
+  utilisateur pour qui la condition ne tient pas.
+- `EmployeeForm.jsx` : `champConditionMet(champ, champsValues)` réévalue la
+  condition en direct pendant la saisie (avant tout enregistrement), en
+  s'appuyant sur `champsDefinitions` (qui reçoit toutes les définitions,
+  condition incluse, via `/ref/champs-personnalises/`) et le state
+  `champsValues` du formulaire.
+- UI `/parametres` → "Champs personnalisés" : select "Champ conditionnel"
+  (n'importe quel autre champ non système) + "Valeur requise" (select des
+  options actives si le champ choisi est de type `liste`, sinon texte
+  libre).
+- "Situation familiale" et "Salaire unique" sont deux champs personnalisés
+  ordinaires (pas de code système dédié) — comme "Lieu de naissance"
+  (voir section "Champs personnalisés — panneau Informations
+  configurable"), ils sont extraits par nom dans `EmployeeForm.jsx`
+  (`champSituationFamiliale`/`champSalaireUnique`) pour s'afficher dans la
+  section "Identité" plutôt que "Informations complémentaires" — même
+  limite que `champLieuNaissance` (pas de code stable garanti pour un
+  champ créé dynamiquement).
+
+### Ordre des champs — fiche vs formulaire d'édition
+
+- **Fiche employé (lecture)** : l'ordre est entièrement piloté par
+  `ChampPersonnalise.ordre` (mélangé avec les champs système via les
+  flèches ↑/↓ de `/parametres` → "Champs personnalisés", voir section
+  "Liste employés — colonnes configurables") — pas de code à changer pour
+  réordonner l'affichage de la fiche, y compris la position de
+  "Situation familiale"/"Salaire unique" ou d'"Échelle" par rapport à
+  "Catégorie".
+- **Formulaire de création/édition** (`EmployeeForm.jsx`) : la disposition
+  des champs structurels (section "Identité" : Matricule, N° Contrat,
+  Nom, Prénom, Statut, Date de naissance, Lieu de naissance, Type de
+  contrat, Date de recrutement, Date de fin de contrat, Situation
+  familiale, Salaire unique ; section "Organisation" : Direction →
+  Cellule/Section, Fonction, Catégorie) reste **codée en dur dans le
+  JSX**, indépendante de l'ordre configuré côté fiche — `Échelle` n'y
+  figure jamais (pas de champ direct sur `Employee`, voir "Historique de
+  carrière", seule la gestion manuelle depuis l'onglet Carrière permet de
+  la renseigner).
+- "Type de contrat" a été déplacé de la section "Organisation" vers
+  "Identité" (juste après "Lieu de naissance") pour rester adjacent à
+  "Date de fin de contrat" (masquée si le type sélectionné a
+  `duree_indeterminee=True`, voir section "Types de contrat à durée
+  indéterminée").
+
+---
+
 ## Panneau "Informations" — colonnes Personnel/Administratif (2026-09-01)
 
 Le panneau "Informations" de la fiche employé est divisé en 2 colonnes
