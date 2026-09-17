@@ -478,6 +478,95 @@ Un script one-off pour purger les fichiers orphelins de `backend/media/employees
 
 ---
 
+## Types de contrat à durée indéterminée (2026-09-17)
+
+`TypeContrat.duree_indeterminee` (bool, `default=False`) marque un type
+(ex. CDI, "Titulaire") comme n'ayant jamais de date de fin.
+
+- `ContratCreateUpdateSerializer.validate()` force `date_fin=None` dès que
+  le `type_contrat` résultant a `duree_indeterminee=True`, même si le
+  payload en envoie une — garde-fou serveur, le champ ne peut jamais être
+  contourné depuis l'API.
+- Formulaires Contrat (`ContratsTab.jsx` sur la fiche employé,
+  `ContratDetail.jsx` en édition) : le champ "Date de fin" est masqué (pas
+  seulement désactivé) dès que le type sélectionné a `duree_indeterminee`,
+  et sa valeur locale vidée au changement de type.
+- `/parametres` → "Types de contrat" : select "Durée indéterminée" dans le
+  formulaire (`RefForm.jsx`), même pattern `<select>` true/false que les
+  autres booléens du référentiel (pas de `<input type="checkbox">` natif).
+- Aucun changement à `Employee.date_fin_contrat`/
+  `sync_statut_from_dernier_contrat()` — cette synchro recopie déjà
+  `date_fin` du dernier contrat, qui sera `None` grâce au garde-fou
+  ci-dessus.
+
+---
+
+## Champ personnalisé "liste" (2026-09-17)
+
+En plus de texte/nombre/date/booléen, `ChampPersonnalise.type_champ`
+supporte `liste` (choix unique parmi des valeurs prédéfinies, éditables).
+
+- Nouveau modèle `ChampPersonnaliseOption` (`champ` FK, `valeur`, `ordre`,
+  `is_active`) — une valeur possible pour un champ de type liste. Retrait
+  toujours en soft-delete (`is_active=False`, jamais de suppression
+  définitive) : une valeur déjà enregistrée dans `EmployeeChampValeur`
+  pour une option désactivée reste affichée telle quelle, sans lien cassé
+  (`EmployeeChampValeur.valeur` reste un `CharField` texte libre, pas une
+  FK vers l'option).
+- `PATCH /api/employees/<id>/champs/` valide, pour un champ `type_champ=
+  liste`, que la valeur soumise correspond à une `ChampPersonnaliseOption`
+  `is_active=True` de ce champ (sinon 400) — une valeur déjà enregistrée
+  mais devenue orpheline n'est pas resoumise automatiquement.
+- Endpoints CRUD (ADMIN only) : `GET/POST /api/ref/champs-personnalises/
+  <id>/options/`, `PATCH /api/ref/champs-personnalises/options/<option_id>/`
+  (pas de `DELETE` — la désactivation est le seul mécanisme de retrait).
+- `ChampPersonnaliseSerializer` expose `options` (toutes, actives et
+  inactives) en lecture — c'est au consommateur (frontend) de filtrer sur
+  `is_active` selon le contexte (formulaire d'édition d'un champ vs.
+  saisie d'une valeur pour un employé).
+- `EmployeeDetailSerializer.get_champs_personnalises()` inclut, pour un
+  champ liste, la liste des options actives + l'option courante même si
+  elle est devenue inactive depuis (pour ne pas la faire disparaître du
+  select tant qu'elle reste la valeur enregistrée de cet employé).
+- UI : `/parametres` → "Champs personnalisés", sous-panneau
+  `ChampListeOptions.jsx` (ajouter/activer/désactiver une option, affiché
+  uniquement une fois le champ déjà enregistré — un champ pas encore créé
+  n'a pas d'id pour rattacher des options). `EmployeeForm.jsx` rend un
+  `<select>` pour un champ liste (au lieu d'un input texte), alimenté par
+  `champ.options` reçu de `/ref/champs-personnalises/`.
+
+---
+
+## Format d'affichage des dates — DD/MM/YYYY (2026-09-17)
+
+Toute date affichée à l'écran (pas les `<input type="date">` de saisie,
+qui gardent le format natif du navigateur, non personnalisable en HTML
+standard) utilise le format `DD/MM/YYYY`.
+
+- `frontend/src/utils/formatDate.js` (`formatDateFR(isoString)`) — parsing
+  manuel de la chaîne ISO (`YYYY-MM-DD` ou avec heure), pas
+  `new Date().toLocaleDateString()`, pour éviter tout décalage de fuseau
+  horaire sur une date sans heure. Retourne `—` pour une valeur vide/
+  invalide. Appliqué partout où une date structurelle (naissance,
+  recrutement, contrat, historique de carrière...) était affichée brute en
+  ISO — `EmployeesTable.jsx`, `EmployeeDetail.jsx`, `ContratDetail.jsx`,
+  `ContratsTab.jsx`, `CarriereTab.jsx`.
+- Les `formatDateTime()` locaux qui combinent déjà date+heure via
+  `toLocaleString("fr-FR", {...})` (upload de fichiers, audit) étaient
+  déjà en `DD/MM/YYYY` par construction de la locale `fr-FR` — non touchés.
+- Export xlsx `/api/reporting/stats-export.xlsx/` (`audit/views.py`,
+  `_stats_sheet(..., date_cols=[...])`) : les colonnes date sont écrites
+  comme objets `date` Python (pas des chaînes) avec
+  `cell.number_format = 'DD/MM/YYYY'` — lisible quel que soit le
+  paramètre régional Excel de l'admin qui l'ouvre.
+- Non concerné, volontairement : le parsing des imports CSV/xlsx en
+  entrée (reste au format ISO `YYYY-MM-DD` actuellement accepté) et les
+  exemples de valeurs dans les templates d'import téléchargeables
+  (`EmployeeImportTemplateView`) — ils doivent rester au format que
+  l'import sait effectivement relire, pas au format d'affichage écran.
+
+---
+
 ## Rotation par défaut des documents (2026-09-17)
 
 Dans `SecureDocViewer.jsx`, le bouton ⟳ (pivoter de 90°) reste disponible
