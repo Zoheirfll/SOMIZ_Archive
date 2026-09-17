@@ -89,14 +89,17 @@ class TestVoieHierarchique:
             {
                 "role": "Chef de service", "employee_id": str(chef_service.id),
                 "nom": "Kader", "prenom": "Amina", "matricule": "CHEF-SVC", "has_photo": False,
+                "unite_code": None,
             },
             {
                 "role": "Chef de département", "employee_id": str(chef_dept.id),
                 "nom": "Larbi", "prenom": "Yacine", "matricule": "CHEF-DEPT", "has_photo": False,
+                "unite_code": "RH",
             },
             {
                 "role": "Directeur", "employee_id": str(directeur.id),
                 "nom": "Haddad", "prenom": "Karim", "matricule": "DIR", "has_photo": False,
+                "unite_code": "DG",
             },
         ]
 
@@ -114,6 +117,7 @@ class TestVoieHierarchique:
             {
                 "role": "Directeur", "employee_id": str(directeur.id),
                 "nom": "Haddad", "prenom": "Karim", "matricule": "DIR", "has_photo": False,
+                "unite_code": "DG",
             },
         ]
 
@@ -147,10 +151,12 @@ class TestVoieHierarchique:
             {
                 "role": "Chef de cellule", "employee_id": str(chef_cellule.id),
                 "nom": "Belkacem", "prenom": "Sofiane", "matricule": "CHEF-CEL", "has_photo": False,
+                "unite_code": None,
             },
             {
                 "role": "Directeur", "employee_id": str(directeur.id),
                 "nom": "Haddad", "prenom": "Karim", "matricule": "DIR2", "has_photo": False,
+                "unite_code": "DG",
             },
         ]
 

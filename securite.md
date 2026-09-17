@@ -1,7 +1,7 @@
 # SOMIZ — Journal de vérification sécurité
 
 Suivi des points de sécurité vérifiés à la demande, un par un.
-Dernière mise à jour : 2026-08-28.
+Dernière mise à jour : 2026-09-15.
 
 ---
 
@@ -758,6 +758,196 @@ employé. Spec complète :
 
 **Verdict : traitement conforme (local, opt-in, tracé), pas de nouveau
 canal d'accès ou de contournement du scoping existant.**
+
+---
+
+## 34. Différenciation des limites de taille par fichier — upload classique vs scanner (2026-09-14) — ✅ Implémenté
+
+**Contexte** : `MAX_UPLOAD_SIZE_MB` (20 Mo) était partagé entre l'upload
+classique d'un document (`DocumentUploadSerializer`, utilisé pour le
+dossier employé et pour les documents de contrat) et le scanner de
+dossier groupé (`ScanImportSerializer`). Demande utilisateur : durcir la
+limite de l'upload classique à 5 Mo (fichier unique, généralement un
+document déjà numérisé côté utilisateur) tout en gardant 20 Mo pour le
+scanner (fichiers sources PDF multi-pages/images, susceptibles d'être
+plus volumineux avant découpage en pages).
+
+- `backend/config/settings.py` : `MAX_UPLOAD_SIZE_MB = 5` (upload
+  classique), nouvelle constante `MAX_SCAN_IMPORT_SIZE_MB = 20`
+  (scanner un dossier) — les deux limites sont désormais indépendantes.
+- `ScanImportSerializer.validate()` (`backend/employees/serializers.py`)
+  bascule sur `MAX_SCAN_IMPORT_SIZE_MB`. `DocumentUploadSerializer`
+  (dossier employé **et** documents de contrat, `ContratDocumentListUploadView`
+  réutilise le même serializer) continue d'utiliser `MAX_UPLOAD_SIZE_MB`,
+  donc hérite automatiquement de la nouvelle limite à 5 Mo — pas de
+  changement de code dans cette classe, juste de la valeur de settings.
+- Ne touche pas `MAX_PHOTO_SIZE_MB` (5 Mo, déjà séparé) ni la limite de
+  taille des fichiers d'import référentiel/employé (`import_views.py`,
+  toujours `MAX_UPLOAD_SIZE_MB` — donc désormais 5 Mo aussi pour un
+  fichier CSV/xlsx d'import, effet de bord accepté : ces fichiers sont
+  tabulaires, jamais volumineux en pratique).
+- Test `test_upload_file_too_large` (`backend/tests/test_document_upload.py`)
+  adapté (21 Mo → 6 Mo) pour rester au-dessus de la nouvelle limite à 5 Mo.
+- Aucun changement côté scoping/permissions — purement une limite de
+  taille, pas de nouveau canal d'accès.
+
+**Verdict : durcissement volontaire, pas de régression de sécurité.**
+Suite de tests backend à relancer dans un environnement complet
+(Postgres/Redis/Celery) avant merge — non vérifiable dans l'environnement
+qui a servi à ce changement (module `celery` absent).
+
+**Révision du 2026-09-15 (demande explicite utilisateur)** : la limite de
+5 Mo/fichier de l'upload classique est revenue à **20 Mo** (alignée sur le
+scanner), et le nombre de fichiers sélectionnables en une fois est passé de
+10 à **50** (`DocumentUploadSerializer.files`, `backend/employees/serializers.py`).
+Nouveauté à cette occasion : une limite de **50 pages au total** dans le
+PDF final (`MAX_UPLOAD_PAGES`, `backend/config/settings.py`), vérifiée dans
+`DocumentListUploadView.post` (`backend/employees/views.py`) **avant**
+la création de l'`EmployeeDocument` — nécessaire car la règle du
+2026-09-14 fusionne tous les fichiers sélectionnés en un seul PDF, donc le
+vrai risque n'est pas le nombre de fichiers mais le nombre de pages final
+(un seul PDF source de 20 Mo peut déjà contenir des centaines de pages).
+Erreur 400 explicite et non silencieuse côté serveur (`{'error': "Trop de
+pages au total (N). Maximum 50 pages."}`), déjà remontée telle quelle par
+le frontend existant (`EmployeeDetail.jsx#handleUpload`, lit
+`err.response?.data?.error` en priorité).
+
+**Extension du 2026-09-15 (même jour, demande explicite utilisateur)** :
+`ContratDocumentListUploadView` (`backend/employees/views.py`) suivait
+jusque-là un comportement différent — chaque fichier stocké séparément,
+sans fusion. Alignée sur la même règle que le dossier employé : plusieurs
+fichiers sélectionnés d'un coup pour un document de contrat sont désormais
+**toujours fusionnés en un seul PDF** (même limite de 50 pages au total,
+même détection MIME avant fusion, même retrait de l'`EmployeeDocument` créé
+en cas d'échec de fusion). Bug corrigé au passage : `ContratDetail.jsx`
+(page `/contrats/:id`) ne lisait pas la clé `error` de la réponse 400 pour
+son upload (seulement `files[0]`) — un message générique "Erreur lors de
+l'upload." masquait donc le vrai motif (taille, type MIME, nombre de
+pages) ; corrigé pour lire `error` en priorité, même pattern que
+`EmployeeDetail.jsx`.
+
+Scanner de dossier (`ScanImportView`) : limites revues au même moment,
+demande utilisateur — 50 → **100 fichiers**, 300 → **100 pages** au total
+par import (`ScanImportSerializer`, `backend/employees/serializers.py`).
+Bug corrigé au passage : `ScanImportModal.jsx` ne lisait que
+`err.response?.data?.error`, alors qu'une erreur de validation globale
+(`.validate()` du serializer, ex. dépassement de fichiers/pages) remonte
+sous la clé DRF `non_field_errors` — un message générique masquait donc
+le vrai motif ; corrigé pour lire `error`, `non_field_errors[0]`,
+`files[0]` puis `plan` dans cet ordre.
+
+---
+
+## Photo de profil — cadrage à l'upload + suppression (2026-09-14)
+
+Ajout frontend uniquement : modale de cadrage (`PhotoCropModal.jsx`,
+`react-easy-crop`) avant l'upload de la photo employé, et bouton
+suppression (poubelle) à côté du crayon existant sur `EmployeeDetail.jsx`
+— appelle `DELETE /api/employees/{id}/photo/`, déjà existant côté backend
+mais jamais câblé côté UI. Aucun changement backend : `EmployeePhotoView`
+(validation MIME/taille, permissions ADMIN only pour POST/DELETE) reste
+identique. Le fichier envoyé au serveur est le JPEG recadré côté client
+(canvas), pas le fichier original — revalidé normalement côté serveur
+comme tout upload (python-magic).
+
+**Extension PDF (2026-09-14)** : l'input accepte aussi `application/pdf`
+(scan de photo d'identité) — `utils/pdfToImage.js`
+(`pdfFirstPageToImageUrl`, pdf.js déjà utilisé par `ScanImportModal`)
+rend la première page en image PNG côté client avant d'ouvrir la même
+modale de cadrage. Le PDF original n'est jamais envoyé au serveur — seul
+le JPEG recadré l'est, donc aucun changement de validation backend
+nécessaire (toujours JPEG/PNG/WebP, toujours 5 Mo max).
+
+**Verdict : aucune surface d'attaque nouvelle** — même endpoint, mêmes
+permissions, mêmes validations serveur ; le recadrage est une commodité
+UX côté client.
+
+---
+
+## 35. Exposition temporaire de dev via tunnels publics (ngrok / Cloudflare Tunnel / Tailscale Funnel) — 2026-09-15
+
+**Contexte** : session de débogage réseau (ngrok bloqué par le FAI/opérateur mobile
+de l'utilisateur), au cours de laquelle plusieurs outils de tunneling ont été
+installés et testés pour exposer le serveur de dev React (`frontend`, port 3000)
+sur internet, à des fins de test/démo — jamais en lien avec un déploiement de
+production SOMIZ.
+
+**Outils installés sur la machine de dev (Windows, hors dépôt git)** :
+- `ngrok` (déjà présent) — configuré avec un authtoken personnel dans
+  `%HOME%\AppData\Local\ngrok\ngrok.yml` (hors repo, non versionné).
+- `cloudflared` (Cloudflare Tunnel) — installé via winget, utilisé en mode
+  "quick tunnel" (URL aléatoire type `*.trycloudflare.com`, sans compte).
+- `Tailscale` — installé via winget, compte lié à `zoheir.fll31@gmail.com`,
+  Funnel activé sur le tailnet. Tentative d'exposition publique du port 3000
+  via `tailscale funnel` — **restée non fonctionnelle** (le DNS public de
+  `desktop-uek2hc8.tail9d7cd0.ts.net` renvoie l'IP interne CGNAT Tailscale
+  `100.110.0.60`, non routable depuis l'extérieur du tailnet ; accessible
+  uniquement depuis la machine elle-même/le tailnet, pas depuis un tiers).
+
+**Incident mineur corrigé pendant la session** : la commande de test
+`tailscale cert desktop-uek2hc8.tail9d7cd0.ts.net` a généré une **clé privée
+TLS** (`.key`) et son certificat (`.crt`) directement à la racine du dépôt
+(`c:\Users\filali\SOMIZ\`). Fichiers repérés non trackés par git (`git status`
+— jamais commités) et supprimés immédiatement. **Aucune fuite** (jamais poussé
+sur un remote), mais point de vigilance : toute commande générant des
+secrets/clés doit être exécutée en dehors du répertoire du dépôt (ex. dans un
+dossier temporaire), jamais à la racine du projet.
+
+**Changement de config laissé en place** : `frontend/.env` — `HOST=localhost`
+→ `HOST=127.0.0.1` (le serveur de dev React ne se liait qu'en IPv6 `::1` avec
+`localhost`, empêchant tout proxy/tunnel IPv4 de l'atteindre). Changement
+purement local au poste de dev, sans impact sur le comportement en production
+(le build de prod ne dépend pas de cette variable).
+
+**Portée et risque** : ces tunnels exposent le serveur de dev (données de
+test/démo uniquement, jamais une base de données de production) et ont tous
+été fermés en fin de session (`taskkill` sur `ngrok.exe`/`cloudflared.exe`,
+reset de la config Tailscale Funnel). Point de vigilance pour l'avenir :
+**ne jamais exposer un environnement contenant de vraies données RH** (même
+de test avancé/anonymisation incomplète) via un tunnel public sans
+authentification applicative en face — ces outils ne remplacent aucun
+contrôle d'accès SOMIZ (JWT, RBAC, scoping), ils ne font qu'exposer le port
+tel quel à quiconque connaît l'URL.
+
+---
+
+## 36. Rotation par défaut des documents — enregistrement réservé ADMIN/SUPERADMIN (2026-09-17) — ✅ Implémenté
+
+**Demande** : le viewer de document (`SecureDocViewer.jsx`) permettait déjà à
+tout utilisateur de pivoter un document localement (bouton ⟳, état React
+volatile, jamais persisté). Besoin : permettre à un ADMIN/SUPERADMIN
+d'enregistrer la rotation courante comme **valeur par défaut pour tout le
+monde**, sans donner ce pouvoir à un CONSULTANT (qui garde uniquement la
+rotation locale à sa session, comme avant).
+
+**Modèle** : `EmployeeDocumentFile.rotation` (image/fichier entier) et
+`EmployeeDocumentFilePage.rotation` (page d'un PDF, granularité par page —
+même principe que le nommage de page existant), `PositiveSmallIntegerField`
+choix `{0, 90, 180, 270}`, défaut `0`. Migration
+`employees/migrations/0034_employeedocumentfile_rotation_and_more.py`.
+
+**Backend — permission** : `PATCH /api/files/{id}/` et
+`PATCH /api/files/{id}/pages/{page_id}/` (déjà `IsAdmin` avant ce chantier,
+même vues que le renommage de fichier/page) acceptent en plus un champ
+`rotation` optionnel. Aucune nouvelle route créée — le garde-fou de
+permission existant (`IsAdmin`) suffit, pas besoin de vérifier `role` côté
+vue puisque CONSULTANT n'a jamais eu accès à ces endpoints. Tracé dans
+l'audit log existant (`MODIFY_DOC`, détail `rotation`).
+
+**Frontend — asymétrie ADMIN vs CONSULTANT** : le bouton ⟳ (rotation locale,
+non persistée) reste visible pour tous les rôles. Le nouveau bouton **💾
+Enregistrer** n'est rendu que si `["ADMIN","SUPERADMIN"].includes(user?.role)`
+(`SecureDocViewer.jsx`, prop `canSaveRotation` — passée depuis
+`EmployeeDetail.jsx`/`DossierTab.jsx` et `ContratDetail.jsx`), désactivé tant
+que la rotation courante égale la valeur déjà enregistrée (`savedRotation`
+pour une image, `pages[pageNumber-1].rotation` pour la page PDF affichée) —
+évite un appel réseau inutile en l'absence de changement réel.
+
+**Risque évalué** : faible — champ cosmétique (orientation d'affichage),
+aucune donnée sensible exposée/modifiée, pas de contournement du scoping
+CONSULTANT (`employee_scope_q`/`can_access_employee`, voir CLAUDE.md section
+Scoping) puisque la lecture/écriture passe par les mêmes vues `FileDetailView`/
+`FilePageDetailView` déjà scopées en amont (accès au fichier lui-même).
 
 ---
 

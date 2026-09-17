@@ -107,7 +107,6 @@ const Profil = () => {
             boxSizing: "border-box",
             fontFamily: theme.fontFamily,
           }}
-          placeholder="••••••••••"
         />
         <button
           type="button"

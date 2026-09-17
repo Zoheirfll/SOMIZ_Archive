@@ -577,6 +577,25 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Couleur invalide — attendu un code hexadécimal, ex. #166534.")
         return value.lower()
 
+    def validate_ordre(self, value):
+        # 0 = valeur par défaut "non précisée", volontairement exemptée pour
+        # ne pas bloquer les types déjà en base jamais explicitement
+        # réordonnés — mais dès qu'un admin choisit un numéro (1, 2, 6...),
+        # il doit être unique : sans ce garde-fou, plusieurs types se
+        # retrouvaient tous sur le même numéro, rendant le tri par ordre
+        # inopérant (l'admin ne savait plus lequel passait avant l'autre).
+        if not value:
+            return value
+        qs = TypeDocument.objects.filter(ordre=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        existing = qs.first()
+        if existing:
+            raise serializers.ValidationError(
+                f"Le numéro {value} est déjà utilisé par « {existing.nom} » — choisissez un autre ordre."
+            )
+        return value
+
     def validate_parent(self, value):
         if value is None:
             return value
@@ -755,6 +774,31 @@ class ChampsOrdreReorderView(APIView):
                 champ_id = entry.get('id')
                 if champ_id:
                     ChampPersonnalise.objects.filter(id=champ_id).update(ordre=ordre)
+        return Response({'ok': True})
+
+
+class TypeDocumentReorderView(APIView):
+    """
+    PUT /ref/types-documents/reorder/ — réordonne un groupe de types en une
+    seule requête (ADMIN only). Body : {"order": ["<uuid>", "<uuid>", ...]}
+    dans l'ordre final souhaité — réassigne un `ordre` séquentiel par
+    paliers de 10 (même convention que ChampsOrdreReorderView).
+
+    Toujours un seul groupe de fratrie à la fois : soit les catégories/
+    types racine entre eux, soit les sous-types d'une même catégorie entre
+    eux (jamais les deux mélangés — c'est le frontend, via handleMoveType/
+    getRefColumns, qui calcule ce sous-ensemble avant d'appeler cet
+    endpoint). Contourne volontairement TypeDocumentSerializer.validate_ordre
+    (l'unicité entre types n'a de sens que pour une saisie manuelle isolée
+    dans le formulaire d'édition, pas ici où toute la séquence est
+    recalculée d'un coup).
+    """
+    permission_classes = [IsAdmin]
+
+    def put(self, request):
+        order = request.data.get('order') or []
+        for idx, type_id in enumerate(order):
+            TypeDocument.objects.filter(id=type_id).update(ordre=idx * 10)
         return Response({'ok': True})
 
 

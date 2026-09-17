@@ -17,6 +17,8 @@ const ContratsTab = ({
   setNewContrat,
   savingContrat,
   handleCreateContrat,
+  handleDeleteContrat,
+  deletingContratId,
   user,
   isMobile,
 }) => {
@@ -123,7 +125,6 @@ const ContratsTab = ({
                           numero_contrat: e.target.value,
                         })
                       }
-                      placeholder=""
                       className="input-focus"
                       style={{
                         width: "100%",
@@ -486,9 +487,49 @@ const ContratsTab = ({
                           {c.nb_documents} doc(s)
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                          <span style={{ color: theme.primary, fontSize: 12 }}>
-                            Voir →
-                          </span>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <span style={{ color: theme.primary, fontSize: 12 }}>
+                              Voir →
+                            </span>
+                            {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteContrat(c);
+                                }}
+                                disabled={deletingContratId === c.id}
+                                title="Supprimer ce contrat"
+                                aria-label={`Supprimer le contrat ${c.numero_contrat}`}
+                                style={{
+                                  background: "transparent",
+                                  border: `1px solid ${theme.dangerBorder}`,
+                                  borderRadius: 6,
+                                  color: theme.danger,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  padding: "2px 8px",
+                                  cursor:
+                                    deletingContratId === c.id
+                                      ? "not-allowed"
+                                      : "pointer",
+                                  opacity: deletingContratId === c.id ? 0.4 : 0.8,
+                                  fontFamily: theme.fontFamily,
+                                }}
+                              >
+                                {deletingContratId === c.id
+                                  ? "Suppression..."
+                                  : "Supprimer"}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

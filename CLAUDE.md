@@ -38,6 +38,23 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 
 ---
 
+## Exposition locale via tunnel (dev uniquement, 2026-09-15)
+
+Le poste de dev peut avoir `ngrok`, `cloudflared` (Cloudflare Tunnel) et/ou
+`Tailscale` installés pour exposer temporairement le serveur de dev React
+(port 3000) sur internet à des fins de test/démo — voir `securite.md` point
+35 pour le détail de l'incident/config associés (dont un correctif
+`frontend/.env` : `HOST=127.0.0.1` au lieu de `localhost`, pour que le
+serveur de dev écoute en IPv4 et reste joignable par ces tunnels). **Ne
+jamais utiliser ces tunnels pour exposer un environnement avec de vraies
+données RH** — ils ne remplacent aucun contrôle d'accès SOMIZ (JWT, RBAC,
+scoping), ils exposent le port tel quel à quiconque a l'URL. Le tailnet
+Tailscale de cette machine (`desktop-uek2hc8.tail9d7cd0.ts.net`) reste actif
+mais son Funnel n'a pas pu être rendu réellement public (DNS renvoyant une
+IP interne Tailscale non routable) — non fiable comme solution durable.
+
+---
+
 ## Stack technique
 
 ### Backend
@@ -402,6 +419,27 @@ En plus des champs historiques, `Employee` porte désormais :
 
 ---
 
+## Limites d'upload — fichiers/taille/pages (2026-09-15)
+
+| Canal | Fichiers max | Taille/fichier | Pages max au total | Fusion en 1 PDF |
+|---|---|---|---|---|
+| Dossier employé (`DocumentListUploadView`) | 50 | 20 Mo | 50 | Oui |
+| Documents de contrat (`ContratDocumentListUploadView`) | 50 | 20 Mo | 50 | Oui (aligné le 2026-09-15) |
+| Scanner un dossier (`ScanImportView`) | 100 | 20 Mo | 100 | Oui (natif) |
+
+Constantes : `MAX_UPLOAD_SIZE_MB`, `MAX_UPLOAD_PAGES`,
+`MAX_SCAN_IMPORT_SIZE_MB` (`backend/config/settings.py`). Toute limite
+dépassée renvoie une erreur 400 explicite (`{'error': '...'}` ou
+`non_field_errors`) — **jamais silencieuse** : chaque page frontend
+concernée (`EmployeeDetail.jsx`, `ContratDetail.jsx`, `ScanImportModal.jsx`)
+doit lire `error` en priorité puis les fallbacks DRF (`non_field_errors`,
+`files[0]`, `plan`) avant d'afficher un message générique — deux bugs de
+ce type (message générique masquant la vraie erreur) corrigés le
+2026-09-15 sur `ContratDetail.jsx` et `ScanImportModal.jsx`. Détail complet
+: `securite.md` points 34-35.
+
+---
+
 ## Documents employés — suppression définitive (2026-07-22)
 
 **Changement de politique** (demande explicite utilisateur, dérogation au soft-delete standard) : la suppression d'un fichier (`FileDeleteView`) ou d'un document (`DocumentDeleteView`) est désormais un **hard delete** — ligne DB + fichier physique supprimés immédiatement, irréversible. Avant ce changement, `EmployeeDocument`/`EmployeeDocumentFile` étaient soft-deleted (`is_active=False`), y compris les anciennes versions remplacées par un ré-upload (mécanisme de versioning dans `EmployeeDocument.save()`) — cet historique de versions a été purgé en même temps (voir incident ci-dessous).
@@ -430,6 +468,39 @@ Un script one-off pour purger les fichiers orphelins de `backend/media/employees
 - `EmployeePhotoView` (`GET`/`POST`/`DELETE` sur `/api/employees/{id}/photo/`) : GET ouvert à ADMIN+CONSULTANT (respecte le scoping via `can_access_employee`), POST/DELETE réservés ADMIN. Upload restreint à JPEG/PNG/WebP, 5 Mo max (`settings.ALLOWED_PHOTO_MIME_TYPES`/`MAX_PHOTO_SIZE_MB` — distinct des réglages documents qui acceptent aussi PDF/TIFF).
 - `has_photo` (bool) exposé dans `EmployeeListSerializer`/`EmployeeDetailSerializer` — jamais l'URL/le chemin brut du fichier.
 - Frontend : `components/EmployeeAvatar.jsx` — récupère la photo via un fetch blob authentifié (comme les documents, pas de lien direct vers `/media/`), fallback sur les initiales. `shape="square"` (coins arrondis, façon photo d'identité) utilisé sur la fiche employé (grand format, upload via crayon) et dans la liste `/employees` (petit format).
+
+### Ajouter/modifier/supprimer + cadrage à l'upload (2026-09-14)
+
+- Sur `EmployeeDetail.jsx`, le crayon (upload/remplacement) ouvre désormais `components/PhotoCropModal.jsx` (`react-easy-crop`, zoom + déplacement) avant l'envoi — le fichier posté à `/photo/` est toujours le JPEG recadré côté client (canvas), jamais le fichier original. Une icône poubelle séparée (visible seulement si `has_photo`) appelle `DELETE /photo/` via `useConfirm()` (pas de `window.confirm`, voir section dédiée plus bas).
+- L'input accepte aussi `application/pdf` (scan de photo d'identité) : `utils/pdfToImage.js` (`pdfFirstPageToImageUrl`, réutilise pdf.js déjà chargé pour `ScanImportModal`) rend la première page du PDF en image PNG côté client avant d'ouvrir la même modale de cadrage — le PDF lui-même n'est jamais envoyé au serveur.
+- Aucun changement backend : `EmployeePhotoView` continue de valider JPEG/PNG/WebP, 5 Mo max, quelle que soit la source (image directe ou page de PDF convertie).
+- Toute erreur (upload refusé par le serveur, PDF illisible, échec du cadrage) affiche le texte réel — jamais un message vide (convention générale du projet, voir aussi le piège categorie/sous-type documenté ailleurs) : `PhotoCropModal` a son propre encart d'erreur, et `EmployeeDetail.jsx` ferme la modale puis réutilise le bandeau `message` existant en cas d'échec serveur.
+
+---
+
+## Rotation par défaut des documents (2026-09-17)
+
+Dans `SecureDocViewer.jsx`, le bouton ⟳ (pivoter de 90°) reste disponible
+pour tout le monde mais ne modifie qu'un état React local (jamais persisté,
+comme avant ce chantier). Un ADMIN/SUPERADMIN dispose en plus d'un bouton
+**💾 Enregistrer** (absent pour CONSULTANT) qui enregistre la rotation
+courante comme **valeur par défaut affichée à tous** les utilisateurs qui
+ouvriront ensuite ce document — un CONSULTANT peut toujours pivoter pour
+lui-même, mais ça n'écrit jamais cette valeur par défaut.
+
+- `EmployeeDocumentFile.rotation` (image/fichier entier) et
+  `EmployeeDocumentFilePage.rotation` (page de PDF, une valeur par page —
+  même granularité que le nommage de page déjà existant), choix
+  `{0, 90, 180, 270}`.
+- `PATCH /api/files/{id}/` et `PATCH /api/files/{id}/pages/{page_id}/`
+  (mêmes vues ADMIN only que le renommage) acceptent un champ `rotation`
+  optionnel en plus des champs existants.
+- `SecureDocViewer` : props `savedRotation` (image), `canSaveRotation`
+  (bool, calculé depuis `user.role` par la page appelante),
+  `onSaveRotation(rotation, pageId?)`. Câblé sur `EmployeeDetail.jsx`/
+  `DossierTab.jsx` (fichier ou page PDF) et `ContratDetail.jsx` (fichier
+  uniquement — `pages` n'y est pas encore câblé, un contrat n'a pas le
+  panneau de gestion de pages).
 
 ---
 
@@ -626,6 +697,20 @@ ci-dessous "Ajouter un document" qui a le même comportement).
   entre parenthèses (`_scan_import_file_name()`, ex. `"scan (p2).pdf"`).
   Ne **pas** renommer d'après le type de document ici (essayé puis
   abandonné : perd la diversité/traçabilité entre imports successifs).
+- **Fusion automatique quand plusieurs pages/fichiers rejoignent le même
+  type** (2026-09-15) : dans `ScanImportModal.jsx`, glisser plusieurs pages
+  (d'un même PDF source ou de fichiers différents, ex. recto + verso) sur
+  le même "dossier" 📁 produit un seul `EmployeeDocument` avec un seul
+  fichier fusionné (`ScanImportView.post`, `pdf_utils.merge_group_parts`)
+  — jamais plusieurs `EmployeeDocumentFile` séparés pour le même groupe.
+  Chaque page interne garde le nom de sa source (recto/verso, ou "<nom>
+  page N" pour une source multi-page), gérable ensuite individuellement
+  via `EmployeeDocumentFilePage` (renommer/réorganiser/remplacer/
+  supprimer, panneau "Modifier") — même règle et même mécanisme que
+  l'upload manuel multi-fichiers (`DocumentListUploadView.post`, voir plus
+  haut "on doit pouvoir renommer les pages"). Un groupe à une seule part
+  garde le comportement existant (fichier stocké tel quel ou pages
+  extraites, aucune fusion nécessaire).
 - Frontend : `components/ScanImportModal.jsx` — pdf.js (`react-pdf`, déjà
   utilisé par `SecureDocViewer`) génère une grille de miniatures. Chaque
   page est **glissée-déposée** (`draggable`) sur un "dossier" 📁 (un par

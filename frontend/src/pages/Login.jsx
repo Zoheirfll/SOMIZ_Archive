@@ -220,7 +220,6 @@ const Login = () => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="votre.identifiant"
                 className="input-focus"
                 style={inputStyle}
               />
@@ -244,7 +243,6 @@ const Login = () => {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••"
                   className="input-focus"
                   style={{ ...inputStyle, paddingRight: 44 }}
                 />

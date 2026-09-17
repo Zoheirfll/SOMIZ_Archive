@@ -29,6 +29,8 @@ export function getRefColumns({
   isAdmin,
   reorderingField,
   handleMoveField,
+  reorderingType,
+  handleMoveType,
   fetchTab,
   page,
   search,
@@ -38,7 +40,7 @@ export function getRefColumns({
     case "directions":
       return [
         { key: "nom", label: "Nom", bold: true },
-        { key: "code", label: "Code", mono: true, primary: true },
+        { key: "code", label: "Abréviation", mono: true, primary: true },
         {
           key: "nb_departements",
           label: "Départements",
@@ -58,7 +60,7 @@ export function getRefColumns({
     case "poles":
       return [
         { key: "nom", label: "Nom", bold: true },
-        { key: "code", label: "Code", mono: true, primary: true },
+        { key: "code", label: "Abréviation", mono: true, primary: true },
         { key: "direction_nom", label: "Direction" },
         {
           key: "nb_departements",
@@ -79,7 +81,7 @@ export function getRefColumns({
     case "departements":
       return [
         { key: "nom", label: "Nom", bold: true },
-        { key: "code", label: "Code", mono: true, primary: true },
+        { key: "code", label: "Abréviation", mono: true, primary: true },
         { key: "direction_nom", label: "Direction" },
         { key: "pole_nom", label: "Pôle", render: (i) => i.pole_nom || "—" },
         {
@@ -101,7 +103,7 @@ export function getRefColumns({
     case "services":
       return [
         { key: "nom", label: "Nom", bold: true },
-        { key: "code", label: "Code", mono: true, primary: true },
+        { key: "code", label: "Abréviation", mono: true, primary: true },
         { key: "departement_nom", label: "Département" },
         { key: "direction_nom", label: "Direction" },
         {
@@ -118,7 +120,7 @@ export function getRefColumns({
     case "cellules":
       return [
         { key: "nom", label: "Nom", bold: true },
-        { key: "code", label: "Code", mono: true, primary: true },
+        { key: "code", label: "Abréviation", mono: true, primary: true },
         {
           key: "rattachement",
           label: "Rattachée à",
@@ -147,7 +149,7 @@ export function getRefColumns({
     case "sections":
       return [
         { key: "nom", label: "Nom", bold: true },
-        { key: "code", label: "Code", mono: true, primary: true },
+        { key: "code", label: "Abréviation", mono: true, primary: true },
         {
           key: "rattachement",
           label: "Rattachée à",
@@ -260,14 +262,78 @@ export function getRefColumns({
         {
           key: "ordre",
           label: "Ordre",
-          render: (i) =>
-            i.parent_nom ? (
-              <span style={{ color: theme.textMuted, fontSize: 12 }}>
-                — (suit "{i.parent_nom}")
-              </span>
-            ) : (
-              (i.ordre ?? "—")
-            ),
+          sortable: false,
+          // Deux groupes de fratrie indépendants : les catégories/types
+          // racine entre eux, et les sous-types d'une même catégorie entre
+          // eux (jamais mélangés — voir handleMoveType côté page parente).
+          render: (i) => {
+            const siblings = i.parent
+              ? items.filter((it) => it.parent === i.parent)
+              : items.filter((it) => !it.parent);
+            const idx = siblings.findIndex((it) => it.id === i.id);
+            return (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    color: theme.textSecondary,
+                    fontSize: 12,
+                    minWidth: 18,
+                    textAlign: "right",
+                  }}
+                >
+                  {idx + 1}
+                </span>
+                {isAdmin &&
+                  (() => {
+                    const busy = !!reorderingType;
+                    const upDisabled = idx <= 0 || busy;
+                    const downDisabled = idx >= siblings.length - 1 || busy;
+                    return (
+                      <div
+                        style={{ display: "flex", flexDirection: "column", gap: 1 }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleMoveType(i, "up")}
+                          disabled={upDisabled}
+                          title="Monter"
+                          aria-label={`Monter ${i.nom}`}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            lineHeight: 1,
+                            fontSize: 10,
+                            color: upDisabled ? theme.textMuted : theme.primary,
+                            cursor: upDisabled ? "default" : "pointer",
+                          }}
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveType(i, "down")}
+                          disabled={downDisabled}
+                          title="Descendre"
+                          aria-label={`Descendre ${i.nom}`}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            lineHeight: 1,
+                            fontSize: 10,
+                            color: downDisabled ? theme.textMuted : theme.primary,
+                            cursor: downDisabled ? "default" : "pointer",
+                          }}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    );
+                  })()}
+              </div>
+            );
+          },
         },
         {
           key: "obligatoire",

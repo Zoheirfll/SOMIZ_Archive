@@ -29,6 +29,15 @@ jest.mock("../services/api", () => ({
   post: jest.fn(),
 }));
 
+// jsdom n'implémente pas URL.createObjectURL (utilisé pour prévisualiser
+// une image sélectionnée) — sans ce stub, tout test mêlant une image plante
+// avant même d'atteindre l'assertion, masquant la vraie régression testée.
+beforeAll(() => {
+  if (!URL.createObjectURL) {
+    URL.createObjectURL = jest.fn(() => "blob:mock");
+  }
+});
+
 describe("buildPageList", () => {
   it("returns one page entry per PDF page", () => {
     const files = [{ name: "scan.pdf", type: "application/pdf" }];
@@ -191,6 +200,46 @@ describe("ScanImportModal - sélection et groupes", () => {
     fireEvent.drop(dossier, { dataTransfer });
 
     expect(await screen.findByText(/Diplôme — 1 page/i)).toBeInTheDocument();
+  });
+});
+
+describe("ScanImportModal - fichiers mixtes PDF + image", () => {
+  it("builds the page grid when a photo is among the selected files (regression 2026-09-15)", async () => {
+    // Une image n'a pas d'onLoadSuccess (seuls les PDF passent par
+    // react-pdf) — si son entrée pageCounts reste `null`, la grille de
+    // pages ne se construit jamais et la modale semble bloquée.
+    render(
+      <ScanImportModal
+        employeeId="EMP001"
+        typesDocumentsList={baseTypes}
+        onClose={jest.fn()}
+        onImported={jest.fn()}
+      />
+    );
+    const pdf = new File(["pdf"], "scan.pdf", { type: "application/pdf" });
+    const photo = new File(["img"], "photo.jpg", { type: "image/jpeg" });
+    const input = screen.getByLabelText(/cliquez ou déposez/i, { selector: "input" });
+    await selectFile(input, [pdf, photo]);
+    await flushPdfLoad();
+
+    expect(await screen.findByTestId("scan-page-0-1")).toBeInTheDocument();
+    expect(await screen.findByTestId("scan-page-1-1")).toBeInTheDocument();
+  });
+
+  it("builds the page grid immediately when only images are selected (no PDF at all)", async () => {
+    render(
+      <ScanImportModal
+        employeeId="EMP001"
+        typesDocumentsList={baseTypes}
+        onClose={jest.fn()}
+        onImported={jest.fn()}
+      />
+    );
+    const photo = new File(["img"], "photo.jpg", { type: "image/jpeg" });
+    const input = screen.getByLabelText(/cliquez ou déposez/i, { selector: "input" });
+    await selectFile(input, photo);
+
+    expect(await screen.findByTestId("scan-page-0-1")).toBeInTheDocument();
   });
 });
 

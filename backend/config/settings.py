@@ -19,6 +19,14 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 # dans .env avant d'activer l'intégration en prod.
 GRH_WEBHOOK_SECRET = config('GRH_WEBHOOK_SECRET', default='dev-only-change-me')
 
+# Synchro sortante SOMIZ → plateforme-sps (webhook signé HMAC, symétrique du
+# GRH_WEBHOOK_SECRET ci-dessus mais dans l'autre sens — voir
+# employees/webhook_client.py). Opt-in : vide = intégration désactivée, ne
+# fait jamais échouer la création/modification d'un Employee. Ajouté le
+# 2026-09-16.
+PLATEFORME_SPS_WEBHOOK_URL = config('PLATEFORME_SPS_WEBHOOK_URL', default='')
+PLATEFORME_SPS_WEBHOOK_SECRET = config('PLATEFORME_SPS_WEBHOOK_SECRET', default='')
+
 # Intranet uniquement — adapter selon l'IP/le nom d'hôte du serveur SOMIZ.
 # ALLOWED_HOSTS ne supporte PAS la notation CIDR (ex: 192.168.1.0/24) : Django
 # ne fait que des correspondances exactes ou par sous-domaine (préfixe ".").
@@ -210,7 +218,9 @@ MEDIA_URL = '/media-internal/'  # Pas accessible directement — via API uniquem
 # Stockage organisé par employé
 # Structure : media/employees/{uuid_employe}/{type_document}/{fichier}
 DOCUMENT_UPLOAD_PATH = 'employees/{employee_id}/{doc_type}/'
-MAX_UPLOAD_SIZE_MB = 20  # 20 Mo max par fichier
+MAX_UPLOAD_SIZE_MB = 20  # 20 Mo max par fichier (upload classique document/contrat)
+MAX_SCAN_IMPORT_SIZE_MB = 20  # 20 Mo max par fichier source (Scanner un dossier)
+MAX_UPLOAD_PAGES = 50  # 50 pages max dans le PDF fusionné (upload classique document/contrat)
 ALLOWED_MIME_TYPES = [
     'application/pdf',
     'image/jpeg',

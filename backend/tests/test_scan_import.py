@@ -115,10 +115,10 @@ class TestScanImportSerializer:
 
     def test_too_many_files_rejected(self):
         type_doc = TypeDocument.objects.create(nom="CV", code="CV", is_active=True)
-        files = [pdf_upload_file(1, name=f"f{i}.pdf") for i in range(21)]
+        files = [pdf_upload_file(1, name=f"f{i}.pdf") for i in range(51)]
         plan = json.dumps({"groups": [
             {"type_doc": str(type_doc.id), "notes": "", "parts": [{"file_index": i, "pages": [1]}]}
-            for i in range(21)
+            for i in range(51)
         ]})
         with patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
             serializer = ScanImportSerializer(data={"files": files, "plan": plan})
@@ -130,7 +130,7 @@ class TestScanImportSerializer:
         file = pdf_upload_file(1)
         plan = json.dumps({"groups": [
             {"type_doc": str(type_doc.id), "notes": "", "parts": [
-                {"file_index": 0, "pages": list(range(1, 102))},
+                {"file_index": 0, "pages": list(range(1, 302))},
             ]},
         ]})
         with patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
@@ -200,6 +200,35 @@ class TestScanImportView:
         doc = EmployeeDocument.objects.get(employee=employee, type_doc=type_doc)
         stored_file = doc.fichiers.get(is_active=True)
         assert stored_file.file_name == "mon_cv.pdf"
+
+    def test_multi_part_group_merged_into_one_file_named_pages(self, admin_user, employee):
+        """2026-09-15 : plusieurs parts assignées au même type de document
+        (ex. recto + verso glissés sur le même dossier dans le scanner) ne
+        doivent plus produire deux fichiers séparés dans le même document —
+        elles sont fusionnées en un seul PDF, chaque page interne gardant le
+        nom de sa source (même règle que l'upload manuel multi-fichiers)."""
+        type_doc = TypeDocument.objects.create(nom="Fiche familiale", code="FICHE_FAM", is_active=True)
+        client = auth_client(admin_user)
+        recto = pdf_upload_file(1, name="recto.pdf")
+        verso = pdf_upload_file(1, name="verso.pdf")
+        plan = json.dumps({"groups": [
+            {"type_doc": str(type_doc.id), "parts": [
+                {"file_index": 0, "pages": [1]},
+                {"file_index": 1, "pages": [1]},
+            ]}
+        ]})
+        with patch("employees.views.magic.from_buffer", return_value="application/pdf"), \
+             patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
+            resp = client.post(
+                self._url(employee), {"files": [recto, verso], "plan": plan}, format="multipart"
+            )
+        assert resp.status_code == 201, resp.data
+        doc = EmployeeDocument.objects.get(employee=employee, type_doc=type_doc)
+        assert doc.nb_fichiers == 1, "un seul fichier physique, pas deux"
+        stored_file = doc.fichiers.get(is_active=True)
+        assert stored_file.file_name == "recto + verso.pdf"
+        pages = list(stored_file.pages.order_by("ordre").values_list("nom", flat=True))
+        assert pages == ["recto", "verso"]
 
     def test_split_single_pdf_into_two_groups(self, admin_user, employee):
         type_a = TypeDocument.objects.create(nom="Acte naissance", code="ACTE_NAISS", is_active=True)

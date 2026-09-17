@@ -40,6 +40,7 @@ const Parametres = () => {
   const { prompt, PromptDialog } = usePrompt();
   const [systemLabels, setSystemLabels] = useState({});
   const [reorderingField, setReorderingField] = useState(null);
+  const [reorderingType, setReorderingType] = useState(null);
   // Clé de l'élément en cours de suppression/renommage (id pour un item,
   // "system:<code>" pour un champ système) — bloque le double-clic.
   const [busyKey, setBusyKey] = useState(null);
@@ -205,6 +206,38 @@ const Parametres = () => {
       showMessage("error", "Impossible de réordonner ce champ.");
     } finally {
       setReorderingField(null);
+    }
+  };
+
+  // Déplace un type de document d'un cran dans l'onglet "Types de
+  // documents" — deux groupes de fratrie indépendants : les catégories/
+  // types racine entre eux, ou les sous-types d'une même catégorie entre
+  // eux (jamais mélangés, sinon un ▲ sur une catégorie pourrait swapper
+  // avec un sous-type d'une catégorie précédente sans effet visible, ce
+  // sous-type n'étant comparé qu'à ses propres frères — voir
+  // sortTypesDocumentsHierarchy). `items` reflète déjà cette hiérarchie
+  // (catégorie suivie de ses enfants) donc les frères d'un type se
+  // retrouvent en filtrant sur le même `parent`.
+  const handleMoveType = async (item, direction) => {
+    if (reorderingType) return;
+    setReorderingType(item.id);
+    try {
+      const siblings = item.parent
+        ? items.filter((t) => t.parent === item.parent)
+        : items.filter((t) => !t.parent);
+      const idx = siblings.findIndex((t) => t.id === item.id);
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (idx === -1 || swapIdx < 0 || swapIdx >= siblings.length) return;
+      const newSiblings = [...siblings];
+      [newSiblings[idx], newSiblings[swapIdx]] = [newSiblings[swapIdx], newSiblings[idx]];
+      await api.put("/ref/types-documents/reorder/", {
+        order: newSiblings.map((t) => t.id),
+      });
+      await fetchTab("types-documents", page, search, true);
+    } catch {
+      showMessage("error", "Impossible de réordonner ce type.");
+    } finally {
+      setReorderingType(null);
     }
   };
 
@@ -521,6 +554,8 @@ const Parametres = () => {
     theme,
     reorderingField,
     handleMoveField,
+    reorderingType,
+    handleMoveType,
     fetchTab,
     page,
     search,

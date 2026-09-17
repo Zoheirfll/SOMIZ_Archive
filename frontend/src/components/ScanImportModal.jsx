@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { useTheme } from "../context/ThemeContext";
 import { useConfirm } from "./ConfirmDialog";
@@ -6,8 +6,8 @@ import api from "../services/api";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `${window.location.origin}/pdf.worker.min.js`;
 
-const MAX_FILES = 20;
-const MAX_TOTAL_PAGES = 100;
+const MAX_FILES = 50;
+const MAX_TOTAL_PAGES = 300;
 const GROUP_COLORS = ["#dbeafe", "#dcfce7", "#fef3c7", "#fce7f3", "#ede9fe", "#fee2e2"];
 
 // Construit une liste plate d'entrées "page" à partir des fichiers
@@ -30,6 +30,43 @@ export function buildPageList(files, pageCounts) {
   });
   return entries;
 }
+
+// Ne monte son contenu (la vraie miniature PDF) qu'une fois visible à
+// l'écran (2026-09-15) — chaque miniature de page instancie son propre
+// <Document>, qui re-parse tout le fichier PDF et ouvre son propre canvas ;
+// au-delà d'une vingtaine de pages montées en même temps, les navigateurs
+// plafonnent les canvas/contexte concurrents et les miniatures suivantes
+// apparaissent tronquées/vides — impossible à identifier pour les
+// glisser-déposer sur un dossier. `rootMargin` précharge une marge
+// au-dessus/en dessous du viewport pour éviter un flash au scroll ;
+// `once` référencé via `hasBeenVisible` pour ne jamais redémonter (donc
+// re-parser) une miniature déjà chargée.
+const LazyThumb = ({ children, placeholder, rootRef }) => {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (visible || !ref.current) return undefined;
+    // `root: rootRef?.current` scope l'observation au conteneur scrollable
+    // de la modale (pas au viewport du navigateur) — sinon un élément
+    // clippé par le `overflowY: auto` de la modale mais toujours dans les
+    // bornes de la fenêtre serait compté comme visible et monté trop tôt.
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setVisible(true);
+      },
+      { root: rootRef?.current || null, rootMargin: "300px 0px" }
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [visible, rootRef]);
+
+  return (
+    <div ref={ref} style={{ width: "100%", height: "100%" }}>
+      {visible ? children : placeholder}
+    </div>
+  );
+};
 
 const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }) => {
   const theme = useTheme();
@@ -56,7 +93,13 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
     }
     setError(null);
     setFiles(selected);
-    setPageCounts(new Array(selected.length).fill(null));
+    // Une image n'a besoin d'aucun chargement pdf.js pour connaître son
+    // nombre de pages (toujours 1) — l'initialiser directement à 1 ici
+    // plutôt qu'à null, sinon `pageCounts.every(c => c !== null)` plus bas
+    // n'est jamais vrai dès qu'une image se trouve parmi les fichiers
+    // sélectionnés (seuls les PDF déclenchent onLoadSuccess), et la grille
+    // de pages ne s'affiche jamais — la modale semble bloquée.
+    setPageCounts(selected.map((f) => (f.type?.startsWith("image/") ? 1 : null)));
     setPages([]);
     setGroups([]);
     setSelectedPageIds(new Set());
@@ -67,17 +110,25 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
     setPageCounts((prev) => {
       const next = [...prev];
       next[fileIndex] = numPages;
-      if (next.every((c) => c !== null)) {
-        const list = buildPageList(files, next);
-        if (list.length > MAX_TOTAL_PAGES) {
-          setError(`Maximum ${MAX_TOTAL_PAGES} pages au total.`);
-        } else {
-          setPages(list);
-        }
-      }
       return next;
     });
-  }, [files]);
+  }, []);
+
+  // Construit la liste des pages dès que tous les fichiers ont un nombre
+  // de pages connu (images = déjà 1 à l'initialisation, PDF = rempli par
+  // handlePdfLoadSuccess) — y compris quand la sélection ne contient
+  // aucun PDF (aucun onLoadSuccess ne se déclenche alors).
+  useEffect(() => {
+    if (files.length === 0 || pageCounts.length !== files.length) return;
+    if (!pageCounts.every((c) => c !== null)) return;
+    const list = buildPageList(files, pageCounts);
+    if (list.length > MAX_TOTAL_PAGES) {
+      setError(`Maximum ${MAX_TOTAL_PAGES} pages au total.`);
+    } else {
+      setPages(list);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files, pageCounts]);
 
   const groupIdForPage = (pageId) => {
     const g = groups.find((grp) => grp.pageIds.includes(pageId));
@@ -207,7 +258,15 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
       setResult(resp.data);
       if (resp.data.created.length > 0) onImported();
     } catch (err) {
-      setResult({ created: [], failed: [{ error: err.response?.data?.error || "Erreur lors de l'import." }] });
+      const data = err.response?.data;
+      const message =
+        data?.error ||
+        data?.non_field_errors?.[0] ||
+        data?.files?.[0] ||
+        (typeof data?.plan === "string" ? data.plan : null) ||
+        (Array.isArray(data?.plan) ? data.plan[0] : null) ||
+        "Erreur lors de l'import.";
+      setResult({ created: [], failed: [{ error: message }] });
     } finally {
       setSubmitting(false);
     }
@@ -220,9 +279,11 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
     onClose();
   };
 
+  const scrollRef = useRef(null);
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-      <div style={{ background: theme.surface, borderRadius: 16, padding: 24, width: "min(960px, 92vw)", maxHeight: "88vh", overflowY: "auto", boxShadow: theme.shadowMd }}>
+      <div ref={scrollRef} style={{ background: theme.surface, borderRadius: 16, padding: 24, width: "min(960px, 92vw)", maxHeight: "88vh", overflowY: "auto", boxShadow: theme.shadowMd }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: theme.text }}>Scanner un dossier</div>
           <button onClick={handleClose} style={{ background: "none", border: "none", cursor: "pointer", color: theme.textMuted, fontSize: 20 }}>×</button>
@@ -266,11 +327,23 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
 
         {pages.length > 0 && !result && (
           <>
-            <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 8 }}>
-              Glissez une page (ou plusieurs pages sélectionnées) vers un dossier ci-dessous pour l'assigner. Cliquez une page pour la sélectionner/désélectionner, Shift-clic pour une plage.
-            </div>
+            {/* Sticky (2026-09-15) : avec beaucoup de pages (jusqu'à 300),
+                cette barre défilait hors de vue avec le reste — impossible
+                d'y glisser ou même d'y cliquer une fois descendu loin dans
+                la grille ("on est trop bas dans la sélection"). Fixée en
+                haut du conteneur scrollable de la modale, fond opaque pour
+                rester lisible par-dessus les miniatures qui défilent
+                dessous. */}
+            <div style={{
+              position: "sticky", top: 0, zIndex: 5, background: theme.surface,
+              paddingTop: 4, paddingBottom: 4,
+              borderBottom: `1px solid ${theme.border}`,
+            }}>
+              <div style={{ fontSize: 11, color: theme.textMuted, marginBottom: 8 }}>
+                Glissez une page (ou plusieurs pages sélectionnées) vers un dossier ci-dessous pour l'assigner. Cliquez une page pour la sélectionner/désélectionner, Shift-clic pour une plage.
+              </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingBottom: 12 }}>
               {typesDocumentsList.filter((t) => !t.is_categorie).map((t) => {
                 const group = groups.find((g) => g.typeDocId === t.id);
                 const isDragOver = dragOverTypeId === t.id;
@@ -299,9 +372,10 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
                   </div>
                 );
               })}
+              </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10, marginBottom: 16, marginTop: 12 }}>
               {pages.map((page) => {
                 const groupId = groupIdForPage(page.id);
                 const isSelected = selectedPageIds.has(page.id);
@@ -329,9 +403,11 @@ const ScanImportModal = ({ employeeId, typesDocumentsList, onClose, onImported }
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
                         />
                       ) : (
-                        <Document file={files[page.fileIndex]}>
-                          <Page pageNumber={page.pageNum} width={100} />
-                        </Document>
+                        <LazyThumb rootRef={scrollRef} placeholder={<div style={{ width: "100%", height: "100%" }} />}>
+                          <Document file={files[page.fileIndex]} loading="">
+                            <Page pageNumber={page.pageNum} width={100} />
+                          </Document>
+                        </LazyThumb>
                       )}
                     </div>
                     <div style={{ color: theme.textMuted }}>{page.fileName} — p.{page.pageNum}</div>

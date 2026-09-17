@@ -45,7 +45,7 @@ def run_ocr(file_id):
     result, _ = OcrResult.objects.get_or_create(file=file_obj)
 
     try:
-        text, confidence = run_ocr_on_file(file_obj.file.path, file_obj.mime_type)
+        text, confidence, page_texts = run_ocr_on_file(file_obj.file.path, file_obj.mime_type)
     except OcrEngineError as exc:
         result.status = OcrResult.Status.FAILED
         result.error_message = str(exc)
@@ -62,11 +62,12 @@ def run_ocr(file_id):
 
     result.status = OcrResult.Status.DONE
     result.raw_text = text
+    result.page_texts = page_texts
     result.confidence = confidence
     result.extracted_fields = fields
     result.processed_at = timezone.now()
     result.error_message = ''
     result.save(update_fields=[
-        'status', 'raw_text', 'confidence', 'extracted_fields',
+        'status', 'raw_text', 'page_texts', 'confidence', 'extracted_fields',
         'processed_at', 'error_message',
     ])

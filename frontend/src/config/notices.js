@@ -3,7 +3,11 @@
 
 export const PAGE_NOTICES = {
   employees: "Parcourez les employés par Direction, puis Département, puis Service, Cellule ou Section. Utilisez la recherche ou le filtre Statut pour retrouver un employé directement, et le bouton Colonnes pour choisir les informations affichées dans le tableau.",
-  employeeDetail: "Fiche complète d'un employé : informations, documents (classés par type, avec historique des versions) et contrats. Le bouton \"Scanner un dossier\" permet d'importer plusieurs documents scannés en une seule fois.",
+  // Deux variantes : l'aide ne doit jamais décrire une action que le rôle
+  // en question ne voit pas à l'écran (un CONSULTANT n'a ni "Scanner un
+  // dossier" ni "Modifier" — voir EmployeeDetail.jsx).
+  employeeDetail: "Fiche complète d'un employé : informations, documents (classés par type, avec historique des versions) et contrats.",
+  employeeDetailAdmin: "Fiche complète d'un employé : informations, documents (classés par type, avec historique des versions) et contrats. Le bouton \"Modifier\" permet de corriger les informations sans quitter la page, et \"Scanner un dossier\" d'importer plusieurs documents scannés en une seule fois.",
   employeeForm: "Créez ou modifiez un employé. L'affectation (Direction/Département/Service ou Cellule ou Section) détermine qui peut voir cet employé selon le périmètre des comptes Consultant. Un changement d'affectation vous sera demandé de confirmer avant l'enregistrement.",
   contratDetail: "Détail d'un contrat et de ses documents propres (distincts du dossier général de l'employé). Modifiable uniquement par un Administrateur.",
   dashboard: "Vue d'ensemble des effectifs et de la complétude des dossiers RH sur l'ensemble de l'organisation.",

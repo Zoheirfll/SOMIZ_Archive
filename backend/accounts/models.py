@@ -64,6 +64,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         related_name='created_users',
         verbose_name="Créé par"
     )
+    updated_by = models.ForeignKey(
+        'self', null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='updated_users',
+        verbose_name="Modifié par"
+    )
+    updated_at = models.DateTimeField(auto_now=True, null=True)
 
     is_active = models.BooleanField(default=True, verbose_name="Compte actif")
     is_staff = models.BooleanField(default=False)

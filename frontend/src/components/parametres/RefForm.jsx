@@ -49,17 +49,15 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Direction Générale"
             />
             <FieldError name="nom" />
-            <label style={labelStyle}>Code</label>
+            <label style={labelStyle}>Abréviation</label>
             <input
               name="code"
               value={form.code || ""}
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="DG"
             />
             <FieldError name="code" />
             <label style={labelStyle}>Description</label>
@@ -69,7 +67,6 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
-              placeholder="Description optionnelle"
             />
             <ResponsableField
               label="Directeur"
@@ -124,17 +121,15 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Pôle Machines Tournantes"
             />
             <FieldError name="nom" />
-            <label style={labelStyle}>Code</label>
+            <label style={labelStyle}>Abréviation</label>
             <input
               name="code"
               value={form.code || ""}
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="PMT"
             />
             <FieldError name="code" />
             <label style={labelStyle}>Description</label>
@@ -221,17 +216,15 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Département Ressources Humaines"
             />
             <FieldError name="nom" />
-            <label style={labelStyle}>Code</label>
+            <label style={labelStyle}>Abréviation</label>
             <input
               name="code"
               value={form.code || ""}
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="DRH"
             />
             <FieldError name="code" />
             <label style={labelStyle}>Description</label>
@@ -296,17 +289,15 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Service Paie"
             />
             <FieldError name="nom" />
-            <label style={labelStyle}>Code</label>
+            <label style={labelStyle}>Abréviation</label>
             <input
               name="code"
               value={form.code || ""}
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="SP"
             />
             <FieldError name="code" />
             <label style={labelStyle}>Description</label>
@@ -438,17 +429,15 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Cellule Audit Interne"
             />
             <FieldError name="nom" />
-            <label style={labelStyle}>Code</label>
+            <label style={labelStyle}>Abréviation</label>
             <input
               name="code"
               value={form.code || ""}
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="CAI"
             />
             <FieldError name="code" />
             <label style={labelStyle}>Description</label>
@@ -581,17 +570,15 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Section Contrôle Qualité"
             />
             <FieldError name="nom" />
-            <label style={labelStyle}>Code</label>
+            <label style={labelStyle}>Abréviation</label>
             <input
               name="code"
               value={form.code || ""}
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="SCQ"
             />
             <FieldError name="code" />
             <label style={labelStyle}>Description</label>
@@ -639,7 +626,6 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Ingénieur principal"
             />
             <FieldError name="nom" />
             <label style={labelStyle}>Code</label>
@@ -649,7 +635,6 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="ING-P"
             />
             <FieldError name="code" />
             <label style={labelStyle}>Description</label>
@@ -737,7 +722,6 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Attestation de travail"
             />
             <FieldError name="nom" />
 
@@ -771,6 +755,7 @@ const RefForm = ({
                   </option>
                 ))}
             </select>
+            <FieldError name="parent" />
             <div
               style={{
                 color: theme.textMuted,
@@ -795,6 +780,7 @@ const RefForm = ({
               style={inputStyle}
               min="0"
             />
+            <FieldError name="ordre" />
 
             <label style={labelStyle}>Obligatoire ?</label>
             <select
@@ -949,7 +935,6 @@ const RefForm = ({
               onChange={handleChange}
               className="input-focus"
               style={inputStyle}
-              placeholder="Permis de conduire"
             />
             <FieldError name="nom" />
 

@@ -10,17 +10,18 @@ from datetime import date as date_cls
 from django.conf import settings
 from django.core.files.base import File
 from django.db import transaction
-from django.db.models import Q, Count, Exists, OuterRef, Subquery, F
+from django.db.models import Q, Count, Exists, OuterRef, Subquery, F, Max
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import StreamingHttpResponse, Http404
 from django.utils.encoding import smart_str
+from django.utils import timezone
 from rest_framework import generics, status, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from django.shortcuts import get_object_or_404
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
@@ -29,6 +30,7 @@ from employees.models import (
     Employee,
     EmployeeDocument,
     EmployeeDocumentFile,
+    EmployeeDocumentFilePage,
     TypeDocument,
     Contrat,
     ChampPersonnalise,
@@ -45,6 +47,7 @@ from employees.serializers import (
     ScanImportSerializer,
     EmployeeDocumentSerializer,
     EmployeeDocumentFileSerializer,
+    EmployeeDocumentFilePageSerializer,
     ContratListSerializer,
     ContratDetailSerializer,
     ContratCreateUpdateSerializer,
@@ -52,7 +55,12 @@ from employees.serializers import (
     HistoriqueCategorieSerializer,
     HistoriqueEchelleSerializer,
 )
-from employees.pdf_utils import pdf_page_count, extract_pdf_pages, PdfExtractionError
+from pypdf import PdfReader, PdfWriter
+from pypdf.errors import PdfReadError
+from employees.pdf_utils import (
+    pdf_page_count, extract_pdf_pages, merge_files_to_pdf, merge_group_parts,
+    image_to_single_page_reader, write_pdf, PdfExtractionError,
+)
 from ocr.tasks import run_ocr
 
 
@@ -67,6 +75,108 @@ def _enqueue_ocr(file_obj):
         run_ocr.delay(str(file_obj.id))
     except Exception:
         pass
+
+
+def _create_file_pages(file_obj):
+    """
+    Crée les lignes EmployeeDocumentFilePage d'un fichier PDF fraîchement
+    enregistré (2026-09-14) — une par page interne, nommée d'après le
+    fichier uploadé : son nom tel quel s'il n'a qu'une page, "<nom> page N"
+    s'il en a plusieurs. Rien n'est créé pour un fichier non-PDF (une image
+    est une page indivisible : renommage/remplacement passent par le
+    fichier lui-même). Sans effet si des pages existent déjà.
+    """
+    if file_obj.mime_type != 'application/pdf':
+        return
+    if file_obj.pages.exists():
+        return
+    try:
+        with file_obj.file.open('rb') as f:
+            total = pdf_page_count(f)
+    except (PdfExtractionError, OSError, ValueError):
+        return
+
+    base = os.path.splitext(file_obj.file_name)[0]
+    EmployeeDocumentFilePage.objects.bulk_create([
+        EmployeeDocumentFilePage(
+            file=file_obj,
+            ordre=i,
+            nom=base if total == 1 else f"{base} page {i}",
+        )
+        for i in range(1, total + 1)
+    ])
+
+
+def _page_names_from_sources(files, mimes):
+    """
+    Noms des pages d'un PDF issu de la fusion de plusieurs sources
+    (2026-09-14) — chaque page garde le nom de SON fichier d'origine, pas
+    celui du fichier fusionné : recto.pdf + verso.pdf → pages "recto" et
+    "verso" (et non "recto + verso page 1/2"). Une source multi-page se
+    décline en "<nom> page N". `mimes[i]` correspond à `files[i]`.
+    """
+    noms = []
+    for f, mime in zip(files, mimes):
+        base = os.path.splitext(f.name)[0]
+        total = 1
+        if mime == 'application/pdf':
+            try:
+                total = pdf_page_count(f)
+            except PdfExtractionError:
+                total = 1
+        if total == 1:
+            noms.append(base)
+        else:
+            noms.extend(f"{base} page {i}" for i in range(1, total + 1))
+    return noms
+
+
+def _save_pdf_to_file(file_obj, buf):
+    """Réécrit le contenu physique d'un EmployeeDocumentFile avec le PDF
+    `buf` (io.BytesIO), en supprimant l'ancien blob. Met à jour la taille ;
+    `file_name` (nom affiché) et l'id restent inchangés."""
+    old_path = file_obj.file.path if file_obj.file else None
+    storage_name = os.path.basename(file_obj.file.name)
+    file_obj.file.save(storage_name, File(buf), save=False)
+    file_obj.file_size = buf.getbuffer().nbytes
+    file_obj.mime_type = 'application/pdf'
+    file_obj.save(update_fields=['file', 'file_size', 'mime_type'])
+    if old_path and os.path.isfile(old_path) and old_path != file_obj.file.path:
+        try:
+            os.remove(old_path)
+        except OSError:
+            pass
+
+
+def _reset_ocr(file_obj):
+    """Le contenu du fichier a changé — l'analyse OCR de l'ancien contenu
+    n'a plus de sens : purgée, puis relancée sur le nouveau contenu."""
+    from ocr.models import OcrResult
+    OcrResult.objects.filter(file=file_obj).delete()
+    _enqueue_ocr(file_obj)
+
+
+def _page_names_for_batch(files, type_label, existing_names=None):
+    """
+    Attribue un nom à chaque fichier d'un lot ajouté ensemble à un même
+    document (2026-09-14, "pages" = fichiers, jamais un PDF fusionné en un
+    seul blob opaque — voir CLAUDE.md/conversation du jour) :
+    - Si tous les noms du lot sont distincts entre eux ET de l'existant
+      (ex. recto.pdf + verso.pdf) → chaque page garde son propre nom.
+    - Sinon (noms identiques/génériques, ex. plusieurs "image.jpg" d'un
+      scanner) → retombe sur "<type de document> page N" pour tout le lot,
+      plus lisible qu'une désambiguïsation par suffixe numérique. Toujours
+      renommable ensuite (crayon), quel que soit le cas.
+    """
+    existing_names = set(existing_names or [])
+    raw_names = [f.name for f in files]
+    all_distinct = (
+        len(set(n.lower() for n in raw_names)) == len(raw_names)
+        and not any(n in existing_names for n in raw_names)
+    )
+    if all_distinct:
+        return raw_names
+    return [f"{type_label} page {i}" for i in range(1, len(files) + 1)]
 
 
 def resolve_employee(raw, queryset=None):
@@ -145,6 +255,7 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         vue = self.request.query_params.get('vue')
         complet = self.request.query_params.get('dossier_complet')
         type_manquant = self.request.query_params.get('type_manquant')
+        type_present = self.request.query_params.get('type_present')
 
         if q:
             qs = qs.filter(
@@ -201,11 +312,41 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
                     )
                 qs = qs.exclude(pk__in=incomplete_ids.values('pk'))
 
+        # Filtre multi-types (2026-09-14) — remplace l'ancien filtre
+        # mono-type (?type_manquant=<code> unique). `type_manquant` accepte
+        # une liste `?type_manquant=A,B,C` : "manque AU MOINS un" des types
+        # sélectionnés (OR — utile pour repérer tous les employés qu'il
+        # reste à relancer sur un lot de documents). `type_present` est son
+        # symétrique : "a TOUS" les types sélectionnés (AND — pour cibler
+        # ceux déjà à jour sur ce lot). Les deux se combinent en ET entre
+        # eux (comme les autres filtres de cette vue).
         if type_manquant:
-            qs = qs.exclude(
-                documents__type_doc__code=type_manquant,
-                documents__is_active=True,
-            )
+            codes = [c for c in type_manquant.split(',') if c]
+            if codes:
+                qs = qs.annotate(
+                    nb_types_manquant_presents=Count(
+                        'documents__type_doc',
+                        filter=Q(
+                            documents__is_active=True,
+                            documents__type_doc__code__in=codes,
+                        ),
+                        distinct=True,
+                    )
+                ).filter(nb_types_manquant_presents__lt=len(codes))
+
+        if type_present:
+            codes = [c for c in type_present.split(',') if c]
+            if codes:
+                qs = qs.annotate(
+                    nb_types_present_recherches=Count(
+                        'documents__type_doc',
+                        filter=Q(
+                            documents__is_active=True,
+                            documents__type_doc__code__in=codes,
+                        ),
+                        distinct=True,
+                    )
+                ).filter(nb_types_present_recherches=len(codes))
 
         # Recherche plein texte sur le contenu OCR des documents (voir
         # docs/superpowers/specs/2026-09-06-ocr-documents-design.md) —
@@ -360,7 +501,7 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         old_statut_label = instance.get_statut_display()
         old_motif_nom = instance.motif_archivage.nom if instance.motif_archivage_id else None
 
-        employee = serializer.save()
+        employee = serializer.save(updated_by=self.request.user)
 
         # Convertir les dates en strings pour que JSON puisse les sérialiser
         details = {}
@@ -748,6 +889,29 @@ class DocumentListUploadView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        # Limite sur le nombre de PAGES du PDF final (pas seulement le
+        # nombre de fichiers sélectionnés) — un seul PDF source peut déjà
+        # contenir des dizaines de pages avant même d'être fusionné avec
+        # d'autres fichiers.
+        upload_files = serializer.validated_data['files']
+        total_pages = 0
+        for f in upload_files:
+            f.seek(0)
+            mime = magic.from_buffer(f.read(2048), mime=True)
+            f.seek(0)
+            if mime == 'application/pdf':
+                try:
+                    total_pages += pdf_page_count(f)
+                except PdfExtractionError as exc:
+                    return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                total_pages += 1
+        if total_pages > settings.MAX_UPLOAD_PAGES:
+            return Response(
+                {'error': f"Trop de pages au total ({total_pages}). Maximum {settings.MAX_UPLOAD_PAGES} pages."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Créer le conteneur EmployeeDocument
         doc = EmployeeDocument.objects.create(
             employee=employee,
@@ -756,8 +920,53 @@ class DocumentListUploadView(APIView):
             notes=serializer.validated_data.get('notes', ''),
         )
 
-        # Créer un EmployeeDocumentFile pour chaque fichier
-        for ordre, file in enumerate(serializer.validated_data['files'], start=1):
+        # Règle unique (2026-09-14) : plusieurs fichiers sélectionnés d'un
+        # coup = les pages d'un même document → toujours fusionnés en un
+        # seul PDF, chaque page gardant le nom de SON fichier source (voir
+        # _page_names_from_sources) et restant gérable individuellement via
+        # le panneau "Modifier" (EmployeeDocumentFilePage). Plus de case
+        # "Fusionner" : garder les deux structures (fichiers séparés vs PDF
+        # fusionné) pour le même concept métier ("les pages du document")
+        # était une source de confusion, et la version fusionnée fait
+        # désormais tout ce que faisait l'autre. Un seul fichier reste
+        # stocké tel quel (PDF ou image, aucune conversion).
+        if len(upload_files) > 1:
+            mimes = []
+            for f in upload_files:
+                f.seek(0)
+                mimes.append(magic.from_buffer(f.read(2048), mime=True))
+                f.seek(0)
+            try:
+                merged_pdf = merge_files_to_pdf(upload_files, mimes)
+            except PdfExtractionError as exc:
+                doc.delete()
+                return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            base_names = [os.path.splitext(f.name)[0] for f in upload_files]
+            merged_name = (" + ".join(base_names))[:200] + ".pdf"
+            file_obj = EmployeeDocumentFile.objects.create(
+                document=doc,
+                file=File(merged_pdf, name=merged_name),
+                file_name=merged_name,
+                file_size=merged_pdf.getbuffer().nbytes,
+                mime_type='application/pdf',
+                ordre=1,
+                uploaded_by=request.user,
+            )
+            _enqueue_ocr(file_obj)
+            # Chaque page garde le nom de SON fichier source (recto/verso),
+            # pas celui du fichier fusionné qui serait commun à toutes.
+            EmployeeDocumentFilePage.objects.bulk_create([
+                EmployeeDocumentFilePage(file=file_obj, ordre=i, nom=nom)
+                for i, nom in enumerate(
+                    _page_names_from_sources(upload_files, mimes), start=1
+                )
+            ])
+        else:
+            # Fichier unique — stocké tel quel (PDF ou image, aucune
+            # conversion). S'il s'agit d'un PDF multi-page, ses pages sont
+            # tout de même enregistrées (_create_file_pages) pour rester
+            # gérables individuellement.
+            file = upload_files[0]
             file.seek(0)
             mime = magic.from_buffer(file.read(2048), mime=True)
             file.seek(0)
@@ -767,9 +976,11 @@ class DocumentListUploadView(APIView):
                 file_name=file.name,
                 file_size=file.size,
                 mime_type=mime,
-                ordre=ordre,
+                ordre=1,
+                uploaded_by=request.user,
             )
             _enqueue_ocr(file_obj)
+            _create_file_pages(file_obj)
 
         AuditLog.log(
             request, AuditLog.Action.UPLOAD,
@@ -778,6 +989,7 @@ class DocumentListUploadView(APIView):
                 'type': doc.type_doc.code,
                 'version': doc.version,
                 'nb_fichiers': doc.nb_fichiers,
+                'fusionne': len(upload_files) > 1,
             }
         )
 
@@ -830,6 +1042,7 @@ class ScanImportView(APIView):
 
         for group in serializer.validated_data['groups']:
             type_doc = group['type_doc']
+            parts = group['parts']
             try:
                 with transaction.atomic():
                     doc = EmployeeDocument.objects.create(
@@ -838,7 +1051,33 @@ class ScanImportView(APIView):
                         uploaded_by=request.user,
                         notes=group.get('notes', ''),
                     )
-                    for ordre, part in enumerate(group['parts'], start=1):
+                    if len(parts) > 1:
+                        # Plusieurs pages assignées au même type de document
+                        # = les pages d'UN SEUL document (2026-09-15, même
+                        # règle que l'upload manuel multi-fichiers, voir
+                        # DocumentListUploadView.post) — toujours fusionnées
+                        # en un seul PDF, jamais plusieurs fichiers séparés
+                        # pour un même groupe. Chaque page garde le nom de
+                        # SA source, reste renommable/réorganisable ensuite
+                        # via EmployeeDocumentFilePage.
+                        merged_buf, page_names, base_names = merge_group_parts(parts)
+                        merged_name = (" + ".join(base_names))[:200] + ".pdf"
+                        file_obj = EmployeeDocumentFile.objects.create(
+                            document=doc,
+                            file=File(merged_buf, name=merged_name),
+                            file_name=merged_name,
+                            file_size=merged_buf.getbuffer().nbytes,
+                            mime_type='application/pdf',
+                            ordre=1,
+                            uploaded_by=request.user,
+                        )
+                        _enqueue_ocr(file_obj)
+                        EmployeeDocumentFilePage.objects.bulk_create([
+                            EmployeeDocumentFilePage(file=file_obj, ordre=i, nom=nom)
+                            for i, nom in enumerate(page_names, start=1)
+                        ])
+                    else:
+                        part = parts[0]
                         source_file = part['file']
                         if part['is_image'] or part['pages'] is None:
                             source_file.seek(0)
@@ -864,9 +1103,11 @@ class ScanImportView(APIView):
                             file_name=file_name,
                             file_size=file_to_save.size,
                             mime_type=mime,
-                            ordre=ordre,
+                            ordre=1,
+                            uploaded_by=request.user,
                         )
                         _enqueue_ocr(file_obj)
+                        _create_file_pages(file_obj)
 
                 AuditLog.log(
                     request, AuditLog.Action.UPLOAD,
@@ -951,12 +1192,87 @@ class FileViewerView(APIView):
         return response
 
 
+class DocumentFileAddView(APIView):
+    """
+    POST /api/documents/{doc_id}/files/ — ajoute une ou plusieurs "pages"
+    (fichiers) à un document EXISTANT (ADMIN only), pour le panneau
+    "Modifier" (2026-09-14) — contrairement à DocumentListUploadView.post,
+    ne crée jamais de nouveau conteneur/version : les fichiers rejoignent
+    `document` directement, à la suite des fichiers actifs déjà présents
+    (ordre = max existant + 1, +2, ...).
+    """
+    permission_classes = [IsAdmin]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, doc_id):
+        try:
+            document = EmployeeDocument.objects.get(pk=doc_id, is_active=True)
+        except EmployeeDocument.DoesNotExist:
+            raise Http404
+
+        files = request.FILES.getlist('files')
+        if not files:
+            return Response({'error': 'Aucun fichier fourni.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        for f in files:
+            ext = os.path.splitext(f.name)[1].lower().lstrip('.')
+            if ext not in ('pdf', 'jpg', 'jpeg', 'png', 'tiff'):
+                return Response(
+                    {'error': f'Format non supporté pour "{f.name}" (pdf, jpg, jpeg, png, tiff uniquement).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        last_ordre = document.fichiers.filter(is_active=True).aggregate(
+            m=Max('ordre')
+        )['m'] or 0
+        existing_names = document.fichiers.filter(is_active=True).values_list('file_name', flat=True)
+        names = (
+            _page_names_for_batch(files, document.type_doc.nom, existing_names)
+            if len(files) > 1
+            else [f.name for f in files]
+        )
+
+        created = []
+        for offset, (f, name) in enumerate(zip(files, names), start=1):
+            f.seek(0)
+            mime = magic.from_buffer(f.read(2048), mime=True)
+            f.seek(0)
+            file_obj = EmployeeDocumentFile.objects.create(
+                document=document,
+                file=f,
+                file_name=name,
+                file_size=f.size,
+                mime_type=mime,
+                ordre=last_ordre + offset,
+                uploaded_by=request.user,
+            )
+            _enqueue_ocr(file_obj)
+            _create_file_pages(file_obj)
+            created.append(file_obj)
+
+        AuditLog.log(
+            request, AuditLog.Action.UPLOAD,
+            target=document,
+            details={'action': 'ajout_page', 'nb_fichiers': len(created)},
+        )
+
+        return Response(
+            EmployeeDocumentFileSerializer(created, many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class FileDetailView(APIView):
     """
-    PATCH  /api/files/{file_id}/ — renomme le fichier (ADMIN uniquement)
+    PATCH  /api/files/{file_id}/ — renomme le fichier et/ou remplace son
+    contenu (ADMIN uniquement) — voir "Modifier" dans le panneau de gestion
+    des pages (2026-09-14). Le nom (`file_name`, JSON ou multipart) et le
+    contenu (`file`, multipart uniquement) sont indépendants : l'un, l'autre,
+    ou les deux à la fois dans la même requête.
     DELETE /api/files/{file_id}/ — supprime définitivement (ADMIN uniquement)
     """
     permission_classes = [IsAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def patch(self, request, file_id):
         try:
@@ -964,20 +1280,94 @@ class FileDetailView(APIView):
         except EmployeeDocumentFile.DoesNotExist:
             raise Http404
 
-        new_name = (request.data.get('file_name') or '').strip()
-        if not new_name:
-            return Response({'error': 'Le nom du fichier ne peut pas être vide.'}, status=status.HTTP_400_BAD_REQUEST)
-        if len(new_name) > 255:
-            return Response({'error': 'Nom trop long (255 caractères max).'}, status=status.HTTP_400_BAD_REQUEST)
+        new_file = request.FILES.get('file')
+        raw_name = request.data.get('file_name')
+        raw_rotation = request.data.get('rotation')
+        # Renommer reste possible seul (raw_name fourni, pas de fichier) —
+        # comportement historique inchangé. Remplacer le contenu sans
+        # renommer est permis aussi (raw_name absent → garde file_name actuel,
+        # sauf s'il correspond exactement à l'ancien fichier — auto-renommage
+        # non fait ici pour rester prévisible : le nom ne change jamais tout
+        # seul, l'admin doit le faire explicitement via le crayon si voulu).
+        if raw_name is not None:
+            new_name = raw_name.strip()
+            if not new_name:
+                return Response({'error': 'Le nom du fichier ne peut pas être vide.'}, status=status.HTTP_400_BAD_REQUEST)
+            if len(new_name) > 255:
+                return Response({'error': 'Nom trop long (255 caractères max).'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            new_name = None
+
+        new_rotation = None
+        if raw_rotation is not None:
+            try:
+                new_rotation = int(raw_rotation) % 360
+            except (TypeError, ValueError):
+                return Response({'error': 'Rotation invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+            if new_rotation not in dict(EmployeeDocumentFile.ROTATION_CHOICES):
+                return Response({'error': 'Rotation invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not new_file and new_name is None and new_rotation is None:
+            return Response({'error': 'Rien à modifier.'}, status=status.HTTP_400_BAD_REQUEST)
 
         old_name = file_obj.file_name
-        file_obj.file_name = new_name
-        file_obj.save(update_fields=['file_name'])
+        update_fields = ['modified_by', 'modified_at']
+        file_obj.modified_by = request.user
+        file_obj.modified_at = timezone.now()
+
+        if new_name is not None:
+            file_obj.file_name = new_name
+            update_fields.append('file_name')
+
+        if new_rotation is not None:
+            file_obj.rotation = new_rotation
+            update_fields.append('rotation')
+
+        if new_file:
+            ext = os.path.splitext(new_file.name)[1].lower().lstrip('.')
+            if ext not in ('pdf', 'jpg', 'jpeg', 'png', 'tiff'):
+                return Response(
+                    {'error': 'Format non supporté (pdf, jpg, jpeg, png, tiff uniquement).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            new_file.seek(0)
+            mime = magic.from_buffer(new_file.read(2048), mime=True)
+            new_file.seek(0)
+            old_path = file_obj.file.path if file_obj.file else None
+            file_obj.file = new_file
+            file_obj.file_size = new_file.size
+            file_obj.mime_type = mime
+            update_fields += ['file', 'file_size', 'mime_type']
+            # Le contenu a changé — une éventuelle analyse OCR de l'ancien
+            # contenu n'a plus de sens, purgée pour être relancée dessus.
+            from ocr.models import OcrResult
+            OcrResult.objects.filter(file=file_obj).delete()
+
+        file_obj.save(update_fields=update_fields)
+
+        if new_file and old_path and os.path.isfile(old_path) and old_path != file_obj.file.path:
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+        if new_file:
+            _enqueue_ocr(file_obj)
+            # Contenu entièrement remplacé : les pages de l'ancien contenu
+            # (noms compris) n'ont plus de correspondance, on repart du
+            # découpage du nouveau fichier.
+            file_obj.pages.all().delete()
+            _create_file_pages(file_obj)
 
         AuditLog.log(
             request, AuditLog.Action.MODIFY_DOC,
             target=file_obj.document,
-            details={'ancien_nom': old_name, 'nouveau_nom': new_name}
+            details={
+                'ancien_nom': old_name,
+                'nouveau_nom': file_obj.file_name,
+                'contenu_remplace': bool(new_file),
+                **({'rotation': new_rotation} if new_rotation is not None else {}),
+            }
         )
 
         return Response(EmployeeDocumentFileSerializer(file_obj).data)
@@ -1008,6 +1398,385 @@ class FileDetailView(APIView):
             document.delete()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DocumentFilesReorderView(APIView):
+    """
+    PUT /api/documents/{doc_id}/files/reorder/ — réordonne les fichiers
+    ("pages") d'un document en une seule requête (ADMIN only), pour le
+    panneau "Modifier" du document (2026-09-14). Body :
+    {"order": ["<file_id>", ...]} — doit contenir exactement les fichiers
+    actifs de ce document, dans l'ordre final voulu (400 sinon, pour éviter
+    d'en oublier un silencieusement hors de vue).
+    """
+    permission_classes = [IsAdmin]
+
+    def put(self, request, doc_id):
+        try:
+            document = EmployeeDocument.objects.get(pk=doc_id)
+        except EmployeeDocument.DoesNotExist:
+            raise Http404
+
+        order = request.data.get('order') or []
+        current_ids = set(
+            str(i) for i in document.fichiers.filter(is_active=True).values_list('id', flat=True)
+        )
+        if set(order) != current_ids:
+            return Response(
+                {'error': 'La liste doit contenir exactement les fichiers actifs de ce document.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for idx, file_id in enumerate(order, start=1):
+            EmployeeDocumentFile.objects.filter(id=file_id, document=document).update(ordre=idx)
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC,
+            target=document,
+            details={'action': 'reorder_files', 'nb_fichiers': len(order)},
+        )
+
+        return Response(
+            EmployeeDocumentFileSerializer(
+                document.fichiers.filter(is_active=True).order_by('ordre'), many=True
+            ).data
+        )
+
+
+def _get_pdf_file_for_pages(file_id):
+    """Récupère un EmployeeDocumentFile et vérifie qu'il est gérable page
+    par page (PDF avec ses lignes EmployeeDocumentFilePage). Retourne
+    (file_obj, pages_list) ou lève Http404 / renvoie une DRFValidationError
+    parlante si le fichier n'est pas un PDF."""
+    try:
+        file_obj = EmployeeDocumentFile.objects.select_related('document').get(pk=file_id)
+    except EmployeeDocumentFile.DoesNotExist:
+        raise Http404
+    if file_obj.mime_type != 'application/pdf':
+        raise DRFValidationError(
+            "Seul un document PDF se gère page par page (une image est une page indivisible)."
+        )
+    # Fichier antérieur au chantier "pages" : on crée ses lignes à la volée.
+    if not file_obj.pages.exists():
+        _create_file_pages(file_obj)
+    return file_obj, list(file_obj.pages.all())
+
+
+class FilePagesView(APIView):
+    """
+    POST /api/files/{file_id}/pages/ — insère une ou plusieurs pages dans
+    un document PDF existant (ADMIN only), sans jamais créer un second
+    fichier : le PDF est réécrit avec les nouvelles pages insérées à
+    `position` (1-indexée, défaut = à la fin). Une source PDF multi-page
+    devient autant de pages, une image devient une page.
+    """
+    permission_classes = [IsAdmin]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, file_id):
+        file_obj, pages = _get_pdf_file_for_pages(file_id)
+        new_files = request.FILES.getlist('files')
+        if not new_files:
+            return Response({'error': 'Aucun fichier fourni.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        for f in new_files:
+            ext = os.path.splitext(f.name)[1].lower().lstrip('.')
+            if ext not in ('pdf', 'jpg', 'jpeg', 'png', 'tiff'):
+                return Response(
+                    {'error': f'Format non supporté pour "{f.name}" (pdf, jpg, jpeg, png, tiff uniquement).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            position = int(request.data.get('position', len(pages) + 1))
+        except (TypeError, ValueError):
+            position = len(pages) + 1
+        position = max(1, min(position, len(pages) + 1))
+
+        # `keep_alive` retient les flux sources : pypdf lit paresseusement,
+        # ils doivent rester ouverts jusqu'à l'écriture finale du writer.
+        keep_alive = []
+        inserted = []  # [(page_pypdf, nom)]
+        try:
+            for f in new_files:
+                f.seek(0)
+                mime = magic.from_buffer(f.read(2048), mime=True)
+                f.seek(0)
+                base = os.path.splitext(f.name)[0]
+                if mime == 'application/pdf':
+                    reader = PdfReader(f)
+                    keep_alive.append((reader, f))
+                    total = len(reader.pages)
+                    for i, page in enumerate(reader.pages, start=1):
+                        inserted.append((page, base if total == 1 else f"{base} page {i}"))
+                else:
+                    reader, buf = image_to_single_page_reader(f)
+                    keep_alive.append((reader, buf))
+                    inserted.append((reader.pages[0], base))
+
+            with file_obj.file.open('rb') as current:
+                reader = PdfReader(current)
+                final = []  # [(page_pypdf, nom)]
+                for idx, p in enumerate(pages, start=1):
+                    if idx == position:
+                        final.extend(inserted)
+                    final.append((reader.pages[p.ordre - 1], p.nom))
+                if position > len(pages):
+                    final.extend(inserted)
+
+                writer = PdfWriter()
+                for page, _nom in final:
+                    writer.add_page(page)
+                buf = write_pdf(writer)
+        except PdfReadError as exc:
+            return Response({'error': f'PDF invalide : {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        _save_pdf_to_file(file_obj, buf)
+        file_obj.pages.all().delete()
+        EmployeeDocumentFilePage.objects.bulk_create([
+            EmployeeDocumentFilePage(file=file_obj, ordre=i, nom=nom)
+            for i, (_page, nom) in enumerate(final, start=1)
+        ])
+        _reset_ocr(file_obj)
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC,
+            target=file_obj.document,
+            details={'action': 'ajout_pages', 'nb_pages_ajoutees': len(inserted)},
+        )
+        return Response(
+            EmployeeDocumentFilePageSerializer(file_obj.pages.all(), many=True).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class FilePagesReorderView(APIView):
+    """
+    PUT /api/files/{file_id}/pages/reorder/ — réorganise les pages internes
+    d'un PDF (ADMIN only). Body : {"order": ["<page_id>", ...]} — la liste
+    complète des pages, dans l'ordre voulu. Le PDF physique est réécrit
+    pour que son ordre interne corresponde (invariant page↔ordre, voir
+    EmployeeDocumentFilePage).
+    """
+    permission_classes = [IsAdmin]
+
+    def put(self, request, file_id):
+        file_obj, pages = _get_pdf_file_for_pages(file_id)
+        order = request.data.get('order') or []
+        by_id = {str(p.id): p for p in pages}
+        if set(order) != set(by_id):
+            return Response(
+                {'error': 'La liste doit contenir exactement les pages de ce document.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with file_obj.file.open('rb') as current:
+            reader = PdfReader(current)
+            writer = PdfWriter()
+            for page_id in order:
+                writer.add_page(reader.pages[by_id[page_id].ordre - 1])
+            buf = write_pdf(writer)
+
+        _save_pdf_to_file(file_obj, buf)
+        for idx, page_id in enumerate(order, start=1):
+            EmployeeDocumentFilePage.objects.filter(pk=page_id).update(ordre=idx)
+        _reset_ocr(file_obj)
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC,
+            target=file_obj.document,
+            details={'action': 'reorder_pages', 'nb_pages': len(order)},
+        )
+        return Response(
+            EmployeeDocumentFilePageSerializer(file_obj.pages.all(), many=True).data
+        )
+
+
+class FilePageDetailView(APIView):
+    """
+    PATCH  /api/files/{file_id}/pages/{page_id}/ — renomme une page
+           (métadonnée seule, le PDF n'est pas touché).
+    DELETE /api/files/{file_id}/pages/{page_id}/ — supprime cette page du
+           PDF (réécrit sans elle). Supprimer la dernière page restante
+           supprime le fichier — et le document s'il devient vide, même
+           règle que la suppression d'un fichier entier.
+    ADMIN only.
+    """
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, file_id, page_id):
+        file_obj, pages = _get_pdf_file_for_pages(file_id)
+        page = next((p for p in pages if str(p.id) == str(page_id)), None)
+        if page is None:
+            raise Http404
+
+        raw_nom = request.data.get('nom')
+        raw_rotation = request.data.get('rotation')
+
+        nom = None
+        if raw_nom is not None:
+            nom = raw_nom.strip()
+            if not nom:
+                return Response({'error': 'Le nom de la page ne peut pas être vide.'}, status=status.HTTP_400_BAD_REQUEST)
+            if len(nom) > 255:
+                return Response({'error': 'Nom trop long (255 caractères max).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        rotation = None
+        if raw_rotation is not None:
+            try:
+                rotation = int(raw_rotation) % 360
+            except (TypeError, ValueError):
+                return Response({'error': 'Rotation invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+            if rotation not in dict(EmployeeDocumentFile.ROTATION_CHOICES):
+                return Response({'error': 'Rotation invalide.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if nom is None and rotation is None:
+            return Response({'error': 'Rien à modifier.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        update_fields = []
+        details = {'action': 'renommer_page'}
+
+        if nom is not None:
+            details['ancien_nom'] = page.nom
+            details['nouveau_nom'] = nom
+            page.nom = nom
+            update_fields.append('nom')
+
+        if rotation is not None:
+            details['rotation'] = rotation
+            page.rotation = rotation
+            update_fields.append('rotation')
+
+        page.save(update_fields=update_fields)
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC,
+            target=file_obj.document,
+            details=details,
+        )
+        return Response(EmployeeDocumentFilePageSerializer(page).data)
+
+    def delete(self, request, file_id, page_id):
+        file_obj, pages = _get_pdf_file_for_pages(file_id)
+        page = next((p for p in pages if str(p.id) == str(page_id)), None)
+        if page is None:
+            raise Http404
+
+        document = file_obj.document
+
+        if len(pages) <= 1:
+            AuditLog.log(
+                request, AuditLog.Action.DELETE_DOC,
+                target=document,
+                details={'fichier': file_obj.file_name, 'derniere_page': page.nom},
+            )
+            file_path = file_obj.file.path if file_obj.file else None
+            file_obj.delete()
+            if file_path and os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                except OSError:
+                    pass
+            if not document.fichiers.exists():
+                document.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        with file_obj.file.open('rb') as current:
+            reader = PdfReader(current)
+            writer = PdfWriter()
+            restantes = [p for p in pages if str(p.id) != str(page_id)]
+            for p in restantes:
+                writer.add_page(reader.pages[p.ordre - 1])
+            buf = write_pdf(writer)
+
+        _save_pdf_to_file(file_obj, buf)
+        supprime = page.nom
+        page.delete()
+        for idx, p in enumerate(restantes, start=1):
+            if p.ordre != idx:
+                EmployeeDocumentFilePage.objects.filter(pk=p.pk).update(ordre=idx)
+        _reset_ocr(file_obj)
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC,
+            target=document,
+            details={'action': 'supprimer_page', 'page': supprime},
+        )
+        return Response(
+            EmployeeDocumentFilePageSerializer(file_obj.pages.all(), many=True).data
+        )
+
+
+class FilePageReplaceView(APIView):
+    """
+    POST /api/files/{file_id}/pages/{page_id}/replace/ — remplace le
+    contenu d'UNE page (ADMIN only, multipart `file`). La source doit tenir
+    sur une seule page (PDF 1 page ou image) — pour en insérer plusieurs,
+    passer par l'ajout de pages. Le nom de la page est conservé.
+    """
+    permission_classes = [IsAdmin]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, file_id, page_id):
+        file_obj, pages = _get_pdf_file_for_pages(file_id)
+        page = next((p for p in pages if str(p.id) == str(page_id)), None)
+        if page is None:
+            raise Http404
+
+        new_file = request.FILES.get('file')
+        if not new_file:
+            return Response({'error': 'Aucun fichier fourni.'}, status=status.HTTP_400_BAD_REQUEST)
+        ext = os.path.splitext(new_file.name)[1].lower().lstrip('.')
+        if ext not in ('pdf', 'jpg', 'jpeg', 'png', 'tiff'):
+            return Response(
+                {'error': 'Format non supporté (pdf, jpg, jpeg, png, tiff uniquement).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_file.seek(0)
+        mime = magic.from_buffer(new_file.read(2048), mime=True)
+        new_file.seek(0)
+
+        keep_alive = []
+        try:
+            if mime == 'application/pdf':
+                src_reader = PdfReader(new_file)
+                keep_alive.append(src_reader)
+                if len(src_reader.pages) != 1:
+                    return Response(
+                        {'error': f'Ce PDF contient {len(src_reader.pages)} pages — utilisez "Ajouter des pages" pour en insérer plusieurs.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                remplacement = src_reader.pages[0]
+            else:
+                src_reader, buf_src = image_to_single_page_reader(new_file)
+                keep_alive.append((src_reader, buf_src))
+                remplacement = src_reader.pages[0]
+
+            with file_obj.file.open('rb') as current:
+                reader = PdfReader(current)
+                writer = PdfWriter()
+                for p in pages:
+                    if str(p.id) == str(page_id):
+                        writer.add_page(remplacement)
+                    else:
+                        writer.add_page(reader.pages[p.ordre - 1])
+                buf = write_pdf(writer)
+        except PdfReadError as exc:
+            return Response({'error': f'PDF invalide : {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        _save_pdf_to_file(file_obj, buf)
+        _reset_ocr(file_obj)
+
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC,
+            target=file_obj.document,
+            details={'action': 'remplacer_page', 'page': page.nom},
+        )
+        return Response(
+            EmployeeDocumentFilePageSerializer(file_obj.pages.all(), many=True).data
+        )
+
 
 class DocumentViewerView(APIView):
     """
@@ -1180,12 +1949,36 @@ class ContratDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
     def perform_destroy(self, instance):
+        """Supprime le contrat et, en cascade, ses documents — y compris
+        les fichiers physiques (2026-09-14) : la cascade DB seule laissait
+        des orphelins dans media/, exactement le genre de résidus qui avait
+        motivé la purge hasardeuse de l'incident du 2026-07-22 (voir
+        CLAUDE.md). Même logique que EmployeeDetailView.perform_destroy."""
+        file_paths = list(
+            EmployeeDocumentFile.objects.filter(
+                document__contrat=instance
+            ).values_list('file', flat=True)
+        )
+        nb_documents = EmployeeDocument.objects.filter(contrat=instance).count()
         AuditLog.log(
             self.request, AuditLog.Action.DELETE_EMP,
             target=instance.employee,
-            details={'action': 'delete_contrat', 'numero_contrat': instance.numero_contrat}
+            details={
+                'action': 'delete_contrat',
+                'numero_contrat': instance.numero_contrat,
+                'nb_documents_supprimes': nb_documents,
+            }
         )
         instance.delete()
+        for path in file_paths:
+            if not path:
+                continue
+            full_path = os.path.join(settings.MEDIA_ROOT, path)
+            if os.path.isfile(full_path):
+                try:
+                    os.remove(full_path)
+                except OSError:
+                    pass
 
 
 class ContratDocumentListUploadView(APIView):
@@ -1232,6 +2025,32 @@ class ContratDocumentListUploadView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        # Même règle que le dossier employé (DocumentListUploadView,
+        # 2026-09-14, étendue aux contrats le 2026-09-15) : plusieurs
+        # fichiers sélectionnés d'un coup = les pages d'un même document →
+        # toujours fusionnés en un seul PDF.
+        upload_files = serializer.validated_data['files']
+        mimes = []
+        for f in upload_files:
+            f.seek(0)
+            mimes.append(magic.from_buffer(f.read(2048), mime=True))
+            f.seek(0)
+
+        total_pages = 0
+        for f, mime in zip(upload_files, mimes):
+            if mime == 'application/pdf':
+                try:
+                    total_pages += pdf_page_count(f)
+                except PdfExtractionError as exc:
+                    return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                total_pages += 1
+        if total_pages > settings.MAX_UPLOAD_PAGES:
+            return Response(
+                {'error': f"Trop de pages au total ({total_pages}). Maximum {settings.MAX_UPLOAD_PAGES} pages."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         doc = EmployeeDocument.objects.create(
             employee=contrat.employee,
             contrat=contrat,
@@ -1240,19 +2059,43 @@ class ContratDocumentListUploadView(APIView):
             notes=serializer.validated_data.get('notes', ''),
         )
 
-        for ordre, file in enumerate(serializer.validated_data['files'], start=1):
-            file.seek(0)
-            mime = magic.from_buffer(file.read(2048), mime=True)
-            file.seek(0)
+        if len(upload_files) > 1:
+            try:
+                merged_pdf = merge_files_to_pdf(upload_files, mimes)
+            except PdfExtractionError as exc:
+                doc.delete()
+                return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            base_names = [os.path.splitext(f.name)[0] for f in upload_files]
+            merged_name = (" + ".join(base_names))[:200] + ".pdf"
+            file_obj = EmployeeDocumentFile.objects.create(
+                document=doc,
+                file=File(merged_pdf, name=merged_name),
+                file_name=merged_name,
+                file_size=merged_pdf.getbuffer().nbytes,
+                mime_type='application/pdf',
+                ordre=1,
+                uploaded_by=request.user,
+            )
+            _enqueue_ocr(file_obj)
+            EmployeeDocumentFilePage.objects.bulk_create([
+                EmployeeDocumentFilePage(file=file_obj, ordre=i, nom=nom)
+                for i, nom in enumerate(
+                    _page_names_from_sources(upload_files, mimes), start=1
+                )
+            ])
+        else:
+            file = upload_files[0]
             file_obj = EmployeeDocumentFile.objects.create(
                 document=doc,
                 file=file,
                 file_name=file.name,
                 file_size=file.size,
-                mime_type=mime,
-                ordre=ordre,
+                mime_type=mimes[0],
+                ordre=1,
+                uploaded_by=request.user,
             )
             _enqueue_ocr(file_obj)
+            _create_file_pages(file_obj)
 
         AuditLog.log(
             request, AuditLog.Action.UPLOAD,

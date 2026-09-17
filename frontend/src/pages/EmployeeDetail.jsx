@@ -5,6 +5,8 @@ import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import EmployeeAvatar from "../components/EmployeeAvatar";
+import PhotoCropModal from "../components/PhotoCropModal";
+import { pdfFirstPageToImageUrl } from "../utils/pdfToImage";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
@@ -13,10 +15,14 @@ import InfoNotice from "../components/InfoNotice";
 import CarriereTab from "../components/employeeDetail/CarriereTab";
 import ContratsTab from "../components/employeeDetail/ContratsTab";
 import DossierTab from "../components/employeeDetail/DossierTab";
+import EmployeeForm from "./EmployeeForm";
+import DocumentPagesModal from "../components/employeeDetail/DocumentPagesModal";
+import UploadChoiceModal from "../components/employeeDetail/UploadChoiceModal";
 import OcrSuggestionsPanel from "../components/OcrSuggestionsPanel";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
+import { formatDateTime, stripExt } from "../utils/employeeDocsDisplay";
 
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
@@ -45,7 +51,7 @@ const EmployeeDetail = () => {
   const theme = useTheme();
   const { id } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
@@ -65,12 +71,31 @@ const EmployeeDetail = () => {
   const [expandedHistory, setExpandedHistory] = useState(() => new Set());
   const [selectedFile, setSelectedFile] = useState(null);
   const [docUrl, setDocUrl] = useState(null);
+  // Page à ouvrir directement dans le viewer PDF (provenance recherche
+  // documentaire, ?page=<n>) — react-pdf ignore les fragments d'URL type
+  // #page=N (ce n'est pas un <iframe> PDF natif), il faut lui passer le
+  // numéro de page explicitement en prop.
+  const [initialPageNumber, setInitialPageNumber] = useState(null);
   const [docLoading, setDocLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [busyIds, setBusyIds] = useState(() => new Set());
   const [showScanImport, setShowScanImport] = useState(false);
   const [uploadType, setUploadType] = useState("");
+  const [editingDoc, setEditingDoc] = useState(null);
+  const [uploadChoice, setUploadChoice] = useState(null);
+  const [editingInfos, setEditingInfos] = useState(false);
+  // Lecture plein écran d'un document (le viewer couvre toute la fenêtre) —
+  // Échap pour revenir, comme n'importe quelle visionneuse.
+  const [viewerFullscreen, setViewerFullscreen] = useState(false);
+  useEffect(() => {
+    if (!viewerFullscreen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setViewerFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewerFullscreen]);
   const [message, setMessage] = useState(null);
   const [typesDocuments, setTypesDocuments] = useState({});
   const [typesDocumentsList, setTypesDocumentsList] = useState([]);
@@ -274,6 +299,50 @@ const EmployeeDetail = () => {
     }
   };
 
+  // Suppression d'un contrat (ADMIN) — irréversible et emportant ses
+  // documents en cascade : confirmation renforcée (saisie du n° de contrat)
+  // dès qu'il en contient, simple confirmation sinon.
+  const [deletingContratId, setDeletingContratId] = useState(null);
+  const handleDeleteContrat = async (contrat) => {
+    if (deletingContratId) return;
+    const nbDocs = contrat.nb_documents || 0;
+    if (nbDocs > 0) {
+      const saisie = await prompt(
+        `Ce contrat contient ${nbDocs} document(s) qui seront supprimés définitivement avec lui. Saisissez le n° « ${contrat.numero_contrat} » pour confirmer :`,
+        "",
+      );
+      if (saisie === null) return;
+      if (saisie.trim() !== contrat.numero_contrat) {
+        setMessage({ type: "error", text: "N° de contrat incorrect — suppression annulée." });
+        setTimeout(() => setMessage(null), 4000);
+        return;
+      }
+    } else if (
+      !(await confirm(
+        `Supprimer définitivement le contrat « ${contrat.numero_contrat} » ? Cette action est irréversible.`,
+      ))
+    ) {
+      return;
+    }
+
+    setDeletingContratId(contrat.id);
+    try {
+      await api.delete(`/contrats/${contrat.id}/`);
+      setMessage({ type: "success", text: "Contrat supprimé." });
+      if (selectedContratId === contrat.id) setSelectedContratId(null);
+      fetchContrats();
+      fetchEmployee(true);
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors de la suppression du contrat.",
+      });
+    } finally {
+      setDeletingContratId(null);
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
   const fetchEmployee = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -287,26 +356,74 @@ const EmployeeDetail = () => {
   };
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [deletingPhoto, setDeletingPhoto] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState(null);
+  const [convertingPdf, setConvertingPdf] = useState(false);
 
   const handlePhotoChange = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+
+    if (file.type === "application/pdf") {
+      setConvertingPdf(true);
+      try {
+        const url = await pdfFirstPageToImageUrl(file);
+        setCropImageSrc(url);
+      } catch (err) {
+        setMessage({
+          type: "error",
+          text: err.message || "Impossible de lire ce PDF. Vérifiez qu'il n'est pas corrompu.",
+        });
+      } finally {
+        setConvertingPdf(false);
+      }
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setCropImageSrc(url);
+  };
+
+  const closeCropModal = () => {
+    if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
+    setCropImageSrc(null);
+  };
+
+  const handleCropValidate = async (blob) => {
     setUploadingPhoto(true);
     try {
       const formData = new FormData();
-      formData.append("photo", file);
+      formData.append("photo", blob, "photo.jpg");
       await api.post(`/employees/${id}/photo/`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+      closeCropModal();
+      await fetchEmployee(true);
+    } catch (err) {
+      closeCropModal();
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Impossible d'uploader la photo. Veuillez réessayer.",
+      });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleDeletePhoto = async () => {
+    if (!(await confirm("Supprimer la photo de profil de cet employé ?"))) return;
+    setDeletingPhoto(true);
+    try {
+      await api.delete(`/employees/${id}/photo/`);
       await fetchEmployee(true);
     } catch (err) {
       setMessage({
         type: "error",
-        text: err.response?.data?.error || "Impossible d'uploader la photo.",
+        text: err.response?.data?.error || "Impossible de supprimer la photo. Veuillez réessayer.",
       });
     } finally {
-      setUploadingPhoto(false);
+      setDeletingPhoto(false);
     }
   };
 
@@ -327,10 +444,11 @@ const EmployeeDetail = () => {
     }
   };
 
-  const loadFile = async (file) => {
+  const loadFile = async (file, pageOrdre) => {
     setSelectedFile(file);
     setDocLoading(true);
     setDocUrl(null);
+    setInitialPageNumber(pageOrdre || null);
     try {
       const response = await api.get(`/files/${file.id}/view/`, {
         responseType: "blob",
@@ -357,8 +475,45 @@ const EmployeeDetail = () => {
   // actuellement affiché (pas juste le tout premier document de
   // l'employé, tous contrats confondus) — évite d'ouvrir un fichier
   // d'un ancien contrat alors que l'onglet du contrat récent est actif.
+  // Provenance "Recherche documentaire" (?fileId=<uuid>&page=<n>) : ouvre
+  // directement le fichier trouvé (et sa page dans le viewer PDF) au lieu de
+  // la sélection par défaut du premier document. Ne touche PAS
+  // selectedContratId (même si le doc appartient à un contrat) : le
+  // changer déclencherait aussi l'effet de sélection par défaut ci-dessous
+  // (qui en dépend) et lui ferait écraser cette sélection par le premier
+  // doc du contrat — deux appels concurrents à loadFile() plantent le
+  // worker PDF.js de react-pdf ("Cannot read properties of null (reading
+  // 'sendWithPromise')", le Document précédent étant détruit pendant que sa
+  // Page était encore en cours de chargement). Les paramètres sont retirés
+  // de l'URL une fois appliqués pour que la navigation entre contrats
+  // redevienne normale ensuite.
   useEffect(() => {
     if (!employee) return;
+    const targetFileId = searchParams.get("fileId");
+    if (!targetFileId) return;
+    for (const doc of employee.documents || []) {
+      const file = (doc.fichiers || []).find((f) => f.id === targetFileId);
+      if (file) {
+        setActiveTab("dossier");
+        setSelectedDoc(doc);
+        const pageOrdre = parseInt(searchParams.get("page"), 10);
+        loadFile(file, Number.isFinite(pageOrdre) ? pageOrdre : undefined);
+        setTimeout(() => {
+          dossierSectionRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+        }, 50);
+        break;
+      }
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("fileId");
+    next.delete("page");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee, searchParams]);
+
+  useEffect(() => {
+    if (!employee) return;
+    if (searchParams.get("fileId")) return;
     const filtered = groupDocsByVersion(
       (employee.documents || []).filter(
         (doc) => !doc.contrat || doc.contrat === selectedContratId,
@@ -423,24 +578,65 @@ const EmployeeDetail = () => {
     });
     return { orderMap, headerBefore, groupEnd };
   };
+  // Document déjà présent pour ce type (version la plus récente), hors
+  // documents rattachés à un contrat — sert à proposer "ajouter des pages"
+  // plutôt que de créer systématiquement une nouvelle version.
+  const findExistingDoc = (typeCode) => {
+    const memeType = (employee?.documents || []).filter(
+      (d) => d.type_document === typeCode && !d.contrat,
+    );
+    if (!memeType.length) return null;
+    return [...memeType].sort((a, b) => b.version - a.version)[0];
+  };
+
+  // Ouvre la modale de choix et attend la décision de l'admin
+  // ("fichier" | "version" | null = annulé).
+  const askUploadMode = (docLabel, nbFichiers) =>
+    new Promise((resolve) => {
+      setUploadChoice({ docLabel, nbFichiers, resolve });
+    });
+
   // Upload multiple fichiers
   const handleUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
-    setUploading(true);
-
     const typeSelectionne = typesDocumentsList.find(
       (t) => t.code === uploadType,
     );
+
+    // Un document de ce type existe déjà : demander s'il faut y ajouter
+    // les fichiers comme pages supplémentaires, ou en faire une nouvelle
+    // version (l'ancien passe en historique).
+    const existant = findExistingDoc(uploadType);
+    let mode = "version";
+    if (existant) {
+      mode = await askUploadMode(typeSelectionne?.nom || uploadType, files.length);
+      if (!mode) {
+        e.target.value = "";
+        return;
+      }
+    }
+
+    setUploading(true);
+
     const formData = new FormData();
-    formData.append("type_doc", typeSelectionne?.id || uploadType);
     files.forEach((file) => formData.append("files", file));
 
     // Toujours le dossier général de l'employé — un contrat sélectionné
     // dans la sidebar sert uniquement à filtrer l'affichage, pas à
     // choisir où attacher un nouvel upload (cohérent avec "Scanner un
     // dossier", qui n'a jamais eu de notion de contrat).
-    const url = `/employees/${id}/documents/`;
+    // "fichier" = les nouveaux fichiers rejoignent le document existant
+    // comme fichiers supplémentaires (avenant 2, décision 3…), chacun
+    // gardant ses propres pages ; "version" = nouveau document, l'ancien
+    // bascule en historique.
+    const url =
+      mode === "fichier"
+        ? `/documents/${existant.id}/files/`
+        : `/employees/${id}/documents/`;
+    if (mode !== "fichier") {
+      formData.append("type_doc", typeSelectionne?.id || uploadType);
+    }
 
     try {
       await api.post(url, formData, {
@@ -448,14 +644,22 @@ const EmployeeDetail = () => {
       });
       setMessage({
         type: "success",
-        text: `${files.length} fichier(s) uploadé(s) avec succès.`,
+        text:
+          mode === "fichier"
+            ? `${files.length} fichier(s) ajouté(s) au document existant.`
+            : files.length > 1
+              ? `Document créé avec ${files.length} pages.`
+              : "Document uploadé avec succès.",
       });
       fetchEmployee(true);
       fetchContrats();
     } catch (err) {
       setMessage({
         type: "error",
-        text: err.response?.data?.files?.[0] || "Erreur lors de l'upload.",
+        text:
+          err.response?.data?.error ||
+          err.response?.data?.files?.[0] ||
+          "Erreur lors de l'upload.",
       });
     } finally {
       setUploading(false);
@@ -526,6 +730,54 @@ const EmployeeDetail = () => {
     })();
   };
 
+  // Renomme une PAGE du document depuis l'en-tête du viewer (clic sur son
+  // nom, à côté de « Page N/Total ») — le même renommage est aussi
+  // disponible dans le panneau "Modifier", page par page.
+  const handleRenamePage = async (page) => {
+    if (!selectedFile || busyIds.has(page.id)) return;
+    const nom = await prompt("Nom de la page :", page.nom);
+    if (nom === null || !nom.trim() || nom.trim() === page.nom) return;
+    await withBusyGuard(page.id, async () => {
+      try {
+        await api.patch(`/files/${selectedFile.id}/pages/${page.id}/`, {
+          nom: nom.trim(),
+        });
+        setMessage({ type: "success", text: "Page renommée." });
+        fetchEmployee(true);
+      } catch (err) {
+        setMessage({
+          type: "error",
+          text: err.response?.data?.error || "Erreur lors du renommage.",
+        });
+      } finally {
+        setTimeout(() => setMessage(null), 4000);
+      }
+    })();
+  };
+
+  // Enregistre la rotation courante comme réglage par défaut pour tout le
+  // monde (ADMIN/SUPERADMIN uniquement — voir SecureDocViewer "💾
+  // Enregistrer"). Sans pageId : fichier image entier. Avec pageId : une
+  // page précise d'un PDF (EmployeeDocumentFilePage.rotation).
+  const handleSaveRotation = async (rotation, pageId) => {
+    if (!selectedFile) return;
+    const url = pageId
+      ? `/files/${selectedFile.id}/pages/${pageId}/`
+      : `/files/${selectedFile.id}/`;
+    try {
+      await api.patch(url, { rotation });
+      setMessage({ type: "success", text: "Rotation enregistrée par défaut." });
+      fetchEmployee(true);
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors de l'enregistrement de la rotation.",
+      });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
+  };
+
   // Renomme un fichier d'après le libellé de son type de document
   // ("Acte de naissance" au lieu du nom technique du scan), en un clic.
   const handleAutoRenameFile = async (file, label, e) => {
@@ -535,6 +787,12 @@ const EmployeeDetail = () => {
     const ext = dotIndex > 0 ? file.file_name.slice(dotIndex) : "";
     const newName = `${label}${ext}`;
     if (newName === file.file_name) return;
+    if (
+      !(await confirm(
+        `Renommer ce fichier en « ${label} » ? Le nom actuel (« ${stripExt(file.file_name)} ») sera remplacé.`,
+      ))
+    )
+      return;
     await withBusyGuard(file.id, async () => {
       try {
         await api.patch(`/files/${file.id}/`, { file_name: newName });
@@ -734,41 +992,85 @@ const EmployeeDetail = () => {
             <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
               <EmployeeAvatar employee={employee} size={96} fontSize={32} light shape="square" />
               {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                <label
-                  aria-label="Changer la photo"
-                  style={{
-                    position: "absolute",
-                    bottom: -6,
-                    right: -6,
-                    width: 28,
-                    height: 28,
-                    borderRadius: "50%",
-                    background: theme.primary,
-                    border: "2px solid #0d3b1f",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: uploadingPhoto ? "wait" : "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  {uploadingPhoto ? "…" : "✎"}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handlePhotoChange}
-                    disabled={uploadingPhoto}
-                    style={{ display: "none" }}
-                  />
-                </label>
+                <>
+                  <label
+                    aria-label={employee?.has_photo ? "Modifier la photo" : "Ajouter une photo"}
+                    style={{
+                      position: "absolute",
+                      bottom: -6,
+                      right: employee?.has_photo ? 24 : -6,
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      background: theme.primary,
+                      border: "2px solid #0d3b1f",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: uploadingPhoto || deletingPhoto || convertingPdf ? "wait" : "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    {uploadingPhoto || convertingPdf ? "…" : "✎"}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      onChange={handlePhotoChange}
+                      disabled={uploadingPhoto || deletingPhoto || convertingPdf}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                  {employee?.has_photo && (
+                    <button
+                      type="button"
+                      aria-label="Supprimer la photo"
+                      onClick={handleDeletePhoto}
+                      disabled={uploadingPhoto || deletingPhoto || convertingPdf}
+                      style={{
+                        position: "absolute",
+                        bottom: -6,
+                        right: -6,
+                        width: 28,
+                        height: 28,
+                        borderRadius: "50%",
+                        background: theme.danger,
+                        border: "2px solid #0d3b1f",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: uploadingPhoto || deletingPhoto || convertingPdf ? "wait" : "pointer",
+                        fontSize: 13,
+                        color: "#fff",
+                        padding: 0,
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {deletingPhoto ? "…" : "🗑"}
+                    </button>
+                  )}
+                </>
               )}
             </div>
+            {cropImageSrc && (
+              <PhotoCropModal
+                imageSrc={cropImageSrc}
+                shape="rect"
+                onCancel={closeCropModal}
+                onValidate={handleCropValidate}
+              />
+            )}
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <h1 style={{ color: "#fff", fontWeight: 800, fontSize: 22, margin: 0, letterSpacing: "-0.02em" }}>
                   {employee.prenom} {employee.nom}
                 </h1>
-                <InfoNotice text={PAGE_NOTICES.employeeDetail} />
+                <InfoNotice
+                  text={
+                    ["ADMIN", "SUPERADMIN"].includes(user?.role)
+                      ? PAGE_NOTICES.employeeDetailAdmin
+                      : PAGE_NOTICES.employeeDetail
+                  }
+                />
                 <div style={{ display: "flex", gap: 6, marginLeft: 6 }}>
                   <button
                     onClick={() => navigate(`/employees/${adjacent.prev.id}`)}
@@ -838,8 +1140,24 @@ const EmployeeDetail = () => {
                   <button onClick={handleExportEmployee} className="btn-lift" style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     Exporter
                   </button>
-                  <button onClick={() => navigate(`/employees/${id}/modifier`)} className="btn-lift" style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                    Modifier
+                  {/* Édition sur place : le panneau "Informations" bascule
+                      en formulaire complet (EmployeeForm en mode intégré),
+                      sans quitter la fiche. */}
+                  <button
+                    onClick={() => setEditingInfos((v) => !v)}
+                    className="btn-lift"
+                    style={{
+                      background: editingInfos ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)",
+                      border: "1px solid rgba(255,255,255,0.3)",
+                      color: "#fff",
+                      borderRadius: 8,
+                      padding: "6px 14px",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {editingInfos ? "Fermer l'édition" : "Modifier"}
                   </button>
                 </div>
               )}
@@ -856,7 +1174,26 @@ const EmployeeDetail = () => {
           </div>
         )}
 
+        {/* Édition sur place — le formulaire complet (cascade
+            organisationnelle, transfert, archivage, champs personnalisés)
+            remplace les deux cartes le temps de la modification. */}
+        {editingInfos && (
+          <div className="anim-slide-up" style={{ marginBottom: 24 }}>
+            <EmployeeForm
+              embeddedId={employee.id}
+              onSaved={() => {
+                setEditingInfos(false);
+                fetchEmployee(true);
+                fetchContrats();
+                fetchHistorique();
+              }}
+              onCancel={() => setEditingInfos(false)}
+            />
+          </div>
+        )}
+
         {/* Infos employé */}
+        {!editingInfos && (
         <div
           style={{
             display: "grid",
@@ -953,6 +1290,21 @@ const EmployeeDetail = () => {
             </div>
           ))}
         </div>
+        )}
+
+        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (employee.created_by_name || employee.updated_by_name) && (
+          <div style={{ color: theme.textMuted, fontSize: 11, marginTop: -12, marginBottom: 24, textAlign: "right" }}>
+            {employee.created_by_name && (
+              <>Créé par {employee.created_by_name}{employee.created_at ? ` le ${formatDateTime(employee.created_at)}` : ""}</>
+            )}
+            {employee.updated_by_name && (
+              <>
+                {employee.created_by_name ? " · " : ""}
+                Modifié par {employee.updated_by_name}{employee.updated_at ? ` le ${formatDateTime(employee.updated_at)}` : ""}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Voie hiérarchique */}
         {employee.voie_hierarchique?.length > 0 && (
@@ -969,8 +1321,16 @@ const EmployeeDetail = () => {
                     fontSize={14}
                   />
                   <div>
-                    <div style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: theme.textMuted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       {niveau.role}
+                      {niveau.unite_code && (
+                        <span style={{
+                          background: theme.primaryBg, color: theme.primary, border: `1px solid ${theme.primaryBorder}`,
+                          borderRadius: 6, padding: "1px 6px", fontSize: 10, fontWeight: 700, letterSpacing: 0,
+                        }}>
+                          {niveau.unite_code}
+                        </span>
+                      )}
                     </div>
                     <div style={{ color: theme.text, fontSize: 13, fontWeight: 700 }}>
                       {niveau.prenom} {niveau.nom}
@@ -1028,6 +1388,8 @@ const EmployeeDetail = () => {
           setNewContrat={setNewContrat}
           savingContrat={savingContrat}
           handleCreateContrat={handleCreateContrat}
+          handleDeleteContrat={handleDeleteContrat}
+          deletingContratId={deletingContratId}
           user={user}
           isMobile={isMobile}
         />
@@ -1077,16 +1439,22 @@ const EmployeeDetail = () => {
           setSelectedContratId={setSelectedContratId}
           selectedDoc={selectedDoc}
           selectedFile={selectedFile}
+          initialPageNumber={initialPageNumber}
           showScanImport={showScanImport}
           setShowScanImport={setShowScanImport}
           setUploadType={setUploadType}
           uploadType={uploadType}
           uploading={uploading}
+          setEditingDoc={setEditingDoc}
+          viewerFullscreen={viewerFullscreen}
+          setViewerFullscreen={setViewerFullscreen}
           typesDocuments={typesDocuments}
           typesDocumentsList={typesDocumentsList}
           sortContratsByDate={sortContratsByDate}
           loadFile={loadFile}
           handleAutoRenameFile={handleAutoRenameFile}
+          handleRenamePage={handleRenamePage}
+          handleSaveRotation={handleSaveRotation}
           handleDeleteDoc={handleDeleteDoc}
           handleDeleteFile={handleDeleteFile}
           handleRenameFile={handleRenameFile}
@@ -1103,6 +1471,31 @@ const EmployeeDetail = () => {
           <OcrSuggestionsPanel employeeId={employee.id} />
         )}
       </div>
+      {editingDoc && (
+        <DocumentPagesModal
+          doc={
+            (employee.documents || []).find((d) => d.id === editingDoc.id) ||
+            editingDoc
+          }
+          docLabel={
+            typesDocuments[editingDoc.type_document] || editingDoc.type_document
+          }
+          onClose={() => setEditingDoc(null)}
+          onChanged={async () => {
+            await fetchEmployee(true);
+          }}
+        />
+      )}
+      {uploadChoice && (
+        <UploadChoiceModal
+          docLabel={uploadChoice.docLabel}
+          nbFichiers={uploadChoice.nbFichiers}
+          onChoose={(choix) => {
+            uploadChoice.resolve(choix);
+            setUploadChoice(null);
+          }}
+        />
+      )}
       {ConfirmDialog}
       {PromptDialog}
     </PageBackground>

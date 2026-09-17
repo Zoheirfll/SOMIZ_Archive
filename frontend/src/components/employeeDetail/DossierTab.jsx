@@ -1,15 +1,13 @@
+import { createPortal } from "react-dom";
 import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import SecureDocViewer from "../SecureDocViewer";
 import ScanImportModal from "../ScanImportModal";
 import {
-  TrashIcon,
-  PencilIcon,
   PaperclipIcon,
   FileTextIcon,
   ImageIcon,
   Spinner,
-  TagIcon,
 } from "../icons";
 import {
   stripExt,
@@ -20,6 +18,15 @@ import {
   folderRowBorder,
   hexToRgba,
 } from "../../utils/employeeDocsDisplay";
+
+// En plein écran, le viewer doit sortir du flux : les classes d'animation
+// des conteneurs parents (.tab-content/.anim-fade-in, animation d'opacité
+// en fill-mode both) créent un contexte d'empilement qui enferme un
+// `position: fixed` — l'overlay se retrouvait peint SOUS la navbar, qui
+// masquait son en-tête et le bouton de sortie. Un portail vers
+// document.body échappe à tous ces contextes.
+const MaybePortal = ({ active, children }) =>
+  active ? createPortal(children, document.body) : children;
 
 // Onglet "Dossier" de la fiche employé (sidebar Documents + viewer + import
 // scanné) — extrait de EmployeeDetail.jsx pour garder la page principale
@@ -48,16 +55,22 @@ const DossierTab = ({
   setSelectedContratId,
   selectedDoc,
   selectedFile,
+  initialPageNumber,
   showScanImport,
   setShowScanImport,
   setUploadType,
   uploadType,
   uploading,
+  setEditingDoc,
+  viewerFullscreen,
+  setViewerFullscreen,
   typesDocuments,
   typesDocumentsList,
   sortContratsByDate,
   loadFile,
   handleAutoRenameFile,
+  handleRenamePage,
+  handleSaveRotation,
   handleDeleteDoc,
   handleDeleteFile,
   handleRenameFile,
@@ -204,29 +217,62 @@ const DossierTab = ({
                       </div>
                     </div>
                     {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                      <button
-                        onClick={(e) => handleDeleteDoc(doc, e)}
-                        disabled={busyIds?.has(doc.id)}
-                        title="Supprimer ce document"
-                        aria-label="Supprimer ce document"
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          color: theme.danger,
-                          cursor: busyIds?.has(doc.id) ? "not-allowed" : "pointer",
-                          display: "flex",
-                          padding: "2px 4px",
-                          opacity: busyIds?.has(doc.id) ? 0.3 : 0.5,
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.opacity = 1)
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.opacity = 0.5)
-                        }
-                      >
-                        <TrashIcon />
-                      </button>
+                      <div style={{ display: "flex", gap: 2 }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingDoc(doc);
+                          }}
+                          disabled={busyIds?.has(doc.id)}
+                          title="Modifier les pages de ce document"
+                          aria-label="Modifier les pages de ce document"
+                          style={{
+                            background: "transparent",
+                            border: `1px solid ${theme.border}`,
+                            borderRadius: 6,
+                            color: theme.textSecondary,
+                            cursor: busyIds?.has(doc.id) ? "not-allowed" : "pointer",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: "2px 8px",
+                            opacity: busyIds?.has(doc.id) ? 0.3 : 0.7,
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.opacity = 1)
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.opacity = 0.7)
+                          }
+                        >
+                          Modifier
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteDoc(doc, e)}
+                          disabled={busyIds?.has(doc.id)}
+                          title="Supprimer ce document"
+                          aria-label="Supprimer ce document"
+                          style={{
+                            background: "transparent",
+                            border: `1px solid ${theme.dangerBorder}`,
+                            borderRadius: 6,
+                            color: theme.danger,
+                            cursor: busyIds?.has(doc.id) ? "not-allowed" : "pointer",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: "2px 8px",
+                            opacity: busyIds?.has(doc.id) ? 0.3 : 0.7,
+                            fontFamily: theme.fontFamily,
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.opacity = 1)
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.opacity = 0.7)
+                          }
+                        >
+                          Supprimer
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -284,73 +330,41 @@ const DossierTab = ({
                               >
                                 {stripExt(file.file_name) || `Page ${index + 1}`}
                               </div>
+                              {file.uploaded_by_name && (
+                                <div
+                                  style={{
+                                    color: theme.textMuted,
+                                    fontSize: 10,
+                                    marginTop: 1,
+                                  }}
+                                >
+                                  Ajouté par {file.uploaded_by_name}
+                                </div>
+                              )}
                             </div>
                           </div>
                           {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                            <div style={{ display: "flex", gap: 6 }}>
-                            <button
-                              onClick={(e) => handleAutoRenameFile(file, typesDocuments[doc.type_document] || doc.type_document, e)}
-                              disabled={busyIds?.has(file.id)}
-                              title="Renommer d'après le type de document"
-                              aria-label="Renommer d'après le type de document"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: theme.textSecondary,
-                                cursor: busyIds?.has(file.id) ? "not-allowed" : "pointer",
-                                display: "flex",
-                                opacity: busyIds?.has(file.id) ? 0.3 : 0.5,
-                              }}
-                              onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                              onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
-                            >
-                              <TagIcon size={16} />
-                            </button>
-                            <button
-                              onClick={(e) => handleRenameFile(file, e)}
-                              disabled={busyIds?.has(file.id)}
-                              title="Renommer ce fichier"
-                              aria-label="Renommer ce fichier"
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: theme.textSecondary,
-                                cursor: busyIds?.has(file.id) ? "not-allowed" : "pointer",
-                                display: "flex",
-                                opacity: busyIds?.has(file.id) ? 0.3 : 0.5,
-                              }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.opacity = 1)
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.opacity = 0.5)
-                              }
-                            >
-                              <PencilIcon size={16} />
-                            </button>
                             <button
                               onClick={(e) => handleDeleteFile(file, e)}
                               disabled={busyIds?.has(file.id)}
                               title="Supprimer ce fichier"
-                              aria-label="Supprimer ce fichier"
+                              aria-label={`Supprimer ${file.file_name}`}
                               style={{
                                 background: "transparent",
-                                border: "none",
+                                border: `1px solid ${theme.dangerBorder}`,
+                                borderRadius: 6,
                                 color: theme.danger,
                                 cursor: busyIds?.has(file.id) ? "not-allowed" : "pointer",
-                                display: "flex",
-                                opacity: busyIds?.has(file.id) ? 0.3 : 0.5,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: "2px 8px",
+                                flexShrink: 0,
+                                opacity: busyIds?.has(file.id) ? 0.3 : 0.8,
+                                fontFamily: theme.fontFamily,
                               }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.opacity = 1)
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.opacity = 0.5)
-                              }
                             >
-                              <TrashIcon size={16} />
+                              Supprimer
                             </button>
-                            </div>
                           )}
                         </div>
                       ))}
@@ -411,17 +425,20 @@ const DossierTab = ({
                             aria-label="Supprimer cette version"
                             style={{
                               background: "transparent",
-                              border: "none",
+                              border: `1px solid ${theme.dangerBorder}`,
+                              borderRadius: 6,
                               color: theme.danger,
                               cursor: busyIds?.has(h.id) ? "not-allowed" : "pointer",
-                              display: "flex",
-                              padding: "2px 4px",
-                              opacity: busyIds?.has(h.id) ? 0.3 : 0.5,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              padding: "1px 7px",
+                              opacity: busyIds?.has(h.id) ? 0.3 : 0.7,
+                              fontFamily: theme.fontFamily,
                             }}
                             onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.5)}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.7)}
                           >
-                            <TrashIcon size={13} />
+                            Supprimer
                           </button>
                         )}
                       </div>
@@ -517,6 +534,14 @@ const DossierTab = ({
                           const formData = new FormData();
                           formData.append("type_doc", typeDoc?.id || doc.code);
                           files.forEach((f) => formData.append("files", f));
+                          // Upload rapide sur un document manquant : un seul
+                          // fichier attendu par nature (une ligne = un type).
+                          // Si plusieurs sont sélectionnés d'un coup (recto +
+                          // verso), fusion automatique en un seul PDF — pas
+                          // de case à cocher ici, contrairement à "Ajouter un
+                          // document" où plusieurs fichiers séparés restent
+                          // un cas d'usage normal.
+                          if (files.length > 1) formData.append("merge", "true");
                           try {
                             await api.post(
                               `/employees/${id}/documents/`,
@@ -529,13 +554,17 @@ const DossierTab = ({
                             );
                             setMessage({
                               type: "success",
-                              text: `${doc.label} uploadé avec succès.`,
+                              text:
+                                files.length > 1
+                                  ? `${doc.label} uploadé (${files.length} fichiers fusionnés).`
+                                  : `${doc.label} uploadé avec succès.`,
                             });
                             fetchEmployee(true);
                           } catch (err) {
                             setMessage({
                               type: "error",
                               text:
+                                err.response?.data?.error ||
                                 err.response?.data?.files?.[0] ||
                                 "Erreur lors de l'upload.",
                             });
@@ -644,6 +673,18 @@ const DossierTab = ({
                       </optgroup>
                     ))}
                   </select>
+                  <div
+                    style={{
+                      color: theme.textMuted,
+                      fontSize: 10.5,
+                      marginBottom: 8,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Plusieurs fichiers sélectionnés d'un coup (recto + verso…)
+                    deviennent les pages d'un même document, chacune gardant
+                    le nom de son fichier.
+                  </div>
                   <label
                     style={{
                       display: "flex",
@@ -688,19 +729,70 @@ const DossierTab = ({
               )}
             </div>
 
-            {/* Viewer */}
+            {/* Viewer — hors flux (portail) en plein écran, sinon panneau
+                de hauteur fixe dans la grille. */}
+            <MaybePortal active={viewerFullscreen}>
             <div
-              style={{
-                background: theme.surface,
-                border: `1px solid ${theme.border}`,
-                borderRadius: 12,
-                overflow: "hidden",
-                boxShadow: theme.shadow,
-                minHeight: 600,
-                display: "flex",
-                flexDirection: "column",
-              }}
+              style={
+                viewerFullscreen
+                  ? {
+                      // Plein écran : le viewer couvre toute la fenêtre
+                      // (Échap pour sortir, voir EmployeeDetail.jsx).
+                      position: "fixed",
+                      inset: 0,
+                      zIndex: 1500,
+                      background: theme.surface,
+                      display: "flex",
+                      flexDirection: "column",
+                      borderRadius: 0,
+                      border: "none",
+                    }
+                  : {
+                      background: theme.surface,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      boxShadow: theme.shadow,
+                      // Hauteur fixe, proportionnée à une page portrait
+                      // (A4) : `alignSelf: start` évite que la grille
+                      // l'étire à la hauteur de la liste des types (très
+                      // longue → immense zone vide), sans pour autant le
+                      // rabaisser à la hauteur d'écran, trop court pour
+                      // lire un document debout. On fait défiler la page.
+                      alignSelf: "start",
+                      height: isMobile ? "75vh" : 1100,
+                      display: "flex",
+                      flexDirection: "column",
+                    }
+              }
             >
+              {/* Sortie du plein écran — bouton flottant toujours visible,
+                  indépendant de la barre d'en-tête (qui peut déborder). */}
+              {viewerFullscreen && (
+                <button
+                  type="button"
+                  onClick={() => setViewerFullscreen(false)}
+                  title="Quitter le plein écran (Échap)"
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    right: 18,
+                    zIndex: 10,
+                    background: theme.danger,
+                    border: "none",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    padding: "8px 16px",
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(15,23,42,0.3)",
+                    fontFamily: theme.fontFamily,
+                  }}
+                >
+                  ✕ Quitter le plein écran (Échap)
+                </button>
+              )}
               {selectedFile ? (
                 <>
                   <div
@@ -732,104 +824,181 @@ const DossierTab = ({
                           marginTop: 3,
                         }}
                       >
-                        <span
-                          title={selectedFile.file_name}
-                          style={{
-                            color: theme.textSecondary,
-                            fontSize: 12,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            maxWidth: 260,
-                          }}
-                        >
-                          {stripExt(selectedFile.file_name)}
-                        </span>
-                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
+                        {/* Titre du fichier — cliquable pour le renommer,
+                            même geste que le nom de page à côté des flèches. */}
+                        {["ADMIN", "SUPERADMIN"].includes(user?.role) ? (
                           <button
-                            onClick={(e) => handleAutoRenameFile(selectedFile, typesDocuments[selectedDoc?.type_document] || selectedDoc?.type_document, e)}
-                            disabled={busyIds?.has(selectedFile.id)}
-                            title="Renommer d'après le type de document"
-                            aria-label="Renommer d'après le type de document"
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: theme.textSecondary,
-                              cursor: busyIds?.has(selectedFile.id) ? "not-allowed" : "pointer",
-                              display: "flex",
-                              opacity: busyIds?.has(selectedFile.id) ? 0.3 : 0.6,
-                              padding: 0,
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
-                          >
-                            <TagIcon size={16} />
-                          </button>
-                        )}
-                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                          <button
+                            type="button"
                             onClick={(e) => handleRenameFile(selectedFile, e)}
                             disabled={busyIds?.has(selectedFile.id)}
-                            title="Renommer ce fichier"
-                            aria-label="Renommer ce fichier"
+                            title="Cliquer pour renommer ce fichier"
                             style={{
                               background: "transparent",
-                              border: "none",
+                              border: `1px solid ${theme.border}`,
+                              borderRadius: 6,
                               color: theme.textSecondary,
-                              cursor: busyIds?.has(selectedFile.id) ? "not-allowed" : "pointer",
-                              display: "flex",
-                              opacity: busyIds?.has(selectedFile.id) ? 0.3 : 0.6,
-                              padding: 0,
+                              fontSize: 12,
+                              padding: "2px 8px",
+                              cursor: busyIds?.has(selectedFile.id)
+                                ? "not-allowed"
+                                : "pointer",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              maxWidth: 280,
+                              fontFamily: theme.fontFamily,
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
-                            onMouseLeave={(e) => (e.currentTarget.style.opacity = 0.6)}
                           >
-                            <PencilIcon size={16} />
+                            {stripExt(selectedFile.file_name)} ✏️
                           </button>
+                        ) : null}
+                        {/* Nommer le fichier d'après le type de document
+                            ("Infos personnelles" au lieu du nom technique du
+                            scan) — l'ancienne icône 🏷️, désormais écrite. */}
+                        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
+                          <button
+                            type="button"
+                            onClick={(e) =>
+                              handleAutoRenameFile(
+                                selectedFile,
+                                typesDocuments[selectedDoc?.type_document] ||
+                                  selectedDoc?.type_document,
+                                e,
+                              )
+                            }
+                            disabled={busyIds?.has(selectedFile.id)}
+                            title="Nommer ce fichier d'après le type de document"
+                            style={{
+                              background: "transparent",
+                              border: `1px solid ${theme.border}`,
+                              borderRadius: 6,
+                              color: theme.textSecondary,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: "2px 8px",
+                              cursor: busyIds?.has(selectedFile.id)
+                                ? "not-allowed"
+                                : "pointer",
+                              whiteSpace: "nowrap",
+                              fontFamily: theme.fontFamily,
+                            }}
+                          >
+                            Nommer d'après le type
+                          </button>
+                        )}
+                        {!["ADMIN", "SUPERADMIN"].includes(user?.role) && (
+                          <span
+                            title={selectedFile.file_name}
+                            style={{
+                              color: theme.textSecondary,
+                              fontSize: 12,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              maxWidth: 260,
+                            }}
+                          >
+                            {stripExt(selectedFile.file_name)}
+                          </span>
                         )}
                       </div>
                     </div>
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 12 }}
                     >
-                      {/* Onglets fichiers */}
-                      {selectedDoc?.fichiers?.length > 1 && (
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {selectedDoc.fichiers.map((file, index) => (
+                      {/* Navigation page par page (2026-09-14) — un document
+                          à plusieurs fichiers se parcourt comme un PDF
+                          multi-page, plutôt que par onglets : chaque
+                          fichier reste géré individuellement (renommer/
+                          supprimer déjà ci-dessus), seule la navigation
+                          change de forme. */}
+                      {selectedDoc?.fichiers?.length > 1 && (() => {
+                        const sorted = [...selectedDoc.fichiers].sort(
+                          (a, b) => a.ordre - b.ordre,
+                        );
+                        const idx = sorted.findIndex(
+                          (f) => f.id === selectedFile.id,
+                        );
+                        const goTo = (i) => {
+                          if (i >= 0 && i < sorted.length) loadFile(sorted[i]);
+                        };
+                        return (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                            }}
+                          >
                             <button
-                              key={file.id}
-                              onClick={() => loadFile(file)}
-                              title={file.file_name}
+                              type="button"
+                              onClick={() => goTo(idx - 1)}
+                              disabled={idx <= 0}
+                              title="Page précédente"
+                              aria-label="Page précédente"
                               style={{
-                                background:
-                                  selectedFile.id === file.id
-                                    ? theme.primary
-                                    : theme.primaryBg,
+                                background: theme.primaryBg,
                                 border: `1px solid ${theme.border}`,
-                                color:
-                                  selectedFile.id === file.id
-                                    ? "#fff"
-                                    : theme.primary,
+                                color: idx <= 0 ? theme.textMuted : theme.primary,
                                 borderRadius: 6,
                                 padding: "4px 10px",
-                                fontSize: 11,
+                                fontSize: 12,
+                                cursor: idx <= 0 ? "default" : "pointer",
+                              }}
+                            >
+                              ←
+                            </button>
+                            <span
+                              style={{
+                                color: theme.textSecondary,
+                                fontSize: 12,
                                 fontWeight: 600,
-                                cursor: "pointer",
-                                maxWidth: 140,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              {stripExt(file.file_name) || `Page ${index + 1}`}
+                              Page {idx + 1}/{sorted.length}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => goTo(idx + 1)}
+                              disabled={idx >= sorted.length - 1}
+                              title="Page suivante"
+                              aria-label="Page suivante"
+                              style={{
+                                background: theme.primaryBg,
+                                border: `1px solid ${theme.border}`,
+                                color:
+                                  idx >= sorted.length - 1
+                                    ? theme.textMuted
+                                    : theme.primary,
+                                borderRadius: 6,
+                                padding: "4px 10px",
+                                fontSize: 12,
+                                cursor:
+                                  idx >= sorted.length - 1 ? "default" : "pointer",
+                              }}
+                            >
+                              →
                             </button>
-                          ))}
-                        </div>
-                      )}
+                          </div>
+                        );
+                      })()}
                       <span
                         style={{ color: theme.textSecondary, fontSize: 12 }}
                       >
                         {formatSizeMo(selectedFile.file_size_kb)} · {formatDateTime(selectedFile.uploaded_at)}
+                        {selectedFile.uploaded_by_name && (
+                          <> · Ajouté par {selectedFile.uploaded_by_name}</>
+                        )}
+                        {selectedFile.modified_by_name && (
+                          <>
+                            {" "}
+                            · Modifié par {selectedFile.modified_by_name}
+                            {selectedFile.modified_at
+                              ? ` le ${formatDateTime(selectedFile.modified_at)}`
+                              : ""}
+                          </>
+                        )}
                         {selectedFile.ocr_status === "pending" && (
                           <span style={{ marginLeft: 8 }}>⏳ Analyse en cours</span>
                         )}
@@ -840,6 +1009,29 @@ const DossierTab = ({
                           <span style={{ marginLeft: 8, color: theme.danger }}>✗ Échec d'analyse</span>
                         )}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => setViewerFullscreen((v) => !v)}
+                        title={
+                          viewerFullscreen
+                            ? "Quitter le plein écran (Échap)"
+                            : "Afficher en plein écran"
+                        }
+                        style={{
+                          background: viewerFullscreen ? theme.primary : theme.primaryBg,
+                          border: `1px solid ${theme.primaryBorder}`,
+                          borderRadius: 6,
+                          color: viewerFullscreen ? "#fff" : theme.primary,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "4px 10px",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          fontFamily: theme.fontFamily,
+                        }}
+                      >
+                        {viewerFullscreen ? "Quitter le plein écran" : "Plein écran"}
+                      </button>
                     </div>
                   </div>
 
@@ -857,9 +1049,22 @@ const DossierTab = ({
                     </div>
                   ) : docUrl ? (
                     <SecureDocViewer
+                      key={selectedFile?.id}
                       url={docUrl}
                       mimeType={selectedFile?.mime_type}
                       fileName={selectedFile?.file_name}
+                      initialPage={initialPageNumber}
+                      pages={[...(selectedFile?.pages || [])].sort(
+                        (a, b) => a.ordre - b.ordre,
+                      )}
+                      onRenamePage={
+                        ["ADMIN", "SUPERADMIN"].includes(user?.role)
+                          ? handleRenamePage
+                          : undefined
+                      }
+                      savedRotation={selectedFile?.rotation}
+                      canSaveRotation={["ADMIN", "SUPERADMIN"].includes(user?.role)}
+                      onSaveRotation={handleSaveRotation}
                     />
                   ) : (
                     <div
@@ -893,6 +1098,7 @@ const DossierTab = ({
                 </div>
               )}
             </div>
+            </MaybePortal>
           </div>
         )}
 

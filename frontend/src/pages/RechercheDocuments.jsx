@@ -163,7 +163,10 @@ export default function RechercheDocuments() {
         {results.map((r) => (
           <div
             key={r.file_id}
-            onClick={() => navigate(`/employees/${r.employee_matricule}?tab=dossier`)}
+            onClick={() => navigate(
+              `/employees/${r.employee_matricule}?tab=dossier&fileId=${r.file_id}` +
+              (r.page_ordre ? `&page=${r.page_ordre}` : "")
+            )}
             className="card-lift"
             style={{
               background: theme.surface,
@@ -186,7 +189,7 @@ export default function RechercheDocuments() {
                 {r.type_doc_nom} — {r.file_name}
               </div>
             </div>
-            <div style={{ fontSize: 13, color: theme.textSecondary, lineHeight: 1.5 }}>
+            <div dir="auto" style={{ fontSize: 13, color: theme.textSecondary, lineHeight: 1.5 }}>
               {highlight(r.snippet, lastQuery, theme)}
             </div>
           </div>

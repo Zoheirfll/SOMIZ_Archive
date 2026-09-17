@@ -121,19 +121,41 @@ const SectionHeader = ({ label, notice }) => {
   );
 };
 
-const EmployeeForm = () => {
+// Page pleine (route /employees/:id/modifier) vs intégré dans la fiche
+// employé : seule l'enveloppe change, le formulaire lui-même est identique.
+const PageWrapper = ({ theme, children }) => (
+  <PageBackground style={{ fontFamily: theme.fontFamily }}>
+    <Navbar />
+    {children}
+  </PageBackground>
+);
+
+const EmbeddedWrapper = ({ theme, children }) => (
+  <div style={{ fontFamily: theme.fontFamily }}>{children}</div>
+);
+
+// `embeddedId` / `onSaved` / `onCancel` (2026-09-14) : le même formulaire
+// peut être affiché en page pleine (route /employees/:id/modifier) OU
+// intégré directement dans la fiche employé, sous le panneau
+// "Informations" — une seule implémentation des règles (cascade
+// organisationnelle, confirmation de transfert, archivage, champs
+// personnalisés), pas de second formulaire à maintenir en parallèle.
+const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
   const theme = useTheme();
   const { user } = useAuth();
-  const { id } = useParams();
+  const { id: routeId } = useParams();
   const navigate = useNavigate();
+  const embedded = !!embeddedId;
+  const id = embeddedId || routeId;
   const isEdit = !!id;
-  usePageTitle(isEdit ? "Modifier employé" : "Nouvel employé");
+  usePageTitle(embedded ? null : isEdit ? "Modifier employé" : "Nouvel employé");
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
 
   useEffect(() => {
+    if (embedded) return;
     if (user && !["ADMIN", "SUPERADMIN"].includes(user.role)) navigate("/employees");
-  }, [user, navigate]);
+  }, [embedded, user, navigate]);
 
   const [form, setForm] = useState({
     matricule: "",
@@ -395,7 +417,7 @@ const EmployeeForm = () => {
       if (isEdit) {
         await api.patch(`/employees/${id}/`, payload);
         setMessage({ type: "success", text: "Employé modifié avec succès." });
-        setTimeout(() => navigate(`/employees/${id}`), 1500);
+        if (!embedded) setTimeout(() => navigate(`/employees/${id}`), 1500);
       } else {
         const response = await api.post("/employees/", payload);
         employeeId = response.data.id;
@@ -416,6 +438,9 @@ const EmployeeForm = () => {
       if (champsDefinitions.length > 0) {
         await api.patch(`/employees/${employeeId}/champs/`, champsValues);
       }
+      // Mode intégré : c'est la fiche employé qui reprend la main
+      // (rafraîchissement + fermeture du formulaire), pas une navigation.
+      if (embedded) onSaved?.();
     } catch (err) {
       const data = err.response?.data;
       if (data && typeof data === "object") setErrors(data);
@@ -434,24 +459,77 @@ const EmployeeForm = () => {
     marginBottom: 20,
   };
 
-  if (fetching)
-    return (
+  // "Lieu de naissance" s'affiche dans la section Identité plutôt que dans
+  // "Informations complémentaires" — identifié via ocr_pattern quand il est
+  // configuré (stable, contrairement à nom/code qui restent modifiables par
+  // l'admin), avec repli sur le nom exact si l'OCR n'a pas été configuré
+  // pour ce champ (ocr_pattern vide dans ce cas).
+  const champLieuNaissance = champsDefinitions.find(
+    (c) =>
+      c.ocr_pattern === "LIEU_NAISSANCE" ||
+      c.nom?.trim().toLowerCase() === "lieu de naissance",
+  );
+  const champsDefinitionsComplementaires = champsDefinitions.filter(
+    (c) => c.id !== champLieuNaissance?.id,
+  );
+
+  const renderChampField = (champ) => (
+    <Field key={champ.id} label={champ.nom}>
+      {champ.type_champ === "booleen" ? (
+        <Select
+          value={champsValues[champ.id] || ""}
+          onChange={(e) =>
+            setChampsValues({ ...champsValues, [champ.id]: e.target.value })
+          }
+        >
+          <option value="">-- Sélectionner --</option>
+          <option value="oui">Oui</option>
+          <option value="non">Non</option>
+        </Select>
+      ) : (
+        <Input
+          type={
+            champ.type_champ === "nombre"
+              ? "number"
+              : champ.type_champ === "date"
+                ? "date"
+                : "text"
+          }
+          value={champsValues[champ.id] || ""}
+          onChange={(e) =>
+            setChampsValues({ ...champsValues, [champ.id]: e.target.value })
+          }
+        />
+      )}
+    </Field>
+  );
+
+  if (fetching) {
+    const skeleton = (
+      <div style={{ padding: embedded ? 0 : 32, maxWidth: 800, margin: "0 auto" }}>
+        <Skeleton height={40} style={{ marginBottom: 16 }} />
+        <Skeleton height={40} style={{ marginBottom: 16 }} />
+        <Skeleton height={40} style={{ marginBottom: 16 }} />
+        <Skeleton height={120} radius={12} />
+      </div>
+    );
+    return embedded ? (
+      skeleton
+    ) : (
       <PageBackground style={{ fontFamily: theme.fontFamily }}>
         <Navbar />
-        <div style={{ padding: 32, maxWidth: 800, margin: "0 auto" }}>
-          <Skeleton height={40} style={{ marginBottom: 16 }} />
-          <Skeleton height={40} style={{ marginBottom: 16 }} />
-          <Skeleton height={40} style={{ marginBottom: 16 }} />
-          <Skeleton height={120} radius={12} />
-        </div>
+        {skeleton}
       </PageBackground>
     );
+  }
+
+  const Wrapper = embedded ? EmbeddedWrapper : PageWrapper;
 
   return (
-    <PageBackground style={{ fontFamily: theme.fontFamily }}>
-      <Navbar />
-
-      {/* Hero header */}
+    <Wrapper theme={theme}>
+      {/* Hero header — page pleine uniquement (en mode intégré, la fiche
+          employé fournit déjà son propre en-tête). */}
+      {!embedded && (
       <div
         style={{
           background:
@@ -490,16 +568,18 @@ const EmployeeForm = () => {
           </div>
         </div>
       </div>
+      )}
 
       <div
         className="anim-fade-in"
         style={{
-          padding: isMobile ? "16px" : "32px",
-          maxWidth: 900,
+          padding: embedded ? 0 : isMobile ? "16px" : "32px",
+          maxWidth: embedded ? "none" : 900,
           margin: "0 auto",
         }}
       >
-        {/* Back button */}
+        {/* Back button — page pleine uniquement */}
+        {!embedded && (
         <button
           onClick={() => navigate(isEdit ? `/employees/${id}` : "/employees")}
           style={{
@@ -520,6 +600,7 @@ const EmployeeForm = () => {
         >
           ← Retour
         </button>
+        )}
 
         {/* Message banner */}
         {message && (
@@ -642,7 +723,6 @@ const EmployeeForm = () => {
                   name="nom"
                   value={form.nom}
                   onChange={handleChange}
-                  placeholder="FILALI"
                 />
                 {errors.nom && (
                   <div
@@ -658,7 +738,6 @@ const EmployeeForm = () => {
                   name="prenom"
                   value={form.prenom}
                   onChange={handleChange}
-                  placeholder="Ahmed"
                 />
                 {errors.prenom && (
                   <div
@@ -677,6 +756,8 @@ const EmployeeForm = () => {
                   onChange={handleChange}
                 />
               </Field>
+
+              {champLieuNaissance && renderChampField(champLieuNaissance)}
 
               <Field label="Date de recrutement">
                 <Input
@@ -841,8 +922,10 @@ const EmployeeForm = () => {
             </div>
           </div>
 
-          {/* Section Informations complémentaires (champs personnalisés) */}
-          {champsDefinitions.length > 0 && (
+          {/* Section Informations complémentaires (champs personnalisés) —
+              "Lieu de naissance" en est retiré et affiché dans la section
+              Identité à la place (voir champLieuNaissance ci-dessus). */}
+          {champsDefinitionsComplementaires.length > 0 && (
             <div style={sectionCardStyle}>
               <SectionHeader label="Informations complémentaires" />
               <div
@@ -852,42 +935,7 @@ const EmployeeForm = () => {
                   gap: "0 24px",
                 }}
               >
-                {champsDefinitions.map((champ) => (
-                  <Field key={champ.id} label={champ.nom}>
-                    {champ.type_champ === "booleen" ? (
-                      <Select
-                        value={champsValues[champ.id] || ""}
-                        onChange={(e) =>
-                          setChampsValues({
-                            ...champsValues,
-                            [champ.id]: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="">-- Sélectionner --</option>
-                        <option value="oui">Oui</option>
-                        <option value="non">Non</option>
-                      </Select>
-                    ) : (
-                      <Input
-                        type={
-                          champ.type_champ === "nombre"
-                            ? "number"
-                            : champ.type_champ === "date"
-                              ? "date"
-                              : "text"
-                        }
-                        value={champsValues[champ.id] || ""}
-                        onChange={(e) =>
-                          setChampsValues({
-                            ...champsValues,
-                            [champ.id]: e.target.value,
-                          })
-                        }
-                      />
-                    )}
-                  </Field>
-                ))}
+                {champsDefinitionsComplementaires.map((champ) => renderChampField(champ))}
               </div>
             </div>
           )}
@@ -903,7 +951,9 @@ const EmployeeForm = () => {
             <button
               type="button"
               onClick={() =>
-                navigate(isEdit ? `/employees/${id}` : "/employees")
+                embedded
+                  ? onCancel?.()
+                  : navigate(isEdit ? `/employees/${id}` : "/employees")
               }
               style={{
                 background: "transparent",
@@ -947,7 +997,7 @@ const EmployeeForm = () => {
         </form>
       </div>
       {ConfirmDialog}
-    </PageBackground>
+    </Wrapper>
   );
 };
 

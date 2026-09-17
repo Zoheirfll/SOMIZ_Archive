@@ -504,6 +504,10 @@ class Employee(models.Model):
         settings.AUTH_USER_MODEL, null=True,
         on_delete=models.SET_NULL, related_name='employees_created'
     )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True,
+        on_delete=models.SET_NULL, related_name='employees_updated'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -582,6 +586,12 @@ class Employee(models.Model):
                 "prenom": responsable.prenom,
                 "matricule": responsable.matricule,
                 "has_photo": bool(responsable.photo),
+                # Abréviation de l'unité (Direction/Pôle/Département/
+                # Service/Cellule/Section.code, ex. "DRH", "SPA") — même
+                # champ que la colonne "Abréviation" de /parametres,
+                # affichée ici en plus du rôle pour identifier l'unité
+                # sans dérouler tout son nom (2026-09-15).
+                "unite_code": unite.code or None,
             })
         return chaine
 
@@ -930,7 +940,22 @@ class EmployeeDocumentFile(models.Model):
     mime_type = models.CharField(max_length=50, blank=True)
     ordre = models.PositiveSmallIntegerField(default=1, verbose_name="Ordre")
     is_active = models.BooleanField(default=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True,
+        on_delete=models.SET_NULL, related_name='files_uploaded'
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    modified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='files_modified'
+    )
+    modified_at = models.DateTimeField(null=True, blank=True)
+    # Rotation par défaut enregistrée par un ADMIN/SUPERADMIN (2026-09-17) —
+    # utilisée pour les fichiers image (un PDF est tourné page par page, voir
+    # EmployeeDocumentFilePage.rotation). Un CONSULTANT peut toujours pivoter
+    # localement dans le viewer, mais ça ne modifie jamais cette valeur.
+    ROTATION_CHOICES = [(0, '0°'), (90, '90°'), (180, '180°'), (270, '270°')]
+    rotation = models.PositiveSmallIntegerField(default=0, choices=ROTATION_CHOICES)
 
     class Meta:
         db_table = 'employee_document_files'
@@ -943,6 +968,47 @@ class EmployeeDocumentFile(models.Model):
     @property
     def file_size_kb(self):
         return round(self.file_size / 1024, 1) if self.file_size else None
+
+
+class EmployeeDocumentFilePage(models.Model):
+    """
+    Page interne d'un EmployeeDocumentFile PDF (2026-09-14).
+
+    Le fichier physique reste UNIQUE (un seul blob PDF servi au viewer, un
+    seul EmployeeDocumentFile en base — on n'éclate jamais un document en
+    plusieurs fichiers séparés), mais chaque page interne devient une
+    entité adressable : nom propre, réorganisable, remplaçable,
+    supprimable, et insertion de nouvelles pages possible. Le nom par
+    défaut vient du fichier uploadé (son nom tel quel s'il n'a qu'une
+    page, "<nom> page N" s'il en a plusieurs).
+
+    **Invariant** : pour un fichier donné, les lignes triées par `ordre`
+    correspondent 1:1, dans le même ordre, aux pages physiques du PDF.
+    Toute opération qui change le contenu (réorganiser/supprimer/ajouter/
+    remplacer) réécrit le PDF ET réaligne ces lignes dans la même
+    transaction (voir employees/views.py, vues FilePage*).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file = models.ForeignKey(
+        EmployeeDocumentFile, on_delete=models.CASCADE,
+        related_name='pages', verbose_name="Fichier"
+    )
+    ordre = models.PositiveSmallIntegerField(default=1, verbose_name="Ordre")
+    nom = models.CharField(max_length=255, verbose_name="Nom de la page")
+    # Rotation par défaut de cette page, enregistrée par un ADMIN/SUPERADMIN
+    # (2026-09-17) — voir EmployeeDocumentFile.rotation, même principe mais
+    # par page plutôt que par fichier entier.
+    rotation = models.PositiveSmallIntegerField(
+        default=0, choices=EmployeeDocumentFile.ROTATION_CHOICES
+    )
+
+    class Meta:
+        db_table = 'employee_document_file_pages'
+        verbose_name = "Page de document"
+        ordering = ['ordre']
+
+    def __str__(self):
+        return f"{self.file} — {self.nom}"
 
 
 class EmployeeAccessGrant(models.Model):

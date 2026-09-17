@@ -24,6 +24,14 @@ class UserSerializer(serializers.ModelSerializer):
     scope_types_documents_nom = serializers.SerializerMethodField()
     scope_champs_personnels_nom = serializers.SerializerMethodField()
     employee_grants_count = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+    updated_by_name = serializers.SerializerMethodField()
+
+    def get_created_by_name(self, obj):
+        return obj.created_by.full_name if obj.created_by_id else None
+
+    def get_updated_by_name(self, obj):
+        return obj.updated_by.full_name if obj.updated_by_id else None
 
     def get_employee_grants_count(self, obj):
         # Nombre d'EMPLOYÉS distincts avec un grant, pas de lignes (un
@@ -67,8 +75,9 @@ class UserSerializer(serializers.ModelSerializer):
             'scope_types_documents', 'scope_types_documents_nom',
             'scope_champs_personnels', 'scope_champs_personnels_nom',
             'employee_grants_count',
+            'created_by_name', 'updated_by_name', 'date_joined', 'updated_at',
         ]
-        read_only_fields = ['id', 'last_login']
+        read_only_fields = ['id', 'last_login', 'date_joined', 'updated_at']
 
     def validate_role(self, value):
         # Même règle qu'à la création — voir UserCreateSerializer.validate_role.
@@ -137,7 +146,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop('password')
-        user = User(**validated_data)
+        request = self.context.get('request')
+        creator = getattr(request, 'user', None)
+        user = User(created_by=creator, **validated_data)
         user.set_password(password)
         user.save()
         return user
@@ -211,7 +222,7 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
             }
 
         before = _scope_snapshot(target)
-        updated = serializer.save()
+        updated = serializer.save(updated_by=self.request.user)
         after = _scope_snapshot(updated)
         if before != after:
             AuditLog.log(

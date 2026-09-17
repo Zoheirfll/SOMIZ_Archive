@@ -3,6 +3,7 @@ import Skeleton from "../Skeleton";
 import EmployeeAvatar from "../EmployeeAvatar";
 import { employeeSlug } from "../../utils/employeeSlug";
 import { IconService, IconUsers } from "./icons";
+import DocFilterPanel from "./DocFilterPanel";
 
 // Filtres + tableau des employés (colonnes configurables, tri, pagination,
 // actions en masse) — extrait de Employees.jsx pour garder la page
@@ -38,6 +39,12 @@ const EmployeesTable = ({
   dossierComplet,
   typeManquant,
   typeManquantLabel,
+  typePresent,
+  typePresentLabel,
+  docTypesList,
+  docFilterOpen,
+  setDocFilterOpen,
+  applyDocFilters,
   isMobile,
   user,
   setAllColumns,
@@ -279,6 +286,36 @@ const EmployeesTable = ({
         <div style={{ position: "relative" }}>
           <button
             type="button"
+            onClick={() => setDocFilterOpen((o) => !o)}
+            className="btn-lift"
+            style={{
+              border: `1.5px solid ${dossierComplet !== null || typeManquant || typePresent ? theme.primary : theme.border}`,
+              borderRadius: 10,
+              padding: "10px 16px",
+              color: dossierComplet !== null || typeManquant || typePresent ? theme.primary : theme.text,
+              fontSize: 13,
+              fontWeight: 600,
+              background: dossierComplet !== null || typeManquant || typePresent ? theme.primaryBg : theme.surface,
+              cursor: "pointer",
+              fontFamily: theme.fontFamily,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Filtres dossier {docFilterOpen ? "▲" : "▼"}
+          </button>
+          <DocFilterPanel
+            open={docFilterOpen}
+            onClose={() => setDocFilterOpen(false)}
+            docTypesList={docTypesList}
+            dossierComplet={dossierComplet}
+            typeManquant={typeManquant}
+            typePresent={typePresent}
+            onApply={applyDocFilters}
+          />
+        </div>
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
             onClick={() => setColsMenuOpen((o) => !o)}
             className="btn-lift"
             style={{
@@ -413,45 +450,86 @@ const EmployeesTable = ({
         </div>
       </div>
 
-      {/* Chip filtre complétude (arrivée depuis le dashboard) */}
-      {(dossierComplet !== null || typeManquant) && (
+      {/* Chips filtres actifs (dossier + documents) */}
+      {(dossierComplet !== null || typeManquant || typePresent) && (
         <div
           className="anim-slide-down"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            background: theme.primaryBg,
-            border: `1px solid ${theme.primaryBorder}`,
-            borderRadius: 20,
-            padding: "6px 8px 6px 14px",
-            marginBottom: 16,
-            fontSize: 13,
-            color: theme.primary,
-            fontWeight: 600,
-            fontFamily: theme.fontFamily,
-          }}
+          style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}
         >
-          {typeManquant
-            ? `Manque : ${typeManquantLabel || "…"}`
-            : dossierComplet === "true"
-              ? "Dossiers complets"
-              : "Dossiers incomplets"}
+          {dossierComplet !== null && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: theme.primaryBg,
+                border: `1px solid ${theme.primaryBorder}`,
+                borderRadius: 20,
+                padding: "6px 8px 6px 14px",
+                fontSize: 13,
+                color: theme.primary,
+                fontWeight: 600,
+                fontFamily: theme.fontFamily,
+              }}
+            >
+              {dossierComplet === "true" ? "Dossiers complets" : "Dossiers incomplets"}
+            </span>
+          )}
+          {typeManquant && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: "#FFFBEB",
+                border: "1px solid #FDE68A",
+                borderRadius: 20,
+                padding: "6px 8px 6px 14px",
+                fontSize: 13,
+                color: "#92400E",
+                fontWeight: 600,
+                fontFamily: theme.fontFamily,
+              }}
+            >
+              Manque : {typeManquantLabel || "…"}
+            </span>
+          )}
+          {typePresent && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: theme.primaryBg,
+                border: `1px solid ${theme.primaryBorder}`,
+                borderRadius: 20,
+                padding: "6px 8px 6px 14px",
+                fontSize: 13,
+                color: theme.primary,
+                fontWeight: 600,
+                fontFamily: theme.fontFamily,
+              }}
+            >
+              Présent : {typePresentLabel || "…"}
+            </span>
+          )}
           <button
             type="button"
             onClick={clearCompletudeFilter}
             style={{
               background: "none",
-              border: "none",
-              color: theme.primary,
+              border: `1px solid ${theme.border}`,
+              color: theme.textSecondary,
               cursor: "pointer",
-              fontSize: 16,
-              lineHeight: 1,
-              padding: "2px 4px",
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 20,
+              padding: "6px 12px",
+              fontFamily: theme.fontFamily,
             }}
-            aria-label="Effacer le filtre"
+            aria-label="Effacer tous les filtres dossier"
           >
-            ✕
+            Effacer ✕
           </button>
         </div>
       )}

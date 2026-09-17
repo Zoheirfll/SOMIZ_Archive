@@ -300,7 +300,13 @@ const ContratDetail = () => {
       setMessage({ type: "success", text: `${files.length} fichier(s) uploadé(s) avec succès.` });
       fetchContrat(true);
     } catch (err) {
-      setMessage({ type: "error", text: err.response?.data?.files?.[0] || "Erreur lors de l'upload." });
+      setMessage({
+        type: "error",
+        text:
+          err.response?.data?.error ||
+          err.response?.data?.files?.[0] ||
+          "Erreur lors de l'upload.",
+      });
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -365,6 +371,28 @@ const ContratDetail = () => {
         setTimeout(() => setMessage(null), 4000);
       }
     })();
+  };
+
+  // Enregistre la rotation courante comme réglage par défaut pour tout le
+  // monde (ADMIN/SUPERADMIN uniquement — voir SecureDocViewer "💾
+  // Enregistrer"). Même mécanisme que EmployeeDetail.jsx#handleSaveRotation.
+  const handleSaveRotation = async (rotation, pageId) => {
+    if (!selectedFile) return;
+    const url = pageId
+      ? `/files/${selectedFile.id}/pages/${pageId}/`
+      : `/files/${selectedFile.id}/`;
+    try {
+      await api.patch(url, { rotation });
+      setMessage({ type: "success", text: "Rotation enregistrée par défaut." });
+      fetchContrat(true);
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.error || "Erreur lors de l'enregistrement de la rotation.",
+      });
+    } finally {
+      setTimeout(() => setMessage(null), 4000);
+    }
   };
 
   // Renomme un fichier d'après le libellé de son type de document
@@ -992,9 +1020,13 @@ const ContratDetail = () => {
                   </div>
                 ) : docUrl ? (
                   <SecureDocViewer
+                    key={selectedFile?.id}
                     url={docUrl}
                     mimeType={selectedFile?.mime_type}
                     fileName={selectedFile?.file_name}
+                    savedRotation={selectedFile?.rotation}
+                    canSaveRotation={["ADMIN", "SUPERADMIN"].includes(user?.role)}
+                    onSaveRotation={handleSaveRotation}
                   />
                 ) : (
                   <div style={{

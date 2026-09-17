@@ -143,7 +143,10 @@ const Employees = () => {
   const ordering = searchParams.get("ordering") || "nom";
   const dossierComplet = searchParams.get("dossier_complet");
   const typeManquant = searchParams.get("type_manquant") || "";
+  const typePresent = searchParams.get("type_present") || "";
   const [typeManquantLabel, setTypeManquantLabel] = useState("");
+  const [docTypesList, setDocTypesList] = useState([]);
+  const [docFilterOpen, setDocFilterOpen] = useState(false);
 
   // Niveau du drill-down (Direction>Département>Service) synchronisé dans
   // l'URL — chaque clic pousse une entrée d'historique (pas de replace),
@@ -178,6 +181,26 @@ const Employees = () => {
         const n = new URLSearchParams(p);
         n.delete("dossier_complet");
         n.delete("type_manquant");
+        n.delete("type_present");
+        n.set("page", "1");
+        return n;
+      },
+      { replace: true },
+    );
+
+  // Applique le panneau "Filtres dossier" (Colonnes du bandeau tableau) en
+  // un seul remplacement d'URL — { dossierComplet: "true"|"false"|null,
+  // manquants: [codes], presents: [codes] }.
+  const applyDocFilters = ({ dossierComplet: dc, manquants, presents }) =>
+    setSearchParams(
+      (p) => {
+        const n = new URLSearchParams(p);
+        n.delete("dossier_complet");
+        n.delete("type_manquant");
+        n.delete("type_present");
+        if (dc !== null && dc !== undefined) n.set("dossier_complet", dc);
+        if (manquants?.length) n.set("type_manquant", manquants.join(","));
+        if (presents?.length) n.set("type_present", presents.join(","));
         n.set("page", "1");
         return n;
       },
@@ -371,6 +394,7 @@ const Employees = () => {
       } else {
         if (dossierComplet !== null) params.dossier_complet = dossierComplet;
         if (typeManquant) params.type_manquant = typeManquant;
+        if (typePresent) params.type_present = typePresent;
         if (orgFilter) params[orgFilter.type] = orgFilter.id;
         else if (selectedService) params.service = selectedService.id;
         else if (selectedDepartement) params.departement = selectedDepartement.id;
@@ -394,6 +418,7 @@ const Employees = () => {
     ordering,
     dossierComplet,
     typeManquant,
+    typePresent,
     selectedService,
     selectedDepartement,
     selectedDirection,
@@ -428,23 +453,48 @@ const Employees = () => {
   // Arrivée depuis le dashboard (?dossier_complet=... ou ?type_manquant=...)
   // — bascule directement sur la liste, comme pour les liens Organigramme.
   useEffect(() => {
-    if (dossierComplet !== null || typeManquant) setView("employees");
-  }, [dossierComplet, typeManquant]);
+    if (dossierComplet !== null || typeManquant || typePresent) setView("employees");
+  }, [dossierComplet, typeManquant, typePresent]);
+
+  // Liste des types de documents feuilles (non-catégories) — chargée une
+  // fois, utilisée à la fois pour résoudre les libellés des chips actifs
+  // (type_manquant/type_present peuvent contenir plusieurs codes séparés
+  // par des virgules) et pour peupler le panneau "Filtres dossier".
+  useEffect(() => {
+    api
+      .get("/ref/types-documents/")
+      .then((r) => {
+        const list = (r.data.results || r.data).filter((t) => !t.is_categorie);
+        setDocTypesList(list);
+      })
+      .catch(() => {});
+  }, []);
+
+  const codeToLabel = (code) =>
+    docTypesList.find((t) => t.code === code)?.nom || code;
 
   useEffect(() => {
     if (!typeManquant) {
       setTypeManquantLabel("");
       return;
     }
-    api
-      .get("/ref/types-documents/")
-      .then((r) => {
-        const list = r.data.results || r.data;
-        const t = list.find((x) => x.code === typeManquant);
-        setTypeManquantLabel(t ? t.nom : typeManquant);
-      })
-      .catch(() => setTypeManquantLabel(typeManquant));
-  }, [typeManquant]);
+    setTypeManquantLabel(
+      typeManquant.split(",").filter(Boolean).map(codeToLabel).join(", "),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeManquant, docTypesList]);
+
+  const [typePresentLabel, setTypePresentLabel] = useState("");
+  useEffect(() => {
+    if (!typePresent) {
+      setTypePresentLabel("");
+      return;
+    }
+    setTypePresentLabel(
+      typePresent.split(",").filter(Boolean).map(codeToLabel).join(", "),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typePresent, docTypesList]);
 
   useEffect(() => {
     if (view !== "employees" && vue !== "archives") return;
@@ -528,7 +578,10 @@ const Employees = () => {
       searchParams.get("service") ||
       searchParams.get("pole") ||
       searchParams.get("cellule") ||
-      searchParams.get("section")
+      searchParams.get("section") ||
+      searchParams.get("dossier_complet") !== null ||
+      searchParams.get("type_manquant") ||
+      searchParams.get("type_present")
     ) {
       return;
     }
@@ -1244,6 +1297,12 @@ const Employees = () => {
             dossierComplet={dossierComplet}
             typeManquant={typeManquant}
             typeManquantLabel={typeManquantLabel}
+            typePresent={typePresent}
+            typePresentLabel={typePresentLabel}
+            docTypesList={docTypesList}
+            docFilterOpen={docFilterOpen}
+            setDocFilterOpen={setDocFilterOpen}
+            applyDocFilters={applyDocFilters}
             isMobile={isMobile}
             user={user}
             setAllColumns={setAllColumns}

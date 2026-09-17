@@ -10,22 +10,42 @@ from rest_framework import serializers
 
 
 from employees.models import (
-    Employee, EmployeeDocument, EmployeeDocumentFile, TypeDocument, Contrat,
+    Employee, EmployeeDocument, EmployeeDocumentFile, EmployeeDocumentFilePage,
+    TypeDocument, Contrat,
     ChampPersonnalise, HistoriqueFonction, HistoriqueCategorie, HistoriqueEchelle,
 )
 
 
 # ─── DOCUMENT ────────────────────────────────────────────────────────────────
 
+class EmployeeDocumentFilePageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeDocumentFilePage
+        fields = ['id', 'ordre', 'nom', 'rotation']
+        read_only_fields = ['id']
+
+
 class EmployeeDocumentFileSerializer(serializers.ModelSerializer):
     file_size_kb = serializers.FloatField(read_only=True)
     ocr_status = serializers.SerializerMethodField()
+    # Pages internes du PDF (2026-09-14) — le fichier reste unique, chaque
+    # page est nommée/réorganisable individuellement. Vide pour un fichier
+    # non-PDF ou uploadé avant ce chantier (géré comme un fichier entier).
+    pages = EmployeeDocumentFilePageSerializer(many=True, read_only=True)
+    uploaded_by_name = serializers.CharField(
+        source='uploaded_by.full_name', read_only=True, default=None
+    )
+    modified_by_name = serializers.CharField(
+        source='modified_by.full_name', read_only=True, default=None
+    )
 
     class Meta:
         model = EmployeeDocumentFile
         fields = [
             'id', 'file_name', 'file_size', 'file_size_kb',
             'mime_type', 'ordre', 'is_active', 'uploaded_at', 'ocr_status',
+            'uploaded_by_name', 'modified_by_name', 'modified_at', 'pages',
+            'rotation',
         ]
         read_only_fields = ['id', 'file_size', 'mime_type', 'uploaded_at']
 
@@ -150,7 +170,11 @@ class DocumentUploadSerializer(serializers.Serializer):
     files = serializers.ListField(
         child=serializers.FileField(),
         min_length=1,
-        max_length=10,
+        max_length=50,
+        error_messages={
+            'max_length': "Trop de fichiers sélectionnés (maximum {max_length}).",
+            'min_length': "Sélectionnez au moins un fichier.",
+        },
     )
     notes = serializers.CharField(required=False, allow_blank=True)
 
@@ -208,7 +232,10 @@ class ScanImportSerializer(serializers.Serializer):
     part référence la position du fichier dans `files`.
     """
     files = serializers.ListField(
-        child=serializers.FileField(), min_length=1, max_length=20
+        child=serializers.FileField(), min_length=1, max_length=100,
+        error_messages={
+            'max_length': "Trop de fichiers sélectionnés (maximum {max_length}).",
+        },
     )
     plan = serializers.CharField()
 
@@ -223,11 +250,11 @@ class ScanImportSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         files = attrs["files"]
-        max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+        max_size = settings.MAX_SCAN_IMPORT_SIZE_MB * 1024 * 1024
         for file in files:
             if file.size > max_size:
                 raise serializers.ValidationError(
-                    f"{file.name} trop lourd. Maximum {settings.MAX_UPLOAD_SIZE_MB} Mo."
+                    f"{file.name} trop lourd. Maximum {settings.MAX_SCAN_IMPORT_SIZE_MB} Mo."
                 )
             file.seek(0)
             mime = magic.from_buffer(file.read(2048), mime=True)
@@ -268,7 +295,7 @@ class ScanImportSerializer(serializers.Serializer):
 
         if total_pages > 100:
             raise serializers.ValidationError(
-                "Maximum 100 pages au total par import."
+                f"Trop de pages au total ({total_pages}). Maximum 100 pages par import."
             )
 
         attrs["groups"] = resolved_groups
@@ -343,6 +370,9 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(
         source='created_by.full_name', read_only=True
     )
+    updated_by_name = serializers.CharField(
+        source='updated_by.full_name', read_only=True, default=None
+    )
     documents_manquants = serializers.SerializerMethodField()
 
     # Noms des référentiels
@@ -383,7 +413,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'documents', 'documents_manquants', 'champs_personnalises',
             'champs_categories',
             'voie_hierarchique',
-            'created_by_name', 'created_at', 'updated_at',
+            'created_by_name', 'updated_by_name', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

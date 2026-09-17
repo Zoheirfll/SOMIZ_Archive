@@ -346,8 +346,8 @@ const Users = () => {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 24px" }}>
                 {[
                   { name: "username", label: "Identifiant", placeholder: "prenom.nom" },
-                  { name: "nom", label: "Nom", placeholder: "BENALI" },
-                  { name: "prenom", label: "Prénom", placeholder: "Ahmed" },
+                  { name: "nom", label: "Nom" },
+                  { name: "prenom", label: "Prénom" },
                 ].map((f) => (
                   <div key={f.name}>
                     <label style={labelStyle}>{f.label}</label>
@@ -398,7 +398,6 @@ const Users = () => {
                     name="password2"
                     value={form.password2}
                     onChange={handleChange}
-                    placeholder="Répétez le mot de passe"
                     className="input-focus" style={inputStyle}
                   />
                   {errors.password2 && (
@@ -540,6 +539,16 @@ const Users = () => {
                     </td>
                     <td style={{ padding: "13px 16px", color: theme.text, fontWeight: 600, fontSize: 14 }}>
                       {u.nom} {u.prenom}
+                      {(u.created_by_name || u.updated_by_name) && (
+                        <div style={{ color: theme.textMuted, fontWeight: 400, fontSize: 11, marginTop: 2 }}>
+                          {u.created_by_name && (
+                            <>Créé par {u.created_by_name}</>
+                          )}
+                          {u.updated_by_name && (
+                            <>{u.created_by_name ? " · " : ""}Modifié par {u.updated_by_name}</>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "13px 16px" }}>
                       <span style={{
@@ -556,7 +565,11 @@ const Users = () => {
                     </td>
                     <td style={{ padding: "13px 16px", fontSize: 13, maxWidth: 220 }}>
                       {(() => {
-                        if (u.role === "ADMIN") {
+                        // ADMIN comme SUPERADMIN sont toujours non
+                        // restreints (User.is_admin couvre les deux côté
+                        // serveur) — afficher "Accès complet" plutôt que
+                        // "Aucun périmètre", trompeur pour un SUPERADMIN.
+                        if (["ADMIN", "SUPERADMIN"].includes(u.role)) {
                           return <span style={{ color: theme.textMuted, fontStyle: "italic" }}>Accès complet</span>;
                         }
                         const dirNoms = u.scope_directions_nom || [];
@@ -780,7 +793,6 @@ const Users = () => {
                     boxSizing: "border-box",
                     fontFamily: theme.fontFamily,
                   }}
-                  placeholder="••••••••••"
                 />
                 <button
                   type="button"
@@ -822,7 +834,6 @@ const Users = () => {
                     boxSizing: "border-box",
                     fontFamily: theme.fontFamily,
                   }}
-                  placeholder="••••••••••"
                 />
                 <button
                   type="button"

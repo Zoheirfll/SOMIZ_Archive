@@ -141,7 +141,7 @@ const CarriereTab = ({
               </div>
             ))}
 
-            {user?.role === "ADMIN" && (
+            {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
               <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
                 {[
                   { axe: "fonctions", label: "Gérer l'historique Fonction" },

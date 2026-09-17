@@ -28,6 +28,21 @@ def _celery_eager_for_tests(settings):
     settings.CELERY_TASK_ALWAYS_EAGER = True
 
 
+@pytest.fixture(autouse=True)
+def _plateforme_sps_webhook_disabled_by_default(settings):
+    """
+    `.env` porte les vraies valeurs de dev pour PLATEFORME_SPS_WEBHOOK_URL/
+    SECRET (voir employees/webhook_client.py) — sans ce fixture, chaque test
+    qui crée/modifie un Employee ou un Contrat déclencherait une vraie
+    tentative HTTP vers ce serveur (souvent pas démarré pendant les tests),
+    ajoutant jusqu'à 3s (le timeout) par test concerné. Désactivé par défaut
+    ici (opt-in, comme en prod) ; tests/test_webhook_sps_sync.py réactive
+    explicitement l'intégration via son propre fixture pour ses cas précis.
+    """
+    settings.PLATEFORME_SPS_WEBHOOK_URL = ''
+    settings.PLATEFORME_SPS_WEBHOOK_SECRET = ''
+
+
 @pytest.fixture
 def admin_user(db):
     return User.objects.create_user(

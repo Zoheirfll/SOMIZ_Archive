@@ -188,13 +188,15 @@ const Dashboard = () => {
           gap: 16,
           marginBottom: 32,
         }}>
-          <StatCard
-            label="Employés actifs"
-            value={countEmployes ?? 0}
-            color={theme.primary}
-            icon={<IconUsers />}
-            className="anim-slide-up delay-1"
-          />
+          <div onClick={() => navigate("/employees")} style={{ cursor: "pointer" }}>
+            <StatCard
+              label="Employés actifs"
+              value={countEmployes ?? 0}
+              color={theme.primary}
+              icon={<IconUsers />}
+              className="anim-slide-up delay-1"
+            />
+          </div>
           <div
             onClick={() => navigate("/employees?dossier_complet=true")}
             style={{ cursor: "pointer" }}
@@ -226,20 +228,27 @@ const Dashboard = () => {
               className="anim-slide-up delay-2"
             />
           </div>
-          <StatCard
-            label="Taux de complétude"
-            value={total > 0 ? `${countTaux ?? stats?.taux_completude_global}%` : "N/A"}
-            color={stats?.taux_completude_global >= 80 ? theme.primary : theme.warning}
-            icon={<IconBarChart />}
-            className="anim-slide-up delay-3"
-          />
-          <StatCard
-            label="Total documents"
-            value={countDocs ?? 0}
-            color={theme.textSecondary}
-            icon={<IconFile />}
-            className="anim-slide-up delay-4"
-          />
+          <div
+            onClick={() => navigate("/employees?dossier_complet=false")}
+            style={{ cursor: "pointer" }}
+          >
+            <StatCard
+              label="Taux de complétude"
+              value={total > 0 ? `${countTaux ?? stats?.taux_completude_global}%` : "N/A"}
+              color={stats?.taux_completude_global >= 80 ? theme.primary : theme.warning}
+              icon={<IconBarChart />}
+              className="anim-slide-up delay-3"
+            />
+          </div>
+          <div onClick={() => navigate("/statistiques")} style={{ cursor: "pointer" }}>
+            <StatCard
+              label="Total documents"
+              value={countDocs ?? 0}
+              color={theme.textSecondary}
+              icon={<IconFile />}
+              className="anim-slide-up delay-4"
+            />
+          </div>
         </div>
 
         {total === 0 ? (

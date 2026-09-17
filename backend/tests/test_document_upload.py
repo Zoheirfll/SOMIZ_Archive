@@ -95,10 +95,10 @@ class TestDocumentUpload:
         assert "text/html" in body or "MIME" in body or "autorisé" in body.lower()
 
     def test_upload_file_too_large(self, admin_user, employee, type_doc_obligatoire):
-        """Un fichier > 20 Mo est rejeté avec 400."""
+        """Un fichier > 5 Mo est rejeté avec 400."""
         client = auth_client(admin_user)
-        # 21 Mo > limite 20 Mo
-        big_file = make_upload_file("big.pdf", size=21 * 1024 * 1024)
+        # 6 Mo > limite 5 Mo
+        big_file = make_upload_file("big.pdf", size=6 * 1024 * 1024)
 
         with patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
             resp = client.post(

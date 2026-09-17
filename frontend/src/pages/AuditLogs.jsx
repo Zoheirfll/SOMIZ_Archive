@@ -71,7 +71,8 @@ const AuditLogs = () => {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [scope, setScope] = useState("all");
-  const [filters, setFilters] = useState({ user: "", action: "" });
+  const [filters, setFilters] = useState({ user: "", action: "", date_debut: "", date_fin: "" });
+  const [datePreset, setDatePreset] = useState("tout");
   const [filterableUsers, setFilterableUsers] = useState([]);
   const isMobile = useIsMobile();
 
@@ -119,6 +120,8 @@ const AuditLogs = () => {
       const params = { page };
       if (filters.user) params.user = filters.user;
       if (filters.action) params.action = filters.action;
+      if (filters.date_debut) params.date_debut = filters.date_debut;
+      if (filters.date_fin) params.date_fin = filters.date_fin;
       const response = await api.get("/reporting/audit-logs/", { params });
       setLogs(response.data.results);
       setTotal(response.data.total);
@@ -133,6 +136,41 @@ const AuditLogs = () => {
 
   const handleFilter = (e) => {
     setFilters({ ...filters, [e.target.name]: e.target.value });
+    setPage(1);
+  };
+
+  const toIso = (d) => d.toISOString().slice(0, 10);
+
+  const DATE_PRESETS = [
+    { key: "tout", label: "Tout" },
+    { key: "jour", label: "Aujourd'hui" },
+    { key: "7j", label: "7 jours" },
+    { key: "30j", label: "30 jours" },
+  ];
+
+  const applyDatePreset = (preset) => {
+    setDatePreset(preset);
+    if (preset === "tout") {
+      setFilters((f) => ({ ...f, date_debut: "", date_fin: "" }));
+      setPage(1);
+      return;
+    }
+    const fin = new Date();
+    const debut = new Date();
+    if (preset === "jour") {
+      // debut = fin = aujourd'hui
+    } else if (preset === "7j") {
+      debut.setDate(fin.getDate() - 7);
+    } else if (preset === "30j") {
+      debut.setDate(fin.getDate() - 30);
+    }
+    setFilters((f) => ({ ...f, date_debut: toIso(debut), date_fin: toIso(fin) }));
+    setPage(1);
+  };
+
+  const handleDateInput = (e) => {
+    setDatePreset(null);
+    setFilters((f) => ({ ...f, [e.target.name]: e.target.value }));
     setPage(1);
   };
 
@@ -241,6 +279,64 @@ const AuditLogs = () => {
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
+        </div>
+
+        {/* Filtre de date */}
+        <div style={{
+          background: theme.surface,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 16,
+          padding: "14px 20px",
+          marginBottom: 20,
+          display: "flex",
+          gap: 16,
+          alignItems: "center",
+          flexWrap: "wrap",
+          boxShadow: theme.shadowMd,
+        }}>
+          <span style={{ color: theme.textMuted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Période
+          </span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {DATE_PRESETS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => applyDatePreset(p.key)}
+                style={{
+                  border: `1.5px solid ${datePreset === p.key ? theme.primary : theme.border}`,
+                  background: datePreset === p.key ? theme.primaryBg : theme.bg,
+                  color: datePreset === p.key ? theme.primary : theme.textSecondary,
+                  borderRadius: 8,
+                  padding: "6px 14px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: isMobile ? 0 : "auto" }}>
+            <input
+              type="date"
+              name="date_debut"
+              value={filters.date_debut}
+              onChange={handleDateInput}
+              max={filters.date_fin || undefined}
+              style={{ ...inputStyle, padding: "7px 10px", cursor: "pointer" }}
+            />
+            <span style={{ color: theme.textMuted, fontSize: 12 }}>→</span>
+            <input
+              type="date"
+              name="date_fin"
+              value={filters.date_fin}
+              onChange={handleDateInput}
+              min={filters.date_debut || undefined}
+              style={{ ...inputStyle, padding: "7px 10px", cursor: "pointer" }}
+            />
+          </div>
         </div>
 
         {/* Table */}

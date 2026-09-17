@@ -3,8 +3,9 @@ apps/audit/views.py
 Journal d'audit + statistiques de complétude des dossiers
 """
 
-from datetime import date
+from datetime import date, datetime, time
 from django.db.models import Count, Q
+from django.utils import timezone
 from django.http import HttpResponse
 from rest_framework import serializers
 from rest_framework.response import Response
@@ -51,6 +52,8 @@ class AuditLogListView(APIView):
         user_q = request.query_params.get('user')
         action = request.query_params.get('action')
         target = request.query_params.get('target')
+        date_debut = request.query_params.get('date_debut')
+        date_fin = request.query_params.get('date_fin')
 
         if request.user.is_superadmin:
             if user_q:
@@ -66,6 +69,20 @@ class AuditLogListView(APIView):
             qs = qs.filter(action=action)
         if target:
             qs = qs.filter(target_label__icontains=target)
+        # Filtre de date — bornes inclusives sur le jour civil (fuseau
+        # local du serveur), `timestamp` étant enregistré en UTC.
+        if date_debut:
+            try:
+                d = datetime.strptime(date_debut, '%Y-%m-%d').date()
+                qs = qs.filter(timestamp__gte=timezone.make_aware(datetime.combine(d, time.min)))
+            except ValueError:
+                pass
+        if date_fin:
+            try:
+                d = datetime.strptime(date_fin, '%Y-%m-%d').date()
+                qs = qs.filter(timestamp__lte=timezone.make_aware(datetime.combine(d, time.max)))
+            except ValueError:
+                pass
 
         # Pagination manuelle (50 par page)
         page = int(request.query_params.get('page', 1))
@@ -76,7 +93,10 @@ class AuditLogListView(APIView):
         if request.user.is_superadmin:
             AuditLog.log(
                 request, AuditLog.Action.VIEW_AUDIT_LOG,
-                details={'user': user_q, 'action': action, 'target': target, 'page': page},
+                details={
+                    'user': user_q, 'action': action, 'target': target, 'page': page,
+                    'date_debut': date_debut, 'date_fin': date_fin,
+                },
             )
 
         return Response({

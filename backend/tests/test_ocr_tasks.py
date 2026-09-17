@@ -8,7 +8,7 @@ pytestmark = pytest.mark.django_db
 
 @patch('ocr.tasks.run_ocr_on_file')
 def test_run_ocr_creates_done_result_with_no_champ_source(mock_engine, employee_document_file):
-    mock_engine.return_value = ("Texte libre sans champ source", 88.0)
+    mock_engine.return_value = ("Texte libre sans champ source", 88.0, [])
 
     run_ocr(str(employee_document_file.id))
 
@@ -32,7 +32,7 @@ def test_run_ocr_extracts_fields_when_champ_has_ocr_pattern_configured(
     champ_personnel_2.save()
     employee_document_file.document.type_doc.champ_source = 'NIN'
     employee_document_file.document.type_doc.save()
-    mock_engine.return_value = ("NIN: 123456789012345678", 92.0)
+    mock_engine.return_value = ("NIN: 123456789012345678", 92.0, [])
 
     run_ocr(str(employee_document_file.id))
 
@@ -54,7 +54,7 @@ def test_run_ocr_no_suggestion_when_champ_has_no_ocr_pattern(
     assert champ_personnel_2.ocr_pattern == ''
     employee_document_file.document.type_doc.champ_source = 'NIN'
     employee_document_file.document.type_doc.save()
-    mock_engine.return_value = ("NIN: 123456789012345678", 92.0)
+    mock_engine.return_value = ("NIN: 123456789012345678", 92.0, [])
 
     run_ocr(str(employee_document_file.id))
 
@@ -67,7 +67,7 @@ def test_run_ocr_no_suggestion_when_champ_has_no_ocr_pattern(
 def test_run_ocr_no_suggestion_when_champ_source_matches_nothing(mock_engine, employee_document_file):
     employee_document_file.document.type_doc.champ_source = 'CHAMP_INEXISTANT'
     employee_document_file.document.type_doc.save()
-    mock_engine.return_value = ("peu importe", 50.0)
+    mock_engine.return_value = ("peu importe", 50.0, [])
 
     run_ocr(str(employee_document_file.id))
 
@@ -89,7 +89,7 @@ def test_run_ocr_marks_failed_on_engine_error(mock_engine, employee_document_fil
 
 def test_run_ocr_is_idempotent_on_rerun(employee_document_file):
     OcrResult.objects.create(file=employee_document_file, status=OcrResult.Status.DONE, raw_text="ancien")
-    with patch('ocr.tasks.run_ocr_on_file', return_value=("nouveau", 50.0)):
+    with patch('ocr.tasks.run_ocr_on_file', return_value=("nouveau", 50.0, [])):
         run_ocr(str(employee_document_file.id))
     result = OcrResult.objects.get(file=employee_document_file)
     assert result.raw_text == "nouveau"

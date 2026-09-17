@@ -22,6 +22,15 @@ class OcrResult(models.Model):
         max_length=10, choices=Status.choices, default=Status.PENDING
     )
     raw_text = models.TextField(blank=True, verbose_name="Texte extrait")
+    page_texts = models.JSONField(
+        default=list, blank=True, verbose_name="Texte extrait par page",
+        help_text=(
+            "Liste ordonnée du texte de chaque page physique du PDF (index 0 = "
+            "EmployeeDocumentFilePage.ordre 1) — permet à la recherche globale de "
+            "retrouver la page exacte d'un résultat, pas seulement le fichier. "
+            "Vide pour un fichier non-PDF (une image est une page indivisible)."
+        ),
+    )
     confidence = models.FloatField(null=True, blank=True, verbose_name="Confiance")
     extracted_fields = models.JSONField(
         default=list, blank=True, verbose_name="Champs détectés",

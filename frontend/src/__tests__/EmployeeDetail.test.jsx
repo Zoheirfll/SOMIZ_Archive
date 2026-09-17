@@ -16,6 +16,17 @@ jest.mock("../components/SecureDocViewer", () => () => (
 jest.mock("../components/ScanImportModal", () => () => (
   <div data-testid="scan-import-modal">Scan import</div>
 ));
+jest.mock("../components/PhotoCropModal", () => (props) => (
+  <div data-testid="photo-crop-modal">
+    <button onClick={() => props.onValidate(new Blob(["fake"], { type: "image/jpeg" }))}>
+      Valider le cadrage
+    </button>
+    <button onClick={props.onCancel}>Annuler le cadrage</button>
+  </div>
+));
+jest.mock("../utils/pdfToImage", () => ({
+  pdfFirstPageToImageUrl: jest.fn(),
+}));
 jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
@@ -27,6 +38,7 @@ jest.mock("react-router-dom", () => ({
 
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { pdfFirstPageToImageUrl } from "../utils/pdfToImage";
 import EmployeeDetail from "../pages/EmployeeDetail";
 
 const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...options });
@@ -146,6 +158,20 @@ beforeEach(() => {
     }
     if (url.includes("/ref/echelles/")) {
       return Promise.resolve({ data: { results: [{ id: "ech-1", nom: "Échelle 10" }] } });
+    }
+    // Référentiels chargés par le formulaire intégré (édition sur place
+    // depuis la fiche, 2026-09-14) — sans eux ils retomberaient sur le
+    // catch-all qui renvoie l'employé, pas une liste.
+    if (
+      url.includes("/ref/directions/") ||
+      url.includes("/ref/departements/") ||
+      url.includes("/ref/services/") ||
+      url.includes("/ref/cellules/") ||
+      url.includes("/ref/sections/") ||
+      url.includes("/ref/champs-personnalises/") ||
+      url.includes("/ref/motifs-archivage/")
+    ) {
+      return Promise.resolve({ data: { results: [] } });
     }
     if (url.includes("/contrats/")) {
       return Promise.resolve({ data: mockContrats });
@@ -423,18 +449,118 @@ describe("EmployeeDetail — navigation", () => {
     expect(mockNavigate).toHaveBeenCalledWith(-1);
   });
 
-  test("bouton Modifier navigue vers la page édition (ADMIN)", async () => {
+  // Depuis 2026-09-14, "Modifier" édite la fiche sur place (formulaire
+  // intégré) au lieu de naviguer vers /employees/:id/modifier — on reste
+  // sur la page, le bouton devient "Fermer l'édition".
+  test("bouton Modifier bascule en édition sur place sans naviguer (ADMIN)", async () => {
     renderPage("ADMIN");
-    await waitFor(() => screen.getByText(/Modifier/));
-    const modifyBtn = screen.getAllByText(/Modifier/)[0];
+    const modifyBtn = await screen.findByRole("button", { name: "Modifier" });
     fireEvent.click(modifyBtn);
-    expect(mockNavigate).toHaveBeenCalledWith("/employees/emp-uuid/modifier");
+    expect(mockNavigate).not.toHaveBeenCalledWith("/employees/emp-uuid/modifier");
+    expect(
+      await screen.findByRole("button", { name: "Fermer l'édition" }),
+    ).toBeInTheDocument();
   });
 
   test("CONSULTANT ne voit pas le bouton Modifier", async () => {
     renderPage("CONSULTANT");
     await waitFor(() => screen.getAllByText("EMP-001").length > 0);
     expect(screen.queryByText("✏️ Modifier")).not.toBeInTheDocument();
+  });
+});
+
+describe("EmployeeDetail — photo de profil (ADMIN)", () => {
+  test("sans photo : bouton ajouter présent, pas de bouton supprimer", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+    expect(screen.getByLabelText("Ajouter une photo")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Supprimer la photo")).not.toBeInTheDocument();
+  });
+
+  test("choisir un fichier ouvre la modale de cadrage puis upload au clic sur Valider", async () => {
+    api.post.mockResolvedValue({});
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+
+    const input = screen.getByLabelText("Ajouter une photo").querySelector("input[type=file]");
+    const file = new File(["img"], "photo.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByTestId("photo-crop-modal")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Valider le cadrage"));
+
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        "/employees/emp-uuid/photo/",
+        expect.any(FormData),
+        expect.objectContaining({ headers: { "Content-Type": "multipart/form-data" } })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("photo-crop-modal")).not.toBeInTheDocument();
+    });
+  });
+
+  test("upload échoué affiche le message d'erreur du serveur (jamais vide)", async () => {
+    api.post.mockRejectedValue({ response: { data: { error: "Type non autorisé (text/plain)." } } });
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+
+    const input = screen.getByLabelText("Ajouter une photo").querySelector("input[type=file]");
+    const file = new File(["img"], "photo.png", { type: "image/png" });
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(await screen.findByText("Valider le cadrage"));
+
+    expect(await screen.findByText("Type non autorisé (text/plain).")).toBeInTheDocument();
+  });
+
+  test("choisir un PDF convertit sa première page en image puis ouvre le cadrage", async () => {
+    pdfFirstPageToImageUrl.mockResolvedValue("blob:mock-pdf-page");
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+
+    const input = screen.getByLabelText("Ajouter une photo").querySelector("input[type=file]");
+    const file = new File(["pdf"], "photo.pdf", { type: "application/pdf" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(pdfFirstPageToImageUrl).toHaveBeenCalledWith(file));
+    expect(await screen.findByTestId("photo-crop-modal")).toBeInTheDocument();
+  });
+
+  test("PDF illisible affiche le message d'erreur, jamais vide", async () => {
+    pdfFirstPageToImageUrl.mockRejectedValue(new Error("Ce PDF ne contient aucune page."));
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+
+    const input = screen.getByLabelText("Ajouter une photo").querySelector("input[type=file]");
+    const file = new File(["pdf"], "photo.pdf", { type: "application/pdf" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText("Ce PDF ne contient aucune page.")).toBeInTheDocument();
+    expect(screen.queryByTestId("photo-crop-modal")).not.toBeInTheDocument();
+  });
+
+  test("avec photo : bouton supprimer visible, confirmation puis DELETE", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/employees/emp-uuid/") {
+        return Promise.resolve({ data: { ...mockEmployee, has_photo: true } });
+      }
+      return Promise.resolve({ data: { results: [] } });
+    });
+    api.delete.mockResolvedValue({});
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+
+    const deleteBtn = screen.getByLabelText("Supprimer la photo");
+    fireEvent.click(deleteBtn);
+
+    const confirmBtn = await screen.findByText("Confirmer");
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(api.delete).toHaveBeenCalledWith("/employees/emp-uuid/photo/");
+    });
   });
 });
 
@@ -485,6 +611,10 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
     if (mainInput) {
       const file = new File(["pdf"], "test.pdf", { type: "application/pdf" });
       fireEvent.change(mainInput, { target: { files: [file] } });
+      // Un document de ce type existe déjà (mockDoc, type CIN) : depuis
+      // 2026-09-14 une modale demande quoi en faire — ici "Nouvelle version"
+      // reproduit le comportement historique.
+      fireEvent.click(await screen.findByText("Nouvelle version"));
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith(
           "/employees/emp-uuid/documents/",
@@ -517,6 +647,10 @@ describe("EmployeeDetail — upload fichier (ADMIN)", () => {
     if (mainInput) {
       const file = new File(["pdf"], "test.pdf", { type: "application/pdf" });
       fireEvent.change(mainInput, { target: { files: [file] } });
+      // Un document de ce type existe déjà (mockDoc, type CIN) : depuis
+      // 2026-09-14 une modale demande quoi en faire — ici "Nouvelle version"
+      // reproduit le comportement historique.
+      fireEvent.click(await screen.findByText("Nouvelle version"));
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith(
           "/employees/emp-uuid/documents/",
@@ -705,6 +839,7 @@ describe("EmployeeDetail — préservation sélection contrat après upload", ()
     if (mainInput) {
       const file = new File(["pdf"], "test.pdf", { type: "application/pdf" });
       fireEvent.change(mainInput, { target: { files: [file] } });
+      fireEvent.click(await screen.findByText("Nouvelle version"));
 
       // Attendre que l'upload soit fait (api.post) et que fetchContrats soit rappelé
       await waitFor(() => {

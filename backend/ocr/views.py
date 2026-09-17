@@ -13,7 +13,7 @@ from rest_framework import status
 
 from accounts.permissions import IsAdmin
 from employees.views import resolve_employee
-from employees.models import ChampPersonnalise, EmployeeChampValeur
+from employees.models import ChampPersonnalise, EmployeeChampValeur, EmployeeDocumentFilePage
 from audit.models import AuditLog
 from ocr.models import OcrResult
 from ocr.serializers import OcrSuggestionSerializer
@@ -165,6 +165,21 @@ def _build_snippet(text, query, context=GLOBAL_SEARCH_SNIPPET_CONTEXT):
     return f"{prefix}{text[start:end].strip()}{suffix}"
 
 
+def _find_matching_page_ordre(result, q):
+    """
+    Retrouve la page physique (ordre EmployeeDocumentFilePage, 1-indexé) où
+    `q` apparaît, via `OcrResult.page_texts` (aligné 1:1 avec les pages du
+    PDF, voir son invariant, employees/models.py). None pour une image
+    (page_texts toujours vide) ou si le terme n'apparaît que sur la
+    frontière entre deux pages (raw_text les joint avec "\n").
+    """
+    q_lower = q.lower()
+    for idx, page_text in enumerate(result.page_texts or []):
+        if q_lower in page_text.lower():
+            return idx + 1
+    return None
+
+
 class OcrGlobalSearchView(APIView):
     """
     GET /api/ocr/search/?q=<terme>
@@ -193,6 +208,18 @@ class OcrGlobalSearchView(APIView):
         results = []
         for result in queryset[:GLOBAL_SEARCH_MAX_RESULTS]:
             employee = result.file.document.employee
+            page_ordre = _find_matching_page_ordre(result, q)
+            page_id = None
+            page_nom = None
+            snippet_source = result.raw_text
+            if page_ordre:
+                page = EmployeeDocumentFilePage.objects.filter(
+                    file_id=result.file_id, ordre=page_ordre
+                ).first()
+                if page:
+                    page_id = str(page.id)
+                    page_nom = page.nom
+                    snippet_source = result.page_texts[page_ordre - 1]
             results.append({
                 'employee_id': str(employee.id),
                 'employee_matricule': employee.matricule,
@@ -201,7 +228,10 @@ class OcrGlobalSearchView(APIView):
                 'type_doc_nom': result.file.document.type_doc.nom,
                 'file_id': str(result.file_id),
                 'file_name': result.file.file_name,
-                'snippet': _build_snippet(result.raw_text, q),
+                'page_ordre': page_ordre,
+                'page_id': page_id,
+                'page_nom': page_nom,
+                'snippet': _build_snippet(snippet_source, q),
             })
 
         AuditLog.log(

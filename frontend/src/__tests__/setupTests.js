@@ -37,6 +37,27 @@ if (typeof window !== "undefined" && !window.ResizeObserver) {
     disconnect() {}
   };
 }
+// jsdom ne fournit pas IntersectionObserver — utilisé pour le chargement
+// paresseux des miniatures PDF dans ScanImportModal.jsx (LazyThumb, voir
+// 2026-09-15). Ce mock déclenche `isIntersecting: true` immédiatement (via
+// microtask) pour préserver le comportement synchrone des tests existants
+// (tout se monte tout de suite, comme avant l'introduction du lazy-load).
+if (typeof window !== "undefined" && !window.IntersectionObserver) {
+  class MockIntersectionObserver {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe(target) {
+      Promise.resolve().then(() => {
+        this.callback([{ isIntersecting: true, target }]);
+      });
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+  window.IntersectionObserver = MockIntersectionObserver;
+  global.IntersectionObserver = MockIntersectionObserver;
+}
 if (typeof HTMLElement !== "undefined") {
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 500 });
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 300 });
