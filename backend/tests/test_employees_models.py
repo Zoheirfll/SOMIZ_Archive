@@ -7,7 +7,8 @@ import pytest
 from django.core.exceptions import ValidationError
 from employees.models import (
     Employee, EmployeeDocument, EmployeeDocumentFile,
-    TypeDocument, Direction, Departement, Service, Contrat, Section
+    TypeDocument, Direction, Departement, Service, Contrat, Section,
+    TypeContrat, ChampPersonnalise, ChampPersonnaliseOption,
 )
 
 pytestmark = pytest.mark.django_db
@@ -53,6 +54,14 @@ class TestEmployeeModel:
         assert employee.taux_completude == 100
 
     def test_taux_completude_no_types(self, employee):
+        assert employee.taux_completude == 0
+
+    def test_taux_completude_ignores_facultatif_only(self, employee, admin_user, type_doc_obligatoire, type_doc_facultatif):
+        # Un document facultatif présent seul ne doit jamais compter pour le taux :
+        # le taux suit uniquement les types obligatoires (cohérent avec dossier_complet).
+        EmployeeDocument.objects.create(
+            employee=employee, type_doc=type_doc_facultatif, uploaded_by=admin_user
+        )
         assert employee.taux_completude == 0
 
     def test_employee_soft_delete_via_statut(self, employee):
@@ -445,3 +454,61 @@ class TestEmployeeCreateUpdateSerializerSection:
         emp = serializer.save()
         assert emp.cellule_id == cellule.id
         assert emp.section_id is None
+
+
+class TestTypeContratDureeIndeterminee:
+    def test_default_false(self):
+        tc = TypeContrat.objects.create(nom="CDD Test")
+        assert tc.duree_indeterminee is False
+
+    def test_true(self):
+        tc = TypeContrat.objects.create(nom="CDI Test", duree_indeterminee=True)
+        assert tc.duree_indeterminee is True
+
+    def test_contrat_date_fin_forcee_none_si_duree_indeterminee(self, employee):
+        from employees.serializers import ContratCreateUpdateSerializer
+
+        type_cdi = TypeContrat.objects.create(nom="CDI ForceFin", duree_indeterminee=True)
+        data = {
+            "numero_contrat": "C-TEST-CDI-001",
+            "type_contrat": str(type_cdi.id),
+            "date_debut": "2026-01-01",
+            "date_fin": "2030-01-01",
+        }
+        serializer = ContratCreateUpdateSerializer(data=data)
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data.get("date_fin") is None
+
+    def test_contrat_date_fin_conservee_si_duree_determinee(self, type_contrat):
+        from employees.serializers import ContratCreateUpdateSerializer
+
+        data = {
+            "numero_contrat": "C-TEST-CDD-001",
+            "type_contrat": str(type_contrat.id),
+            "date_debut": "2026-01-01",
+            "date_fin": "2027-01-01",
+        }
+        serializer = ContratCreateUpdateSerializer(data=data)
+        assert serializer.is_valid(), serializer.errors
+        assert str(serializer.validated_data.get("date_fin")) == "2027-01-01"
+
+
+class TestChampPersonnaliseOption:
+    def test_type_liste_et_options(self):
+        champ = ChampPersonnalise.objects.create(
+            nom="Situation familiale", code="SITUATION_FAM",
+            type_champ=ChampPersonnalise.TypeChamp.LISTE,
+        )
+        opt1 = ChampPersonnaliseOption.objects.create(champ=champ, valeur="Célibataire", ordre=1)
+        opt2 = ChampPersonnaliseOption.objects.create(champ=champ, valeur="Marié", ordre=2)
+
+        assert list(champ.options.all()) == [opt1, opt2]
+        assert opt1.is_active is True
+
+    def test_default_is_active_true(self):
+        champ = ChampPersonnalise.objects.create(
+            nom="Situation familiale 2", code="SITUATION_FAM2",
+            type_champ=ChampPersonnalise.TypeChamp.LISTE,
+        )
+        option = ChampPersonnaliseOption.objects.create(champ=champ, valeur="Divorcé")
+        assert option.is_active is True

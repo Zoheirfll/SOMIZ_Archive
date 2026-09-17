@@ -255,6 +255,11 @@ class TypeContrat(models.Model):
     nom = models.CharField(max_length=100, unique=True, verbose_name="Type de contrat")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    duree_indeterminee = models.BooleanField(
+        default=False,
+        verbose_name="Durée indéterminée",
+        help_text="Si coché, aucun contrat de ce type ne peut avoir de date de fin.",
+    )
 
     class Meta:
         db_table = 'types_contrat'
@@ -539,13 +544,18 @@ class Employee(models.Model):
 
     @property
     def taux_completude(self):
-        total = TypeDocument.objects.filter(is_active=True, sous_types__isnull=True).count()
-        if total == 0:
+        types_obligatoires = set(
+            TypeDocument.objects.filter(
+                obligatoire=True, is_active=True, sous_types__isnull=True
+            ).values_list('id', flat=True)
+        )
+        if not types_obligatoires:
             return 0
-        presents = self.documents.filter(is_active=True).values_list(
-            'type_doc_id', flat=True
-        ).distinct().count()
-        return round(presents / total * 100)
+        docs_presents = set(
+            self.documents.filter(is_active=True).values_list('type_doc_id', flat=True)
+        )
+        presents = len(types_obligatoires & docs_presents)
+        return round(presents / len(types_obligatoires) * 100)
 
     def voie_hierarchique(self):
         """
@@ -630,6 +640,7 @@ class ChampPersonnalise(models.Model):
         NOMBRE = 'nombre', 'Nombre'
         DATE = 'date', 'Date'
         BOOLEEN = 'booleen', 'Booléen (Oui/Non)'
+        LISTE = 'liste', 'Liste (choix unique)'
 
     class Categorie(models.TextChoices):
         PERSONNEL = 'PERSONNEL', 'Personnel'
@@ -696,6 +707,30 @@ class ChampPersonnalise(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class ChampPersonnaliseOption(models.Model):
+    """
+    Une valeur possible pour un ChampPersonnalise de type LISTE. Le retrait
+    d'une option est toujours un soft-delete (is_active=False) — une valeur
+    déjà enregistrée dans EmployeeChampValeur pour une option désactivée
+    reste affichée telle quelle, sans lien cassé.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    champ = models.ForeignKey(
+        ChampPersonnalise, on_delete=models.CASCADE, related_name='options'
+    )
+    valeur = models.CharField(max_length=200, verbose_name="Valeur")
+    ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
+    is_active = models.BooleanField(default=True, verbose_name="Actif")
+
+    class Meta:
+        db_table = 'champs_personnalises_options'
+        verbose_name = "Option de champ personnalisé"
+        ordering = ['ordre', 'valeur']
+
+    def __str__(self):
+        return f"{self.champ.nom} — {self.valeur}"
 
 
 class EmployeeChampValeur(models.Model):

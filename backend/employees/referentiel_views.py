@@ -17,7 +17,7 @@ from employees.models import (
     Direction, Departement, Service, Poste,
     TypeContrat, Categorie, TypeDocument,
     EmployeeDocument, EmployeeDocumentFile,
-    ChampPersonnalise, SystemFieldLabel,
+    ChampPersonnalise, ChampPersonnaliseOption, SystemFieldLabel,
     Pole, Cellule, Section, Echelle, MotifArchivage,
 )
 
@@ -227,7 +227,7 @@ class TypeContratSerializer(serializers.ModelSerializer):
     nb_employes = serializers.SerializerMethodField()
     class Meta:
         model = TypeContrat
-        fields = ['id', 'nom', 'description', 'is_active', 'nb_employes']
+        fields = ['id', 'nom', 'description', 'is_active', 'duree_indeterminee', 'nb_employes']
     def get_nb_employes(self, obj):
         return obj.employees.count()
 
@@ -642,12 +642,21 @@ RESERVED_CHAMP_CODES = {
 }
 
 
+class ChampPersonnaliseOptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChampPersonnaliseOption
+        fields = ['id', 'champ', 'valeur', 'ordre', 'is_active']
+        read_only_fields = ['champ']
+
+
 class ChampPersonnaliseSerializer(serializers.ModelSerializer):
+    options = ChampPersonnaliseOptionSerializer(many=True, read_only=True)
+
     class Meta:
         model = ChampPersonnalise
         fields = [
             'id', 'nom', 'code', 'type_champ', 'ordre', 'is_active',
-            'is_systeme', 'categorie', 'ocr_pattern',
+            'is_systeme', 'categorie', 'ocr_pattern', 'options',
         ]
         read_only_fields = ['is_systeme']
 
@@ -697,6 +706,23 @@ class ChampPersonnaliseDetailView(generics.RetrieveUpdateDestroyAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return super().destroy(request, *args, **kwargs)
+
+
+class ChampPersonnaliseOptionListCreateView(generics.ListCreateAPIView):
+    serializer_class = ChampPersonnaliseOptionSerializer
+    permission_classes = [IsAdmin]
+
+    def get_queryset(self):
+        return ChampPersonnaliseOption.objects.filter(champ_id=self.kwargs['champ_id'])
+
+    def perform_create(self, serializer):
+        serializer.save(champ_id=self.kwargs['champ_id'])
+
+
+class ChampPersonnaliseOptionDetailView(generics.RetrieveUpdateAPIView):
+    serializer_class = ChampPersonnaliseOptionSerializer
+    permission_classes = [IsAdmin]
+    queryset = ChampPersonnaliseOption.objects.all()
 
 
 class SystemFieldLabelSerializer(serializers.ModelSerializer):

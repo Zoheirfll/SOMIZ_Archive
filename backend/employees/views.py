@@ -35,6 +35,7 @@ from employees.models import (
     Contrat,
     ChampPersonnalise,
     EmployeeChampValeur,
+    ChampPersonnaliseOption,
     HistoriqueFonction,
     HistoriqueCategorie,
     HistoriqueEchelle,
@@ -825,6 +826,14 @@ class EmployeeChampsPersonnalisesView(APIView):
                     {'error': f"Valeur trop longue pour le champ « {champ.nom} » (500 caractères max)."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            if champ.type_champ == ChampPersonnalise.TypeChamp.LISTE and valeur:
+                if not ChampPersonnaliseOption.objects.filter(
+                    champ=champ, is_active=True, valeur=valeur
+                ).exists():
+                    return Response(
+                        {'error': f"Valeur invalide pour le champ liste « {champ.nom} »."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             obj, _ = EmployeeChampValeur.objects.update_or_create(
                 employee=employee, champ=champ,
                 defaults={'valeur': valeur},

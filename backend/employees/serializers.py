@@ -154,6 +154,13 @@ class ContratCreateUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Le N° contrat ne peut pas être vide.")
         return v
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        type_contrat = attrs.get('type_contrat', getattr(self.instance, 'type_contrat', None))
+        if type_contrat is not None and type_contrat.duree_indeterminee:
+            attrs['date_fin'] = None
+        return attrs
+
 
 class DocumentUploadSerializer(serializers.Serializer):
     """
@@ -358,10 +365,12 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         return obj.nb_types_obligatoires_presents >= total_obligatoires
 
     def get_taux_completude(self, obj):
-        total = self.context.get('types_total', 0)
+        # Suit uniquement les types obligatoires, comme dossier_complet — un
+        # type facultatif présent ne doit jamais faire monter ce taux.
+        total = self.context.get('types_obligatoires_total', 0)
         if total == 0:
             return 0
-        return round(obj.nb_types_presents / total * 100)
+        return round(obj.nb_types_obligatoires_presents / total * 100)
 
 class EmployeeDetailSerializer(serializers.ModelSerializer):
     documents = serializers.SerializerMethodField()
@@ -422,17 +431,27 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
 
     def get_champs_personnalises(self, obj):
         valeurs = {v.champ_id: v.valeur for v in obj.valeurs_personnalisees.all()}
-        return [
-            {
+        result = []
+        for c in ChampPersonnalise.objects.filter(is_active=True, is_systeme=False).prefetch_related('options'):
+            valeur = valeurs.get(c.id, '')
+            data = {
                 'id': str(c.id),
                 'code': c.code,
                 'nom': c.nom,
                 'type_champ': c.type_champ,
-                'valeur': valeurs.get(c.id, ''),
+                'valeur': valeur,
                 'ordre': c.ordre,
             }
-            for c in ChampPersonnalise.objects.filter(is_active=True, is_systeme=False)
-        ]
+            if c.type_champ == ChampPersonnalise.TypeChamp.LISTE:
+                options = [o for o in c.options.all() if o.is_active]
+                if valeur and not any(o.valeur == valeur for o in options):
+                    # L'option courante a pu être désactivée depuis —
+                    # on la garde visible dans le select tant qu'elle
+                    # reste la valeur enregistrée pour cet employé.
+                    options = options + [o for o in c.options.all() if not o.is_active and o.valeur == valeur]
+                data['options'] = [{'id': str(o.id), 'valeur': o.valeur} for o in options]
+            result.append(data)
+        return result
 
     def get_champs_categories(self, obj):
         request = self.context.get('request')
