@@ -33,3 +33,6 @@ Thumbs.db
 
 # ─── Outils ──────────────────────────────────────────────────────────────────
 ngrok.exe
+
+# ─── Claude Code (config/skills locaux, pas du code applicatif) ─────────────
+.claude/
