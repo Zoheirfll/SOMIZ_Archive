@@ -484,7 +484,9 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
   // champLieuNaissance (pas de code stable garanti pour un champ créé
   // dynamiquement via /parametres).
   const champSituationFamiliale = champsDefinitions.find(
-    (c) => c.nom?.trim().toLowerCase() === "situation familiale",
+    // startsWith plutôt qu'une égalité stricte — tolère une coquille comme
+    // "Situation Familialle" (double L) sans dépendre d'un renommage exact.
+    (c) => c.nom?.trim().toLowerCase().startsWith("situation famil"),
   );
   const champSalaireUnique = champsDefinitions.find(
     (c) => c.nom?.trim().toLowerCase() === "salaire unique",
