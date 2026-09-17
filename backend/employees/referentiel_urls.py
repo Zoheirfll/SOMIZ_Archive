@@ -18,6 +18,7 @@ from employees.referentiel_views import (
     SystemFieldLabelListView, SystemFieldLabelUpdateView,
     ChampsOrdreReorderView,
     ReferentielBulkDeleteView,
+    ReferentielMergeView,
 )
 
 urlpatterns = [
@@ -54,4 +55,5 @@ urlpatterns = [
     path('system-field-labels/', SystemFieldLabelListView.as_view()),
     path('system-field-labels/<str:code>/', SystemFieldLabelUpdateView.as_view()),
     path('bulk-delete/<str:model>/', ReferentielBulkDeleteView.as_view()),
+    path('merge/<str:model>/', ReferentielMergeView.as_view()),
 ]

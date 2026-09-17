@@ -32,6 +32,7 @@ class AuditLog(models.Model):
         DELETE_USER = 'DELETE_USER', 'Suppression utilisateur'
         CONSENT = 'CONSENT', 'Consentement Loi 18-07 accepté'
         VIEW_AUDIT_LOG = 'VIEW_AUDIT_LOG', 'Consultation du journal d\'audit'
+        MERGE_REFERENTIEL = 'MERGE_REFERENTIEL', 'Fusion de référentiel'
 
     # Pas de UUIDField ici — BIGSERIAL plus rapide pour les logs
     # (table peut atteindre des millions de lignes)

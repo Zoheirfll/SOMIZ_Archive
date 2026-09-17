@@ -907,3 +907,118 @@ class ReferentielBulkDeleteView(APIView):
             'nb_erreurs': len(erreurs),
             'erreurs': erreurs,
         })
+
+
+class ReferentielMergeView(APIView):
+    """
+    POST /api/ref/merge/{model}/
+    Body : {"target_id": "<uuid>", "source_ids": ["<uuid>", ...]}
+    Fusionne plusieurs entrées de référentiel en doublon (ex. "Personnal"
+    et "Personnel", créées séparément par erreur de saisie/typo à
+    l'import) en réassignant génériquement, via l'API de réflexion Django
+    (model._meta.get_fields()), toutes les relations FK/M2M qui
+    pointaient vers chaque source pour qu'elles pointent vers la cible,
+    puis supprime les sources. Générique : ne nécessite pas d'énumérer
+    chaque modèle appelant (Employee, Departement, Service, User.scope_*,
+    Historique*, etc.) — un nouveau champ FK/M2M ajouté ailleurs dans
+    l'app vers un de ces référentiels est automatiquement couvert. Ne
+    couvre PAS TypeDocument/ChampPersonnalise (hiérarchie et règles
+    propres, hors scope — voir ReferentielBulkDeleteView pour ces
+    modèles).
+    """
+    permission_classes = [IsAdmin]
+
+    MODELS = {
+        'directions': Direction,
+        'poles': Pole,
+        'departements': Departement,
+        'services': Service,
+        'cellules': Cellule,
+        'sections': Section,
+        'postes': Poste,
+        'types-contrat': TypeContrat,
+        'categories': Categorie,
+        'echelles': Echelle,
+        'motifs-archivage': MotifArchivage,
+    }
+
+    MAX_SOURCES = 500
+
+    def _reassigner(self, ModelClass, source, target):
+        """Réassigne vers `target` toutes les relations FK/M2M entrantes
+        qui pointaient vers `source`. Retourne le nombre de réassignations
+        effectuées."""
+        nb = 0
+        for field in ModelClass._meta.get_fields():
+            if getattr(field, 'one_to_many', False):
+                # Reverse FK : field.field est la ForeignKey réelle
+                # définie sur field.related_model, pointant vers ModelClass.
+                related_model = field.related_model
+                fk_name = field.field.name
+                nb += related_model.objects.filter(**{fk_name: source}).update(**{fk_name: target})
+            elif getattr(field, 'many_to_many', False) and getattr(field, 'auto_created', False):
+                # Reverse M2M : field.field est le ManyToManyField réel
+                # défini sur field.related_model (ex. User.scope_directions).
+                related_model = field.related_model
+                m2m_name = field.field.name
+                for obj in related_model.objects.filter(**{m2m_name: source}):
+                    manager = getattr(obj, m2m_name)
+                    manager.add(target)
+                    manager.remove(source)
+                    nb += 1
+        return nb
+
+    def post(self, request, model):
+        if model not in self.MODELS:
+            return Response({'error': f'Modèle inconnu : {model}'}, status=400)
+
+        ModelClass = self.MODELS[model]
+        target_id = request.data.get('target_id')
+        source_ids = request.data.get('source_ids')
+
+        if not target_id:
+            return Response({'error': 'target_id requis.'}, status=400)
+        if not isinstance(source_ids, list) or not source_ids:
+            return Response({'error': 'source_ids requis (liste non vide).'}, status=400)
+        if len(source_ids) > self.MAX_SOURCES:
+            return Response({'error': f'Trop de sources (maximum {self.MAX_SOURCES}).'}, status=400)
+        if str(target_id) in {str(s) for s in source_ids}:
+            return Response({'error': 'La cible ne peut pas être aussi une source.'}, status=400)
+
+        target = ModelClass.objects.filter(pk=target_id).first()
+        if not target:
+            return Response({'error': 'Cible introuvable.'}, status=404)
+        sources = list(ModelClass.objects.filter(pk__in=source_ids))
+        if len(sources) != len(set(str(s) for s in source_ids)):
+            return Response({'error': 'Une ou plusieurs sources sont introuvables.'}, status=404)
+
+        try:
+            with transaction.atomic():
+                nb_total = 0
+                sources_info = []
+                for source in sources:
+                    sources_info.append({'id': str(source.pk), 'nom': source.nom})
+                    nb_total += self._reassigner(ModelClass, source, target)
+                    source.delete()
+        except Exception:
+            return Response(
+                {'error': "Fusion impossible : une contrainte empêche cette réassignation (ex. doublon créé sous la même cible)."},
+                status=400,
+            )
+
+        AuditLog.objects.create(
+            user=request.user,
+            username_snapshot=request.user.username,
+            action=AuditLog.Action.MERGE_REFERENTIEL,
+            target_model=ModelClass.__name__,
+            target_label=f"Fusion — {len(sources_info)} élément(s) vers \"{target.nom}\"",
+            ip_address=AuditLog._get_ip(request),
+            details={
+                'model': model,
+                'target': {'id': str(target.pk), 'nom': target.nom},
+                'sources': sources_info,
+                'nb_reassignes': nb_total,
+            },
+        )
+
+        return Response({'nb_reassignes': nb_total, 'sources_supprimees': sources_info})
