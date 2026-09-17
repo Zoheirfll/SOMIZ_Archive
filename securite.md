@@ -951,6 +951,53 @@ Scoping) puisque la lecture/écriture passe par les mêmes vues `FileDetailView`
 
 ---
 
+## 37. Mise à jour des dépendances vulnérables (2026-09-17) — ✅ Implémenté
+
+GitHub Dependabot signalait 119 vulnérabilités (1 critique, 36 élevées) sur
+le dépôt. Traitement en deux temps.
+
+**Sans risque de rupture (appliqué directement)** :
+- Backend : `djangorestframework` 3.15.2 → 3.17.2 (CVE-2026-73228 bypass
+  de `DATA_UPLOAD_MAX_MEMORY_SIZE`, CVE-2026-73229 fuite via
+  `AdminRenderer`), `sqlparse` 0.5.5 → 0.6.0.
+- Frontend : `minimist`/`optimist` (pollution de prototype **critique**),
+  `underscore`/`jsonpath`/`bfj` (DoS par récursion), `jest`/`jsdom`/
+  `http-proxy-agent`/`@tootallnate/once` — cette dernière chaîne dupliquée
+  par `react-scripts` (jamais exécutée en pratique, le script `test` de ce
+  projet invoque `jest` directement) — forcés via `overrides` dans
+  `package.json` vers des versions patchées.
+
+**Montées de version majeures (validées avec l'utilisateur avant d'agir,
+CLAUDE.md règle "décisions structurantes")** :
+- **Django 4.2.30 → 5.2.17** : 7 CVE sans correctif publié en 4.2 LTS
+  (cache `Vary`, `get_signed_cookie`, `UpdateCacheMiddleware`,
+  `GDALRaster`, `DomainNameValidator`, `GEOSGeometry`). `manage.py check`
+  et `makemigrations --check` propres, aucun réglage déprécié utilisé,
+  toutes les dépendances (`djangorestframework-simplejwt`, `django-redis`,
+  `django-cors-headers`) déjà compatibles Django 5.2 sans changement de
+  version. Aucune adaptation de code applicatif nécessaire.
+- **pypdf 5.1.0 → 6.19.0** : 77 CVE corrigés uniquement en 6.x. Usage
+  applicatif (`pdf_utils.py`, `employees/views.py` — découpage/fusion/
+  réorganisation de pages PDF) limité à des API stables entre les deux
+  versions majeures (`PdfReader`/`PdfWriter`/`.pages[]`/`.add_page()`/
+  `.add_blank_page()`) — aucune adaptation nécessaire.
+
+**Validation** : suite de tests complète repassée plusieurs fois sur une
+machine sous forte charge concurrente (plusieurs `manage.py runserver` et
+la suite de tests d'un autre projet tournant en parallèle, CPU à 100%) —
+chaque test apparu en échec dans un run bruyant a été confirmé passant à
+l'exécution isolée (contention PostgreSQL sur la base de test, pas un
+problème applicatif).
+
+**Laissé de côté** — le reste des vulnérabilités npm (arbre de
+dépendances de build de `react-scripts` : `webpack-dev-server`, `postcss`,
+`svgo`, `nth-check`...) n'a de correctif que via une réinstallation
+forcée de `react-scripts`, avec un risque réel de casser le build (Create
+React App n'est plus maintenu). Impact réel limité : dépendances de
+build/dev, jamais expédiées dans le bundle de production.
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

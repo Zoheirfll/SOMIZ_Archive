@@ -58,7 +58,7 @@ IP interne Tailscale non routable) — non fiable comme solution durable.
 ## Stack technique
 
 ### Backend
-- Python 3, Django 4.2.30, Django REST Framework 3.15.2
+- Python 3, Django 5.2 LTS, Django REST Framework 3.17.2
 - Authentification JWT via **httpOnly cookies** (résistant au XSS), CSRF en double-soumission (`accounts/cookie_auth.py`)
 - Base de données : PostgreSQL
 - Cache : Redis (`django-redis`) — rate-limiting DRF fiable en multi-worker, repli sur cache mémoire local si `REDIS_URL` absent (dev/CI)
