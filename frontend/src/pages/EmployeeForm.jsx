@@ -723,6 +723,7 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                   name="nom"
                   value={form.nom}
                   onChange={handleChange}
+                  placeholder="FILALI"
                 />
                 {errors.nom && (
                   <div
@@ -738,6 +739,7 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                   name="prenom"
                   value={form.prenom}
                   onChange={handleChange}
+                  placeholder="Ahmed"
                 />
                 {errors.prenom && (
                   <div

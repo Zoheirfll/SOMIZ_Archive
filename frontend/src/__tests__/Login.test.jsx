@@ -35,12 +35,12 @@ beforeEach(() => {
 describe("Login — rendu", () => {
   test("affiche le champ identifiant", () => {
     renderLogin();
-    expect(screen.getByPlaceholderText("votre.identifiant")).toBeInTheDocument();
+    expect(screen.getByLabelText("Identifiant")).toBeInTheDocument();
   });
 
   test("affiche le champ mot de passe", () => {
     renderLogin();
-    expect(screen.getByPlaceholderText("••••••••••")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mot de passe")).toBeInTheDocument();
   });
 
   test("affiche le bouton Se connecter", () => {
@@ -62,19 +62,19 @@ describe("Login — rendu", () => {
 describe("Login — toggle mot de passe", () => {
   test("le champ est de type password par défaut", () => {
     renderLogin();
-    expect(screen.getByPlaceholderText("••••••••••")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("Mot de passe")).toHaveAttribute("type", "password");
   });
 
   test("le bouton toggle affiche le mot de passe", async () => {
     renderLogin();
-    const input = screen.getByPlaceholderText("••••••••••");
+    const input = screen.getByLabelText("Mot de passe");
     await userEvent.click(screen.getByRole("button", { name: /Afficher le mot de passe/i }));
     expect(input).toHaveAttribute("type", "text");
   });
 
   test("cliquer deux fois remasque le mot de passe", async () => {
     renderLogin();
-    const input = screen.getByPlaceholderText("••••••••••");
+    const input = screen.getByLabelText("Mot de passe");
     const toggle = screen.getByRole("button", { name: /Afficher le mot de passe/i });
     await userEvent.click(toggle);
     await userEvent.click(toggle);
@@ -91,8 +91,8 @@ describe("Login — soumission réussie", () => {
     login.mockResolvedValueOnce(mockData);
     renderLogin();
 
-    await userEvent.type(screen.getByPlaceholderText("votre.identifiant"), "admin");
-    await userEvent.type(screen.getByPlaceholderText("••••••••••"), "pass");
+    await userEvent.type(screen.getByLabelText("Identifiant"), "admin");
+    await userEvent.type(screen.getByLabelText("Mot de passe"), "pass");
     fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
 
     await waitFor(() => {
@@ -107,8 +107,8 @@ describe("Login — soumission réussie", () => {
     login.mockResolvedValueOnce(mockData);
     renderLogin();
 
-    await userEvent.type(screen.getByPlaceholderText("votre.identifiant"), "admin");
-    await userEvent.type(screen.getByPlaceholderText("••••••••••"), "pass");
+    await userEvent.type(screen.getByLabelText("Identifiant"), "admin");
+    await userEvent.type(screen.getByLabelText("Mot de passe"), "pass");
     fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
 
     await waitFor(() => {
@@ -122,8 +122,8 @@ describe("Login — gestion des erreurs", () => {
     login.mockRejectedValueOnce({ response: { data: { error: "Identifiants incorrects." } } });
     renderLogin();
 
-    await userEvent.type(screen.getByPlaceholderText("votre.identifiant"), "wrong");
-    await userEvent.type(screen.getByPlaceholderText("••••••••••"), "bad");
+    await userEvent.type(screen.getByLabelText("Identifiant"), "wrong");
+    await userEvent.type(screen.getByLabelText("Mot de passe"), "bad");
     fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
 
     await waitFor(() => {
@@ -135,8 +135,8 @@ describe("Login — gestion des erreurs", () => {
     login.mockRejectedValueOnce(new Error("Network Error"));
     renderLogin();
 
-    await userEvent.type(screen.getByPlaceholderText("votre.identifiant"), "admin");
-    await userEvent.type(screen.getByPlaceholderText("••••••••••"), "pass");
+    await userEvent.type(screen.getByLabelText("Identifiant"), "admin");
+    await userEvent.type(screen.getByLabelText("Mot de passe"), "pass");
     fireEvent.submit(screen.getByRole("button", { name: /se connecter/i }));
 
     await waitFor(() => {

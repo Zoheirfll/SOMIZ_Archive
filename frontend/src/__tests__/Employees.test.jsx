@@ -16,6 +16,18 @@ jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
+jest.mock("../context/KeyboardShortcutsContext", () => ({
+  useKeyboardShortcutsHelp: () => ({
+    helpOpen: false,
+    openHelp: jest.fn(),
+    closeHelp: jest.fn(),
+    toggleHelp: jest.fn(),
+    overrides: {},
+    setOverride: jest.fn(),
+    resetOverride: jest.fn(),
+    resetAllOverrides: jest.fn(),
+  }),
+}));
 const mockNavigate = jest.fn();
 jest.mock("react-router-dom", () => ({
   ...jest.requireActual("react-router-dom"),
@@ -77,7 +89,7 @@ const goToEmployeesList = async (role = "ADMIN", employees = [makeEmployee("emp-
     return Promise.resolve({ data: [] });
   });
   renderPage(role);
-  fireEvent.click(await screen.findByText("Voir tous les employés sans filtre"));
+  fireEvent.click(await screen.findByRole("button", { name: /voir tous les employés/i }));
   jest.runAllTimers();
 };
 
@@ -127,7 +139,9 @@ describe("Employees — vue initiale (directions)", () => {
   test("affiche le bouton Voir tous les employés sans filtre", async () => {
     api.get.mockResolvedValue({ data: [] });
     renderPage();
-    expect(await screen.findByText("Voir tous les employés sans filtre")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /voir tous les employés/i })
+    ).toBeInTheDocument();
   });
 
   test("affiche le bouton Nouvel employé pour ADMIN", async () => {
@@ -196,7 +210,7 @@ describe("Employees — drill-down navigation", () => {
       return Promise.resolve({ data: [] });
     });
     renderPage();
-    fireEvent.click(await screen.findByText("Voir tous les employés sans filtre"));
+    fireEvent.click(await screen.findByRole("button", { name: /voir tous les employés/i }));
     jest.runAllTimers();
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith(
@@ -216,8 +230,15 @@ describe("Employees — liste des employés", () => {
   });
 
   test("affiche le filtre de statut", async () => {
+    // Le filtre Statut n'apparaît que dans l'onglet "Archivés" depuis
+    // le chantier Archivage employé (2026-09-02, voir CLAUDE.md) — la
+    // vue "Organisation" par défaut ne montre implicitement que les
+    // employés Actif, sans filtre Statut visible.
     await goToEmployeesList();
-    expect(await screen.findByDisplayValue("Tous les statuts")).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/^Archivés/));
+    expect(
+      await screen.findByDisplayValue("Tous (Inactif/Archivé/Démobilisé)")
+    ).toBeInTheDocument();
   });
 
   test("affiche les employés après chargement", async () => {
@@ -275,11 +296,15 @@ describe("Employees — bulk actions", () => {
   };
 
   test("archiver appelle /employees/bulk-delete/ avec action=archive", async () => {
+    // Depuis le chantier Archivage employé (2026-09-02, CLAUDE.md), le clic
+    // sur "Archiver (N)" ouvre une modale dédiée (choix d'un motif optionnel)
+    // plutôt que la confirmation générique useConfirm() — le bouton de
+    // validation s'appelle "Archiver", pas "Confirmer".
     api.post.mockResolvedValue({ data: { nb_archives: 1 } });
     await selectFirstEmployee();
     fireEvent.click(screen.getByText(/Archiver \(\d+\)/));
-    await waitFor(() => screen.getByText("Confirmer"));
-    fireEvent.click(screen.getByText("Confirmer"));
+    await waitFor(() => screen.getByText(/Archiver \d+ employé/));
+    fireEvent.click(screen.getByRole("button", { name: "Archiver" }));
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith(
         "/employees/bulk-delete/",
@@ -291,7 +316,7 @@ describe("Employees — bulk actions", () => {
   test("annuler la confirmation n'appelle pas l'API", async () => {
     await selectFirstEmployee();
     fireEvent.click(screen.getByText(/Archiver \(\d+\)/));
-    await waitFor(() => screen.getByText("Annuler"));
+    await waitFor(() => screen.getByText(/Archiver \d+ employé/));
     fireEvent.click(screen.getByText("Annuler"));
     expect(api.post).not.toHaveBeenCalled();
   });
@@ -377,7 +402,7 @@ describe("Employees — filtre complétude (arrivée depuis le dashboard)", () =
     setupCompletudeRoute();
     renderPageAtRoute("/employees?dossier_complet=true");
     jest.runAllTimers();
-    fireEvent.click(await screen.findByLabelText("Effacer le filtre"));
+    fireEvent.click(await screen.findByLabelText("Effacer tous les filtres dossier"));
     await waitFor(() => {
       expect(screen.queryByText("Dossiers complets")).not.toBeInTheDocument();
     });

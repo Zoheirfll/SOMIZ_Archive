@@ -17,6 +17,18 @@ jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
+jest.mock("../context/KeyboardShortcutsContext", () => ({
+  useKeyboardShortcutsHelp: () => ({
+    helpOpen: false,
+    openHelp: jest.fn(),
+    closeHelp: jest.fn(),
+    toggleHelp: jest.fn(),
+    overrides: {},
+    setOverride: jest.fn(),
+    resetOverride: jest.fn(),
+    resetAllOverrides: jest.fn(),
+  }),
+}));
 const mockNavigate = jest.fn();
 jest.mock("react-router-dom", () => ({
   ...jest.requireActual("react-router-dom"),

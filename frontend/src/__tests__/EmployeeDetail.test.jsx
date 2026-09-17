@@ -47,6 +47,7 @@ const mockFile = { id: "file-1", file_name: "cin_recto.pdf", mime_type: "applica
 const mockDoc = {
   id: "doc-1",
   type_document: "CIN",
+  type_doc: "type-1",
   type_doc_id: "type-1",
   is_active: true,
   fichiers: [mockFile],
@@ -915,8 +916,8 @@ describe("EmployeeDetail — sélection par défaut cohérente avec le contrat a
 
 describe("EmployeeDetail — position stable des documents (pas de saut au ré-upload)", () => {
   test("l'ordre visuel (CSS order) suit le champ ordre du type, pas la présence/absence", async () => {
-    const docHaut = { ...mockDoc, id: "doc-haut", type_document: "CONTRAT", ordre: 1, type_ordre: 1 };
-    const docBas = { ...mockDoc, id: "doc-bas", type_document: "DIPLOME", ordre: 5, type_ordre: 5 };
+    const docHaut = { ...mockDoc, id: "doc-haut", type_doc: "type-haut", type_document: "CONTRAT", ordre: 1, type_ordre: 1 };
+    const docBas = { ...mockDoc, id: "doc-bas", type_doc: "type-bas", type_document: "DIPLOME", ordre: 5, type_ordre: 5 };
     const employeeCustom = {
       ...mockEmployee,
       // "doc-bas" (ordre=5) apparaît AVANT "doc-haut" (ordre=1) dans le

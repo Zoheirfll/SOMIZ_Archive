@@ -94,6 +94,7 @@ const Profil = () => {
           name={name}
           value={form[name]}
           onChange={handleChange}
+          placeholder="••••••••••"
           className="input-focus"
           style={{
             width: "100%",

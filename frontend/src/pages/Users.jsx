@@ -346,8 +346,8 @@ const Users = () => {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 24px" }}>
                 {[
                   { name: "username", label: "Identifiant", placeholder: "prenom.nom" },
-                  { name: "nom", label: "Nom" },
-                  { name: "prenom", label: "Prénom" },
+                  { name: "nom", label: "Nom", placeholder: "BENALI" },
+                  { name: "prenom", label: "Prénom", placeholder: "Ahmed" },
                 ].map((f) => (
                   <div key={f.name}>
                     <label style={labelStyle}>{f.label}</label>
@@ -398,6 +398,7 @@ const Users = () => {
                     name="password2"
                     value={form.password2}
                     onChange={handleChange}
+                    placeholder="Répétez le mot de passe"
                     className="input-focus" style={inputStyle}
                   />
                   {errors.password2 && (
@@ -780,6 +781,7 @@ const Users = () => {
                   type={showResetMdp ? "text" : "password"}
                   value={resetForm.nouveau_mot_de_passe}
                   onChange={(e) => setResetForm({ ...resetForm, nouveau_mot_de_passe: e.target.value })}
+                  placeholder="••••••••••"
                   className="input-focus"
                   style={{
                     width: "100%",
@@ -821,6 +823,7 @@ const Users = () => {
                   type={showResetConfirm ? "text" : "password"}
                   value={resetForm.confirmation}
                   onChange={(e) => setResetForm({ ...resetForm, confirmation: e.target.value })}
+                  placeholder="••••••••••"
                   className="input-focus"
                   style={{
                     width: "100%",

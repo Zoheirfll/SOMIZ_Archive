@@ -29,8 +29,16 @@ def auth_client(user):
 
 
 def make_upload_file(name="test.pdf", size=1024):
+    """PDF minimal mais structurellement valide (pypdf doit pouvoir le
+    parser) — voir test_document_upload.py#_valid_pdf_bytes."""
     from django.core.files.uploadedfile import SimpleUploadedFile
-    content = b"%PDF-1.4 " + b"A" * size
+    from pypdf import PdfWriter
+    import io
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+    content = buf.getvalue() + b"\n%" + b"A" * size
     return SimpleUploadedFile(name, content, content_type="application/pdf")
 
 

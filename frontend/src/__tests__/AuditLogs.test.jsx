@@ -13,6 +13,21 @@ jest.mock("../services/api", () => ({
   __esModule: true, default: { get: jest.fn() },
 }));
 jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ user: { role: "ADMIN", username: "admin" } }),
+}));
+jest.mock("../context/KeyboardShortcutsContext", () => ({
+  useKeyboardShortcutsHelp: () => ({
+    helpOpen: false,
+    openHelp: jest.fn(),
+    closeHelp: jest.fn(),
+    toggleHelp: jest.fn(),
+    overrides: {},
+    setOverride: jest.fn(),
+    resetOverride: jest.fn(),
+    resetAllOverrides: jest.fn(),
+  }),
+}));
 
 import api from "../services/api";
 import AuditLogs from "../pages/AuditLogs";
@@ -53,9 +68,7 @@ describe("AuditLogs — rendu initial", () => {
   test("affiche le filtre utilisateur", async () => {
     api.get.mockResolvedValue(mockResponse([]));
     renderPage();
-    expect(
-      screen.getByPlaceholderText(/filtrer par utilisateur/i)
-    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Vous + Consultants")).toBeInTheDocument();
   });
 
   test("affiche le select de filtre action", async () => {
@@ -137,12 +150,20 @@ describe("AuditLogs — chargement", () => {
 
 describe("AuditLogs — filtres", () => {
   test("filtrer par utilisateur recharge les logs depuis page 1", async () => {
-    api.get.mockResolvedValue(mockResponse([]));
+    api.get.mockImplementation((url) => {
+      if (url === "/admin-users/") {
+        return Promise.resolve({
+          data: { results: [{ id: "u1", username: "admin", nom: "Admin", prenom: "Test", role: "CONSULTANT" }] },
+        });
+      }
+      return Promise.resolve(mockResponse([]));
+    });
     renderPage();
     await waitFor(() => screen.getByText("Aucune entrée trouvée."));
+    await waitFor(() => screen.getByRole("option", { name: /admin/i }));
 
-    const input = screen.getByPlaceholderText(/filtrer par utilisateur/i);
-    fireEvent.change(input, { target: { name: "user", value: "admin" } });
+    const select = screen.getByDisplayValue("Vous + Consultants");
+    fireEvent.change(select, { target: { name: "user", value: "admin" } });
 
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith(

@@ -23,16 +23,30 @@ def auth_client(user):
     return client
 
 
+def _valid_pdf_bytes():
+    """Un PDF minimal mais structurellement valide (pypdf doit pouvoir le
+    parser) — un vrai fichier généré via pypdf, pas des octets factices."""
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
 def small_pdf(name="test.pdf", size=1024):
-    """Simule un fichier PDF minimal."""
-    content = b"%PDF-1.4 fake content" + b"x" * size
+    """Simule un fichier PDF minimal, structurellement valide."""
+    content = _valid_pdf_bytes() + b"\n%" + b"x" * size
     return io.BytesIO(content), name
 
 
 def make_upload_file(name="test.pdf", size=1024):
-    """Retourne un objet compatible InMemoryUploadedFile."""
+    """Retourne un objet compatible InMemoryUploadedFile — un PDF valide
+    (parsable par pypdf), complété par du remplissage après %%EOF pour
+    atteindre la taille demandée (les octets de remplissage sont ignorés
+    par les lecteurs PDF, mais comptent pour la taille du fichier)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
-    content = b"%PDF-1.4 " + b"A" * size
+    content = _valid_pdf_bytes() + b"\n%" + b"A" * size
     return SimpleUploadedFile(name, content, content_type="application/pdf")
 
 
@@ -95,10 +109,11 @@ class TestDocumentUpload:
         assert "text/html" in body or "MIME" in body or "autorisé" in body.lower()
 
     def test_upload_file_too_large(self, admin_user, employee, type_doc_obligatoire):
-        """Un fichier > 5 Mo est rejeté avec 400."""
+        """Un fichier > 20 Mo est rejeté avec 400 (MAX_UPLOAD_SIZE_MB, voir
+        CLAUDE.md section Limites d'upload, 2026-09-15)."""
         client = auth_client(admin_user)
-        # 6 Mo > limite 5 Mo
-        big_file = make_upload_file("big.pdf", size=6 * 1024 * 1024)
+        # 21 Mo > limite 20 Mo
+        big_file = make_upload_file("big.pdf", size=21 * 1024 * 1024)
 
         with patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
             resp = client.post(

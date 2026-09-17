@@ -206,6 +206,7 @@ const Login = () => {
             {/* Identifiant */}
             <div style={{ marginBottom: 18 }}>
               <label
+                htmlFor="username"
                 style={{
                   color: theme.text,
                   fontSize: 13,
@@ -217,6 +218,7 @@ const Login = () => {
                 Identifiant
               </label>
               <input
+                id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -228,6 +230,7 @@ const Login = () => {
             {/* Mot de passe */}
             <div style={{ marginBottom: 20 }}>
               <label
+                htmlFor="password"
                 style={{
                   color: theme.text,
                   fontSize: 13,
@@ -240,6 +243,7 @@ const Login = () => {
               </label>
               <div style={{ position: "relative" }}>
                 <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

@@ -114,11 +114,14 @@ class TestScanImportSerializer:
             assert not serializer.is_valid()
 
     def test_too_many_files_rejected(self):
+        # Limite scanner passée à 100 fichiers (2026-09-15, voir CLAUDE.md
+        # section Limites d'upload — MAX_SCAN_IMPORT... via `max_length=100`
+        # sur ScanImportSerializer.files).
         type_doc = TypeDocument.objects.create(nom="CV", code="CV", is_active=True)
-        files = [pdf_upload_file(1, name=f"f{i}.pdf") for i in range(51)]
+        files = [pdf_upload_file(1, name=f"f{i}.pdf") for i in range(101)]
         plan = json.dumps({"groups": [
             {"type_doc": str(type_doc.id), "notes": "", "parts": [{"file_index": i, "pages": [1]}]}
-            for i in range(51)
+            for i in range(101)
         ]})
         with patch("employees.serializers.magic.from_buffer", return_value="application/pdf"):
             serializer = ScanImportSerializer(data={"files": files, "plan": plan})
