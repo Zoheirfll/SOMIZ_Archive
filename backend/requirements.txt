@@ -5,7 +5,7 @@
 #   pip install -r requirements.txt
 
 # Django & REST
-Django==4.2.30
+Django==5.2.17
 djangorestframework==3.17.2
 djangorestframework-simplejwt==5.5.1
 asgiref==3.11.1
@@ -29,7 +29,7 @@ PyJWT==2.13.0
 Pillow==12.3.0
 
 # Découpage PDF (scan/import)
-pypdf==5.1.0
+pypdf==6.19.0
 
 # Import/export Excel (.xlsx)
 openpyxl==3.1.5
