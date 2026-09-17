@@ -143,7 +143,7 @@ describe("ContratDetail — rendu initial", () => {
   test("affiche la date de début", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("2024-01-15")).toBeInTheDocument();
+      expect(screen.getByText("15/01/2024")).toBeInTheDocument();
     });
   });
 });
@@ -219,6 +219,46 @@ describe("ContratDetail — upload (ADMIN)", () => {
         );
       });
     }
+  });
+});
+
+describe("ContratDetail — édition, type de contrat durée indéterminée", () => {
+  const mockTypesContrat = [
+    { id: "tc-cdd", nom: "CDD", duree_indeterminee: false },
+    { id: "tc-cdi", nom: "CDI", duree_indeterminee: true },
+  ];
+
+  beforeEach(() => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("types-documents")) {
+        return Promise.resolve({ data: { results: mockTypes } });
+      }
+      if (url.includes("types-contrat")) {
+        return Promise.resolve({ data: mockTypesContrat });
+      }
+      if (url.includes("files/")) {
+        return Promise.resolve({ data: new Blob(["pdf"], { type: "application/pdf" }) });
+      }
+      return Promise.resolve({ data: mockContrat });
+    });
+  });
+
+  test("masque Date de fin quand le type de contrat sélectionné est à durée indéterminée", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("CTR-2024-001").length > 0);
+
+    fireEvent.click(screen.getByText(/Modifier/i));
+    await waitFor(() => {
+      expect(screen.getByText("Date fin")).toBeInTheDocument();
+    });
+
+    const selectTypeContrat = screen.getByDisplayValue("— Aucun —").closest("select")
+      || screen.getAllByRole("combobox").find((el) =>
+        Array.from(el.options).some((o) => o.textContent === "CDI")
+      );
+    fireEvent.change(selectTypeContrat, { target: { value: "tc-cdi" } });
+
+    expect(screen.queryByText("Date fin")).not.toBeInTheDocument();
   });
 });
 

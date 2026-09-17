@@ -251,7 +251,7 @@ describe("EmployeeDetail — rendu initial", () => {
 
     const personnelCard = personnelHeading.closest("div").parentElement;
     const adminCard = adminHeading.closest("div").parentElement;
-    expect(within(personnelCard).getByText("1990-01-01")).toBeInTheDocument();
+    expect(within(personnelCard).getByText("01/01/1990")).toBeInTheDocument();
     expect(within(adminCard).getByText("EMP-001")).toBeInTheDocument();
   });
 });
@@ -963,7 +963,7 @@ describe("EmployeeDetail — onglet Carrière", () => {
     renderPage();
     fireEvent.click(await screen.findByText("Carrière"));
     expect(await screen.findByText(/Agent/)).toBeInTheDocument();
-    expect(screen.getByText(/2016-01-01/)).toBeInTheDocument();
+    expect(screen.getByText(/01\/01\/2016/)).toBeInTheDocument();
   });
 
   test("affiche 'Aucun historique renseigné' pour un axe vide", async () => {

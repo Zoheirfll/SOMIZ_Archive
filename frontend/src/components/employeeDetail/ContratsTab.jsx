@@ -1,4 +1,5 @@
 import { useTheme } from "../../context/ThemeContext";
+import { formatDateFR } from "../../utils/formatDate";
 
 // Onglet "Contrats" de la fiche employé (liste + formulaire d'ajout) —
 // extrait de EmployeeDetail.jsx pour garder la page principale sous les
@@ -154,12 +155,18 @@ const ContratsTab = ({
                     </label>
                     <select
                       value={newContrat.type_contrat}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const nextType = typesContrat.find(
+                          (t) => t.id === e.target.value,
+                        );
                         setNewContrat({
                           ...newContrat,
                           type_contrat: e.target.value,
-                        })
-                      }
+                          date_fin: nextType?.duree_indeterminee
+                            ? ""
+                            : newContrat.date_fin,
+                        });
+                      }}
                       className="input-focus"
                       style={{
                         width: "100%",
@@ -251,41 +258,44 @@ const ContratsTab = ({
                       }}
                     />
                   </div>
-                  <div>
-                    <label
-                      style={{
-                        color: theme.textMuted,
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        display: "block",
-                        marginBottom: 4,
-                      }}
-                    >
-                      Date fin
-                    </label>
-                    <input
-                      type="date"
-                      value={newContrat.date_fin}
-                      onChange={(e) =>
-                        setNewContrat({
-                          ...newContrat,
-                          date_fin: e.target.value,
-                        })
-                      }
-                      className="input-focus"
-                      style={{
-                        width: "100%",
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: 6,
-                        padding: "8px 10px",
-                        fontSize: 13,
-                        color: theme.text,
-                        background: theme.surface,
-                        outline: "none",
-                        boxSizing: "border-box",
-                      }}
-                    />
-                  </div>
+                  {!typesContrat.find((t) => t.id === newContrat.type_contrat)
+                    ?.duree_indeterminee && (
+                    <div>
+                      <label
+                        style={{
+                          color: theme.textMuted,
+                          fontSize: 11,
+                          textTransform: "uppercase",
+                          display: "block",
+                          marginBottom: 4,
+                        }}
+                      >
+                        Date fin
+                      </label>
+                      <input
+                        type="date"
+                        value={newContrat.date_fin}
+                        onChange={(e) =>
+                          setNewContrat({
+                            ...newContrat,
+                            date_fin: e.target.value,
+                          })
+                        }
+                        className="input-focus"
+                        style={{
+                          width: "100%",
+                          border: `1px solid ${theme.border}`,
+                          borderRadius: 6,
+                          padding: "8px 10px",
+                          fontSize: 13,
+                          color: theme.text,
+                          background: theme.surface,
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <label
@@ -451,7 +461,7 @@ const ContratsTab = ({
                             color: theme.text,
                           }}
                         >
-                          {c.date_debut || "—"}
+                          {c.date_debut ? formatDateFR(c.date_debut) : "—"}
                         </td>
                         <td
                           style={{
@@ -460,7 +470,7 @@ const ContratsTab = ({
                             color: theme.text,
                           }}
                         >
-                          {c.date_fin || "—"}
+                          {c.date_fin ? formatDateFR(c.date_fin) : "—"}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                           <span

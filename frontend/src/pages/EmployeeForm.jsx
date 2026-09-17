@@ -486,6 +486,22 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
           <option value="oui">Oui</option>
           <option value="non">Non</option>
         </Select>
+      ) : champ.type_champ === "liste" ? (
+        <Select
+          value={champsValues[champ.id] || ""}
+          onChange={(e) =>
+            setChampsValues({ ...champsValues, [champ.id]: e.target.value })
+          }
+        >
+          <option value="">-- Sélectionner --</option>
+          {(champ.options || [])
+            .filter((o) => o.is_active || o.valeur === champsValues[champ.id])
+            .map((o) => (
+              <option key={o.id} value={o.valeur}>
+                {o.valeur}
+              </option>
+            ))}
+        </Select>
       ) : (
         <Input
           type={

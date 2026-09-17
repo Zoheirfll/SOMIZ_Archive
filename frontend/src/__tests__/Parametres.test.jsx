@@ -169,6 +169,13 @@ describe("Parametres — navigation onglets", () => {
     expect(screen.getByText("Date de naissance")).toBeInTheDocument();
   });
 
+  test("le formulaire Types de contrat propose un select Durée indéterminée", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText("Types de contrat"));
+    fireEvent.click(await screen.findByText(/\+ Ajouter/i));
+    expect(await screen.findByLabelText("Durée indéterminée")).toBeInTheDocument();
+  });
+
   test("clic sur Échelles charge les échelles", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Échelles"));
@@ -331,6 +338,37 @@ describe("Parametres — champs personnalisés — catégorie", () => {
 
     await screen.findAllByText("Matricule");
     expect(screen.getAllByText("Matricule")).toHaveLength(1);
+  });
+
+  test("affiche la gestion des options pour un champ existant de type liste", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/ref/champs-personnalises/") {
+        return Promise.resolve({
+          data: [
+            {
+              id: "uuid-situation",
+              nom: "Situation familiale",
+              code: "SIT_FAM",
+              type_champ: "liste",
+              ordre: 0,
+              is_active: true,
+              is_systeme: false,
+              categorie: "PERSONNEL",
+              options: [{ id: "opt-1", valeur: "Marié", ordre: 0, is_active: true }],
+            },
+          ],
+        });
+      }
+      return Promise.resolve(emptyResponse);
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByText("Champs personnalisés"));
+    await screen.findByText("Situation familiale");
+    fireEvent.click(screen.getAllByLabelText("Modifier")[0]);
+
+    expect(await screen.findByText("Ajouter une option")).toBeInTheDocument();
+    expect(screen.getByText("Marié")).toBeInTheDocument();
   });
 });
 

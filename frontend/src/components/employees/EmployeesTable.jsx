@@ -2,6 +2,7 @@ import { useTheme } from "../../context/ThemeContext";
 import Skeleton from "../Skeleton";
 import EmployeeAvatar from "../EmployeeAvatar";
 import { employeeSlug } from "../../utils/employeeSlug";
+import { formatDateFR } from "../../utils/formatDate";
 import { IconService, IconUsers } from "./icons";
 import DocFilterPanel from "./DocFilterPanel";
 
@@ -991,7 +992,9 @@ const EmployeesTable = ({
                           cursor: "pointer",
                         }}
                       >
-                        {emp.date_naissance || (
+                        {emp.date_naissance ? (
+                          formatDateFR(emp.date_naissance)
+                        ) : (
                           <span style={{ color: theme.textMuted }}>—</span>
                         )}
                       </td>
@@ -1009,7 +1012,9 @@ const EmployeesTable = ({
                           cursor: "pointer",
                         }}
                       >
-                        {emp.date_embauche || (
+                        {emp.date_embauche ? (
+                          formatDateFR(emp.date_embauche)
+                        ) : (
                           <span style={{ color: theme.textMuted }}>—</span>
                         )}
                       </td>

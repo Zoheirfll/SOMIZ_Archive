@@ -143,6 +143,36 @@ describe("EmployeeForm — rendu création", () => {
       expect(screen.getByText("Annuler")).toBeInTheDocument();
     });
   });
+
+  test("rend un select pour un champ personnalisé de type liste", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/champs-personnalises/")) {
+        return Promise.resolve({
+          data: [
+            {
+              id: "champ-liste-1",
+              nom: "Situation familiale",
+              code: "SIT_FAM",
+              type_champ: "liste",
+              is_active: true,
+              is_systeme: false,
+              options: [
+                { id: "o1", valeur: "Célibataire", is_active: true },
+                { id: "o2", valeur: "Marié", is_active: true },
+              ],
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderCreate();
+    await waitFor(() => {
+      expect(screen.getByText("Situation familiale")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Célibataire")).toBeInTheDocument();
+    expect(screen.getByText("Marié")).toBeInTheDocument();
+  });
 });
 
 describe("EmployeeForm — rendu édition", () => {

@@ -2,6 +2,7 @@ import { useTheme } from "../../context/ThemeContext";
 import ResponsableField from "./ResponsableField";
 import { getInputStyle, getLabelStyle } from "./formStyles";
 import { SYSTEM_FIELDS } from "../../config/parametresTabs";
+import ChampListeOptions from "./ChampListeOptions";
 
 // Formulaire d'ajout/édition, un cas par onglet référentiel — extrait de
 // Parametres.jsx (voir CLAUDE.md, pages >1000 lignes) pour garder la page
@@ -695,6 +696,41 @@ const RefForm = ({
               className="input-focus"
               style={{ ...inputStyle, resize: "vertical", minHeight: 70 }}
             />
+            {activeTab === "types-contrat" && (
+              <>
+                <label style={labelStyle}>Durée indéterminée</label>
+                <select
+                  name="duree_indeterminee"
+                  aria-label="Durée indéterminée"
+                  value={form.duree_indeterminee ?? false}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      duree_indeterminee: e.target.value === "true",
+                    })
+                  }
+                  className="input-focus"
+                  style={inputStyle}
+                >
+                  <option value="false">Non — date de fin possible</option>
+                  <option value="true">
+                    Oui — jamais de date de fin (ex. CDI)
+                  </option>
+                </select>
+                <div
+                  style={{
+                    color: theme.textMuted,
+                    fontSize: 11,
+                    marginTop: -8,
+                    marginBottom: 12,
+                  }}
+                >
+                  Si "Oui", le champ Date de fin sera masqué dans le
+                  formulaire Contrat pour ce type et toujours vidé côté
+                  serveur.
+                </div>
+              </>
+            )}
             <label style={labelStyle}>Statut</label>
             <select
               name="is_active"
@@ -963,7 +999,29 @@ const RefForm = ({
               <option value="nombre">Nombre</option>
               <option value="date">Date</option>
               <option value="booleen">Booléen (Oui/Non)</option>
+              <option value="liste">Liste (choix unique)</option>
             </select>
+
+            {form.type_champ === "liste" && (
+              modal?.item?.id ? (
+                <ChampListeOptions
+                  champId={modal.item.id}
+                  options={form.options || modal.item.options || []}
+                  onOptionsChange={(options) => setForm({ ...form, options })}
+                />
+              ) : (
+                <div
+                  style={{
+                    color: theme.textMuted,
+                    fontSize: 11,
+                    marginTop: -8,
+                    marginBottom: 12,
+                  }}
+                >
+                  Enregistrez d'abord le champ pour pouvoir ajouter ses options.
+                </div>
+              )
+            )}
 
             <label style={labelStyle}>Ordre d'affichage</label>
             <input

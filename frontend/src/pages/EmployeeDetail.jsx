@@ -23,6 +23,7 @@ import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
 import { formatDateTime, stripExt } from "../utils/employeeDocsDisplay";
+import { formatDateFR } from "../utils/formatDate";
 
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
@@ -127,6 +128,16 @@ const EmployeeDetail = () => {
   const [systemFieldOrder, setSystemFieldOrder] = useState({});
   const missingRowRefs = useRef({});
   const dossierSectionRef = useRef(null);
+  // Miroir de selectedDoc/selectedFile, lu (pas dépendu) par l'effet de
+  // sélection par défaut ci-dessous — voir son commentaire.
+  const selectedDocRef = useRef(null);
+  const selectedFileRef = useRef(null);
+  useEffect(() => {
+    selectedDocRef.current = selectedDoc;
+  }, [selectedDoc]);
+  useEffect(() => {
+    selectedFileRef.current = selectedFile;
+  }, [selectedFile]);
 
   useEffect(() => {
     fetchTypesDocuments();
@@ -519,6 +530,26 @@ const EmployeeDetail = () => {
         (doc) => !doc.contrat || doc.contrat === selectedContratId,
       ),
     );
+    // `employee` change de référence à chaque fetchEmployee(), y compris les
+    // rafraîchissements silencieux (rotation, renommage...) qui ne touchent
+    // pas le document actuellement affiché. Si le document sélectionné
+    // existe toujours dans la liste rafraîchie, on se contente de mettre à
+    // jour ses données (sans rappeler loadFile) au lieu de rouvrir le
+    // viewer sur le premier document — sinon on perd la page/le zoom en
+    // cours à chaque action (voir CLAUDE.md "pas de flash page qui recharge").
+    const prevDoc = selectedDocRef.current;
+    const stillThere = prevDoc && filtered.find((d) => d.id === prevDoc.id);
+    if (stillThere) {
+      setSelectedDoc(stillThere);
+      const prevFile = selectedFileRef.current;
+      if (prevFile) {
+        const updatedFile = (stillThere.fichiers || []).find(
+          (f) => f.id === prevFile.id,
+        );
+        if (updatedFile) setSelectedFile(updatedFile);
+      }
+      return;
+    }
     if (filtered.length > 0) {
       setSelectedDoc(filtered[0]);
       if (filtered[0].fichiers?.length > 0) {
@@ -879,17 +910,17 @@ const EmployeeDetail = () => {
       code: "nom",
       sortKey: systemOrdre("nom"),
     },
-    { label: "Date de naissance", value: employee.date_naissance || "—", code: "date_naissance", sortKey: systemOrdre("date_naissance") },
-    { label: "Date de recrutement", value: employee.date_embauche || "—", code: "date_embauche", sortKey: systemOrdre("date_embauche") },
+    { label: "Date de naissance", value: employee.date_naissance ? formatDateFR(employee.date_naissance) : "—", code: "date_naissance", sortKey: systemOrdre("date_naissance") },
+    { label: "Date de recrutement", value: employee.date_embauche ? formatDateFR(employee.date_embauche) : "—", code: "date_embauche", sortKey: systemOrdre("date_embauche") },
     {
       label: "Date de début de contrat",
-      value: contrats[0]?.date_debut || "—",
+      value: contrats[0]?.date_debut ? formatDateFR(contrats[0].date_debut) : "—",
       code: "date_debut_contrat",
       sortKey: systemOrdre("date_debut_contrat"),
     },
     {
       label: "Date de fin de contrat",
-      value: employee.date_fin_contrat || "—",
+      value: employee.date_fin_contrat ? formatDateFR(employee.date_fin_contrat) : "—",
       code: "date_fin_contrat",
       sortKey: systemOrdre("date_fin_contrat"),
     },

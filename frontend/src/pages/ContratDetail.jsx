@@ -13,6 +13,7 @@ import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import useIsMobile from "../hooks/useIsMobile";
+import { formatDateFR } from "../utils/formatDate";
 import usePageTitle from "../hooks/usePageTitle";
 import { employeeSlug } from "../utils/employeeSlug";
 
@@ -569,7 +570,14 @@ const ContratDetail = () => {
                   <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Type de contrat</label>
                   <select
                     value={editForm.type_contrat}
-                    onChange={(e) => setEditForm({ ...editForm, type_contrat: e.target.value })}
+                    onChange={(e) => {
+                      const nextType = typesContrat.find((t) => t.id === e.target.value);
+                      setEditForm({
+                        ...editForm,
+                        type_contrat: e.target.value,
+                        date_fin: nextType?.duree_indeterminee ? "" : editForm.date_fin,
+                      });
+                    }}
                     style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }}
                   >
                     <option value="">— Aucun —</option>
@@ -581,11 +589,13 @@ const ContratDetail = () => {
                   <input type="date" value={editForm.date_debut} onChange={(e) => setEditForm({ ...editForm, date_debut: e.target.value })}
                     style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
                 </div>
-                <div>
-                  <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Date fin</label>
-                  <input type="date" value={editForm.date_fin} onChange={(e) => setEditForm({ ...editForm, date_fin: e.target.value })}
-                    style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
-                </div>
+                {!typesContrat.find((t) => t.id === editForm.type_contrat)?.duree_indeterminee && (
+                  <div>
+                    <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Date fin</label>
+                    <input type="date" value={editForm.date_fin} onChange={(e) => setEditForm({ ...editForm, date_fin: e.target.value })}
+                      style={{ width: "100%", padding: "8px 12px", border: `1px solid ${theme.border}`, borderRadius: 10, fontSize: 14, background: theme.bg, boxSizing: "border-box" }} />
+                  </div>
+                )}
                 <div>
                   <label style={{ color: theme.textMuted, fontSize: 11, textTransform: "uppercase", display: "block", marginBottom: 4 }}>Notes</label>
                   <input value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
@@ -614,8 +624,8 @@ const ContratDetail = () => {
                 {[
                   { label: "N° Contrat", value: contrat.numero_contrat, mono: true },
                   { label: "Type de contrat", value: contrat.type_contrat_nom || "—" },
-                  { label: "Date début", value: contrat.date_debut || "—" },
-                  { label: "Date fin", value: contrat.date_fin || "—" },
+                  { label: "Date début", value: contrat.date_debut ? formatDateFR(contrat.date_debut) : "—" },
+                  { label: "Date fin", value: contrat.date_fin ? formatDateFR(contrat.date_fin) : "—" },
                   { label: "Documents", value: `${contrat.nb_documents} fichier(s)` },
                 ].map((item) => (
                   <div key={item.label}>

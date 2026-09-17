@@ -1,5 +1,6 @@
 import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { formatDateFR } from "../../utils/formatDate";
 
 // Onglet "Carrière" de la fiche employé (timelines Fonction/Catégorie/
 // Échelle/Contrats + modale de gestion manuelle de l'historique) — extrait
@@ -133,7 +134,7 @@ const CarriereTab = ({
                           {periode[axe.labelKey]}
                         </span>
                         <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                          {periode.date_debut} → {periode.date_fin || "en cours"}
+                          {formatDateFR(periode.date_debut)} → {periode.date_fin ? formatDateFR(periode.date_fin) : "en cours"}
                         </span>
                       </div>
                     ))
@@ -208,7 +209,7 @@ const CarriereTab = ({
                         {c.numero_contrat} — {c.type_contrat_nom || "—"}
                       </span>
                       <span style={{ fontSize: 12, color: theme.textSecondary }}>
-                        {c.date_debut || "—"} → {c.date_fin || "en cours"}
+                        {c.date_debut ? formatDateFR(c.date_debut) : "—"} → {c.date_fin ? formatDateFR(c.date_fin) : "en cours"}
                       </span>
                     </div>
                   ))
@@ -267,8 +268,8 @@ const CarriereTab = ({
                   }}
                 >
                   <span style={{ fontSize: 13, color: theme.text }}>
-                    {p.poste_nom || p.categorie_nom || p.echelle_nom} ({p.date_debut} →{" "}
-                    {p.date_fin || "en cours"})
+                    {p.poste_nom || p.categorie_nom || p.echelle_nom} ({formatDateFR(p.date_debut)} →{" "}
+                    {p.date_fin ? formatDateFR(p.date_fin) : "en cours"})
                   </span>
                   <button
                     onClick={async () => {

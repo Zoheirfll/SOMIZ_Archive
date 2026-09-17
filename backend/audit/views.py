@@ -195,11 +195,19 @@ class StatsDetailView(APIView):
         return Response(data)
 
 
-def _stats_sheet(wb, title, headers, rows):
+def _stats_sheet(wb, title, headers, rows, date_cols=()):
+    """
+    date_cols : indices 1-based des colonnes contenant des objets date/datetime
+    Python (pas des chaînes) — reçoivent le format d'affichage DD/MM/YYYY,
+    lisible quel que soit le paramètre régional Excel de l'admin qui l'ouvre.
+    """
     ws = wb.create_sheet(title)
     ws.append(headers)
     for row in rows:
         ws.append(row)
+    for row_idx in range(2, len(rows) + 2):
+        for col_idx in date_cols:
+            ws.cell(row=row_idx, column=col_idx).number_format = 'DD/MM/YYYY'
     for col_idx in range(1, len(headers) + 1):
         ws.cell(row=1, column=col_idx).font = Font(bold=True)
         ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max(
@@ -257,9 +265,9 @@ class StatsExportView(APIView):
             for i in range(max(len(data['pyramide_age']), len(data['pyramide_anciennete'])))
         ])
         _stats_sheet(wb, 'Échéances contrats', ['N° Contrat', 'Employé', 'Date fin', 'Jours restants'], [
-            [c['numero_contrat'], c['employee_nom'], c['date_fin'], c['jours_restants']]
+            [c['numero_contrat'], c['employee_nom'], date.fromisoformat(c['date_fin']), c['jours_restants']]
             for c in data['contrats_echeance']
-        ])
+        ], date_cols=[3])
         _stats_sheet(wb, 'Complétude', ['Direction', 'Département', 'Total', 'Complets', 'Taux (%)'], [
             [r['nom'], '', r['total'], r['complets'], r['taux']] for r in data['completude_par_direction']
         ] + [
