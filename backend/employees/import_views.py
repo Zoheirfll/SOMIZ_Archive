@@ -84,6 +84,60 @@ def _read_rows(file):
     return list(reader.fieldnames), rows
 
 
+def resoudre_ou_creer_simple(cache, ModelClass, nom, extra_kwargs=None):
+    """Résout `nom` dans `cache` (dict {NOM_UPPER: instance}) ; si absent,
+    crée l'entrée (référentiel sans parent obligatoire) et l'ajoute au
+    cache pour les lignes suivantes du même import. Retourne
+    (instance|None, cree: bool)."""
+    nom = (nom or '').strip()
+    if not nom:
+        return None, False
+    cle = nom.upper()
+    existant = cache.get(cle)
+    if existant:
+        return existant, False
+    instance = ModelClass.objects.create(nom=nom, **(extra_kwargs or {}))
+    cache[cle] = instance
+    return instance, True
+
+
+def resoudre_departement_ligne(departements_par_nom, departements_par_cle, directions, dept_nom, dir_nom):
+    """Résout un Département par nom (+ direction optionnelle pour lever
+    l'ambiguïté), avec auto-création en cascade si le département et/ou sa
+    direction sont absents mais non ambigus (dir_nom renseignée). Retourne
+    (Departement|None, cree: bool, erreur: str|None)."""
+    dept_nom = (dept_nom or '').strip()
+    if not dept_nom:
+        return None, False, None
+    dir_nom = (dir_nom or '').strip()
+    cle_dept = dept_nom.upper()
+
+    if dir_nom:
+        cle_dir = dir_nom.upper()
+        direction = directions.get(cle_dir)
+        if not direction:
+            direction = Direction.objects.create(nom=dir_nom)
+            directions[cle_dir] = direction
+        existant = departements_par_cle.get((cle_dir, cle_dept))
+        if existant:
+            return existant, False, None
+        nouveau = Departement.objects.create(nom=dept_nom, direction=direction)
+        departements_par_cle[(cle_dir, cle_dept)] = nouveau
+        departements_par_nom.setdefault(cle_dept, []).append(nouveau)
+        return nouveau, True, None
+
+    matches = departements_par_nom.get(cle_dept, [])
+    if len(matches) == 1:
+        return matches[0], False, None
+    if len(matches) > 1:
+        return None, False, (
+            f'Plusieurs départements nommés "{dept_nom}" existent, précisez la colonne "direction"'
+        )
+    return None, False, (
+        f'Département "{dept_nom}" introuvable — renseignez la colonne "direction" pour le créer automatiquement'
+    )
+
+
 def _check_csv_size(file):
     """Même limite que les uploads de documents — empêche un CSV énorme
     d'être chargé intégralement en mémoire (DoS)."""
@@ -167,6 +221,20 @@ class EmployeeImportView(APIView):
         types_contrat = {t.nom.upper(): t for t in TypeContrat.objects.filter(is_active=True)}
         categories = {c.nom.upper(): c for c in Categorie.objects.filter(is_active=True)}
 
+        # Départements groupés par nom (un nom n'est unique qu'au sein
+        # d'une Direction, unique_together) : nécessaire pour détecter
+        # l'ambiguïté quand 'direction' n'est pas précisée sur une ligne,
+        # et pour l'auto-création en cascade (voir resoudre_departement_ligne).
+        departements_par_nom = {}
+        departements_par_cle = {}
+        for d in Departement.objects.select_related('direction').filter(is_active=True):
+            departements_par_nom.setdefault(d.nom.upper(), []).append(d)
+            departements_par_cle[(d.direction.nom.upper(), d.nom.upper())] = d
+
+        # Traçabilité des référentiels créés automatiquement pendant cet
+        # import (voir audit log en fin de méthode).
+        referentiels_crees_total = []
+
         # Champs personnalisés actifs — colonne CSV = code du champ en
         # minuscules (RIB -> 'rib'). Entièrement dynamique : un champ ajouté
         # ou supprimé dans /parametres est immédiatement pris en compte,
@@ -212,10 +280,44 @@ class EmployeeImportView(APIView):
             date_naissance = row.get('date_naissance') or None
             date_embauche = row.get('date_embauche') or None
 
-            # Référentiels — résolution par nom
-            direction = directions.get(row.get('direction', '').upper())
-            departement = departements.get(row.get('departement', '').upper())
-            service = services.get(row.get('service', '').upper())
+            # Référentiels — résolution par nom, auto-création en cascade
+            # si absent et non ambigu (voir resoudre_ou_creer_simple /
+            # resoudre_departement_ligne) : seule une ambiguïté de parent
+            # bloque encore la ligne, une simple absence ne bloque plus rien.
+            referentiels_crees_ligne = []
+
+            direction, direction_creee = resoudre_ou_creer_simple(
+                directions, Direction, row.get('direction', '')
+            )
+            if direction_creee:
+                referentiels_crees_ligne.append({'type': 'direction', 'nom': direction.nom})
+
+            departement, departement_creee, departement_erreur = resoudre_departement_ligne(
+                departements_par_nom, departements_par_cle, directions,
+                row.get('departement', ''), row.get('direction', ''),
+            )
+            if departement_erreur:
+                ligne_erreurs.append(departement_erreur)
+            if departement_creee:
+                referentiels_crees_ligne.append({
+                    'type': 'departement', 'nom': departement.nom, 'parent': departement.direction.nom,
+                })
+
+            service = None
+            service_creee = False
+            service_nom = row.get('service', '').strip()
+            if service_nom:
+                cle_service = service_nom.upper()
+                service = services.get(cle_service)
+                if not service and departement:
+                    service = Service.objects.create(nom=service_nom, departement=departement)
+                    services[cle_service] = service
+                    service_creee = True
+            if service_creee:
+                referentiels_crees_ligne.append({
+                    'type': 'service', 'nom': service.nom, 'parent': service.departement.nom,
+                })
+
             # Un Service appartient toujours à un Département — si la colonne
             # "departement" du CSV est vide/absente mais qu'un Service a été
             # résolu, on aligne quand même departement/direction dessus
@@ -226,9 +328,24 @@ class EmployeeImportView(APIView):
                 departement = service.departement
             if departement and not direction:
                 direction = departement.direction
-            poste = postes.get(row.get('poste', '').upper())
-            type_contrat = types_contrat.get(row.get('type_contrat', '').upper())
-            categorie = categories.get(row.get('categorie', '').upper())
+
+            poste, poste_creee = resoudre_ou_creer_simple(postes, Poste, row.get('poste', ''))
+            if poste_creee:
+                referentiels_crees_ligne.append({'type': 'poste', 'nom': poste.nom})
+
+            type_contrat, type_contrat_creee = resoudre_ou_creer_simple(
+                types_contrat, TypeContrat, row.get('type_contrat', '')
+            )
+            if type_contrat_creee:
+                referentiels_crees_ligne.append({'type': 'type_contrat', 'nom': type_contrat.nom})
+
+            categorie, categorie_creee = resoudre_ou_creer_simple(
+                categories, Categorie, row.get('categorie', '')
+            )
+            if categorie_creee:
+                referentiels_crees_ligne.append({'type': 'categorie', 'nom': categorie.nom})
+
+            referentiels_crees_total.extend(referentiels_crees_ligne)
 
             if ligne_erreurs:
                 erreurs.append({
@@ -335,6 +452,22 @@ class EmployeeImportView(APIView):
                     {'error': "Erreur lors de l'import. Vérifiez le format du fichier ou contactez un administrateur."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
+        if nb_crees and referentiels_crees_total:
+            from audit.models import AuditLog
+            AuditLog.objects.create(
+                user=request.user,
+                username_snapshot=request.user.username,
+                action=AuditLog.Action.CREATE_EMP,
+                target_model='Employee',
+                target_label=f"Import CSV — {nb_crees} employé(s) créé(s)",
+                ip_address=AuditLog._get_ip(request),
+                details={
+                    'nb_crees': nb_crees,
+                    'nb_erreurs': len(erreurs),
+                    'referentiels_crees': referentiels_crees_total[:200],
+                },
+            )
 
         return Response({
             'nb_crees': nb_crees,
