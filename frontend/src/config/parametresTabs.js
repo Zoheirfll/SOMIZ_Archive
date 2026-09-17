@@ -47,6 +47,14 @@ export const IMPORT_UNSUPPORTED_TABS = new Set([
   "champs-personnalises",
 ]);
 
+// Tabs sans fusion manuelle côté backend (ReferentielMergeView) — mêmes
+// exclusions que l'import : hiérarchie catégorie/sous-type et type de champ
+// trop spécifiques pour la réassignation générique par réflexion Django.
+export const MERGE_UNSUPPORTED_TABS = new Set([
+  "types-documents",
+  "champs-personnalises",
+]);
+
 // Colonnes obligatoires/optionnelles par onglet — reflète exactement
 // ReferentielImportView.MODELS (backend/employees/import_views.py), affiché
 // dans la modale d'import pour que l'admin sache quoi remplir sans deviner

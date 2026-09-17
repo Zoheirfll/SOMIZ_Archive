@@ -16,6 +16,7 @@ import {
   TABS,
   TAB_GROUPS,
   IMPORT_UNSUPPORTED_TABS,
+  MERGE_UNSUPPORTED_TABS,
 } from "../config/parametresTabs";
 import RefModal from "../components/parametres/RefModal";
 import RefTable from "../components/parametres/RefTable";
@@ -72,6 +73,9 @@ const Parametres = () => {
   });
   const [sortConfig, setSortConfig] = useState({ key: null, dir: "asc" });
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState(null);
+  const [merging, setMerging] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Données des référentiels pour les selects
@@ -382,6 +386,43 @@ const Parametres = () => {
     }
   };
 
+  const handleConfirmMerge = async () => {
+    if (!mergeTargetId) return;
+    const sourceIds = Array.from(selectedIds).filter((id) => id !== mergeTargetId);
+    if (sourceIds.length === 0) return;
+    const targetNom = items.find((item) => item.id === mergeTargetId)?.nom || "";
+    const sourceNoms = items
+      .filter((item) => sourceIds.includes(item.id))
+      .map((item) => item.nom)
+      .join(", ");
+    const ok = await confirm(
+      `${sourceIds.length} élément(s) ("${sourceNoms}") seront réaffectés vers "${targetNom}" puis supprimés. Cette action est irréversible. Continuer ?`,
+    );
+    if (!ok) return;
+    setMerging(true);
+    try {
+      const response = await api.post(`/ref/merge/${activeTab}/`, {
+        target_id: mergeTargetId,
+        source_ids: sourceIds,
+      });
+      showMessage(
+        "success",
+        `Fusion effectuée — ${response.data.nb_reassignes} référence(s) réaffectée(s).`,
+      );
+      setShowMergeModal(false);
+      setMergeTargetId(null);
+      setSelectedIds(new Set());
+      fetchTab(activeTab, page, search, true);
+    } catch (err) {
+      showMessage(
+        "error",
+        err.response?.data?.error || "Échec de la fusion.",
+      );
+    } finally {
+      setMerging(false);
+    }
+  };
+
   const handleImportFile = async () => {
     if (!importFile || !importModal) return;
     setImporting(true);
@@ -428,14 +469,32 @@ const Parametres = () => {
   const handleSubmit = async () => {
     setSaving(true);
     try {
+      let updated;
       if (modal.mode === "add") {
-        await api.post(`/ref/${activeTab}/`, form);
+        const res = await api.post(`/ref/${activeTab}/`, form);
+        updated = res.data;
         showMessage("success", "Ajouté avec succès.");
       } else {
-        await api.patch(`/ref/${activeTab}/${modal.item.id}/`, form);
+        const res = await api.patch(`/ref/${activeTab}/${modal.item.id}/`, form);
+        updated = res.data;
         showMessage("success", "Modifié avec succès.");
       }
       setModal(null);
+      // Applique directement la réponse du serveur à la ligne concernée
+      // (au lieu d'attendre uniquement le fetchTab silencieux ci-dessous) —
+      // garantit que la modification apparaît sans avoir à rafraîchir la
+      // page, même si le second aller-retour réseau prend un instant.
+      if (updated?.id) {
+        setData((prev) => {
+          const list = prev[activeTab] || [];
+          const idx = list.findIndex((it) => it.id === updated.id);
+          const nextList =
+            idx === -1
+              ? [...list, updated]
+              : list.map((it, i) => (i === idx ? updated : it));
+          return { ...prev, [activeTab]: nextList };
+        });
+      }
       fetchTab(activeTab, page, search, true);
       fetchDirections();
       fetchPoles();
@@ -800,6 +859,30 @@ const Parametres = () => {
                       {selectedIds.size})
                     </button>
                   )}
+                  {selectedIds.size >= 2 && !MERGE_UNSUPPORTED_TABS.has(activeTab) && (
+                    <button
+                      onClick={() => {
+                        setMergeTargetId(null);
+                        setShowMergeModal(true);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        background: theme.primary,
+                        border: "none",
+                        color: "#fff",
+                        borderRadius: 8,
+                        padding: "8px 14px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                      className="btn-lift"
+                    >
+                      Fusionner la sélection ({selectedIds.size})
+                    </button>
+                  )}
                   {!IMPORT_UNSUPPORTED_TABS.has(activeTab) && (
                     <>
                       <button
@@ -969,6 +1052,105 @@ const Parametres = () => {
           importing={importing}
           handleImportFile={handleImportFile}
         />
+      )}
+      {showMergeModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: theme.cardBg || "#fff",
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 480,
+              width: "90%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+            }}
+            className="anim-scale-in"
+          >
+            <h3 style={{ margin: "0 0 12px", color: theme.text }}>
+              Fusionner {selectedIds.size} éléments
+            </h3>
+            <p style={{ color: theme.textSecondary, fontSize: 14, margin: "0 0 16px" }}>
+              Choisissez l'élément à conserver — les autres seront supprimés
+              et tout ce qui leur était rattaché (employés, sous-éléments,
+              périmètres utilisateurs...) sera réaffecté à celui-ci. Action
+              irréversible.
+            </p>
+            {items
+              .filter((item) => selectedIds.has(item.id))
+              .map((item) => (
+                <label
+                  key={item.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 0",
+                    cursor: "pointer",
+                    color: theme.text,
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="merge-target"
+                    checked={mergeTargetId === item.id}
+                    onChange={() => setMergeTargetId(item.id)}
+                  />
+                  {item.nom}
+                </label>
+              ))}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                marginTop: 16,
+              }}
+            >
+              <button
+                onClick={() => {
+                  setShowMergeModal(false);
+                  setMergeTargetId(null);
+                }}
+                style={{
+                  border: `1px solid ${theme.border}`,
+                  background: "transparent",
+                  color: theme.text,
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  cursor: "pointer",
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                disabled={!mergeTargetId || merging}
+                onClick={handleConfirmMerge}
+                style={{
+                  background: theme.primary,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "8px 16px",
+                  cursor: !mergeTargetId || merging ? "not-allowed" : "pointer",
+                  opacity: !mergeTargetId || merging ? 0.6 : 1,
+                }}
+              >
+                Continuer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {ConfirmDialog}
       {PromptDialog}

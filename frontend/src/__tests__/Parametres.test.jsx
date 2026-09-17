@@ -371,3 +371,73 @@ describe("Parametres — erreurs réseau", () => {
     });
   });
 });
+
+const twoDirsResponse = {
+  data: {
+    results: [
+      makeItem("dir-1", "Personnal"),
+      makeItem("dir-2", "Personnel"),
+    ],
+  },
+};
+
+describe("Parametres — fusion de référentiels", () => {
+  test("le bouton Fusionner apparaît dès 2 éléments sélectionnés", async () => {
+    api.get.mockResolvedValue(twoDirsResponse);
+    renderPage();
+    await waitFor(() => screen.getByText("Personnal"));
+    const checkboxes = screen.getAllByRole("checkbox");
+    // checkboxes[0] est la case "tout sélectionner" de l'en-tête
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+    expect(
+      await screen.findByText(/Fusionner la sélection \(2\)/)
+    ).toBeInTheDocument();
+  });
+
+  test("la fusion appelle POST /ref/merge/{model}/ avec target_id et source_ids après confirmation", async () => {
+    api.get.mockResolvedValue(twoDirsResponse);
+    api.post = jest.fn().mockResolvedValue({ data: { nb_reassignes: 3 } });
+    renderPage();
+    await waitFor(() => screen.getByText("Personnal"));
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+    fireEvent.click(await screen.findByText(/Fusionner la sélection/));
+    const radios = await screen.findAllByRole("radio");
+    fireEvent.click(radios[0]);
+    fireEvent.click(screen.getByText("Continuer"));
+    await waitFor(() => screen.getByText("Confirmer"));
+    fireEvent.click(screen.getByText("Confirmer"));
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith(
+        expect.stringContaining("/ref/merge/directions/"),
+        expect.objectContaining({
+          target_id: expect.any(String),
+          source_ids: expect.any(Array),
+        })
+      );
+    });
+  });
+
+  test("erreur API lors de la fusion affiche le message d'erreur", async () => {
+    api.get.mockResolvedValue(twoDirsResponse);
+    api.post = jest.fn().mockRejectedValue({
+      response: { data: { error: "Fusion impossible." } },
+    });
+    renderPage();
+    await waitFor(() => screen.getByText("Personnal"));
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+    fireEvent.click(await screen.findByText(/Fusionner la sélection/));
+    const radios = await screen.findAllByRole("radio");
+    fireEvent.click(radios[0]);
+    fireEvent.click(screen.getByText("Continuer"));
+    await waitFor(() => screen.getByText("Confirmer"));
+    fireEvent.click(screen.getByText("Confirmer"));
+    await waitFor(() => {
+      expect(screen.getByText("Fusion impossible.")).toBeInTheDocument();
+    });
+  });
+});
