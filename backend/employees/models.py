@@ -689,6 +689,20 @@ class ChampPersonnalise(models.Model):
     )
     ordre = models.PositiveSmallIntegerField(default=0, verbose_name="Ordre d'affichage")
     is_active = models.BooleanField(default=True, verbose_name="Actif")
+    condition_champ = models.ForeignKey(
+        'self', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='champs_dependants',
+        verbose_name="Champ conditionnel",
+        help_text=(
+            "Optionnel — ce champ n'est affiché (fiche, formulaire, liste) que "
+            "si l'employé a la valeur `condition_valeur` sur ce champ-là (ex. "
+            "'Salaire unique' visible seulement si 'Situation familiale' = "
+            "'Marié'). Vide = toujours affiché."
+        ),
+    )
+    condition_valeur = models.CharField(
+        max_length=200, blank=True, verbose_name="Valeur requise",
+    )
     ocr_pattern = models.CharField(
         max_length=20, choices=OcrPattern.choices, blank=True,
         verbose_name="Motif OCR",

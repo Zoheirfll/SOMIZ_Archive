@@ -173,6 +173,52 @@ describe("EmployeeForm — rendu création", () => {
     expect(screen.getByText("Célibataire")).toBeInTheDocument();
     expect(screen.getByText("Marié")).toBeInTheDocument();
   });
+
+  test("Salaire unique n'apparaît que si Situation familiale = Marié", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.includes("/ref/champs-personnalises/")) {
+        return Promise.resolve({
+          data: [
+            {
+              id: "champ-situation",
+              nom: "Situation familiale",
+              code: "SIT_FAM",
+              type_champ: "liste",
+              is_active: true,
+              is_systeme: false,
+              options: [
+                { id: "o1", valeur: "Célibataire", is_active: true },
+                { id: "o2", valeur: "Marié", is_active: true },
+              ],
+            },
+            {
+              id: "champ-salaire",
+              nom: "Salaire unique",
+              code: "SALAIRE_UNIQUE",
+              type_champ: "nombre",
+              is_active: true,
+              is_systeme: false,
+              condition_champ: "champ-situation",
+              condition_valeur: "Marié",
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+    renderCreate();
+    await waitFor(() => {
+      expect(screen.getByText("Situation familiale")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Salaire unique")).not.toBeInTheDocument();
+
+    const situationSelect = screen.getAllByRole("combobox").find((el) =>
+      Array.from(el.options).some((o) => o.textContent === "Marié"),
+    );
+    fireEvent.change(situationSelect, { target: { value: "Marié" } });
+
+    expect(await screen.findByText("Salaire unique")).toBeInTheDocument();
+  });
 });
 
 describe("EmployeeForm — rendu édition", () => {

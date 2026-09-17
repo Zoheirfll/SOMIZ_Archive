@@ -16,6 +16,19 @@ from employees.models import (
 )
 
 
+def champ_condition_remplie(champ, valeurs_par_champ_id):
+    """
+    True si `champ` doit être affiché compte tenu de son condition_champ
+    (ex. "Salaire unique" affiché seulement si "Situation familiale" =
+    "Marié" pour cet employé) — vide si le champ n'a pas de condition.
+    `valeurs_par_champ_id` : dict {champ_id: valeur} déjà chargé pour cet
+    employé, pour éviter une requête par champ.
+    """
+    if champ.condition_champ_id is None:
+        return True
+    return valeurs_par_champ_id.get(champ.condition_champ_id) == champ.condition_valeur
+
+
 # ─── DOCUMENT ────────────────────────────────────────────────────────────────
 
 class EmployeeDocumentFilePageSerializer(serializers.ModelSerializer):
@@ -352,10 +365,12 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         # Colonnes optionnelles du tableau /employees — voir Employees.jsx
         # (filtre "Colonnes"). Le queryset prefetch déjà valeurs+champ, donc
         # pas de N+1 ici.
+        valeurs_par_id = {v.champ_id: v.valeur for v in obj.valeurs_personnalisees.all()}
         return {
             v.champ.code: v.valeur
             for v in obj.valeurs_personnalisees.all()
             if v.champ.is_active and not v.champ.is_systeme
+            and champ_condition_remplie(v.champ, valeurs_par_id)
         }
 
     def get_dossier_complet(self, obj):
@@ -433,6 +448,8 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         valeurs = {v.champ_id: v.valeur for v in obj.valeurs_personnalisees.all()}
         result = []
         for c in ChampPersonnalise.objects.filter(is_active=True, is_systeme=False).prefetch_related('options'):
+            if not champ_condition_remplie(c, valeurs):
+                continue
             valeur = valeurs.get(c.id, '')
             data = {
                 'id': str(c.id),
@@ -575,6 +592,14 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         statut = attrs.get('statut', getattr(self.instance, 'statut', None))
         if statut == 'actif':
             attrs['motif_archivage'] = None
+
+        # Même garde-fou que ContratCreateUpdateSerializer — un type de
+        # contrat à durée indéterminée n'a jamais de date de fin, y compris
+        # sur Employee.date_fin_contrat (éditable directement depuis la
+        # fiche employé, indépendamment du Contrat lui-même).
+        type_contrat = attrs.get('type_contrat', getattr(self.instance, 'type_contrat', None))
+        if type_contrat is not None and type_contrat.duree_indeterminee:
+            attrs['date_fin_contrat'] = None
         return attrs
 
 

@@ -370,6 +370,60 @@ describe("Parametres — champs personnalisés — catégorie", () => {
     expect(await screen.findByText("Ajouter une option")).toBeInTheDocument();
     expect(screen.getByText("Marié")).toBeInTheDocument();
   });
+
+  test("le champ conditionnel affiche un sélecteur de valeur requise (options de l'autre champ liste)", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/ref/champs-personnalises/") {
+        return Promise.resolve({
+          data: [
+            {
+              id: "uuid-situation",
+              nom: "Situation familiale",
+              code: "SIT_FAM",
+              type_champ: "liste",
+              ordre: 0,
+              is_active: true,
+              is_systeme: false,
+              categorie: "PERSONNEL",
+              options: [
+                { id: "opt-1", valeur: "Marié", ordre: 0, is_active: true },
+                { id: "opt-2", valeur: "Célibataire", ordre: 1, is_active: true },
+              ],
+              condition_champ: null,
+              condition_valeur: "",
+            },
+            {
+              id: "uuid-salaire",
+              nom: "Salaire unique",
+              code: "SALAIRE_UNIQUE",
+              type_champ: "nombre",
+              ordre: 1,
+              is_active: true,
+              is_systeme: false,
+              categorie: "PERSONNEL",
+              options: [],
+              condition_champ: null,
+              condition_valeur: "",
+            },
+          ],
+        });
+      }
+      return Promise.resolve(emptyResponse);
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByText("Champs personnalisés"));
+    await screen.findByText("Salaire unique");
+    fireEvent.click(screen.getAllByLabelText("Modifier")[1]);
+
+    const conditionSelect = await screen.findByLabelText("Champ conditionnel");
+    fireEvent.change(conditionSelect, { target: { value: "uuid-situation" } });
+
+    const valeurSelect = await screen.findByLabelText("Valeur requise");
+    expect(valeurSelect.tagName).toBe("SELECT");
+    fireEvent.change(valeurSelect, { target: { value: "Marié" } });
+    expect(valeurSelect.value).toBe("Marié");
+  });
 });
 
 describe("Parametres — erreurs réseau", () => {

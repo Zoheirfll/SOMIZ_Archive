@@ -99,6 +99,56 @@ class TestCrudOptionsChampPersonnalise:
 
 
 @pytest.mark.django_db
+class TestChampConditionnel:
+    def test_champ_masque_si_condition_non_remplie(self, admin_user, employee):
+        situation = ChampPersonnalise.objects.create(
+            nom="Situation familiale", code="SIT_FAM_COND",
+            type_champ=ChampPersonnalise.TypeChamp.LISTE,
+        )
+        ChampPersonnaliseOption.objects.create(champ=situation, valeur="Marié", ordre=1)
+        salaire = ChampPersonnalise.objects.create(
+            nom="Salaire unique", code="SALAIRE_UNIQUE_COND",
+            type_champ=ChampPersonnalise.TypeChamp.NOMBRE,
+            condition_champ=situation, condition_valeur="Marié",
+        )
+        EmployeeChampValeur.objects.create(employee=employee, champ=situation, valeur="Célibataire")
+
+        resp = auth_client(admin_user).get(f"/api/employees/{employee.id}/")
+        codes = [c["code"] for c in resp.data["champs_personnalises"]]
+        assert "SALAIRE_UNIQUE_COND" not in codes
+        assert "SIT_FAM_COND" in codes
+
+    def test_champ_visible_si_condition_remplie(self, admin_user, employee):
+        situation = ChampPersonnalise.objects.create(
+            nom="Situation familiale", code="SIT_FAM_COND2",
+            type_champ=ChampPersonnalise.TypeChamp.LISTE,
+        )
+        ChampPersonnaliseOption.objects.create(champ=situation, valeur="Marié", ordre=1)
+        salaire = ChampPersonnalise.objects.create(
+            nom="Salaire unique", code="SALAIRE_UNIQUE_COND2",
+            type_champ=ChampPersonnalise.TypeChamp.NOMBRE,
+            condition_champ=situation, condition_valeur="Marié",
+        )
+        EmployeeChampValeur.objects.create(employee=employee, champ=situation, valeur="Marié")
+
+        resp = auth_client(admin_user).get(f"/api/employees/{employee.id}/")
+        codes = [c["code"] for c in resp.data["champs_personnalises"]]
+        assert "SALAIRE_UNIQUE_COND2" in codes
+
+    def test_champ_ne_peut_pas_dependre_de_lui_meme(self, admin_user):
+        champ = ChampPersonnalise.objects.create(
+            nom="Champ Test Self", code="CHAMP_SELF",
+            type_champ=ChampPersonnalise.TypeChamp.TEXTE,
+        )
+        resp = auth_client(admin_user).patch(
+            f"/api/ref/champs-personnalises/{champ.id}/",
+            {"condition_champ": str(champ.id), "condition_valeur": "x"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+
+@pytest.mark.django_db
 class TestChampsPersonnalisesDetailSerializerOptions:
     def test_inclut_options_actives(self, admin_user, employee):
         champ = ChampPersonnalise.objects.create(

@@ -657,6 +657,7 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'nom', 'code', 'type_champ', 'ordre', 'is_active',
             'is_systeme', 'categorie', 'ocr_pattern', 'options',
+            'condition_champ', 'condition_valeur',
         ]
         read_only_fields = ['is_systeme']
 
@@ -682,6 +683,23 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
                     "Un champ système ne peut avoir que sa catégorie et son motif "
                     "OCR modifiés (nom, code, type, ordre et statut restent figés)."
                 )
+
+        condition_champ = attrs.get(
+            'condition_champ', getattr(instance, 'condition_champ', None)
+        )
+        condition_valeur = attrs.get(
+            'condition_valeur', getattr(instance, 'condition_valeur', '')
+        )
+        if condition_champ is not None and instance is not None and condition_champ.id == instance.id:
+            raise serializers.ValidationError(
+                {'condition_champ': "Un champ ne peut pas dépendre de lui-même."}
+            )
+        if condition_champ is not None and not condition_valeur.strip():
+            raise serializers.ValidationError(
+                {'condition_valeur': "Une valeur requise est obligatoire quand un champ conditionnel est choisi."}
+            )
+        if condition_champ is None:
+            attrs['condition_valeur'] = ''
         return attrs
 
 

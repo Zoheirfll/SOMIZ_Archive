@@ -14,6 +14,15 @@ import usePageTitle from "../hooks/usePageTitle";
 import { useConfirm } from "../components/ConfirmDialog";
 import SearchableSelect from "../components/SearchableSelect";
 
+// True si `champ` doit être affiché compte tenu de son condition_champ (ex.
+// "Salaire unique" affiché seulement si "Situation familiale" = "Marié")
+// — vide si le champ n'a pas de condition. `champsValues` est le state du
+// formulaire ({champ_id: valeur}), évalué en direct pendant la saisie.
+const champConditionMet = (champ, champsValues) => {
+  if (!champ.condition_champ) return true;
+  return champsValues[champ.condition_champ] === champ.condition_valeur;
+};
+
 const Field = ({ label, required, children }) => {
   const theme = useTheme();
   return (
@@ -469,8 +478,23 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
       c.ocr_pattern === "LIEU_NAISSANCE" ||
       c.nom?.trim().toLowerCase() === "lieu de naissance",
   );
+  // "Situation familiale" et "Salaire unique" s'affichent dans la section
+  // Identité (comme Lieu de naissance ci-dessus) plutôt que dans
+  // "Informations complémentaires" — identifiés par nom, même limite que
+  // champLieuNaissance (pas de code stable garanti pour un champ créé
+  // dynamiquement via /parametres).
+  const champSituationFamiliale = champsDefinitions.find(
+    (c) => c.nom?.trim().toLowerCase() === "situation familiale",
+  );
+  const champSalaireUnique = champsDefinitions.find(
+    (c) => c.nom?.trim().toLowerCase() === "salaire unique",
+  );
   const champsDefinitionsComplementaires = champsDefinitions.filter(
-    (c) => c.id !== champLieuNaissance?.id,
+    (c) =>
+      c.id !== champLieuNaissance?.id &&
+      c.id !== champSituationFamiliale?.id &&
+      c.id !== champSalaireUnique?.id &&
+      champConditionMet(c, champsValues),
   );
 
   const renderChampField = (champ) => (
@@ -686,6 +710,38 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                 </Field>
               )}
 
+              <Field label="Nom" required>
+                <Input
+                  name="nom"
+                  value={form.nom}
+                  onChange={handleChange}
+                  placeholder="FILALI"
+                />
+                {errors.nom && (
+                  <div
+                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
+                  >
+                    {errors.nom}
+                  </div>
+                )}
+              </Field>
+
+              <Field label="Prénom" required>
+                <Input
+                  name="prenom"
+                  value={form.prenom}
+                  onChange={handleChange}
+                  placeholder="Ahmed"
+                />
+                {errors.prenom && (
+                  <div
+                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
+                  >
+                    {errors.prenom}
+                  </div>
+                )}
+              </Field>
+
               <Field label="Statut" required>
                 <Select
                   name="statut"
@@ -725,47 +781,6 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                 </Field>
               )}
 
-              <Field label="Date de fin de contrat">
-                <Input
-                  type="date"
-                  name="date_fin_contrat"
-                  value={form.date_fin_contrat}
-                  onChange={handleChange}
-                />
-              </Field>
-
-              <Field label="Nom" required>
-                <Input
-                  name="nom"
-                  value={form.nom}
-                  onChange={handleChange}
-                  placeholder="FILALI"
-                />
-                {errors.nom && (
-                  <div
-                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
-                  >
-                    {errors.nom}
-                  </div>
-                )}
-              </Field>
-
-              <Field label="Prénom" required>
-                <Input
-                  name="prenom"
-                  value={form.prenom}
-                  onChange={handleChange}
-                  placeholder="Ahmed"
-                />
-                {errors.prenom && (
-                  <div
-                    style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}
-                  >
-                    {errors.prenom}
-                  </div>
-                )}
-              </Field>
-
               <Field label="Date de naissance">
                 <Input
                   type="date"
@@ -777,6 +792,26 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
 
               {champLieuNaissance && renderChampField(champLieuNaissance)}
 
+              <Field label="Type de contrat">
+                <SearchableSelect
+                  name="type_contrat"
+                  value={form.type_contrat || ""}
+                  onChange={(e) => {
+                    const nextType = typesContrat.find((t) => t.id === e.target.value);
+                    setForm({
+                      ...form,
+                      type_contrat: e.target.value,
+                      date_fin_contrat: nextType?.duree_indeterminee
+                        ? ""
+                        : form.date_fin_contrat,
+                    });
+                  }}
+                  options={typesContrat
+                    .filter((t) => t.is_active)
+                    .map((t) => ({ value: t.id, label: t.nom }))}
+                />
+              </Field>
+
               <Field label="Date de recrutement">
                 <Input
                   type="date"
@@ -785,6 +820,22 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                   onChange={handleChange}
                 />
               </Field>
+
+              {!typesContrat.find((t) => t.id === form.type_contrat)?.duree_indeterminee && (
+                <Field label="Date de fin de contrat">
+                  <Input
+                    type="date"
+                    name="date_fin_contrat"
+                    value={form.date_fin_contrat}
+                    onChange={handleChange}
+                  />
+                </Field>
+              )}
+
+              {champSituationFamiliale && renderChampField(champSituationFamiliale)}
+              {champSalaireUnique &&
+                champConditionMet(champSalaireUnique, champsValues) &&
+                renderChampField(champSalaireUnique)}
             </div>
           </div>
 
@@ -913,17 +964,6 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                   options={postes
                     .filter((p) => p.is_active)
                     .map((p) => ({ value: p.id, label: p.nom }))}
-                />
-              </Field>
-
-              <Field label="Type de contrat">
-                <SearchableSelect
-                  name="type_contrat"
-                  value={form.type_contrat || ""}
-                  onChange={handleChange}
-                  options={typesContrat
-                    .filter((t) => t.is_active)
-                    .map((t) => ({ value: t.id, label: t.nom }))}
                 />
               </Field>
 

@@ -1034,6 +1034,76 @@ const RefForm = ({
               min="0"
             />
 
+            <label style={labelStyle}>Champ conditionnel (optionnel)</label>
+            <select
+              name="condition_champ"
+              aria-label="Champ conditionnel"
+              value={form.condition_champ || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  condition_champ: e.target.value || null,
+                  condition_valeur: e.target.value ? form.condition_valeur : "",
+                })
+              }
+              className="input-focus"
+              style={inputStyle}
+            >
+              <option value="">-- Toujours affiché --</option>
+              {items
+                .filter((c) => !c.is_systeme && c.id !== modal?.item?.id)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nom}
+                  </option>
+                ))}
+            </select>
+            {form.condition_champ && (
+              <>
+                <label style={labelStyle}>Valeur requise</label>
+                {(() => {
+                  const champCondition = items.find((c) => c.id === form.condition_champ);
+                  if (champCondition?.type_champ === "liste") {
+                    return (
+                      <select
+                        name="condition_valeur"
+                        aria-label="Valeur requise"
+                        value={form.condition_valeur || ""}
+                        onChange={handleChange}
+                        className="input-focus"
+                        style={inputStyle}
+                      >
+                        <option value="">-- Sélectionner --</option>
+                        {(champCondition.options || [])
+                          .filter((o) => o.is_active)
+                          .map((o) => (
+                            <option key={o.id} value={o.valeur}>
+                              {o.valeur}
+                            </option>
+                          ))}
+                      </select>
+                    );
+                  }
+                  return (
+                    <input
+                      name="condition_valeur"
+                      aria-label="Valeur requise"
+                      value={form.condition_valeur || ""}
+                      onChange={handleChange}
+                      className="input-focus"
+                      style={inputStyle}
+                    />
+                  );
+                })()}
+                <div
+                  style={{ color: theme.textMuted, fontSize: 11, marginTop: -8, marginBottom: 12 }}
+                >
+                  Ce champ ne sera affiché (fiche, formulaire, liste) que si
+                  l'employé a cette valeur sur le champ choisi ci-dessus.
+                </div>
+              </>
+            )}
+
             <label style={labelStyle}>Statut</label>
             <select
               name="is_active"
