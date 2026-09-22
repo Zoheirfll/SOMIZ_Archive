@@ -13,6 +13,7 @@ ReportLab — les mesures correspondent directement à ce qu'on lit sur le
 document papier avec une règle.
 """
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -20,6 +21,11 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 PAGE_W, PAGE_H = A4
+
+# Logo embarqué, utilisé tant qu'aucun logo n'a été téléversé dans
+# /parametres — sans lui le document sortirait sans identité visuelle à la
+# première utilisation. Un logo téléversé par un ADMIN le remplace toujours.
+LOGO_PAR_DEFAUT = Path(__file__).resolve().parent / 'assets' / 'logo_somiz.png'
 
 # Colonnes verticales (mm depuis le bord gauche)
 X_LABEL = 22          # début des libellés
@@ -43,18 +49,18 @@ def _date(valeur):
 
 def _draw_header(c, config):
     """Logo à gauche + bloc société centré, comme sur le modèle papier."""
-    if config.logo:
-        try:
-            c.drawImage(
-                ImageReader(config.logo.path),
-                X_LABEL * mm, _y(32),
-                width=22 * mm, height=16 * mm,
-                preserveAspectRatio=True, anchor='sw', mask='auto',
-            )
-        except Exception:
-            # Logo illisible/supprimé du disque : le document reste
-            # générable, l'en-tête textuel suffit.
-            pass
+    logo_source = config.logo.path if config.logo else LOGO_PAR_DEFAUT
+    try:
+        c.drawImage(
+            ImageReader(str(logo_source)),
+            X_LABEL * mm, _y(32),
+            width=20 * mm, height=20 * mm,
+            preserveAspectRatio=True, anchor='sw', mask='auto',
+        )
+    except Exception:
+        # Logo illisible/supprimé du disque : le document reste générable,
+        # l'en-tête textuel suffit.
+        pass
 
     centre = PAGE_W / 2
     c.setFont('Helvetica-Bold', 10)
