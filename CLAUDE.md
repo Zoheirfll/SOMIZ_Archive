@@ -1306,14 +1306,30 @@ du document signé. Spec complète :
   Affiché dans un onglet "Statistiques" sur `/attestations` elle-même
   (pas dans `/statistiques`, qui reste dédiée aux indicateurs RH
   globaux).
-- **UI** : `/attestations` (liste + reporting), `/attestations/nouvelle`
-  (formulaire, recherche employé via `/employees/search/` déjà scopée
-  serveur), `/attestations/:id` (détail, actions de statut, aperçu, scan,
-  annulation). Bouton "Demander une attestation" sur la fiche employé
-  (`DossierTab.jsx`, sidebar Documents) visible pour ADMIN/SUPERADMIN/
-  GESTIONNAIRE, pré-remplit l'employé via `location.state`. Badge navbar
-  "N en attente" (compte les demandes hors `Récupérée`/`Rejetée`), visible
-  ADMIN/SUPERADMIN uniquement.
+- **Qui peut demander** (2026-09-22, révisé après première livraison) :
+  seuls GESTIONNAIRE et **SUPERADMIN** créent des demandes
+  (`CanRequestAttestation`, `attestations/permissions.py`) — un ADMIN
+  ordinaire reste **uniquement traiteur**. Décision volontaire : le
+  laisser aussi créer ses propres demandes casserait la séparation
+  demandeur/traiteur utile à l'audit (un même compte auteur et
+  validateur de la même demande). Un ADMIN garde tout accès en
+  lecture/traitement (`/attestations`, `/attestations/:id`, statuts,
+  aperçu PDF, config, reporting) — seul le bouton "Nouvelle demande" lui
+  est masqué (`Attestations.jsx`, `DossierTab.jsx`), et la route
+  `/attestations/nouvelle` lui est fermée côté client
+  (`ProtectedRoute allowedRoles`) comme côté serveur.
+- **UI** : `/attestations` (liste + reporting, ADMIN/SUPERADMIN/
+  GESTIONNAIRE), `/attestations/nouvelle` (formulaire, SUPERADMIN/
+  GESTIONNAIRE uniquement — recherche employé via `/employees/search/`
+  déjà scopée serveur), `/attestations/:id` (détail, actions de statut,
+  aperçu, scan, annulation). Bouton "Demander une attestation" sur la
+  fiche employé (`DossierTab.jsx`, sidebar Documents), pré-remplit
+  l'employé via `location.state`. Badge navbar "N en attente" — compte
+  uniquement les demandes au statut `Reçue` (pas encore prises en charge ;
+  dès qu'un ADMIN passe une demande à `Imprimée`, elle n'est plus
+  comptée même si le document n'est pas encore récupéré), visible
+  ADMIN/SUPERADMIN, rechargé à chaque navigation (`Navbar.jsx`, effet
+  dépendant de `location.pathname`).
 
 ---
 

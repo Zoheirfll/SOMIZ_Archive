@@ -623,7 +623,7 @@ const DossierTab = ({
                   documents pour accéder à une action pourtant fréquente
                   (upload). Inchangé sur desktop, où la sidebar entière
                   reste visible. */}
-              {["ADMIN", "SUPERADMIN", "GESTIONNAIRE"].includes(user?.role) && (
+              {["SUPERADMIN", "GESTIONNAIRE"].includes(user?.role) && (
                 <div
                   style={{
                     order: isMobile ? -3 : 999999,

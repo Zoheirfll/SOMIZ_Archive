@@ -42,7 +42,12 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
             if statut:
                 qs = qs.filter(statut=statut)
             if self.request.query_params.get('pending'):
-                qs = qs.exclude(statut__in=['recuperee', 'rejetee'])
+                # Badge navbar : uniquement les demandes pas encore prises
+                # en charge — dès qu'un ADMIN passe une demande à
+                # "Imprimée" (ou plus loin), elle a été traitée, le badge
+                # ne doit plus la compter même si le document n'est pas
+                # encore récupéré par le gestionnaire.
+                qs = qs.filter(statut=DemandeAttestation.Statut.RECUE)
             return qs
         return qs.filter(demandeur=user)
 

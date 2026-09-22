@@ -65,15 +65,19 @@ def _fake_request(role, consented=True, active=True):
     return request
 
 
-@pytest.mark.parametrize('role', ['GESTIONNAIRE', 'ADMIN', 'SUPERADMIN'])
-def test_can_request_attestation_allows_gestionnaire_and_admins(role):
+@pytest.mark.parametrize('role', ['GESTIONNAIRE', 'SUPERADMIN'])
+def test_can_request_attestation_allows_gestionnaire_and_superadmin(role):
     perm = CanRequestAttestation()
     assert perm.has_permission(_fake_request(role), None) is True
 
 
-def test_can_request_attestation_blocks_consultant():
+@pytest.mark.parametrize('role', ['CONSULTANT', 'ADMIN'])
+def test_can_request_attestation_blocks_consultant_and_plain_admin(role):
+    """Un ADMIN ordinaire reste uniquement traiteur — le laisser créer ses
+    propres demandes casserait la séparation demandeur/traiteur (voir
+    attestations/permissions.py)."""
     perm = CanRequestAttestation()
-    assert perm.has_permission(_fake_request('CONSULTANT'), None) is False
+    assert perm.has_permission(_fake_request(role), None) is False
 
 
 def test_can_request_attestation_blocks_unconsented_user():
@@ -122,6 +126,27 @@ def test_gestionnaire_list_shows_only_own_demandes(gestionnaire_user, other_gest
     client.force_authenticate(gestionnaire_user)
     resp = client.get('/api/attestations/demandes/')
     assert resp.status_code == 200
+    results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+    assert len(results) == 1
+    assert results[0]['reference'] == '00001/26'
+
+
+def test_pending_filter_counts_only_recue(admin_user, gestionnaire_user, employee):
+    DemandeAttestation.objects.create(
+        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        statut='recue',
+    )
+    DemandeAttestation.objects.create(
+        reference='00002/26', employee=employee, motif='B', demandeur=gestionnaire_user,
+        statut='imprimee',
+    )
+    DemandeAttestation.objects.create(
+        reference='00003/26', employee=employee, motif='C', demandeur=gestionnaire_user,
+        statut='prete',
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.get('/api/attestations/demandes/', {'pending': 1})
     results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
     assert len(results) == 1
     assert results[0]['reference'] == '00001/26'

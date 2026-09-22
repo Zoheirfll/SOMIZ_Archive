@@ -90,7 +90,7 @@ export default function Attestations() {
               {isAdmin ? "Suivi et traitement des demandes de tous les gestionnaires" : "Vos demandes en cours et leur avancement"}
             </p>
           </div>
-          {["GESTIONNAIRE", "ADMIN", "SUPERADMIN"].includes(user?.role) && (
+          {["GESTIONNAIRE", "SUPERADMIN"].includes(user?.role) && (
             <Link to="/attestations/nouvelle" className="btn-lift" style={{
               display: "flex", alignItems: "center", gap: 8, background: "#fff", color: theme.primary,
               borderRadius: 10, padding: "11px 20px", fontWeight: 700, fontSize: 13, textDecoration: "none",
