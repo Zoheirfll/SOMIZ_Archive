@@ -45,11 +45,34 @@ const AttestationConfigPanel = ({ theme }) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await api.put("/attestations/config/", config);
+      // Le logo est un fichier déjà stocké : on n'envoie que les champs
+      // texte, sinon son URL de lecture serait renvoyée comme valeur et
+      // rejetée par le serializer ImageField.
+      const { logo, ...champsTexte } = config;
+      const res = await api.put("/attestations/config/", champsTexte);
       setConfig(res.data);
       setMessage("Configuration enregistrée.");
     } catch {
       setMessage("Erreur lors de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogo = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append("logo", file);
+    setSaving(true);
+    try {
+      const res = await api.patch("/attestations/config/", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setConfig(res.data);
+      setMessage("Logo mis à jour.");
+    } catch {
+      setMessage("Impossible d'enregistrer le logo (format image attendu).");
     } finally {
       setSaving(false);
     }
@@ -73,6 +96,33 @@ const AttestationConfigPanel = ({ theme }) => {
 
   return (
     <form onSubmit={handleSave} style={{ maxWidth: 500 }}>
+      <div style={{
+        marginBottom: 18, padding: 14, borderRadius: 10,
+        border: `1px solid ${theme.border}`, background: theme.bg,
+      }}>
+        <label style={{ fontSize: 12, fontWeight: 700, color: theme.text, display: "block", marginBottom: 8 }}>
+          Logo de l'en-tête
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {config.logo ? (
+            <img
+              src={config.logo}
+              alt="Logo de l'attestation"
+              style={{ height: 46, maxWidth: 120, objectFit: "contain", background: "#fff", borderRadius: 6, padding: 4 }}
+            />
+          ) : (
+            <span style={{ fontSize: 12, color: theme.textMuted }}>Aucun logo</span>
+          )}
+          <label className="btn-lift" style={{
+            display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
+            background: theme.surface, color: theme.primary, border: `1px solid ${theme.primaryBorder}`,
+            borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700,
+          }}>
+            {config.logo ? "Remplacer" : "Choisir une image"}
+            <input type="file" accept="image/*" onChange={handleLogo} style={{ display: "none" }} />
+          </label>
+        </div>
+      </div>
       {champ("societe_nom", "Nom de la société")}
       {champ("societe_soustitre", "Sous-titre")}
       {champ("societe_capital", "Capital social")}

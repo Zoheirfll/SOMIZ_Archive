@@ -1,7 +1,7 @@
 from datetime import datetime, time
 
 from django.db.models import Count, F, Avg, ExpressionWrapper, DurationField
-from django.shortcuts import render
+from django.http import HttpResponse
 from django.utils import timezone as tz
 from rest_framework import generics, serializers
 from rest_framework.exceptions import PermissionDenied
@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
 from audit.models import AuditLog
 from .models import DemandeAttestation, AttestationTemplateConfig
+from .pdf import build_attestation_pdf
 from .permissions import CanRequestAttestation
 from .serializers import (
     DemandeAttestationSerializer, DemandeAttestationCreateSerializer,
@@ -132,23 +133,42 @@ class AttestationTemplateConfigView(generics.RetrieveUpdateAPIView):
 
 
 class AttestationApercuView(generics.RetrieveAPIView):
-    """GET /api/attestations/demandes/<id>/apercu/ — ADMIN only, rend une
-    page HTML autonome (impression navigateur côté frontend)."""
+    """GET /api/attestations/demandes/<id>/apercu/ — ADMIN only, renvoie le
+    PDF de l'attestation (reproduit le modèle papier, voir
+    attestations/pdf.py), affichable et imprimable tel quel."""
     permission_classes = [IsAdmin]
-    queryset = DemandeAttestation.objects.select_related('employee', 'contrat')
+    queryset = DemandeAttestation.objects.select_related('employee', 'contrat', 'employee__poste')
 
     def get(self, request, *args, **kwargs):
-        from employees.models import EmployeeChampValeur
+        from employees.models import Contrat, EmployeeChampValeur
 
         demande = self.get_object()
         config, _ = AttestationTemplateConfig.objects.get_or_create(pk=1)
         lieu_naissance = EmployeeChampValeur.objects.filter(
             employee=demande.employee, champ__nom__icontains='lieu de naissance',
         ).values_list('valeur', flat=True).first() or ''
-        return render(request, 'attestations/apercu.html', {
-            'demande': demande, 'config': config, 'date_generation': tz.localdate(),
-            'lieu_naissance': lieu_naissance,
-        })
+
+        # Le N° de contrat figure toujours sur le document papier : si la
+        # demande ne vise pas un contrat précis, reprendre le plus récent
+        # de l'employé plutôt que de laisser la ligne vide.
+        if demande.contrat_id:
+            contrat_numero = demande.contrat.numero_contrat
+        else:
+            contrat_numero = Contrat.objects.filter(
+                employee=demande.employee
+            ).order_by('-date_debut', '-id').values_list(
+                'numero_contrat', flat=True
+            ).first() or ''
+
+        pdf = build_attestation_pdf(
+            demande, config, tz.localdate(),
+            lieu_naissance=lieu_naissance, contrat_numero=contrat_numero,
+        )
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="attestation_{demande.reference.replace("/", "-")}.pdf"'
+        )
+        return response
 
 
 class AttestationStatsView(APIView):

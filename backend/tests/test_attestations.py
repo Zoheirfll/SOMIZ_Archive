@@ -287,7 +287,13 @@ def test_gestionnaire_cannot_access_config(gestionnaire_user):
 
 # ─── Aperçu ─────────────────────────────────────────────────────────────────
 
-def test_apercu_contains_reference_and_employee_name(admin_user, employee, gestionnaire_user):
+def _texte_pdf(contenu):
+    from io import BytesIO
+    from pypdf import PdfReader
+    return PdfReader(BytesIO(contenu)).pages[0].extract_text()
+
+
+def test_apercu_renvoie_un_pdf_avec_les_donnees_de_la_demande(admin_user, employee, gestionnaire_user):
     demande = DemandeAttestation.objects.create(
         reference='00001/26', employee=employee, motif='Dossier administratif',
         demandeur=gestionnaire_user,
@@ -296,11 +302,51 @@ def test_apercu_contains_reference_and_employee_name(admin_user, employee, gesti
     client.force_authenticate(admin_user)
     resp = client.get(f'/api/attestations/demandes/{demande.id}/apercu/')
     assert resp.status_code == 200
-    assert resp['Content-Type'].startswith('text/html')
-    body = resp.content.decode('utf-8')
-    assert '00001/26' in body
-    assert employee.nom in body
-    assert 'Dossier administratif' in body
+    assert resp['Content-Type'] == 'application/pdf'
+    assert resp.content.startswith(b'%PDF')
+
+    texte = _texte_pdf(resp.content)
+    assert '00001/26' in texte
+    assert employee.nom.upper() in texte
+    assert employee.matricule in texte
+    assert 'DOSSIER ADMINISTRATIF' in texte
+    assert 'ATTESTATION DE TRAVAIL' in texte
+
+
+def test_apercu_reprend_la_configuration_du_modele(admin_user, employee, gestionnaire_user):
+    """Le document n'embarque aucune valeur codée en dur : tout l'en-tête,
+    le signataire et le pied de page viennent de AttestationTemplateConfig,
+    modifiable par un ADMIN dans /parametres."""
+    config, _ = AttestationTemplateConfig.objects.get_or_create(pk=1)
+    config.societe_nom = 'SOCIETE TEST'
+    config.ville = 'Alger'
+    config.signataire_titre = 'Directeur des Ressources Humaines'
+    config.signataire_nom = 'B.TESTEUR'
+    config.save()
+
+    demande = DemandeAttestation.objects.create(
+        reference='00002/26', employee=employee, motif='Banque', demandeur=gestionnaire_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.get(f'/api/attestations/demandes/{demande.id}/apercu/')
+    texte = _texte_pdf(resp.content)
+    assert 'SOCIETE TEST' in texte
+    assert 'Alger' in texte
+    assert 'DIRECTEUR DES RESSOURCES HUMAINES' in texte
+    assert 'B.TESTEUR' in texte
+
+
+def test_apercu_reprend_le_dernier_contrat_si_la_demande_nen_vise_aucun(
+    admin_user, employee, gestionnaire_user, contrat,
+):
+    demande = DemandeAttestation.objects.create(
+        reference='00003/26', employee=employee, motif='Banque', demandeur=gestionnaire_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.get(f'/api/attestations/demandes/{demande.id}/apercu/')
+    assert contrat.numero_contrat in _texte_pdf(resp.content)
 
 
 def test_gestionnaire_cannot_access_apercu(gestionnaire_user, employee):

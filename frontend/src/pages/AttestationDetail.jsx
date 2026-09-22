@@ -155,19 +155,17 @@ export default function AttestationDetail() {
   };
 
   const ouvrirApercu = async () => {
-    // Navigation directe vers /api/.../apercu/ ne fonctionne pas en dev :
-    // le proxy CRA (package.json "proxy") ne relaie pas les requêtes de
-    // navigation (Accept: text/html) pour ne pas interférer avec le
-    // routeur React — on récupère donc le HTML via l'API (déjà proxifiée/
-    // authentifiée) puis on l'ouvre comme blob, cohérent avec le principe
-    // "pas de deep link direct" déjà en vigueur pour les documents.
+    // Récupération du PDF via l'API (authentifiée, et proxifiée en dev —
+    // une navigation directe vers /api/... atterrirait sur le routeur
+    // React, le proxy CRA ne relayant pas les requêtes de navigation),
+    // puis ouverture dans un onglet : le lecteur PDF du navigateur permet
+    // d'imprimer et de télécharger directement.
     try {
-      const res = await api.get(`/attestations/demandes/${id}/apercu/`, { responseType: "text" });
-      const blob = new Blob([res.data], { type: "text/html" });
-      const blobUrl = URL.createObjectURL(blob);
+      const res = await api.get(`/attestations/demandes/${id}/apercu/`, { responseType: "blob" });
+      const blobUrl = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       window.open(blobUrl, "_blank");
     } catch {
-      setMessage("Impossible de générer l'aperçu.");
+      setMessage("Impossible de générer le document.");
     }
   };
 
@@ -245,7 +243,7 @@ export default function AttestationDetail() {
             <button onClick={ouvrirApercu} className="btn-lift" style={{
               ...btnBase, background: theme.surface, color: theme.primary, border: `1px solid ${theme.primaryBorder}`,
             }}>
-              <EyeIcon size={15} /> Aperçu / Imprimer
+              <EyeIcon size={15} /> Aperçu PDF / Imprimer
             </button>
           )}
           {isAdmin && suivant && (

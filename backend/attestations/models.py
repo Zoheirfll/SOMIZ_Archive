@@ -70,19 +70,35 @@ class DemandeAttestation(models.Model):
 
 class AttestationTemplateConfig(models.Model):
     """Singleton applicatif — un seul enregistrement pour toute la société,
-    voir AttestationTemplateConfigView.get_object()."""
+    voir AttestationTemplateConfigView.get_object(). Les valeurs par défaut
+    reprennent l'en-tête/pied de page du modèle papier SOMIZ en vigueur
+    pour qu'une attestation soit imprimable sans configuration préalable ;
+    un ADMIN peut les modifier dans /parametres."""
     societe_nom = models.CharField(max_length=100, default="SOMIZ")
-    societe_soustitre = models.CharField(max_length=255, blank=True)
-    societe_capital = models.CharField(max_length=255, blank=True)
-    holding = models.CharField(max_length=255, blank=True)
-    adresse = models.CharField(max_length=255, blank=True)
-    ville = models.CharField(max_length=100, blank=True)
-    telephone = models.CharField(max_length=50, blank=True)
-    fax = models.CharField(max_length=50, blank=True)
-    telex = models.CharField(max_length=50, blank=True)
-    signataire_titre = models.CharField(max_length=150, blank=True)
-    signataire_nom = models.CharField(max_length=150, blank=True)
-    texte_intro = models.TextField(blank=True)
+    societe_soustitre = models.CharField(
+        max_length=255, blank=True,
+        default="SOCIÉTÉ DE MAINTENANCE INDUSTRIELLE D'ARZEW",
+    )
+    societe_capital = models.CharField(
+        max_length=255, blank=True,
+        default="SPA Au Capital Social de 3.700.000.000 DA",
+    )
+    holding = models.CharField(
+        max_length=255, blank=True,
+        default="Holding SONATRACH Services Parapétroliers Spa",
+    )
+    adresse = models.CharField(
+        max_length=255, blank=True, default="BP 28 Route d'El Mohgoun 31200 Arzew",
+    )
+    ville = models.CharField(max_length=100, blank=True, default="Arzew")
+    telephone = models.CharField(max_length=50, blank=True, default="213 (0) 41.68.01.00")
+    fax = models.CharField(max_length=50, blank=True, default="213 (0) 41.68.01.63")
+    telex = models.CharField(max_length=50, blank=True, default="12048 DZ")
+    signataire_titre = models.CharField(
+        max_length=150, blank=True,
+        default="Chef de Département Administration du Personnel",
+    )
+    signataire_nom = models.CharField(max_length=150, blank=True, default="A.BOUSMAHA")
     logo = models.ImageField(upload_to=attestation_logo_upload_path, null=True, blank=True)
 
     class Meta:

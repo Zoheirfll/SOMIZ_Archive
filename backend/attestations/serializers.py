@@ -109,6 +109,6 @@ class AttestationTemplateConfigSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'societe_nom', 'societe_soustitre', 'societe_capital', 'holding',
             'adresse', 'ville', 'telephone', 'fax', 'telex',
-            'signataire_titre', 'signataire_nom', 'texte_intro', 'logo',
+            'signataire_titre', 'signataire_nom', 'logo',
         ]
         read_only_fields = ['id']
