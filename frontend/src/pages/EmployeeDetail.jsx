@@ -126,8 +126,32 @@ const EmployeeDetail = () => {
   });
   const [highlightedMissingCode, setHighlightedMissingCode] = useState(null);
   const [systemFieldOrder, setSystemFieldOrder] = useState({});
+  // Dossiers (catégories de documents) repliés par défaut — un type sans
+  // catégorie n'est jamais concerné (toujours affiché à plat, voir
+  // buildDocOrder). openFolders ne mémorise que les dossiers ouverts
+  // manuellement par l'utilisateur ; toggleFolder bascule l'un d'eux.
+  const [openFolders, setOpenFolders] = useState(new Set());
+  const toggleFolder = (label) => {
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
   const missingRowRefs = useRef({});
   const dossierSectionRef = useRef(null);
+  const messageRef = useRef(null);
+  // Le bandeau message est tout en haut de la page (juste sous le hero) ;
+  // une action déclenchée depuis la sidebar Documents (upload rapide,
+  // renommage...) peut se produire très bas dans une longue page, rendant
+  // l'erreur/succès invisible sans scroll manuel — on le ramène dans le
+  // champ de vision à chaque changement.
+  useEffect(() => {
+    if (message) {
+      messageRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    }
+  }, [message]);
   // Miroir de selectedDoc/selectedFile, lu (pas dépendu) par l'effet de
   // sélection par défaut ci-dessous — voir son commentaire.
   const selectedDocRef = useRef(null);
@@ -550,19 +574,13 @@ const EmployeeDetail = () => {
       }
       return;
     }
-    if (filtered.length > 0) {
-      setSelectedDoc(filtered[0]);
-      if (filtered[0].fichiers?.length > 0) {
-        loadFile(filtered[0].fichiers[0]);
-      } else {
-        setSelectedFile(null);
-        setDocUrl(null);
-      }
-    } else {
-      setSelectedDoc(null);
-      setSelectedFile(null);
-      setDocUrl(null);
-    }
+    // Plus de sélection automatique du premier document ici — le viewer
+    // reste vide (invite à cliquer un document) tant que l'utilisateur n'a
+    // rien choisi, plutôt que de charger un fichier au hasard à l'ouverture
+    // de la fiche/au changement de contrat.
+    setSelectedDoc(null);
+    setSelectedFile(null);
+    setDocUrl(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee, selectedContratId]);
 
@@ -975,6 +993,21 @@ const EmployeeDetail = () => {
   const { orderMap: docOrderMap, headerBefore: docHeaderBefore, groupEnd: docGroupEnd } =
     buildDocOrder(documentsAffiches, employee.documents_manquants || []);
 
+  // Un dossier replié manuellement s'ouvre quand même automatiquement s'il
+  // contient le document actuellement sélectionné ou surligné (clic sur un
+  // champ "Informations", scroll vers un document manquant...) — sinon la
+  // navigation semblerait ne rien faire, le document ciblé restant caché.
+  const effectiveOpenFolders = new Set(openFolders);
+  if (selectedDoc?.type_document_parent) {
+    effectiveOpenFolders.add(selectedDoc.type_document_parent);
+  }
+  if (highlightedMissingCode) {
+    const missingCible = (employee.documents_manquants || []).find(
+      (d) => d.code === highlightedMissingCode,
+    );
+    if (missingCible?.parent_nom) effectiveOpenFolders.add(missingCible.parent_nom);
+  }
+
   const champToDoc = {};
   typesDocumentsList.forEach((t) => {
     if (t.champ_source) champToDoc[t.champ_source] = t;
@@ -1200,7 +1233,7 @@ const EmployeeDetail = () => {
       <div style={{ padding: isMobile ? "16px" : "24px 32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {message && (
-          <div className="notif-banner" style={{ background: message.type === "success" ? theme.primaryBg : theme.dangerBg, border: `1px solid ${message.type === "success" ? theme.border : theme.dangerBorder}`, color: message.type === "success" ? theme.primary : theme.danger, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, fontWeight: 600 }}>
+          <div ref={messageRef} className="notif-banner" style={{ background: message.type === "success" ? theme.primaryBg : theme.dangerBg, border: `1px solid ${message.type === "success" ? theme.border : theme.dangerBorder}`, color: message.type === "success" ? theme.primary : theme.danger, borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, fontWeight: 600 }}>
             {message.text}
           </div>
         )}
@@ -1456,6 +1489,8 @@ const EmployeeDetail = () => {
           docOrderMap={docOrderMap}
           docHeaderBefore={docHeaderBefore}
           docGroupEnd={docGroupEnd}
+          openFolders={effectiveOpenFolders}
+          toggleFolder={toggleFolder}
           employee={employee}
           expandedHistory={expandedHistory}
           setExpandedHistory={setExpandedHistory}

@@ -206,6 +206,11 @@ CORS_ALLOWED_ORIGINS = [
 _ngrok_url = config('NGROK_URL', default='')
 if _ngrok_url:
     CORS_ALLOWED_ORIGINS.append(_ngrok_url)
+# Tunnel Cloudflare temporaire (dev/démo) — même principe que NGROK_URL
+# ci-dessus, l'URL change à chaque nouveau tunnel gratuit trycloudflare.com.
+_cloudflare_url = config('CLOUDFLARE_URL', default='')
+if _cloudflare_url:
+    CORS_ALLOWED_ORIGINS.append(_cloudflare_url)
 # Django exige que l'origine du front soit explicitement de confiance pour
 # accepter les requêtes POST/PATCH/DELETE cross-origin protégées par CSRF.
 CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS

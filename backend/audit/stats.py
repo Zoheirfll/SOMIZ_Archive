@@ -8,18 +8,24 @@ Les statistiques principales (répartitions, évolution, pyramides,
 échéances, complétude) restent toujours organisation-wide, pour
 ADMIN comme SUPERADMIN — voir CLAUDE.md section "Page Statistiques".
 En complément, "Mon activité" (_mon_activite) donne à CHAQUE compte
-ADMIN/SUPERADMIN le décompte de ses propres actions (créations,
-modifications, archivages, documents uploadés/supprimés), et un
-SUPERADMIN reçoit en plus la même ventilation pour tous les comptes
-(_activite_par_admin). "Documents uploadés" compte les documents
-actuellement présents (EmployeeDocument.uploaded_by/is_active), pas les
-entrées du journal d'audit — un document uploadé puis supprimé ne doit
-pas gonfler ce compteur indéfiniment.
+ADMIN/SUPERADMIN le décompte détaillé et mutuellement exclusif de ses
+propres actions (créations, transferts organisationnels, carrière,
+champs personnalisés, photo, archivages, restaurations, suppressions
+définitives, contrats, documents, mots de passe — voir
+_categorize_emp_log), et un SUPERADMIN reçoit en plus la même
+ventilation pour tous les comptes (_activite_par_admin). "Documents
+uploadés" compte les documents actuellement présents
+(EmployeeDocument.uploaded_by/is_active), pas les entrées du journal
+d'audit — un document uploadé puis supprimé ne doit pas gonfler ce
+compteur indéfiniment. Les actions en masse (bulk archive/restaurer/
+delete, EmployeeBulkDeleteView) n'écrivent qu'une seule ligne d'audit
+pour N employés : chaque catégorie compte le vrai nombre d'employés
+concernés (details['nb']), pas le nombre de lignes d'audit.
 """
 from calendar import monthrange
 from datetime import timedelta
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.utils import timezone
 
 from employees.models import Employee, Contrat, TypeDocument, EmployeeDocument
@@ -133,6 +139,41 @@ def _years_between(start, end):
     return years
 
 
+def _dossiers_completes_par_mois_completion(types_obligatoires):
+    """
+    Dossiers complétés groupés par le mois où ils sont RÉELLEMENT devenus
+    complets — le mois de l'upload du dernier document obligatoire
+    manquant, pas le mois de recrutement de l'employé (ancien
+    comportement, trompeur : un employé recruté en avril mais dont le
+    dossier n'a été complété qu'hier apparaissait quand même sous
+    "2026-04"). Pas d'historique de complétude en base — seule
+    approximation possible : parmi les employés ACTUELLEMENT complets,
+    la date du plus récent des documents obligatoires encore actifs.
+    """
+    if not types_obligatoires:
+        return {}
+    types_ids = [t.id for t in types_obligatoires]
+
+    qs = Employee.objects.filter(statut='actif')
+    for t in types_obligatoires:
+        qs = qs.filter(documents__type_doc=t, documents__is_active=True)
+    complete_ids = list(qs.distinct().values_list('id', flat=True))
+    if not complete_ids:
+        return {}
+
+    rows = EmployeeDocument.objects.filter(
+        employee_id__in=complete_ids, type_doc_id__in=types_ids, is_active=True,
+    ).values('employee_id').annotate(derniere=Max('uploaded_at'))
+
+    par_mois = {}
+    for row in rows:
+        if row['derniere'] is None:
+            continue
+        cle = timezone.localtime(row['derniere']).strftime('%Y-%m')
+        par_mois[cle] = par_mois.get(cle, 0) + 1
+    return par_mois
+
+
 def _evolution_mensuelle(date_debut, date_fin):
     months = []
     cursor = date_debut.replace(day=1)
@@ -144,12 +185,7 @@ def _evolution_mensuelle(date_debut, date_fin):
     types_obligatoires = list(TypeDocument.objects.filter(
         obligatoire=True, is_active=True, sous_types__isnull=True
     ))
-
-    def dossiers_completes(debut, fin):
-        qs = Employee.objects.filter(statut='actif', date_embauche__range=[debut, fin])
-        for t in types_obligatoires:
-            qs = qs.filter(documents__type_doc=t, documents__is_active=True)
-        return qs.distinct().count()
+    par_mois_completion = _dossiers_completes_par_mois_completion(types_obligatoires)
 
     result = []
     for m in months:
@@ -165,7 +201,7 @@ def _evolution_mensuelle(date_debut, date_fin):
             'mois': m.strftime('%Y-%m'),
             'recrutements': recrutements,
             'archivages': archivages,
-            'dossiers_completes': dossiers_completes(m_debut, m_fin),
+            'dossiers_completes': par_mois_completion.get(m.strftime('%Y-%m'), 0),
         })
     return result
 
@@ -249,13 +285,110 @@ def _completude_par_departement():
     return rows
 
 
+_ORG_TRANSFER_KEYS = {'direction', 'departement', 'service', 'cellule', 'section'}
+_CARRIERE_TRANSFER_KEYS = {'poste', 'categorie'}
+
+
+def _categorize_emp_log(action, details):
+    """
+    Classe une entrée AuditLog (action CREATE_EMP/MODIFY_EMP/DELETE_EMP)
+    dans une catégorie exclusive + son "poids" (nombre d'employés/contrats
+    réellement concernés par CETTE ligne). Nécessaire car MODIFY_EMP/
+    DELETE_EMP sont réutilisés pour des choses très différentes selon le
+    contenu de `details` (transfert organisationnel, carrière, archivage,
+    champs personnalisés, photo, contrats, mots de passe — voir
+    employees/views.py et accounts/views.py) — et une action en masse
+    (bulk archive/restaurer/delete, EmployeeBulkDeleteView) n'écrit qu'UNE
+    SEULE ligne d'audit pour N employés (`details['nb']`) : un simple
+    `.count()` sur ces lignes sous-comptait silencieusement ces
+    opérations en masse.
+    """
+    details = details or {}
+    nb = details.get('nb', 1)
+
+    if action == AuditLog.Action.CREATE_EMP:
+        return 'employes_crees', 1
+
+    if action == AuditLog.Action.MODIFY_EMP:
+        transfer = details.get('transfer')
+        if transfer:
+            if 'statut' in transfer:
+                vers = (transfer['statut'] or {}).get('vers')
+                if vers in STATUTS_ARCHIVE:
+                    return 'employes_archives', 1
+                if vers == 'actif':
+                    return 'employes_restaures', 1
+                return 'employes_autres', 1
+            keys = set(transfer.keys())
+            if keys & _ORG_TRANSFER_KEYS:
+                return 'employes_transferts', 1
+            if keys & _CARRIERE_TRANSFER_KEYS:
+                return 'employes_carriere', 1
+            # Champ isolé (ex. suggestion OCR appliquée sur un champ
+            # système/personnalisé) — voir ocr/views.py.
+            return 'employes_champs', 1
+        sous_action = details.get('action')
+        if 'champs_personnalises' in details:
+            return 'employes_champs', 1
+        if sous_action and sous_action.startswith('historique_'):
+            return 'employes_carriere', 1
+        if sous_action in ('upload_photo', 'delete_photo'):
+            return 'employes_photo', 1
+        if sous_action in ('create_contrat', 'modify_contrat'):
+            return 'contrats_crees_modifies', 1
+        if sous_action == 'restaurer':
+            return 'employes_restaures', nb
+        if sous_action in ('change_password', 'admin_reset_password'):
+            return 'comptes_mdp', 1
+        return 'employes_autres', 1
+
+    if action == AuditLog.Action.DELETE_EMP:
+        sous_action = details.get('action')
+        if sous_action == 'delete_contrat':
+            return 'contrats_supprimes', 1
+        if sous_action == 'archive':
+            return 'employes_archives', nb
+        if sous_action == 'delete':
+            return 'employes_supprimes', nb
+        # Suppression définitive d'un employé unique (perform_destroy) —
+        # details contient 'matricule'/'nom', pas de clé 'action'.
+        return 'employes_supprimes', 1
+
+    return None, 0
+
+
+_ACTIVITY_KEYS = [
+    'employes_crees', 'employes_transferts', 'employes_carriere', 'employes_champs',
+    'employes_photo', 'employes_archives', 'employes_restaures', 'employes_supprimes',
+    'employes_autres', 'contrats_crees_modifies', 'contrats_supprimes',
+    'documents_uploades', 'documents_supprimes', 'documents_modifies', 'comptes_mdp',
+]
+
+
 def _activity_counts(user, date_debut, date_fin):
     """
-    Décompte des actions d'un compte (ADMIN ou SUPERADMIN) sur la
+    Décompte détaillé des actions d'un compte (ADMIN ou SUPERADMIN) sur la
     période — "Mon activité" / une ligne de "Activité par administrateur".
+    Catégories mutuellement exclusives (voir _categorize_emp_log) : un
+    archivage n'est plus compté aussi dans "employés modifiés", et les
+    actions en masse comptent leur vrai nombre d'employés (details['nb']),
+    pas 1 ligne = 1 employé.
     """
+    counts = {k: 0 for k in _ACTIVITY_KEYS}
+
+    emp_logs = AuditLog.objects.filter(
+        user=user, timestamp__date__range=[date_debut, date_fin],
+        action__in=[AuditLog.Action.CREATE_EMP, AuditLog.Action.MODIFY_EMP, AuditLog.Action.DELETE_EMP],
+    ).values_list('action', 'details')
+    for action, details in emp_logs:
+        key, weight = _categorize_emp_log(action, details)
+        if key:
+            counts[key] += weight
+
     base = AuditLog.objects.filter(user=user, timestamp__date__range=[date_debut, date_fin])
-    modif_qs = base.filter(action=AuditLog.Action.MODIFY_EMP)
+    counts['documents_supprimes'] = base.filter(action=AuditLog.Action.DELETE_DOC).count()
+    counts['documents_modifies'] = base.filter(action=AuditLog.Action.MODIFY_DOC).count()
+
     # "Documents uploadés" compte les documents ENCORE PRÉSENTS
     # (EmployeeDocument.uploaded_by, is_active=True), pas les entrées
     # UPLOAD du journal d'audit — celles-ci restent même après suppression
@@ -263,17 +396,11 @@ def _activity_counts(user, date_debut, date_fin):
     # gonflerait ce compteur avec des documents qui n'existent plus.
     # Regroupe upload manuel et "Scanner un dossier" (scan-import) — les
     # deux créent le même type d'objet, pas de distinction utile ici.
-    documents_uploades = EmployeeDocument.objects.filter(
+    counts['documents_uploades'] = EmployeeDocument.objects.filter(
         uploaded_by=user, is_active=True, uploaded_at__date__range=[date_debut, date_fin],
     ).count()
-    return {
-        'employes_crees': base.filter(action=AuditLog.Action.CREATE_EMP).count(),
-        'employes_modifies': modif_qs.count(),
-        'employes_archives': modif_qs.filter(details__transfer__statut__vers__in=STATUTS_ARCHIVE).count(),
-        'documents_uploades': documents_uploades,
-        'documents_supprimes': base.filter(action=AuditLog.Action.DELETE_DOC).count(),
-        'documents_modifies': base.filter(action=AuditLog.Action.MODIFY_DOC).count(),
-    }
+
+    return counts
 
 
 def _mon_activite(user, date_debut, date_fin):
@@ -285,7 +412,7 @@ def _activite_par_admin(date_debut, date_fin):
     admins = User.objects.filter(role__in=['ADMIN', 'SUPERADMIN'], is_active=True).order_by('nom', 'prenom')
     result = []
     for admin in admins:
-        row = {'id': str(admin.id), 'nom_complet': admin.full_name, 'role': admin.role}
+        row = {'id': str(admin.id), 'username': admin.username, 'nom_complet': admin.full_name, 'role': admin.role}
         row.update(_activity_counts(admin, date_debut, date_fin))
         result.append(row)
     return result

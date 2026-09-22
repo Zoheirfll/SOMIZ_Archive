@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
@@ -89,6 +89,18 @@ const ContratDetail = () => {
   // Ids des documents dont l'historique (versions antérieures conservées)
   // est déplié dans la sidebar — replié par défaut.
   const [expandedHistory, setExpandedHistory] = useState(() => new Set());
+  // Dossiers (catégories de documents) repliés par défaut — même pattern
+  // que EmployeeDetail.jsx/DossierTab.jsx. Un type sans catégorie n'est
+  // jamais concerné, toujours affiché à plat.
+  const [openFolders, setOpenFolders] = useState(() => new Set());
+  const toggleFolder = (label) => {
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
   const [selectedFile, setSelectedFile] = useState(null);
   const [docUrl, setDocUrl] = useState(null);
   const [docLoading, setDocLoading] = useState(false);
@@ -103,6 +115,15 @@ const ContratDetail = () => {
   const [editForm, setEditForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [typesContrat, setTypesContrat] = useState([]);
+  const messageRef = useRef(null);
+  // Voir EmployeeDetail.jsx — même page longue avec des actions déclenchées
+  // depuis la sidebar Documents, bien en dessous du bandeau message affiché
+  // en haut : sans ça, une erreur d'upload passe inaperçue si on est scrollé.
+  useEffect(() => {
+    if (message) {
+      messageRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    }
+  }, [message]);
 
   useEffect(() => {
     fetchTypesDocuments();
@@ -178,14 +199,9 @@ const ContratDetail = () => {
     try {
       const response = await api.get(`/contrats/${id}/`);
       setContrat(response.data);
-      if (!silent) {
-        const grouped = groupDocsByVersion(response.data.documents || []);
-        if (grouped.length > 0) {
-          const firstDoc = grouped[0];
-          setSelectedDoc(firstDoc);
-          if (firstDoc.fichiers?.length > 0) loadFile(firstDoc.fichiers[0]);
-        }
-      }
+      // Pas de sélection automatique du premier document — le viewer reste
+      // vide tant que l'utilisateur n'a rien cliqué (aligné sur
+      // EmployeeDetail.jsx, voir CLAUDE.md).
     } catch (err) {
       console.error(err);
     } finally {
@@ -254,7 +270,7 @@ const ContratDetail = () => {
 
   const FALLBACK_FOLDER_COLOR = theme.warning;
 
-  const folderHeaderStyle = (couleur) => {
+  const folderHeaderStyle = (couleur, collapsed = false) => {
     const c = couleur || FALLBACK_FOLDER_COLOR;
     return {
       marginTop: 8,
@@ -264,13 +280,29 @@ const ContratDetail = () => {
       gap: 6,
       background: hexToRgba(c, 0.12),
       border: `1px solid ${hexToRgba(c, 0.35)}`,
-      borderBottom: "none",
-      borderRadius: "8px 8px 0 0",
+      borderBottom: collapsed ? `1px solid ${hexToRgba(c, 0.35)}` : "none",
+      borderRadius: collapsed ? 8 : "8px 8px 0 0",
       color: c,
       fontSize: 11,
       fontWeight: 700,
       textTransform: "uppercase",
       letterSpacing: "0.04em",
+      cursor: "pointer",
+      userSelect: "none",
+      justifyContent: "space-between",
+      marginBottom: collapsed ? 10 : 0,
+    };
+  };
+
+  const folderToggleStyle = (couleur, open) => {
+    const c = couleur || FALLBACK_FOLDER_COLOR;
+    return {
+      display: "flex", alignItems: "center", justifyContent: "center",
+      width: 18, height: 18, borderRadius: 5,
+      background: hexToRgba(c, 0.22), fontSize: 12, fontWeight: 800, lineHeight: 1,
+      flexShrink: 0,
+      transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+      transition: "transform 0.18s ease",
     };
   };
 
@@ -290,6 +322,15 @@ const ContratDetail = () => {
     setUploading(true);
 
     const typeSelectionne = typesDocumentsList.find((t) => t.code === uploadType);
+    // Un document actif existe déjà pour ce type : l'upload ne l'écrase pas
+    // (l'historique des versions est conservé, voir groupDocsByVersion) — il
+    // bascule dans "🕘 Historique" sous la nouvelle version. Le préciser dans
+    // le message de succès évite la confusion "l'ancien fichier a disparu
+    // puis est réapparu tout seul" en cas de suppression de la nouvelle
+    // version juste après.
+    const remplaceExistant = (contrat.documents || []).some(
+      (d) => d.type_doc === (typeSelectionne?.id || uploadType),
+    );
     const formData = new FormData();
     formData.append("type_doc", typeSelectionne?.id || uploadType);
     files.forEach((file) => formData.append("files", file));
@@ -298,7 +339,12 @@ const ContratDetail = () => {
       await api.post(`/contrats/${id}/documents/`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setMessage({ type: "success", text: `${files.length} fichier(s) uploadé(s) avec succès.` });
+      setMessage({
+        type: "success",
+        text: remplaceExistant
+          ? `${files.length} fichier(s) uploadé(s) comme nouvelle version — l'ancienne reste dans l'historique.`
+          : `${files.length} fichier(s) uploadé(s) avec succès.`,
+      });
       fetchContrat(true);
     } catch (err) {
       setMessage({
@@ -425,7 +471,21 @@ const ContratDetail = () => {
     e.stopPropagation();
     if (busyIds.has(doc.id)) return;
     const nomType = typesDocuments[doc.type_document] || doc.type_document;
-    if (!(await confirm(`Supprimer "${nomType} v${doc.version}" et ses ${doc.nb_fichiers} fichier(s) ?`))) return;
+    // Une version antérieure active existe encore pour ce type : la
+    // supprimer fait "remonter" cette ancienne version comme document
+    // courant (elle n'a jamais été écrasée, voir handleUpload) — prévenir
+    // avant, sinon ça ressemble à une réapparition mystérieuse.
+    const versionAnterieureRestante = (contrat.documents || []).some(
+      (d) => d.id !== doc.id && d.type_doc === doc.type_doc,
+    );
+    if (
+      !(await confirm(
+        versionAnterieureRestante
+          ? `Supprimer "${nomType} v${doc.version}" et ses ${doc.nb_fichiers} fichier(s) ? Une version antérieure de ce document redeviendra alors la version affichée.`
+          : `Supprimer "${nomType} v${doc.version}" et ses ${doc.nb_fichiers} fichier(s) ?`,
+      ))
+    )
+      return;
     await withBusyGuard(doc.id, async () => {
       try {
         await api.delete(`/documents/${doc.id}/`);
@@ -522,7 +582,7 @@ const ContratDetail = () => {
       <div style={{ padding: isMobile ? "16px" : "32px", maxWidth: 1200, margin: "0 auto" }}>
 
         {message && (
-          <div className="notif-banner" style={{
+          <div ref={messageRef} className="notif-banner" style={{
             background: message.type === "success" ? theme.primaryBg : theme.dangerBg,
             border: `1px solid ${message.type === "success" ? theme.primaryBorder : theme.dangerBorder}`,
             color: message.type === "success" ? theme.primary : theme.danger,
@@ -663,13 +723,23 @@ const ContratDetail = () => {
               Documents ({contrat.documents?.length || 0})
             </div>
 
-            {presentOrdered.map((doc) => (
+            {presentOrdered.map((doc) => {
+              const folderLabel = presentHeaders.get(doc);
+              // Un document sans catégorie reste toujours affiché à plat,
+              // jamais concerné par le repli (même règle que EmployeeDetail).
+              const folderOpen = !folderLabel || openFolders.has(folderLabel);
+              return (
               <div key={doc.id}>
-              {presentHeaders.has(doc) && (
-                <div style={folderHeaderStyle(doc.couleur)}>
-                  📁 {presentHeaders.get(doc)}
+              {folderLabel && (
+                <div
+                  onClick={() => toggleFolder(folderLabel)}
+                  style={folderHeaderStyle(doc.couleur, !openFolders.has(folderLabel))}
+                >
+                  <span>📁 {folderLabel}</span>
+                  <span style={folderToggleStyle(doc.couleur, openFolders.has(folderLabel))}>▾</span>
                 </div>
               )}
+              {folderOpen && (
               <div style={{
                 borderBottom: doc.type_document_parent ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
                 borderLeft: `3px solid ${selectedDoc?.id === doc.id ? theme.primary : (doc.couleur || "transparent")}`,
@@ -793,10 +863,11 @@ const ContratDetail = () => {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Historique — versions antérieures conservées (2026-08-30),
                   repliées par défaut, consultables/supprimables une par une. */}
-              {doc.__history?.length > 0 && (
+              {folderOpen && doc.__history?.length > 0 && (
                 <div style={{ borderTop: `1px dashed ${theme.border}`, background: theme.bg }}>
                   <div
                     onClick={(e) => {
@@ -865,7 +936,8 @@ const ContratDetail = () => {
                 </div>
               )}
               </div>
-            ))}
+              );
+            })}
 
             {contrat.documents?.length === 0 && (
               <div style={{ padding: 24, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>

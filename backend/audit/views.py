@@ -275,23 +275,28 @@ class StatsExportView(APIView):
             for r in data['completude_par_departement']
         ])
         activite_headers = [
-            'Administrateur', 'Employés créés', 'Employés modifiés', 'Employés archivés',
-            'Documents uploadés', 'Documents supprimés', 'Documents modifiés',
+            'Administrateur', 'Employés créés', 'Employés transférés', 'Employés (carrière)',
+            'Employés (champs)', 'Employés archivés', 'Employés restaurés', 'Employés supprimés',
+            'Contrats créés/modifiés', 'Contrats supprimés',
+            'Documents uploadés', 'Documents supprimés', 'Documents modifiés', 'Mots de passe',
         ]
+
+        def _activite_row(nom, a):
+            return [
+                nom, a['employes_crees'], a['employes_transferts'], a['employes_carriere'],
+                a['employes_champs'], a['employes_archives'], a['employes_restaures'], a['employes_supprimes'],
+                a['contrats_crees_modifies'], a['contrats_supprimes'],
+                a['documents_uploades'], a['documents_supprimes'], a['documents_modifies'], a['comptes_mdp'],
+            ]
+
         if 'activite_par_admin' in data:
             _stats_sheet(wb, 'Activité par administrateur', activite_headers, [
-                [
-                    a['nom_complet'], a['employes_crees'], a['employes_modifies'], a['employes_archives'],
-                    a['documents_uploades'], a['documents_supprimes'], a['documents_modifies'],
-                ]
-                for a in data['activite_par_admin']
+                _activite_row(a['nom_complet'], a) for a in data['activite_par_admin']
             ])
         else:
-            a = data['mon_activite']
-            _stats_sheet(wb, 'Mon activité', activite_headers, [[
-                request.user.full_name, a['employes_crees'], a['employes_modifies'], a['employes_archives'],
-                a['documents_uploades'], a['documents_supprimes'], a['documents_modifies'],
-            ]])
+            _stats_sheet(wb, 'Mon activité', activite_headers, [
+                _activite_row(request.user.full_name, data['mon_activite'])
+            ])
 
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

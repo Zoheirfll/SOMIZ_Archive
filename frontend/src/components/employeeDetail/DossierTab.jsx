@@ -14,6 +14,7 @@ import {
   formatSizeMo,
   formatDateTime,
   folderHeaderStyle,
+  folderToggleStyle,
   folderRowExtraStyle,
   folderRowBorder,
   hexToRgba,
@@ -41,6 +42,8 @@ const DossierTab = ({
   docOrderMap,
   docHeaderBefore,
   docGroupEnd,
+  openFolders,
+  toggleFolder,
   employee,
   expandedHistory,
   setExpandedHistory,
@@ -160,13 +163,26 @@ const DossierTab = ({
               )}
 
               {/* Documents présents */}
-              {documentsAffiches.map((doc) => (
+              {documentsAffiches.map((doc) => {
+                const folderLabel = docHeaderBefore.get(`p-${doc.id}`);
+                // Un document sans catégorie (type "racine", jamais rattaché
+                // à un TypeDocument parent) reste toujours affiché à plat —
+                // le repli/dépli ne concerne que les documents groupés sous
+                // un dossier 📁 (voir CLAUDE.md "Hiérarchie des types de
+                // documents — sous-dossiers").
+                const folderOpen = !doc.type_document_parent || openFolders.has(doc.type_document_parent);
+                return (
                 <div key={doc.id} style={{ order: docOrderMap.get(`p-${doc.id}`) ?? 0 }}>
-                {docHeaderBefore.get(`p-${doc.id}`) && (
-                  <div style={folderHeaderStyle(doc.couleur)}>
-                    📁 {docHeaderBefore.get(`p-${doc.id}`)}
+                {folderLabel && (
+                  <div
+                    onClick={() => toggleFolder(folderLabel)}
+                    style={folderHeaderStyle(doc.couleur, !openFolders.has(folderLabel))}
+                  >
+                    <span>📁 {folderLabel}</span>
+                    <span style={folderToggleStyle(doc.couleur, openFolders.has(folderLabel))}>▾</span>
                   </div>
                 )}
+                {folderOpen && (
                 <div
                   style={{
                     borderBottom: doc.type_document_parent ? folderRowBorder(doc.couleur) : `1px solid ${theme.border}`,
@@ -371,10 +387,11 @@ const DossierTab = ({
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Historique — versions antérieures conservées (2026-08-30),
                     repliées par défaut, consultables/supprimables une par une. */}
-                {doc.__history?.length > 0 && (
+                {folderOpen && doc.__history?.length > 0 && (
                   <div style={{ borderTop: `1px dashed ${theme.border}`, background: theme.bg }}>
                     <div
                       onClick={(e) => {
@@ -446,16 +463,25 @@ const DossierTab = ({
                   </div>
                 )}
                 </div>
-              ))}
+                );
+              })}
 
               {/* Documents manquants */}
-              {(employee.documents_manquants || []).map((doc) => (
+              {(employee.documents_manquants || []).map((doc) => {
+                const missingFolderLabel = docHeaderBefore.get(`m-${doc.code}`);
+                const missingFolderOpen = !doc.parent_nom || openFolders.has(doc.parent_nom);
+                return (
                 <div key={doc.code} style={{ order: docOrderMap.get(`m-${doc.code}`) ?? 0 }}>
-                {docHeaderBefore.get(`m-${doc.code}`) && (
-                  <div style={folderHeaderStyle(doc.couleur)}>
-                    📁 {docHeaderBefore.get(`m-${doc.code}`)}
+                {missingFolderLabel && (
+                  <div
+                    onClick={() => toggleFolder(missingFolderLabel)}
+                    style={folderHeaderStyle(doc.couleur, !openFolders.has(missingFolderLabel))}
+                  >
+                    <span>📁 {missingFolderLabel}</span>
+                    <span style={folderToggleStyle(doc.couleur, openFolders.has(missingFolderLabel))}>▾</span>
                   </div>
                 )}
+                {missingFolderOpen && (
                 <div
                   ref={(el) => { missingRowRefs.current[doc.code] = el; }}
                   style={{
@@ -578,8 +604,10 @@ const DossierTab = ({
                     </label>
                   )}
                 </div>
+                )}
                 </div>
-              ))}
+                );
+              })}
 
               {documentsAffiches.length === 0 && (employee.documents_manquants || []).length === 0 && (
                 <div style={{ padding: 24, textAlign: "center", color: theme.textMuted, fontSize: 13 }}>

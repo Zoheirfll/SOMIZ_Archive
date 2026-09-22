@@ -97,6 +97,91 @@ const presetToRange = (preset) => {
   return { date_debut: toIso(debut), date_fin: toIso(fin) };
 };
 
+// Lien pré-filtré vers /audit (utilisateur + période) — l'endpoint
+// AuditLogListView ne filtre que sur un `action` unique, jamais sur le
+// contenu de `details` : impossible de pointer précisément vers, par
+// exemple, "les archivages" (répartis entre MODIFY_EMP et DELETE_EMP
+// selon qu'ils viennent d'une action unitaire ou en masse — voir
+// audit/stats.py _categorize_emp_log) — le lien ouvre donc le journal de
+// ce compte sur la période, non filtré par type d'action.
+const buildAuditLink = (username, periode) => {
+  if (!username || !periode) return null;
+  const params = new URLSearchParams({ user: username, date_debut: periode.debut, date_fin: periode.fin });
+  return `/audit?${params.toString()}`;
+};
+
+// Regroupe les compteurs de "Mon activité" par entité concernée
+// (Employé/Contrat/Document/Compte) — un même champ "modifié" peut
+// recouvrir des choses très différentes (transfert de service, photo,
+// champ personnalisé...), voir audit/stats.py _categorize_emp_log.
+const ACTIVITY_ENTITY_GROUPS = [
+  {
+    label: "Employés",
+    tiles: [
+      { key: "employes_crees", label: "Créés" },
+      { key: "employes_transferts", label: "Transférés (organisation)" },
+      { key: "employes_carriere", label: "Carrière (fonction/catégorie/échelle)" },
+      { key: "employes_champs", label: "Champs mis à jour (dont OCR)" },
+      { key: "employes_photo", label: "Photo modifiée" },
+      { key: "employes_archives", label: "Archivés" },
+      { key: "employes_restaures", label: "Restaurés" },
+      { key: "employes_supprimes", label: "Supprimés définitivement" },
+      { key: "employes_autres", label: "Autres modifications" },
+    ],
+  },
+  {
+    label: "Contrats",
+    tiles: [
+      { key: "contrats_crees_modifies", label: "Créés / modifiés" },
+      { key: "contrats_supprimes", label: "Supprimés" },
+    ],
+  },
+  {
+    label: "Documents",
+    tiles: [
+      { key: "documents_uploades", label: "Uploadés" },
+      { key: "documents_supprimes", label: "Supprimés" },
+      { key: "documents_modifies", label: "Modifiés (renommage, rotation, pages...)" },
+    ],
+  },
+  {
+    label: "Compte",
+    tiles: [
+      { key: "comptes_mdp", label: "Mots de passe modifiés" },
+    ],
+  },
+];
+
+const ActivityGroups = ({ activity, theme, isMobile }) => {
+  const groups = ACTIVITY_ENTITY_GROUPS
+    .map((g) => ({ ...g, tiles: g.tiles.filter((t) => activity[t.key] > 0) }))
+    .filter((g) => g.tiles.length > 0);
+
+  if (groups.length === 0) {
+    return <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune activité sur cette période.</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {groups.map((g) => (
+        <div key={g.label}>
+          <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 }}>
+            {g.label}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${Math.min(g.tiles.length, 4)}, 1fr)`, gap: 16 }}>
+            {g.tiles.map(({ key, label }) => (
+              <div key={key}>
+                <div style={{ color: theme.textMuted, fontSize: 11, marginBottom: 4 }}>{label}</div>
+                <div style={{ color: theme.primary, fontSize: 22, fontWeight: 800 }}>{activity[key]}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const Statistiques = () => {
   usePageTitle("Statistiques");
   const theme = useTheme();
@@ -454,33 +539,18 @@ const Statistiques = () => {
         </div>
 
         {stats.mon_activite && (() => {
-          const tiles = [
-            { key: "employes_crees", label: "Employés créés" },
-            { key: "employes_modifies", label: "Employés modifiés" },
-            { key: "employes_archives", label: "Employés archivés" },
-            { key: "documents_uploades", label: "Documents uploadés" },
-            { key: "documents_supprimes", label: "Documents supprimés" },
-            { key: "documents_modifies", label: "Documents modifiés" },
-          ].filter(({ key }) => stats.mon_activite[key] > 0);
+          const auditLink = buildAuditLink(user?.username, stats.periode);
           return (
             <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd, marginBottom: 20 }}>
-              <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Mon activité</h2>
-              {tiles.length === 0 ? (
-                <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune activité sur cette période.</div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${Math.min(tiles.length, 6)}, 1fr)`, gap: 16 }}>
-                  {tiles.map(({ key, label }) => (
-                    <div key={key}>
-                      <div style={{ color: theme.textSecondary, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em", fontWeight: 700, marginBottom: 4 }}>
-                        {label}
-                      </div>
-                      <div style={{ color: theme.primary, fontSize: 22, fontWeight: 800 }}>
-                        {stats.mon_activite[key]}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+                <h2 style={{ color: theme.text, margin: 0, fontSize: 15, fontWeight: 700 }}>Mon activité</h2>
+                {auditLink && (
+                  <a href={auditLink} onClick={(e) => { e.preventDefault(); navigate(auditLink); }} style={{ color: theme.primary, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                    Voir mon journal d'audit →
+                  </a>
+                )}
+              </div>
+              <ActivityGroups activity={stats.mon_activite} theme={theme} isMobile={isMobile} />
             </div>
           );
         })()}
@@ -488,11 +558,18 @@ const Statistiques = () => {
         {isSuperadmin && stats.activite_par_admin && (() => {
           const columns = [
             { key: "employes_crees", label: "Créés" },
-            { key: "employes_modifies", label: "Modifiés" },
+            { key: "employes_transferts", label: "Transférés" },
+            { key: "employes_carriere", label: "Carrière" },
+            { key: "employes_champs", label: "Champs" },
             { key: "employes_archives", label: "Archivés" },
-            { key: "documents_uploades", label: "Uploadés" },
-            { key: "documents_supprimes", label: "Supprimés" },
+            { key: "employes_restaures", label: "Restaurés" },
+            { key: "employes_supprimes", label: "Suppr. définitive" },
+            { key: "contrats_crees_modifies", label: "Contrats" },
+            { key: "contrats_supprimes", label: "Contrats suppr." },
+            { key: "documents_uploades", label: "Doc. uploadés" },
+            { key: "documents_supprimes", label: "Doc. supprimés" },
             { key: "documents_modifies", label: "Doc. modifiés" },
+            { key: "comptes_mdp", label: "Mots de passe" },
           ].filter(({ key }) => stats.activite_par_admin.some((a) => a[key] > 0));
           return (
             <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd, marginBottom: 20 }}>
@@ -508,22 +585,33 @@ const Statistiques = () => {
                         {columns.map((c) => (
                           <th key={c.key} style={{ padding: "8px 6px", color: theme.textSecondary }}>{c.label}</th>
                         ))}
+                        <th style={{ padding: "8px 6px", color: theme.textSecondary }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {stats.activite_par_admin.map((a) => (
-                        <tr key={a.id} style={{ borderBottom: `1px solid ${theme.borderLight}` }}>
-                          <td style={{ padding: "8px 6px", fontWeight: 600 }}>
-                            {a.nom_complet}
-                            {a.role === "SUPERADMIN" && (
-                              <span style={{ color: theme.textMuted, fontSize: 11, marginLeft: 6 }}>(SUPERADMIN)</span>
-                            )}
-                          </td>
-                          {columns.map((c) => (
-                            <td key={c.key} style={{ padding: "8px 6px" }}>{a[c.key]}</td>
-                          ))}
-                        </tr>
-                      ))}
+                      {stats.activite_par_admin.map((a) => {
+                        const link = buildAuditLink(a.username, stats.periode);
+                        return (
+                          <tr key={a.id} style={{ borderBottom: `1px solid ${theme.borderLight}` }}>
+                            <td style={{ padding: "8px 6px", fontWeight: 600 }}>
+                              {a.nom_complet}
+                              {a.role === "SUPERADMIN" && (
+                                <span style={{ color: theme.textMuted, fontSize: 11, marginLeft: 6 }}>(SUPERADMIN)</span>
+                              )}
+                            </td>
+                            {columns.map((c) => (
+                              <td key={c.key} style={{ padding: "8px 6px" }}>{a[c.key]}</td>
+                            ))}
+                            <td style={{ padding: "8px 6px" }}>
+                              {link && (
+                                <a href={link} onClick={(e) => { e.preventDefault(); navigate(link); }} style={{ color: theme.primary, fontSize: 12, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                                  Audit →
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

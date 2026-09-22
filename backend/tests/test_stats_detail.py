@@ -121,6 +121,27 @@ class TestBuildStatsDetailEvolution:
         result = build_stats_detail(date(2026, 6, 1), date(2026, 6, 30))
         assert result['evolution_mensuelle'][0]['recrutements'] == 2
 
+    def test_evolution_mensuelle_dossiers_completes_uses_completion_month_not_hiring_month(
+        self, direction, departement, type_doc_obligatoire,
+    ):
+        # Recruté en avril, mais le document obligatoire n'a été uploadé
+        # (dossier devenu complet) qu'en juin — doit apparaître sous
+        # "2026-06", pas "2026-04" (voir _dossiers_completes_par_mois_completion).
+        emp = _make_employee(
+            direction=direction, departement=departement, statut='actif',
+            date_embauche=date(2026, 4, 10),
+        )
+        doc = EmployeeDocument.objects.create(
+            employee=emp, type_doc=type_doc_obligatoire, is_active=True,
+        )
+        EmployeeDocument.objects.filter(pk=doc.pk).update(
+            uploaded_at=timezone.make_aware(timezone.datetime(2026, 6, 15))
+        )
+        result = build_stats_detail(date(2026, 4, 1), date(2026, 6, 30))
+        by_month = {e['mois']: e['dossiers_completes'] for e in result['evolution_mensuelle']}
+        assert by_month['2026-04'] == 0
+        assert by_month['2026-06'] == 1
+
 
 @pytest.mark.django_db
 class TestBuildStatsDetailPyramides:
@@ -226,8 +247,8 @@ class TestBuildStatsDetailMonActivite:
             details={'transfer': {'poste': {'de': 'A', 'vers': 'B'}}},
         )
         result = build_stats_detail(None, None, requesting_user=admin_user)
-        assert result['mon_activite']['employes_modifies'] == 2
         assert result['mon_activite']['employes_archives'] == 1
+        assert result['mon_activite']['employes_carriere'] == 1
 
     def test_mon_activite_counts_present_documents_only(self, admin_user, direction, departement, type_doc_obligatoire):
         emp = _make_employee(direction=direction, departement=departement, created_by=admin_user)
@@ -266,6 +287,47 @@ class TestBuildStatsDetailMonActivite:
     def test_activite_par_admin_absent_for_non_superadmin(self, admin_user):
         result = build_stats_detail(None, None, requesting_user=admin_user)
         assert 'activite_par_admin' not in result
+
+    def test_mon_activite_bulk_archive_counts_real_employee_count_not_log_rows(self, admin_user):
+        # Une seule ligne d'audit (bulk archive) mais 3 employés concernés
+        # (details['nb']) — ne doit pas compter 1.
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.DELETE_EMP,
+            target_model='Employee', target_label='Archivage en masse — 3 employé(s)',
+            details={'ids': ['a', 'b', 'c'], 'nb': 3, 'action': 'archive'},
+        )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert result['mon_activite']['employes_archives'] == 3
+
+    def test_mon_activite_single_hard_delete_counts_as_employes_supprimes(self, admin_user):
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.DELETE_EMP,
+            target_model='Employee', target_id='x', target_label='x',
+            details={'matricule': 'EMP-001', 'nom': 'X Y'},
+        )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert result['mon_activite']['employes_supprimes'] == 1
+        assert result['mon_activite']['contrats_supprimes'] == 0
+
+    def test_mon_activite_contrat_deletion_not_counted_as_employe_suppression(self, admin_user):
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.DELETE_EMP,
+            target_model='Employee', target_id='x', target_label='x',
+            details={'action': 'delete_contrat', 'numero_contrat': 'CTR-1'},
+        )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert result['mon_activite']['contrats_supprimes'] == 1
+        assert result['mon_activite']['employes_supprimes'] == 0
+
+    def test_mon_activite_password_change_counted_as_comptes_mdp(self, admin_user):
+        AuditLog.objects.create(
+            user=admin_user, action=AuditLog.Action.MODIFY_EMP,
+            target_model='User', target_id='x', target_label='x',
+            details={'action': 'change_password'},
+        )
+        result = build_stats_detail(None, None, requesting_user=admin_user)
+        assert result['mon_activite']['comptes_mdp'] == 1
+        assert result['mon_activite']['employes_autres'] == 0
 
     def test_activite_par_admin_present_for_superadmin(self):
         superadmin = User.objects.create_user(

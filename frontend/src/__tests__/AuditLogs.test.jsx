@@ -47,14 +47,27 @@ const mockResponse = (logs, total = logs.length, total_pages = 1) => ({
   data: { results: logs, total, total_pages },
 });
 
-const renderPage = () =>
+const renderPage = (initialEntries = ["/audit"]) =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <AuditLogs />
     </MemoryRouter>
   );
 
 beforeEach(() => jest.clearAllMocks());
+
+describe("AuditLogs — pré-filtrage depuis l'URL (lien 'Voir l'audit' de /statistiques)", () => {
+  test("pré-remplit les filtres utilisateur/date depuis la query string", async () => {
+    api.get.mockResolvedValue(mockResponse([]));
+    renderPage(["/audit?user=jadmin&date_debut=2026-01-01&date_fin=2026-12-31"]);
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        "/reporting/audit-logs/",
+        { params: expect.objectContaining({ user: "jadmin", date_debut: "2026-01-01", date_fin: "2026-12-31" }) },
+      );
+    });
+  });
+});
 
 describe("AuditLogs — rendu initial", () => {
   test("affiche le titre Journal d'Audit", async () => {

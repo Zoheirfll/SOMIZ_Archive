@@ -44,7 +44,10 @@ export const hexToRgba = (hex, alpha) => {
 // quand aucune couleur de dossier n'est fournie.
 export const FALLBACK_FOLDER_COLOR = "#D97706";
 
-export const folderHeaderStyle = (couleur) => {
+// `collapsed` referme visuellement le dossier sur lui-même (bordure/coins
+// arrondis sur les 4 côtés, comme s'il n'y avait pas de contenu en dessous)
+// — utilisé quand le dossier est replié (voir openFolders/toggleFolder).
+export const folderHeaderStyle = (couleur, collapsed = false) => {
   const c = couleur || FALLBACK_FOLDER_COLOR;
   return {
     marginTop: 8,
@@ -54,13 +57,40 @@ export const folderHeaderStyle = (couleur) => {
     gap: 6,
     background: hexToRgba(c, 0.12),
     border: `1px solid ${hexToRgba(c, 0.35)}`,
-    borderBottom: "none",
-    borderRadius: "8px 8px 0 0",
+    borderBottom: collapsed ? `1px solid ${hexToRgba(c, 0.35)}` : "none",
+    borderRadius: collapsed ? 8 : "8px 8px 0 0",
     color: c,
     fontSize: 11,
     fontWeight: 700,
     textTransform: "uppercase",
     letterSpacing: "0.04em",
+    cursor: "pointer",
+    userSelect: "none",
+    justifyContent: "space-between",
+    marginBottom: collapsed ? 10 : 0,
+  };
+};
+
+// Puce de bascule (▾) à droite de l'en-tête d'un dossier — rotation
+// -90°/0° (fermé/ouvert) plutôt qu'un glyphe texte différent : affordance
+// plus visible (fond teinté + taille) et cohérente avec le chevron rotatif
+// déjà utilisé pour le menu Administration (Navbar.jsx).
+export const folderToggleStyle = (couleur, open) => {
+  const c = couleur || FALLBACK_FOLDER_COLOR;
+  return {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    background: hexToRgba(c, 0.22),
+    fontSize: 12,
+    fontWeight: 800,
+    lineHeight: 1,
+    flexShrink: 0,
+    transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+    transition: "transform 0.18s ease",
   };
 };
 

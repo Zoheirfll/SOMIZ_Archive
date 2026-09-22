@@ -47,8 +47,10 @@ const baseStats = {
   completude_par_direction: [],
   completude_par_departement: [],
   mon_activite: {
-    employes_crees: 4, employes_modifies: 6, employes_archives: 1,
-    documents_uploades: 20, documents_supprimes: 2, documents_modifies: 5,
+    employes_crees: 4, employes_transferts: 3, employes_carriere: 2, employes_champs: 1,
+    employes_photo: 0, employes_archives: 1, employes_restaures: 0, employes_supprimes: 0,
+    employes_autres: 0, contrats_crees_modifies: 0, contrats_supprimes: 0,
+    documents_uploades: 20, documents_supprimes: 2, documents_modifies: 5, comptes_mdp: 0,
   },
 };
 
@@ -232,9 +234,11 @@ describe("Statistiques — mon activité", () => {
     renderPage("ADMIN");
     await screen.findByText("Recrutements");
     expect(screen.getByText("Mon activité")).toBeInTheDocument();
-    expect(screen.getByText("Employés créés")).toBeInTheDocument();
+    expect(screen.getByText("Employés")).toBeInTheDocument();
+    expect(screen.getByText("Créés")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
-    expect(screen.getByText("Documents uploadés")).toBeInTheDocument();
+    expect(screen.getByText("Documents")).toBeInTheDocument();
+    expect(screen.getByText("Uploadés")).toBeInTheDocument();
     expect(screen.getByText("20")).toBeInTheDocument();
   });
 
@@ -244,7 +248,25 @@ describe("Statistiques — mon activité", () => {
     });
     renderPage("ADMIN");
     await screen.findByText("Recrutements");
-    expect(screen.queryByText("Employés archivés")).not.toBeInTheDocument();
+    expect(screen.queryByText("Archivés")).not.toBeInTheDocument();
+  });
+
+  test("regroupe les compteurs par entité (Employés/Documents...)", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage("ADMIN");
+    await screen.findByText("Recrutements");
+    expect(screen.getByText("Employés")).toBeInTheDocument();
+    expect(screen.getByText("Documents")).toBeInTheDocument();
+    expect(screen.getByText("Transférés (organisation)")).toBeInTheDocument();
+    expect(screen.getByText("Carrière (fonction/catégorie/échelle)")).toBeInTheDocument();
+  });
+
+  test("affiche un lien vers le journal d'audit du compte connecté", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage("ADMIN");
+    await screen.findByText("Recrutements");
+    const link = screen.getByText("Voir mon journal d'audit →");
+    expect(link.getAttribute("href")).toBe("/audit?user=admin&date_debut=2026-01-01&date_fin=2026-12-31");
   });
 
   test("affiche un message si aucune activité sur la période", async () => {
@@ -252,8 +274,10 @@ describe("Statistiques — mon activité", () => {
       data: {
         ...baseStats,
         mon_activite: {
-          employes_crees: 0, employes_modifies: 0, employes_archives: 0,
-          documents_uploades: 0, documents_supprimes: 0, documents_modifies: 0,
+          employes_crees: 0, employes_transferts: 0, employes_carriere: 0, employes_champs: 0,
+          employes_photo: 0, employes_archives: 0, employes_restaures: 0, employes_supprimes: 0,
+          employes_autres: 0, contrats_crees_modifies: 0, contrats_supprimes: 0,
+          documents_uploades: 0, documents_supprimes: 0, documents_modifies: 0, comptes_mdp: 0,
         },
       },
     });
@@ -275,14 +299,18 @@ describe("Statistiques — mon activité", () => {
         ...baseStats,
         activite_par_admin: [
           {
-            id: "a1", nom_complet: "Jean Admin", role: "ADMIN",
-            employes_crees: 4, employes_modifies: 0, employes_archives: 0,
-            documents_uploades: 20, documents_supprimes: 0, documents_modifies: 0,
+            id: "a1", username: "jadmin", nom_complet: "Jean Admin", role: "ADMIN",
+            employes_crees: 4, employes_transferts: 0, employes_carriere: 0, employes_champs: 0,
+            employes_archives: 0, employes_restaures: 0, employes_supprimes: 0,
+            contrats_crees_modifies: 0, contrats_supprimes: 0,
+            documents_uploades: 20, documents_supprimes: 0, documents_modifies: 0, comptes_mdp: 0,
           },
           {
-            id: "a2", nom_complet: "Marie Super", role: "SUPERADMIN",
-            employes_crees: 0, employes_modifies: 0, employes_archives: 0,
-            documents_uploades: 0, documents_supprimes: 0, documents_modifies: 0,
+            id: "a2", username: "msuper", nom_complet: "Marie Super", role: "SUPERADMIN",
+            employes_crees: 0, employes_transferts: 0, employes_carriere: 0, employes_champs: 0,
+            employes_archives: 0, employes_restaures: 0, employes_supprimes: 0,
+            contrats_crees_modifies: 0, contrats_supprimes: 0,
+            documents_uploades: 0, documents_supprimes: 0, documents_modifies: 0, comptes_mdp: 0,
           },
         ],
       },
@@ -292,9 +320,13 @@ describe("Statistiques — mon activité", () => {
     expect(screen.getByText("Activité par administrateur")).toBeInTheDocument();
     expect(screen.getByText("Jean Admin")).toBeInTheDocument();
     expect(screen.getByText("Marie Super")).toBeInTheDocument();
-    // "Modifiés" est nul pour toutes les lignes -> colonne masquée
-    expect(screen.queryByRole("columnheader", { name: "Modifiés" })).not.toBeInTheDocument();
+    // "Transférés" est nul pour toutes les lignes -> colonne masquée
+    expect(screen.queryByRole("columnheader", { name: "Transférés" })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Créés" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Uploadés" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Doc. uploadés" })).toBeInTheDocument();
+    // Lien "Audit →" par ligne, pré-filtré sur le compte + la période
+    const links = screen.getAllByText("Audit →");
+    expect(links).toHaveLength(2);
+    expect(links[0].getAttribute("href")).toBe("/audit?user=jadmin&date_debut=2026-01-01&date_fin=2026-12-31");
   });
 });

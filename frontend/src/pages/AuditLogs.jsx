@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
@@ -71,8 +72,20 @@ const AuditLogs = () => {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [scope, setScope] = useState("all");
-  const [filters, setFilters] = useState({ user: "", action: "", date_debut: "", date_fin: "" });
-  const [datePreset, setDatePreset] = useState("tout");
+  const [searchParams] = useSearchParams();
+  // Pré-remplissage depuis l'URL (ex. lien "Voir l'audit" de /statistiques,
+  // qui filtre déjà sur un compte + une période) — pris une seule fois au
+  // montage, un changement des filtres via l'UI ne doit pas re-synchroniser
+  // sur l'URL d'origine.
+  const [filters, setFilters] = useState(() => ({
+    user: searchParams.get("user") || "",
+    action: searchParams.get("action") || "",
+    date_debut: searchParams.get("date_debut") || "",
+    date_fin: searchParams.get("date_fin") || "",
+  }));
+  const [datePreset, setDatePreset] = useState(() => (
+    searchParams.get("date_debut") || searchParams.get("date_fin") ? null : "tout"
+  ));
   const [filterableUsers, setFilterableUsers] = useState([]);
   const isMobile = useIsMobile();
 
