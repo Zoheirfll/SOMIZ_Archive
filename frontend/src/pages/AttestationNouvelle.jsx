@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import api from "../services/api";
 import { useTheme } from "../context/ThemeContext";
 import { heroPadding, contentPadding } from "../styles/theme";
@@ -74,32 +74,50 @@ export default function AttestationNouvelle() {
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
         padding: heroPadding(isMobile),
       }}>
-        <h1 style={{ color: "#fff", fontSize: 22, margin: 0 }}>Nouvelle demande d'attestation</h1>
+        <div style={{ maxWidth: 560, margin: "0 auto" }}>
+          <Link to="/attestations" style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+            ← Retour aux demandes
+          </Link>
+          <h1 style={{ color: "#fff", fontSize: 24, margin: "8px 0 0", fontWeight: 800 }}>Nouvelle demande d'attestation</h1>
+        </div>
       </div>
-      <div style={{ padding: contentPadding(isMobile), maxWidth: 600, margin: "0 auto" }}>
-        <form onSubmit={handleSubmit}>
+      <div style={{ padding: contentPadding(isMobile), maxWidth: 560, margin: "0 auto" }}>
+        <form onSubmit={handleSubmit} style={{
+          background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`,
+          boxShadow: theme.shadowMd, padding: 24,
+        }}>
           <label htmlFor="employe-search" style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>Employé</label>
-          <input
-            id="employe-search"
-            className="input-focus"
-            value={employee ? `${employee.prenom} ${employee.nom}` : query}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Nom, prénom ou matricule..."
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 8 }}
-          />
-          {suggestions.length > 0 && !employee && (
-            <div style={{ border: `1px solid ${theme.border}`, borderRadius: 6, marginBottom: 12 }}>
-              {suggestions.map((s) => (
-                <div
-                  key={s.id}
-                  onClick={() => { setEmployee(s); setSuggestions([]); }}
-                  style={{ padding: 8, cursor: "pointer", borderBottom: `1px solid ${theme.borderLight}` }}
-                >
-                  {s.prenom} {s.nom} — {s.matricule}
-                </div>
-              ))}
-            </div>
-          )}
+          <div style={{ position: "relative" }}>
+            <input
+              id="employe-search"
+              className="input-focus"
+              value={employee ? `${employee.prenom} ${employee.nom}` : query}
+              onChange={(e) => handleSearch(e.target.value)}
+              placeholder="Nom, prénom ou matricule..."
+              autoComplete="off"
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${employee ? theme.primaryBorder : theme.border}`, marginTop: 4, marginBottom: 8, background: employee ? theme.primaryBg : theme.bg, fontSize: 14 }}
+            />
+            {suggestions.length > 0 && !employee && (
+              <div style={{
+                position: "absolute", zIndex: 10, left: 0, right: 0, top: "100%",
+                background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 8,
+                boxShadow: theme.shadowLg, marginTop: -4, overflow: "hidden",
+              }}>
+                {suggestions.map((s) => (
+                  <div
+                    key={s.id}
+                    onClick={() => { setEmployee(s); setSuggestions([]); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = theme.primaryBg; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    style={{ padding: "9px 12px", cursor: "pointer", borderBottom: `1px solid ${theme.borderLight}`, fontSize: 13, transition: "background 0.1s" }}
+                  >
+                    <span style={{ fontWeight: 600, color: theme.text }}>{s.prenom} {s.nom}</span>
+                    <span style={{ color: theme.textMuted }}> — {s.matricule}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {contrats.length > 1 && (
             <>
@@ -107,7 +125,7 @@ export default function AttestationNouvelle() {
               <select
                 value={contratId}
                 onChange={(e) => setContratId(e.target.value)}
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12 }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12, fontSize: 14 }}
               >
                 <option value="">-- Sélectionner --</option>
                 {contrats.map((c) => (
@@ -117,7 +135,7 @@ export default function AttestationNouvelle() {
             </>
           )}
 
-          <label htmlFor="motif" style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>Motif</label>
+          <label htmlFor="motif" style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginTop: 4, display: "block" }}>Motif</label>
           <input
             id="motif"
             className="input-focus"
@@ -125,7 +143,7 @@ export default function AttestationNouvelle() {
             onChange={(e) => setMotif(e.target.value)}
             placeholder="Ex. Dossier administratif, Banque..."
             required
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12 }}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12, fontSize: 14 }}
           />
 
           <label htmlFor="commentaire" style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>Commentaire (optionnel)</label>
@@ -134,21 +152,26 @@ export default function AttestationNouvelle() {
             value={commentaire}
             onChange={(e) => setCommentaire(e.target.value)}
             rows={3}
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 16 }}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 16, fontSize: 14, resize: "vertical" }}
           />
 
-          {error && <div style={{ color: theme.danger, marginBottom: 12 }}>{error}</div>}
+          {error && (
+            <div style={{ color: theme.danger, background: theme.dangerBg, borderRadius: 8, padding: "9px 12px", fontSize: 13, marginBottom: 14 }}>
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={submitting}
             className="btn-lift"
             style={{
-              background: theme.primary, color: "#fff", border: "none", borderRadius: 8,
-              padding: "10px 20px", fontWeight: 700, cursor: submitting ? "default" : "pointer",
+              background: theme.primary, color: "#fff", border: "none", borderRadius: 9,
+              padding: "11px 22px", fontWeight: 700, fontSize: 13, cursor: submitting ? "default" : "pointer",
+              opacity: submitting ? 0.7 : 1, width: isMobile ? "100%" : "auto",
             }}
           >
-            Envoyer la demande
+            {submitting ? "Envoi..." : "Envoyer la demande"}
           </button>
         </form>
       </div>

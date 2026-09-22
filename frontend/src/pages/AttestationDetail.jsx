@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -9,12 +9,84 @@ import StatutBadge from "../components/attestations/StatutBadge";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
+import { EyeIcon, CheckIcon, DownloadIcon } from "../components/icons";
 
 const PROCHAIN_STATUT = {
   recue: { value: "imprimee", label: "Marquer Imprimée" },
   imprimee: { value: "signee", label: "Marquer Signée" },
   signee: { value: "prete", label: "Marquer Prête" },
   prete: { value: "recuperee", label: "Marquer Récupérée" },
+};
+
+const ETAPES = [
+  { value: "recue", label: "Reçue" },
+  { value: "imprimee", label: "Imprimée" },
+  { value: "signee", label: "Signée" },
+  { value: "prete", label: "Prête" },
+  { value: "recuperee", label: "Récupérée" },
+];
+
+const Field = ({ label, value, theme, danger }) => (
+  <div>
+    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: theme.textMuted, marginBottom: 3 }}>
+      {label}
+    </div>
+    <div style={{ fontSize: 14, color: danger ? theme.danger : theme.text, fontWeight: danger ? 600 : 500 }}>
+      {value}
+    </div>
+  </div>
+);
+
+const StatutStepper = ({ statutActuel, theme, isMobile }) => {
+  if (statutActuel === "rejetee") {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, color: theme.danger,
+        background: theme.dangerBg, borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700,
+      }}>
+        Demande rejetée
+      </div>
+    );
+  }
+  const idxActuel = ETAPES.findIndex((e) => e.value === statutActuel);
+  return (
+    <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+      {ETAPES.map((etape, i) => {
+        const atteinte = i <= idxActuel;
+        const courante = i === idxActuel;
+        return (
+          <div key={etape.value} style={{ display: "flex", alignItems: "center", flex: i < ETAPES.length - 1 ? 1 : "0 0 auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                background: atteinte ? theme.primary : theme.surface,
+                border: `2px solid ${atteinte ? theme.primary : theme.border}`,
+                color: atteinte ? "#fff" : theme.textMuted,
+                boxShadow: courante ? `0 0 0 4px ${theme.primaryBg}` : "none",
+                transition: "all 0.2s",
+              }}>
+                {atteinte ? <CheckIcon size={12} /> : <span style={{ fontSize: 10, fontWeight: 700 }}>{i + 1}</span>}
+              </div>
+              {!isMobile && (
+                <div style={{
+                  fontSize: 10, fontWeight: courante ? 700 : 600, marginTop: 6, textAlign: "center",
+                  color: atteinte ? theme.text : theme.textMuted, whiteSpace: "nowrap",
+                }}>
+                  {etape.label}
+                </div>
+              )}
+            </div>
+            {i < ETAPES.length - 1 && (
+              <div style={{
+                flex: 1, height: 2, margin: isMobile ? "0 2px" : "0 4px -18px",
+                background: i < idxActuel ? theme.primary : theme.border, transition: "all 0.2s",
+              }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 export default function AttestationDetail() {
@@ -89,12 +161,19 @@ export default function AttestationDetail() {
   if (loading || !demande) return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
-      <div style={{ textAlign: "center", padding: 40, color: theme.textSecondary }}>Chargement...</div>
+      <div style={{ textAlign: "center", padding: 60, color: theme.textSecondary }}>Chargement...</div>
     </PageBackground>
   );
 
   const peutAnnuler = demande.demandeur === user?.id && demande.statut === "recue";
   const suivant = PROCHAIN_STATUT[demande.statut];
+  const cardStyle = {
+    background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, boxShadow: theme.shadowMd,
+  };
+  const btnBase = {
+    display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 9, padding: "9px 16px",
+    fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: theme.fontFamily,
+  };
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -103,49 +182,76 @@ export default function AttestationDetail() {
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
         padding: heroPadding(isMobile),
       }}>
-        <h1 style={{ color: "#fff", fontSize: 22, margin: 0 }}>{demande.reference}</h1>
-        <div style={{ marginTop: 8 }}><StatutBadge statut={demande.statut} /></div>
+        <div style={{ maxWidth: 800, margin: "0 auto" }}>
+          <Link to="/attestations" style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+            ← Retour aux demandes
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+            <h1 style={{ color: "#fff", fontSize: 24, margin: 0, fontWeight: 800 }}>{demande.reference}</h1>
+            <StatutBadge statut={demande.statut} />
+          </div>
+        </div>
       </div>
-      <div style={{ padding: contentPadding(isMobile), maxWidth: 700, margin: "0 auto" }}>
-        <div style={{ background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, padding: 20, marginBottom: 16 }}>
-          <p><strong>Employé :</strong> {demande.employee_nom}</p>
-          <p><strong>Motif :</strong> {demande.motif}</p>
-          {demande.commentaire && <p><strong>Commentaire :</strong> {demande.commentaire}</p>}
-          <p><strong>Demandeur :</strong> {demande.demandeur_nom}</p>
-          {demande.motif_rejet && <p style={{ color: theme.danger }}><strong>Motif de rejet :</strong> {demande.motif_rejet}</p>}
+
+      <div style={{ padding: contentPadding(isMobile), maxWidth: 800, margin: "0 auto" }}>
+        <div style={{ ...cardStyle, padding: isMobile ? "20px 16px 28px" : "24px 32px 32px", marginBottom: 20 }}>
+          <StatutStepper statutActuel={demande.statut} theme={theme} isMobile={isMobile} />
         </div>
 
-        {message && <div style={{ color: theme.danger, marginBottom: 12 }}>{message}</div>}
+        <div style={{ ...cardStyle, padding: 22, marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 18 }}>
+            <Field label="Employé" value={demande.employee_nom} theme={theme} />
+            <Field label="Demandeur" value={demande.demandeur_nom} theme={theme} />
+            <Field label="Motif" value={demande.motif} theme={theme} />
+            {demande.contrat_numero && <Field label="Contrat" value={demande.contrat_numero} theme={theme} />}
+            {demande.traite_par_nom && <Field label="Traité par" value={demande.traite_par_nom} theme={theme} />}
+          </div>
+          {demande.commentaire && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${theme.border}` }}>
+              <Field label="Commentaire" value={demande.commentaire} theme={theme} />
+            </div>
+          )}
+          {demande.motif_rejet && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${theme.border}` }}>
+              <Field label="Motif de rejet" value={demande.motif_rejet} theme={theme} danger />
+            </div>
+          )}
+        </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {message && (
+          <div style={{
+            color: theme.danger, background: theme.dangerBg, borderRadius: 10, padding: "10px 14px",
+            fontSize: 13, marginBottom: 16,
+          }}>
+            {message}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
           {isAdmin && (
             <button onClick={ouvrirApercu} className="btn-lift" style={{
-              background: theme.surface, color: theme.primary, border: `1px solid ${theme.primaryBorder}`,
-              borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer",
+              ...btnBase, background: theme.surface, color: theme.primary, border: `1px solid ${theme.primaryBorder}`,
             }}>
-              Aperçu / Imprimer
+              <EyeIcon size={15} /> Aperçu / Imprimer
             </button>
           )}
           {isAdmin && suivant && (
             <button onClick={avancerStatut} className="btn-lift" style={{
-              background: theme.primary, color: "#fff", border: "none",
-              borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer",
+              ...btnBase, background: theme.primary, color: "#fff", border: "none",
             }}>
-              {suivant.label}
+              <CheckIcon size={13} /> {suivant.label}
             </button>
           )}
           {isAdmin && demande.statut !== "recuperee" && demande.statut !== "rejetee" && (
             <button onClick={rejeter} className="btn-lift" style={{
-              background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}`,
-              borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer",
+              ...btnBase, background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}`,
             }}>
               Rejeter
             </button>
           )}
           {peutAnnuler && (
             <button onClick={annuler} className="btn-lift" style={{
-              background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}`,
-              borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer",
+              ...btnBase, background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}`,
             }}>
               Annuler la demande
             </button>
@@ -153,15 +259,23 @@ export default function AttestationDetail() {
         </div>
 
         {isAdmin && (
-          <div style={{ marginTop: 20 }}>
-            <label style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>
+          <div style={{ ...cardStyle, padding: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4, color: theme.textMuted, marginBottom: 10 }}>
               Scan du document signé (optionnel)
+            </div>
+            <label className="btn-lift" style={{
+              ...btnBase, background: theme.surface, color: theme.text, border: `1px dashed ${theme.border}`,
+              cursor: "pointer",
+            }}>
+              <DownloadIcon size={14} /> Choisir un fichier
+              <input type="file" accept="application/pdf,image/*" onChange={uploadScan} style={{ display: "none" }} />
             </label>
-            <input type="file" accept="application/pdf,image/*" onChange={uploadScan} style={{ display: "block", marginTop: 6 }} />
             {demande.scan_document && (
-              <a href={demande.scan_document} target="_blank" rel="noreferrer" style={{ color: theme.primary, fontSize: 12 }}>
-                Voir le scan déjà envoyé
-              </a>
+              <div style={{ marginTop: 10 }}>
+                <a href={demande.scan_document} target="_blank" rel="noreferrer" style={{ color: theme.primary, fontSize: 12, fontWeight: 600 }}>
+                  Voir le scan déjà envoyé →
+                </a>
+              </div>
             )}
           </div>
         )}
