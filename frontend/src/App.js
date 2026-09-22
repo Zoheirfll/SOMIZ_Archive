@@ -28,6 +28,9 @@ const ContratDetail = lazy(() => import("./pages/ContratDetail"));
 const Organigramme = lazy(() => import("./pages/Organigramme"));
 const Consentement = lazy(() => import("./pages/Consentement"));
 const RechercheDocuments = lazy(() => import("./pages/RechercheDocuments"));
+const Attestations = lazy(() => import("./pages/Attestations"));
+const AttestationNouvelle = lazy(() => import("./pages/AttestationNouvelle"));
+const AttestationDetail = lazy(() => import("./pages/AttestationDetail"));
 
 // Route racine "/" — jamais un vrai écran, juste un aiguillage vers la
 // connexion ou l'accueil selon l'état de session.
@@ -108,6 +111,30 @@ function App() {
             element={
               <ProtectedRoute adminOnly>
                 <Statistiques />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/attestations"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}>
+                <Attestations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/attestations/nouvelle"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}>
+                <AttestationNouvelle />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/attestations/:id"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}>
+                <AttestationDetail />
               </ProtectedRoute>
             }
           />

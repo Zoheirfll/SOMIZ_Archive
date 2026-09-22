@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { logout } from "../services/auth";
+import api from "../services/api";
 import { useTheme, useThemeMode } from "../context/ThemeContext";
 import useIsMobile from "../hooks/useIsMobile";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
@@ -74,13 +75,34 @@ const Navbar = () => {
     navigate("/login");
   };
 
+  const [pendingAttestations, setPendingAttestations] = useState(0);
+
+  useEffect(() => {
+    if (!["ADMIN", "SUPERADMIN"].includes(user?.role)) return;
+    let cancelled = false;
+    api.get("/attestations/demandes/", { params: { pending: 1 } })
+      .then((res) => {
+        if (cancelled) return;
+        const results = res.data?.results || res.data || [];
+        setPendingAttestations(results.length);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.role]);
+
   const navLinks = [
     { path: "/employees", label: "Personnel" },
     { path: "/organigramme", label: "Organigramme" },
+    {
+      path: "/attestations", label: "Attestations",
+      show: ["ADMIN", "SUPERADMIN", "GESTIONNAIRE"].includes(user?.role),
+    },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
     { path: "/recherche-documents", label: "Recherche OCR", adminOnly: true },
-  ].filter((item) => !item.adminOnly || ["ADMIN", "SUPERADMIN"].includes(user?.role));
+  ].filter((item) =>
+    item.show !== undefined ? item.show : (!item.adminOnly || ["ADMIN", "SUPERADMIN"].includes(user?.role))
+  );
 
   const adminMenuLinks = [
     { path: "/import", label: "Import" },
@@ -174,6 +196,15 @@ const Navbar = () => {
                 }}
               >
                 {item.label}
+                {item.path === "/attestations" && pendingAttestations > 0 && (
+                  <span style={{
+                    marginLeft: 6, background: theme.danger, color: "#fff",
+                    borderRadius: 999, fontSize: 10, fontWeight: 700,
+                    padding: "1px 6px", display: "inline-block",
+                  }}>
+                    {pendingAttestations}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -511,6 +542,15 @@ const Navbar = () => {
                   }}
                 >
                   {item.label}
+                  {item.path === "/attestations" && pendingAttestations > 0 && (
+                    <span style={{
+                      marginLeft: 6, background: theme.danger, color: "#fff",
+                      borderRadius: 999, fontSize: 10, fontWeight: 700,
+                      padding: "1px 6px", display: "inline-block",
+                    }}>
+                      {pendingAttestations}
+                    </span>
+                  )}
                 </button>
               );
             })}

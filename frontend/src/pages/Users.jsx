@@ -154,10 +154,11 @@ const Users = () => {
         nom: form.nom,
         prenom: form.prenom,
         role: form.role,
+        libelle_role: form.role === "GESTIONNAIRE" ? (form.libelle_role || "") : "",
         password: form.password,
       });
       const hasScope =
-        form.role === "CONSULTANT" &&
+        ["CONSULTANT", "GESTIONNAIRE"].includes(form.role) &&
         (scopeForm.directions.length > 0 ||
           scopeForm.poles.length > 0 ||
           scopeForm.departements.length > 0 ||
@@ -178,7 +179,7 @@ const Users = () => {
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
-      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", password: "", password2: "" });
+      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
@@ -370,11 +371,25 @@ const Users = () => {
                   <label style={labelStyle}>Rôle</label>
                   <select name="role" value={form.role} onChange={handleChange} className="input-focus" style={inputStyle}>
                     <option value="CONSULTANT">Consultant (lecture seule)</option>
+                    <option value="GESTIONNAIRE">Gestionnaire</option>
                     {user?.role === "SUPERADMIN" && (
                       <option value="ADMIN">Administrateur</option>
                     )}
                   </select>
                 </div>
+
+                {form.role === "GESTIONNAIRE" && (
+                  <div>
+                    <label style={labelStyle}>Libellé d'affichage (optionnel)</label>
+                    <input
+                      name="libelle_role"
+                      value={form.libelle_role || ""}
+                      onChange={handleChange}
+                      placeholder="Ex. Secrétaire, Superviseur..."
+                      className="input-focus" style={inputStyle}
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label style={labelStyle}>Mot de passe</label>
@@ -407,7 +422,7 @@ const Users = () => {
                 </div>
               </div>
 
-              {form.role === "CONSULTANT" && (
+              {["CONSULTANT", "GESTIONNAIRE"].includes(form.role) && (
                 <div style={{ borderTop: `1px solid ${theme.border}`, paddingTop: 20, marginTop: 24 }}>
                   <div style={{ color: theme.text, fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
                     Périmètre d'accès (optionnel)
@@ -561,7 +576,7 @@ const Users = () => {
                         fontSize: 12,
                         fontWeight: 600,
                       }}>
-                        {u.role}
+                        {u.role === "GESTIONNAIRE" && u.libelle_role ? u.libelle_role : u.role}
                       </span>
                     </td>
                     <td style={{ padding: "13px 16px", fontSize: 13, maxWidth: 220 }}>
@@ -679,7 +694,7 @@ const Users = () => {
                           >
                             <IconKey /> Reset MDP
                           </button>
-                          {u.role === "CONSULTANT" && (
+                          {["CONSULTANT", "GESTIONNAIRE"].includes(u.role) && (
                             <button
                               onClick={() => navigate(`/users/${u.id}/perimetre`)}
                               style={{

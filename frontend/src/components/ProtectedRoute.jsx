@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const ProtectedRoute = ({ children, adminOnly = false }) => {
+const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = null }) => {
   const { user, authenticated, authChecked } = useAuth();
   const location = useLocation();
   if (!authChecked) return null; // Attendre la vérification cookie avant de rediriger
@@ -10,6 +10,7 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
     return <Navigate to="/consentement" state={{ from: location.pathname }} replace />;
   }
   if (adminOnly && !["ADMIN", "SUPERADMIN"].includes(user?.role)) return <Navigate to="/employees" replace />;
+  if (allowedRoles && !allowedRoles.includes(user?.role)) return <Navigate to="/employees" replace />;
   return children;
 };
 

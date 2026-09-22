@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import SecureDocViewer from "../SecureDocViewer";
@@ -86,6 +87,7 @@ const DossierTab = ({
   busyIds,
 }) => {
   const theme = useTheme();
+  const navigate = useNavigate();
   return (
   <>
     {activeTab === "dossier" && (
@@ -621,6 +623,38 @@ const DossierTab = ({
                   documents pour accéder à une action pourtant fréquente
                   (upload). Inchangé sur desktop, où la sidebar entière
                   reste visible. */}
+              {["ADMIN", "SUPERADMIN", "GESTIONNAIRE"].includes(user?.role) && (
+                <div
+                  style={{
+                    order: isMobile ? -3 : 999999,
+                    padding: "0 16px 12px",
+                    background: theme.bg,
+                  }}
+                >
+                  <button
+                    onClick={() => navigate("/attestations/nouvelle", { state: { employeeId: employee.id } })}
+                    className="btn-lift"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      width: "100%",
+                      background: theme.surface,
+                      color: theme.primary,
+                      border: `1px solid ${theme.primaryBorder}`,
+                      borderRadius: 6,
+                      padding: "8px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Demander une attestation
+                  </button>
+                </div>
+              )}
+
               {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
                 <div
                   style={{

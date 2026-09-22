@@ -28,6 +28,73 @@ import "../styles/animations.css";
 
 const PAGE_SIZE = 25;
 
+// ─── CONFIGURATION ATTESTATION DE TRAVAIL ─────────────────────────────────────
+// Singleton — pas de RefTable/RefForm générique ici (une seule ligne, jamais
+// de liste), un formulaire dédié qui charge/enregistre directement
+// /attestations/config/.
+const AttestationConfigPanel = ({ theme }) => {
+  const [config, setConfig] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    api.get("/attestations/config/").then((res) => setConfig(res.data));
+  }, []);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await api.put("/attestations/config/", config);
+      setConfig(res.data);
+      setMessage("Configuration enregistrée.");
+    } catch {
+      setMessage("Erreur lors de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!config) return <div style={{ color: theme.textSecondary }}>Chargement...</div>;
+
+  const champ = (key, label) => (
+    <div style={{ marginBottom: 12 }} key={key}>
+      <label style={{ fontSize: 12, fontWeight: 700, color: theme.text, display: "block", marginBottom: 4 }}>
+        {label}
+      </label>
+      <input
+        className="input-focus"
+        value={config[key] || ""}
+        onChange={(e) => setConfig({ ...config, [key]: e.target.value })}
+        style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${theme.border}` }}
+      />
+    </div>
+  );
+
+  return (
+    <form onSubmit={handleSave} style={{ maxWidth: 500 }}>
+      {champ("societe_nom", "Nom de la société")}
+      {champ("societe_soustitre", "Sous-titre")}
+      {champ("societe_capital", "Capital social")}
+      {champ("holding", "Holding")}
+      {champ("adresse", "Adresse")}
+      {champ("ville", "Ville")}
+      {champ("telephone", "Téléphone")}
+      {champ("fax", "Fax")}
+      {champ("telex", "Télex")}
+      {champ("signataire_titre", "Titre du signataire")}
+      {champ("signataire_nom", "Nom du signataire")}
+      {message && <div style={{ color: theme.primary, marginBottom: 12 }}>{message}</div>}
+      <button type="submit" disabled={saving} className="btn-lift" style={{
+        background: theme.primary, color: "#fff", border: "none", borderRadius: 8,
+        padding: "10px 20px", fontWeight: 700, cursor: saving ? "default" : "pointer",
+      }}>
+        Enregistrer
+      </button>
+    </form>
+  );
+};
+
 // ─── PAGE PRINCIPALE ──────────────────────────────────────────────────────────
 
 const Parametres = () => {
@@ -786,6 +853,10 @@ const Parametres = () => {
 
           {/* Contenu onglet */}
           <div style={{ padding: 24, flex: 1, minWidth: 0 }}>
+          {activeTab === "attestation-config" ? (
+            <AttestationConfigPanel theme={theme} />
+          ) : (
+          <>
             <div
               style={{
                 display: "flex",
@@ -1012,6 +1083,8 @@ const Parametres = () => {
                 </button>
               </div>
             )}
+          </>
+          )}
           </div>
         </div>
       </div>

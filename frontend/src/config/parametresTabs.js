@@ -16,6 +16,7 @@ export const TABS = [
   { key: "motifs-archivage", label: "Motifs d'archivage" },
   { key: "types-documents", label: "Types de documents" },
   { key: "champs-personnalises", label: "Champs personnalisés" },
+  { key: "attestation-config", label: "Attestation de travail" },
 ];
 
 // Regroupement sémantique des 13 onglets pour la sidebar de navigation —
@@ -33,7 +34,7 @@ export const TAB_GROUPS = [
   },
   {
     label: "Dossier RH",
-    keys: ["types-documents", "champs-personnalises", "motifs-archivage"],
+    keys: ["types-documents", "champs-personnalises", "motifs-archivage", "attestation-config"],
   },
 ];
 
@@ -45,6 +46,7 @@ export const TAB_GROUPS = [
 export const IMPORT_UNSUPPORTED_TABS = new Set([
   "types-documents",
   "champs-personnalises",
+  "attestation-config",
 ]);
 
 // Tabs sans fusion manuelle côté backend (ReferentielMergeView) — mêmes
@@ -53,6 +55,7 @@ export const IMPORT_UNSUPPORTED_TABS = new Set([
 export const MERGE_UNSUPPORTED_TABS = new Set([
   "types-documents",
   "champs-personnalises",
+  "attestation-config",
 ]);
 
 // Colonnes obligatoires/optionnelles par onglet — reflète exactement
