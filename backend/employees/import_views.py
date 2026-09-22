@@ -834,6 +834,16 @@ class ReferentielImportView(APIView):
                     status=500
                 )
 
+            # Une entree CREATE_REF par ligne importee (pk deja assigne avant
+            # le bulk_create -- id = UUIDField(default=uuid.uuid4) -- pas
+            # besoin de requeter les objets crees pour retrouver leur id).
+            from audit.models import AuditLog
+            for obj in a_creer:
+                AuditLog.log(
+                    request, AuditLog.Action.CREATE_REF, target=obj,
+                    details={'model': ModelClass.__name__, 'nom': obj.nom, 'import': True},
+                )
+
         return Response({
             'nb_crees': nb_crees,
             'nb_erreurs': len(erreurs),

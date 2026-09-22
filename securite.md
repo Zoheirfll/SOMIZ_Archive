@@ -1009,6 +1009,65 @@ pendant que le serveur de dev tourne — aucune exposition en production
 
 ---
 
+## 38. Journalisation des mutations de référentiel — trou d'audit corrigé (2026-09-22) — ✅ Implémenté
+
+**Découvert en répondant à une question utilisateur** sur l'origine d'un
+type de document ("FORMATION SOMIZ") vu dans `/parametres` : aucune trace
+en git (donnée créée via l'UI, pas du code) et **aucune trace dans le
+journal d'audit** — `AuditLog.Action` ne couvrait que les mutations sur
+`Employee`/`EmployeeDocument`/`User` (+ `MERGE_REFERENTIEL` pour la fusion
+de référentiels déjà en place), jamais la création/modification/
+suppression d'un référentiel lui-même (`Direction`, `Departement`,
+`Service`, `Pole`, `Cellule`, `Section`, `Poste`, `TypeContrat`,
+`Categorie`, `Echelle`, `MotifArchivage`, `TypeDocument`,
+`ChampPersonnalise`). Un ADMIN pouvait donc créer/modifier/supprimer
+n'importe quel référentiel sans que ça laisse la moindre trace consultable
+dans `/audit` — problème de traçabilité RGPD/Loi 18-07, pas une faille
+d'accès (ces vues étaient déjà correctement réservées ADMIN via
+`IsAdmin`/`IsAdminOrConsultant`).
+
+**Correctif** :
+- 3 nouvelles actions `AuditLog.Action` : `CREATE_REF`, `MODIFY_REF`,
+  `DELETE_REF` — génériques (une seule entrée par type d'opération plutôt
+  qu'une action par modèle de référentiel, trop nombreux) ; `target_model`/
+  `target_label` (déjà présents sur `AuditLog`) distinguent lequel.
+- `ReferentielAuditMixin` (`employees/referentiel_views.py`) — hooks
+  `perform_create`/`perform_update`/`perform_destroy` génériques, câblés
+  sur toutes les vues CRUD de référentiel (`*ListCreateView`/
+  `*DetailView`). `perform_update` calcule un diff avant/après par
+  réflexion sur `instance._meta.fields` (même technique que
+  `ReferentielMergeView._reassigner`) — pas besoin d'énumérer les champs de
+  chaque modèle, et l'entrée n'est écrite que si au moins un champ a
+  réellement changé.
+- `TypeDocumentDetailView`/`_delete_type_document` : la suppression d'un
+  `TypeDocument` a sa propre logique (`TypeDocumentDestroyMixin.destroy()`
+  bypasse `perform_destroy`) — `DELETE_REF` ajouté directement dans
+  `_delete_type_document()` (les deux branches, avec et sans purge de
+  documents archivés), donc couvert aussi bien en suppression unitaire
+  qu'en suppression en masse (les deux réutilisent ce helper).
+- `ReferentielBulkDeleteView` (bouton "Supprimer la sélection") : une
+  entrée `DELETE_REF` **par élément** réellement supprimé (pas une entrée
+  groupée) — cohérent avec le reste de l'audit (une ligne = une ressource
+  affectée), décision validée avec l'utilisateur.
+- `ReferentielImportView` (import CSV/xlsx de référentiels) : une entrée
+  `CREATE_REF` **par ligne créée** (`details.import = True` pour les
+  distinguer d'une création manuelle), décision validée avec l'utilisateur
+  — les pk étant des UUID assignés avant `bulk_create()`, pas besoin de
+  requêter les objets créés pour retrouver leur id.
+- Non couvert volontairement (hors scope, granularité trop fine pour ce
+  chantier) : `ChampPersonnaliseOption`, `SystemFieldLabel`, les endpoints
+  de réordonnancement (`*ReorderView`) — purement cosmétiques/annexes, pas
+  des référentiels métier à part entière.
+- `EmployeeImportView` (import employés) n'est **pas concerné** — il
+  loggait déjà `CREATE_EMP` avec `referentiels_crees` en détail pour les
+  référentiels auto-créés en cascade pendant l'import (comportement
+  antérieur à ce chantier, inchangé).
+
+**Migration** : `audit/migrations/0007_alter_auditlog_action.py`
+(changement de `choices` uniquement, pas de nouvelle colonne).
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

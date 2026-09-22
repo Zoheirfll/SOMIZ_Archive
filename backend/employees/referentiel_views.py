@@ -71,6 +71,10 @@ def _delete_type_document(request, instance):
                 target=instance,
                 details={'purge_documents_archives': nb_archives},
             )
+            AuditLog.log(
+                request, AuditLog.Action.DELETE_REF, target=instance,
+                details={'model': 'TypeDocument', 'nom': instance.nom},
+            )
             instance.delete()
         for path in file_paths:
             if path:
@@ -82,6 +86,10 @@ def _delete_type_document(request, instance):
                         pass
         return None
 
+    AuditLog.log(
+        request, AuditLog.Action.DELETE_REF, target=instance,
+        details={'model': 'TypeDocument', 'nom': instance.nom},
+    )
     instance.delete()
     return None
 
@@ -93,6 +101,54 @@ class TypeDocumentDestroyMixin:
         if erreur:
             return Response({"error": erreur}, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _ref_label(instance):
+    return getattr(instance, 'nom', None) or str(instance)
+
+
+def _ref_snapshot(instance):
+    """Capture générique par réflexion (même technique que
+    ReferentielMergeView._reassigner) — évite d'énumérer les champs propres
+    à chaque modèle de référentiel pour calculer un diff avant/après."""
+    return {
+        f.name: str(getattr(instance, f.attname, None))
+        for f in instance._meta.fields
+        if f.name not in ('id', 'created_at')
+    }
+
+
+class ReferentielAuditMixin:
+    """Trace les créations/modifications/suppressions de référentiel dans
+    le journal d'audit (CREATE_REF/MODIFY_REF/DELETE_REF) — jusqu'ici seules
+    les mutations Employee/Document/User étaient tracées, pas les
+    référentiels (Direction, TypeDocument, Catégorie...), voir securite.md
+    point 38. À appliquer à toute nouvelle vue CRUD de référentiel."""
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        AuditLog.log(
+            self.request, AuditLog.Action.CREATE_REF, target=instance,
+            details={'model': instance.__class__.__name__, 'nom': _ref_label(instance)},
+        )
+
+    def perform_update(self, serializer):
+        avant = _ref_snapshot(serializer.instance)
+        instance = serializer.save()
+        apres = _ref_snapshot(instance)
+        diff = {k: {'de': avant.get(k), 'vers': v} for k, v in apres.items() if avant.get(k) != v}
+        if diff:
+            AuditLog.log(
+                self.request, AuditLog.Action.MODIFY_REF, target=instance,
+                details={'model': instance.__class__.__name__, 'nom': _ref_label(instance), 'champs': diff},
+            )
+
+    def perform_destroy(self, instance):
+        AuditLog.log(
+            self.request, AuditLog.Action.DELETE_REF, target=instance,
+            details={'model': instance.__class__.__name__, 'nom': _ref_label(instance)},
+        )
+        instance.delete()
 
 
 # ─── SERIALIZERS ──────────────────────────────────────────────────────────────
@@ -279,7 +335,7 @@ class ReferentielSearchMixin:
         return qs
 
 
-class DirectionListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class DirectionListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = DirectionSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -295,13 +351,13 @@ class DirectionListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView
             qs = self.request.user.accessible_directions_qs()
         return self.filter_search(qs)
 
-class DirectionDetailView(generics.RetrieveUpdateDestroyAPIView):
+class DirectionDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DirectionSerializer
     permission_classes = [IsAdmin]
     queryset = Direction.objects.all()
 
 
-class PoleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class PoleListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = PoleSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -315,7 +371,7 @@ class PoleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
             qs = qs.filter(direction=direction)
         return self.filter_search(qs)
 
-class PoleDetailView(generics.RetrieveUpdateDestroyAPIView):
+class PoleDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PoleSerializer
     permission_classes = [IsAdmin]
     queryset = Pole.objects.select_related('direction')
@@ -330,7 +386,7 @@ class PoleDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().destroy(request, *args, **kwargs)
 
 
-class DepartementListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class DepartementListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = DepartementSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -347,13 +403,13 @@ class DepartementListCreateView(ReferentielSearchMixin, generics.ListCreateAPIVi
             qs = qs.filter(pole=pole)
         return self.filter_search(qs)
 
-class DepartementDetailView(generics.RetrieveUpdateDestroyAPIView):
+class DepartementDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DepartementSerializer
     permission_classes = [IsAdmin]
     queryset = Departement.objects.select_related('direction', 'pole')
 
 
-class ServiceListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class ServiceListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = ServiceSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -367,13 +423,13 @@ class ServiceListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
             qs = qs.filter(departement=departement)
         return self.filter_search(qs)
 
-class ServiceDetailView(generics.RetrieveUpdateDestroyAPIView):
+class ServiceDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ServiceSerializer
     permission_classes = [IsAdmin]
     queryset = Service.objects.select_related('departement__direction')
 
 
-class CelluleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class CelluleListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = CelluleSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -390,7 +446,7 @@ class CelluleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
             qs = qs.filter(departement=departement)
         return self.filter_search(qs)
 
-class CelluleDetailView(generics.RetrieveUpdateDestroyAPIView):
+class CelluleDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CelluleSerializer
     permission_classes = [IsAdmin]
     queryset = Cellule.objects.select_related('direction', 'departement')
@@ -424,7 +480,7 @@ class SectionSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class SectionListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class SectionListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = SectionSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
@@ -441,26 +497,26 @@ class SectionListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
             qs = qs.filter(departement=departement)
         return self.filter_search(qs)
 
-class SectionDetailView(generics.RetrieveUpdateDestroyAPIView):
+class SectionDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = SectionSerializer
     permission_classes = [IsAdmin]
     queryset = Section.objects.select_related('direction', 'departement')
 
 
-class PosteListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class PosteListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = PosteSerializer
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
         return self.filter_search(Poste.objects.all())
 
-class PosteDetailView(generics.RetrieveUpdateDestroyAPIView):
+class PosteDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PosteSerializer
     permission_classes = [IsAdmin]
     queryset = Poste.objects.all()
 
 
-class TypeContratListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class TypeContratListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = TypeContratSerializer
     search_fields = ['nom']
     def get_permissions(self):
@@ -468,13 +524,13 @@ class TypeContratListCreateView(ReferentielSearchMixin, generics.ListCreateAPIVi
     def get_queryset(self):
         return self.filter_search(TypeContrat.objects.all())
 
-class TypeContratDetailView(generics.RetrieveUpdateDestroyAPIView):
+class TypeContratDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TypeContratSerializer
     permission_classes = [IsAdmin]
     queryset = TypeContrat.objects.all()
 
 
-class CategorieListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class CategorieListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = CategorieSerializer
     search_fields = ['nom']
     def get_permissions(self):
@@ -482,7 +538,7 @@ class CategorieListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView
     def get_queryset(self):
         return self.filter_search(Categorie.objects.all())
 
-class CategorieDetailView(generics.RetrieveUpdateDestroyAPIView):
+class CategorieDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CategorieSerializer
     permission_classes = [IsAdmin]
     queryset = Categorie.objects.all()
@@ -499,7 +555,7 @@ class EchelleSerializer(serializers.ModelSerializer):
         return obj.historiqueechelle_periodes.filter(date_fin__isnull=True).count()
 
 
-class EchelleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class EchelleListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = EchelleSerializer
     search_fields = ['nom']
     def get_permissions(self):
@@ -507,7 +563,7 @@ class EchelleListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
     def get_queryset(self):
         return self.filter_search(Echelle.objects.all())
 
-class EchelleDetailView(generics.RetrieveUpdateDestroyAPIView):
+class EchelleDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = EchelleSerializer
     permission_classes = [IsAdmin]
     queryset = Echelle.objects.all()
@@ -522,7 +578,7 @@ class MotifArchivageSerializer(serializers.ModelSerializer):
         return obj.employees.count()
 
 
-class MotifArchivageListCreateView(ReferentielSearchMixin, generics.ListCreateAPIView):
+class MotifArchivageListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
     serializer_class = MotifArchivageSerializer
     search_fields = ['nom']
     def get_permissions(self):
@@ -530,7 +586,7 @@ class MotifArchivageListCreateView(ReferentielSearchMixin, generics.ListCreateAP
     def get_queryset(self):
         return self.filter_search(MotifArchivage.objects.all())
 
-class MotifArchivageDetailView(generics.RetrieveUpdateDestroyAPIView):
+class MotifArchivageDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = MotifArchivageSerializer
     permission_classes = [IsAdmin]
     queryset = MotifArchivage.objects.all()
@@ -611,7 +667,7 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
             )
         return value
 
-class TypeDocumentListCreateView(generics.ListCreateAPIView):
+class TypeDocumentListCreateView(ReferentielAuditMixin, generics.ListCreateAPIView):
     serializer_class = TypeDocumentSerializer
     pagination_class = ReferentielPagination
     def get_permissions(self):
@@ -623,7 +679,7 @@ class TypeDocumentListCreateView(generics.ListCreateAPIView):
         # documents — ADMIN et CONSULTANT non scopé voient tout, inchangé.
         return self.request.user.accessible_types_documents_qs().select_related('parent')
 
-class TypeDocumentDetailView(TypeDocumentDestroyMixin, generics.RetrieveUpdateDestroyAPIView):
+class TypeDocumentDetailView(TypeDocumentDestroyMixin, ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TypeDocumentSerializer
     permission_classes = [IsAdmin]
     queryset = TypeDocument.objects.select_related('parent').all()
@@ -703,7 +759,7 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ChampPersonnaliseListCreateView(generics.ListCreateAPIView):
+class ChampPersonnaliseListCreateView(ReferentielAuditMixin, generics.ListCreateAPIView):
     serializer_class = ChampPersonnaliseSerializer
     pagination_class = ReferentielPagination
     def get_permissions(self):
@@ -711,7 +767,7 @@ class ChampPersonnaliseListCreateView(generics.ListCreateAPIView):
     queryset = ChampPersonnalise.objects.all()
 
 
-class ChampPersonnaliseDetailView(generics.RetrieveUpdateDestroyAPIView):
+class ChampPersonnaliseDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ChampPersonnaliseSerializer
     permission_classes = [IsAdmin]
     queryset = ChampPersonnalise.objects.all()
@@ -917,6 +973,10 @@ class ReferentielBulkDeleteView(APIView):
                     nb_supprimes += 1
                 continue
 
+            AuditLog.log(
+                request, AuditLog.Action.DELETE_REF, target=instance,
+                details={'model': ModelClass.__name__, 'nom': _ref_label(instance)},
+            )
             instance.delete()
             nb_supprimes += 1
 
