@@ -16,7 +16,7 @@ import AttestationDetail from "../pages/AttestationDetail";
 
 const renderDetail = () => rtlRender(
   <MemoryRouter initialEntries={["/attestations/d1"]}>
-    <Routes><Route path="/attestations/:id" element={<AttestationDetail />} /></Routes>
+    <Routes><Route path="/attestations/:ref" element={<AttestationDetail />} /></Routes>
   </MemoryRouter>,
   { wrapper: ThemeProvider }
 );

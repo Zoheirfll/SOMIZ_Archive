@@ -188,7 +188,7 @@ def test_demandeur_can_cancel_own_demande_while_recue(gestionnaire_user, employe
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
-    resp = client.delete(f'/api/attestations/demandes/{demande.id}/')
+    resp = client.delete(f'/api/attestations/demandes/{_url_ref(demande)}/')
     assert resp.status_code == 204
     assert not DemandeAttestation.objects.filter(id=demande.id).exists()
 
@@ -200,7 +200,7 @@ def test_demandeur_cannot_cancel_demande_once_imprimee(gestionnaire_user, employ
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
-    resp = client.delete(f'/api/attestations/demandes/{demande.id}/')
+    resp = client.delete(f'/api/attestations/demandes/{_url_ref(demande)}/')
     assert resp.status_code in (400, 403, 404)
     assert DemandeAttestation.objects.filter(id=demande.id).exists()
 
@@ -218,7 +218,7 @@ def test_admin_can_advance_statut_in_order(admin_user, employee, gestionnaire_us
     )
     client = APIClient()
     client.force_authenticate(admin_user)
-    resp = client.patch(f'/api/attestations/demandes/{demande.id}/statut/', {'statut': vers}, format='json')
+    resp = client.patch(f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': vers}, format='json')
     assert resp.status_code == 200, resp.data
     demande.refresh_from_db()
     assert demande.statut == vers
@@ -232,7 +232,7 @@ def test_admin_cannot_skip_statuses(admin_user, employee, gestionnaire_user):
     )
     client = APIClient()
     client.force_authenticate(admin_user)
-    resp = client.patch(f'/api/attestations/demandes/{demande.id}/statut/', {'statut': 'prete'}, format='json')
+    resp = client.patch(f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'prete'}, format='json')
     assert resp.status_code == 400
     demande.refresh_from_db()
     assert demande.statut == 'recue'
@@ -246,7 +246,7 @@ def test_admin_can_reject_from_any_non_terminal_status(admin_user, employee, ges
     client = APIClient()
     client.force_authenticate(admin_user)
     resp = client.patch(
-        f'/api/attestations/demandes/{demande.id}/statut/',
+        f'/api/attestations/demandes/{_url_ref(demande)}/statut/',
         {'statut': 'rejetee', 'motif_rejet': 'Employé non éligible'}, format='json',
     )
     assert resp.status_code == 200, resp.data
@@ -263,7 +263,7 @@ def test_reject_without_motif_is_rejected(admin_user, employee, gestionnaire_use
     client = APIClient()
     client.force_authenticate(admin_user)
     resp = client.patch(
-        f'/api/attestations/demandes/{demande.id}/statut/', {'statut': 'rejetee'}, format='json',
+        f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'rejetee'}, format='json',
     )
     assert resp.status_code == 400
 
@@ -275,7 +275,7 @@ def test_gestionnaire_cannot_change_statut(gestionnaire_user, employee):
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
-    resp = client.patch(f'/api/attestations/demandes/{demande.id}/statut/', {'statut': 'imprimee'}, format='json')
+    resp = client.patch(f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'imprimee'}, format='json')
     assert resp.status_code == 403
 
 
@@ -290,7 +290,7 @@ def test_admin_can_upload_scan_at_any_statut(admin_user, employee, gestionnaire_
     client.force_authenticate(admin_user)
     fichier = SimpleUploadedFile('scan.pdf', b'%PDF-1.4 contenu', content_type='application/pdf')
     resp = client.post(
-        f'/api/attestations/demandes/{demande.id}/scan/', {'scan_document': fichier}, format='multipart',
+        f'/api/attestations/demandes/{_url_ref(demande)}/scan/', {'scan_document': fichier}, format='multipart',
     )
     assert resp.status_code == 200, resp.data
     demande.refresh_from_db()
@@ -331,6 +331,12 @@ def test_gestionnaire_cannot_access_config(gestionnaire_user):
 
 # ─── Aperçu ─────────────────────────────────────────────────────────────────
 
+def _url_ref(demande):
+    """Encode la référence pour l'URL, comme le fait le frontend
+    (voir ReferenceLookupMixin côté backend)."""
+    return demande.reference.replace('/', '-', 1)
+
+
 def _texte_pdf(contenu):
     from io import BytesIO
     from pypdf import PdfReader
@@ -344,7 +350,7 @@ def test_apercu_renvoie_un_pdf_avec_les_donnees_de_la_demande(admin_user, employ
     )
     client = APIClient()
     client.force_authenticate(admin_user)
-    resp = client.get(f'/api/attestations/demandes/{demande.id}/apercu/')
+    resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
     assert resp.status_code == 200
     assert resp['Content-Type'] == 'application/pdf'
     assert resp.content.startswith(b'%PDF')
@@ -373,7 +379,7 @@ def test_apercu_reprend_la_configuration_du_modele(admin_user, employee, gestion
     )
     client = APIClient()
     client.force_authenticate(admin_user)
-    resp = client.get(f'/api/attestations/demandes/{demande.id}/apercu/')
+    resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
     texte = _texte_pdf(resp.content)
     assert 'SOCIETE TEST' in texte
     assert 'Alger' in texte
@@ -389,7 +395,7 @@ def test_apercu_reprend_le_dernier_contrat_si_la_demande_nen_vise_aucun(
     )
     client = APIClient()
     client.force_authenticate(admin_user)
-    resp = client.get(f'/api/attestations/demandes/{demande.id}/apercu/')
+    resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
     assert contrat.numero_contrat in _texte_pdf(resp.content)
 
 
@@ -399,7 +405,7 @@ def test_gestionnaire_cannot_access_apercu(gestionnaire_user, employee):
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
-    resp = client.get(f'/api/attestations/demandes/{demande.id}/apercu/')
+    resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
     assert resp.status_code == 403
 
 

@@ -318,7 +318,7 @@ export default function Attestations() {
                 {demandes.map((d) => (
                   <Link
                     key={d.id}
-                    to={`/attestations/${d.id}`}
+                    to={`/attestations/${d.reference.replace("/", "-")}`}
                     className="card-lift"
                     style={{
                       ...cardStyle, padding: "14px 18px", textDecoration: "none",

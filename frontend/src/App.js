@@ -131,7 +131,7 @@ function App() {
             }
           />
           <Route
-            path="/attestations/:id"
+            path="/attestations/:ref"
             element={
               <ProtectedRoute allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}>
                 <AttestationDetail />

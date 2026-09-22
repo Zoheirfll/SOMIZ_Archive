@@ -90,7 +90,7 @@ const StatutStepper = ({ statutActuel, theme, isMobile }) => {
 };
 
 export default function AttestationDetail() {
-  const { id } = useParams();
+  const { ref } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -106,20 +106,20 @@ export default function AttestationDetail() {
   const fetchDemande = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await api.get(`/attestations/demandes/${id}/`);
+      const res = await api.get(`/attestations/demandes/${ref}/`);
       setDemande(res.data);
     } finally {
       if (!silent) setLoading(false);
     }
   };
 
-  useEffect(() => { fetchDemande(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchDemande(); }, [ref]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const avancerStatut = async () => {
     const suivant = PROCHAIN_STATUT[demande.statut];
     if (!suivant) return;
     try {
-      await api.patch(`/attestations/demandes/${id}/statut/`, { statut: suivant.value });
+      await api.patch(`/attestations/demandes/${ref}/statut/`, { statut: suivant.value });
       fetchDemande(true);
     } catch (err) {
       setMessage(err.response?.data?.non_field_errors?.[0] || err.response?.data?.error || "Erreur lors du changement de statut.");
@@ -130,7 +130,7 @@ export default function AttestationDetail() {
     const motifRejet = await prompt("Motif du rejet :", "");
     if (motifRejet === null || !motifRejet.trim()) return;
     try {
-      await api.patch(`/attestations/demandes/${id}/statut/`, { statut: "rejetee", motif_rejet: motifRejet });
+      await api.patch(`/attestations/demandes/${ref}/statut/`, { statut: "rejetee", motif_rejet: motifRejet });
       fetchDemande(true);
     } catch (err) {
       setMessage(err.response?.data?.non_field_errors?.[0] || err.response?.data?.motif_rejet?.[0] || "Erreur lors du rejet.");
@@ -139,7 +139,7 @@ export default function AttestationDetail() {
 
   const annuler = async () => {
     if (!(await confirm("Annuler cette demande ?"))) return;
-    await api.delete(`/attestations/demandes/${id}/`);
+    await api.delete(`/attestations/demandes/${ref}/`);
     navigate("/attestations");
   };
 
@@ -148,7 +148,7 @@ export default function AttestationDetail() {
     if (!file) return;
     const form = new FormData();
     form.append("scan_document", file);
-    await api.post(`/attestations/demandes/${id}/scan/`, form, {
+    await api.post(`/attestations/demandes/${ref}/scan/`, form, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     fetchDemande(true);
@@ -161,7 +161,7 @@ export default function AttestationDetail() {
     // puis ouverture dans un onglet : le lecteur PDF du navigateur permet
     // d'imprimer et de télécharger directement.
     try {
-      const res = await api.get(`/attestations/demandes/${id}/apercu/`, { responseType: "blob" });
+      const res = await api.get(`/attestations/demandes/${ref}/apercu/`, { responseType: "blob" });
       const blobUrl = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       window.open(blobUrl, "_blank");
     } catch {

@@ -1306,6 +1306,15 @@ du document signé. Spec complète :
   Affiché dans un onglet "Statistiques" sur `/attestations` elle-même
   (pas dans `/statistiques`, qui reste dédiée aux indicateurs RH
   globaux).
+- **URL par référence, pas par UUID** : `/attestations/<ref>` (et les
+  endpoints `/api/attestations/demandes/<ref>/...`) utilisent la
+  référence (`00001/26`) plutôt que l'UUID technique — plus lisible/
+  partageable. Le `/` de la référence est illisible dans un segment
+  d'URL : encodé en `-` côté frontend (`00001-26`, voir les `Link`/
+  `navigate` dans `Attestations.jsx`/`AttestationNouvelle.jsx`) et
+  reconverti côté serveur par `ReferenceLookupMixin`
+  (`attestations/views.py`, `reference.replace('-', '/', 1)` — un seul
+  remplacement, le format `NNNNN/AA` ne contient qu'un seul `/`).
 - **Qui peut demander** (2026-09-22, révisé après première livraison) :
   seuls GESTIONNAIRE et **SUPERADMIN** créent des demandes
   (`CanRequestAttestation`, `attestations/permissions.py`) — un ADMIN
@@ -1313,7 +1322,7 @@ du document signé. Spec complète :
   laisser aussi créer ses propres demandes casserait la séparation
   demandeur/traiteur utile à l'audit (un même compte auteur et
   validateur de la même demande). Un ADMIN garde tout accès en
-  lecture/traitement (`/attestations`, `/attestations/:id`, statuts,
+  lecture/traitement (`/attestations`, `/attestations/:ref`, statuts,
   aperçu PDF, config, reporting) — seul le bouton "Nouvelle demande" lui
   est masqué (`Attestations.jsx`, `DossierTab.jsx`), et la route
   `/attestations/nouvelle` lui est fermée côté client
@@ -1321,7 +1330,7 @@ du document signé. Spec complète :
 - **UI** : `/attestations` (liste + reporting, ADMIN/SUPERADMIN/
   GESTIONNAIRE), `/attestations/nouvelle` (formulaire, SUPERADMIN/
   GESTIONNAIRE uniquement — recherche employé via `/employees/search/`
-  déjà scopée serveur), `/attestations/:id` (détail, actions de statut,
+  déjà scopée serveur), `/attestations/:ref` (détail, actions de statut,
   aperçu, scan, annulation). Bouton "Demander une attestation" sur la
   fiche employé (`DossierTab.jsx`, sidebar Documents), pré-remplit
   l'employé via `location.state`. Badge navbar "N en attente" — compte
@@ -1455,7 +1464,7 @@ pas utilisables directement pour les changements de layout structurels
 | `/statistiques` | Statistiques RH détaillées (filtres, périmètre, export) | ADMIN |
 | `/attestations` | Demandes d'attestation de travail (liste ADMIN, "mes demandes" GESTIONNAIRE, reporting) | ADMIN, GESTIONNAIRE |
 | `/attestations/nouvelle` | Nouvelle demande d'attestation | ADMIN, GESTIONNAIRE |
-| `/attestations/:id` | Détail, traitement (statuts, aperçu, scan) | ADMIN (lecture pour le demandeur) |
+| `/attestations/:ref` | Détail, traitement (statuts, aperçu, scan) | ADMIN (lecture pour le demandeur) |
 | `/users` | Gestion utilisateurs | ADMIN |
 | `/audit` | Logs d'audit | ADMIN |
 | `/parametres` | CRUD référentiels (Directions, Depts, Services, Postes...) | ADMIN |

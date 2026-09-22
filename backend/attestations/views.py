@@ -2,6 +2,7 @@ from datetime import datetime, time
 
 from django.db.models import Count, F, Avg, ExpressionWrapper, DurationField, Q
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone as tz
 from rest_framework import generics, serializers
 from rest_framework.exceptions import PermissionDenied
@@ -17,6 +18,21 @@ from .serializers import (
     DemandeAttestationSerializer, DemandeAttestationCreateSerializer,
     DemandeAttestationStatutSerializer, AttestationTemplateConfigSerializer,
 )
+
+
+class ReferenceLookupMixin:
+    """Résout l'objet par sa référence plutôt que par son UUID, pour des
+    URLs lisibles côté frontend (/attestations/00001-26 au lieu d'un
+    UUID). La référence contient un '/' (format NNNNN/AA) — illisible
+    tel quel dans un segment d'URL, donc encodée en '-' côté client
+    (`00001-26`) et reconvertie ici avant la recherche en base."""
+    lookup_url_kwarg = 'ref'
+
+    def get_object(self):
+        ref = self.kwargs[self.lookup_url_kwarg].replace('-', '/', 1)
+        obj = get_object_or_404(self.filter_queryset(self.get_queryset()), reference=ref)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class DemandeAttestationListCreateView(generics.ListCreateAPIView):
@@ -69,7 +85,7 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
         )
 
 
-class DemandeAttestationDetailView(generics.RetrieveDestroyAPIView):
+class DemandeAttestationDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIView):
     """GET accessible ADMIN + demandeur (sa propre demande).
     DELETE réservé au demandeur, uniquement au statut RECUE."""
     serializer_class = DemandeAttestationSerializer
@@ -96,8 +112,8 @@ class DemandeAttestationDetailView(generics.RetrieveDestroyAPIView):
         instance.delete()
 
 
-class DemandeAttestationStatutView(generics.UpdateAPIView):
-    """PATCH /api/attestations/demandes/<id>/statut/ — ADMIN/SUPERADMIN uniquement."""
+class DemandeAttestationStatutView(ReferenceLookupMixin, generics.UpdateAPIView):
+    """PATCH /api/attestations/demandes/<ref>/statut/ — ADMIN/SUPERADMIN uniquement."""
     permission_classes = [IsAdmin]
     serializer_class = DemandeAttestationStatutSerializer
     queryset = DemandeAttestation.objects.all()
@@ -119,8 +135,8 @@ class DemandeAttestationStatutView(generics.UpdateAPIView):
         return Response(DemandeAttestationSerializer(demande).data)
 
 
-class DemandeAttestationScanView(generics.UpdateAPIView):
-    """POST/PATCH /api/attestations/demandes/<id>/scan/ — ADMIN uniquement,
+class DemandeAttestationScanView(ReferenceLookupMixin, generics.UpdateAPIView):
+    """POST/PATCH /api/attestations/demandes/<ref>/scan/ — ADMIN uniquement,
     jamais bloquant sur le statut (aide-mémoire optionnel, voir spec)."""
     permission_classes = [IsAdmin]
     queryset = DemandeAttestation.objects.all()
@@ -147,8 +163,8 @@ class AttestationTemplateConfigView(generics.RetrieveUpdateAPIView):
         return obj
 
 
-class AttestationApercuView(generics.RetrieveAPIView):
-    """GET /api/attestations/demandes/<id>/apercu/ — ADMIN only, renvoie le
+class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
+    """GET /api/attestations/demandes/<ref>/apercu/ — ADMIN only, renvoie le
     PDF de l'attestation (reproduit le modèle papier, voir
     attestations/pdf.py), affichable et imprimable tel quel."""
     permission_classes = [IsAdmin]

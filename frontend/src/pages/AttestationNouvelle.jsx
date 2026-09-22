@@ -53,7 +53,7 @@ export default function AttestationNouvelle() {
       const payload = { employee: employee.id, motif, commentaire };
       if (contratId) payload.contrat = contratId;
       const res = await api.post("/attestations/demandes/", payload);
-      navigate(`/attestations/${res.data.id}`);
+      navigate(`/attestations/${res.data.reference.replace("/", "-")}`);
     } catch (err) {
       setError(
         err.response?.data?.error ||
