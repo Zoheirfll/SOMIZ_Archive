@@ -47,14 +47,18 @@ export default function Attestations() {
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const [demandes, setDemandes] = useState([]);
   const [statutFiltre, setStatutFiltre] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [sousOnglet, setSousOnglet] = useState("liste");
   const [stats, setStats] = useState(null);
 
-  const fetchDemandes = async (statut = statutFiltre, silent = false) => {
+  const fetchDemandes = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = statut ? { statut } : {};
+      const params = {};
+      if (statutFiltre) params.statut = statutFiltre;
+      if (search) params.q = search;
       const res = await api.get("/attestations/demandes/", { params });
       setDemandes(res.data?.results || res.data || []);
     } finally {
@@ -62,7 +66,12 @@ export default function Attestations() {
     }
   };
 
-  useEffect(() => { fetchDemandes(); }, [statutFiltre]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchDemandes(); }, [statutFiltre, search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setSearch(searchInput.trim());
+  };
 
   useEffect(() => {
     if (sousOnglet === "stats" && isAdmin && !stats) {
@@ -192,6 +201,61 @@ export default function Attestations() {
         ) : (
           <>
             {isAdmin && (
+              <form
+                onSubmit={handleSearchSubmit}
+                style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}
+              >
+                <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+                  <div style={{
+                    position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+                    color: theme.textMuted, display: "flex", pointerEvents: "none",
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="Rechercher par référence, employé, demandeur..."
+                    className="input-focus"
+                    style={{
+                      width: "100%", boxSizing: "border-box", border: `1.5px solid ${theme.border}`,
+                      borderRadius: 10, padding: "10px 14px 10px 40px", color: theme.text,
+                      fontSize: 14, outline: "none", background: theme.bg, fontFamily: theme.fontFamily,
+                    }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="btn-lift"
+                  style={{
+                    background: theme.primary, border: "none", borderRadius: 10, padding: "10px 20px",
+                    color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer",
+                    fontFamily: theme.fontFamily, whiteSpace: "nowrap",
+                  }}
+                >
+                  Rechercher
+                </button>
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchInput(""); setSearch(""); }}
+                    style={{
+                      border: `1.5px solid ${theme.border}`, borderRadius: 10, padding: "10px 16px",
+                      color: theme.textSecondary, fontSize: 13, fontWeight: 600, background: theme.surface,
+                      cursor: "pointer", fontFamily: theme.fontFamily,
+                    }}
+                  >
+                    Effacer
+                  </button>
+                )}
+              </form>
+            )}
+
+            {isAdmin && (
               <div style={{
                 ...cardStyle, padding: "10px 12px", marginBottom: 20,
                 display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center",
@@ -239,12 +303,14 @@ export default function Attestations() {
               }}>
                 <div style={{ color: theme.textMuted, marginBottom: 14 }}><ClipboardIcon size={40} /></div>
                 <div style={{ color: theme.text, fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
-                  Aucune demande {statutFiltre ? "pour ce statut" : ""}
+                  Aucune demande {search ? "pour cette recherche" : statutFiltre ? "pour ce statut" : ""}
                 </div>
                 <div style={{ color: theme.textMuted, fontSize: 13, maxWidth: 340 }}>
-                  {isAdmin
-                    ? "Les demandes envoyées par les gestionnaires apparaîtront ici."
-                    : "Créez une nouvelle demande d'attestation pour un employé de votre périmètre."}
+                  {search
+                    ? "Essayez un autre nom, matricule ou référence."
+                    : isAdmin
+                      ? "Les demandes envoyées par les gestionnaires apparaîtront ici."
+                      : "Créez une nouvelle demande d'attestation pour un employé de votre périmètre."}
                 </div>
               </div>
             ) : (

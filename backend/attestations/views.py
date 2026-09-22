@@ -1,6 +1,6 @@
 from datetime import datetime, time
 
-from django.db.models import Count, F, Avg, ExpressionWrapper, DurationField
+from django.db.models import Count, F, Avg, ExpressionWrapper, DurationField, Q
 from django.http import HttpResponse
 from django.utils import timezone as tz
 from rest_framework import generics, serializers
@@ -37,6 +37,16 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
             'employee', 'contrat', 'demandeur', 'traite_par'
         )
         user = self.request.user
+
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(
+                Q(reference__icontains=q) |
+                Q(employee__nom__icontains=q) | Q(employee__prenom__icontains=q) |
+                Q(employee__matricule__icontains=q) |
+                Q(demandeur__nom__icontains=q) | Q(demandeur__prenom__icontains=q)
+            )
+
         if user.is_admin:
             statut = self.request.query_params.get('statut')
             if statut:

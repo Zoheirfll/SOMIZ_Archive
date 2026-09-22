@@ -152,6 +152,25 @@ def test_pending_filter_counts_only_recue(admin_user, gestionnaire_user, employe
     assert results[0]['reference'] == '00001/26'
 
 
+def test_search_filters_by_employee_or_reference_or_demandeur(
+    admin_user, gestionnaire_user, employee, other_gestionnaire,
+):
+    DemandeAttestation.objects.create(
+        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    for q in ['00001/26', employee.nom, employee.matricule, gestionnaire_user.nom]:
+        resp = client.get('/api/attestations/demandes/', {'q': q})
+        results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+        assert len(results) == 1, f"q={q!r} n'a rien trouvé"
+
+    resp = client.get('/api/attestations/demandes/', {'q': 'introuvable_xyz'})
+    results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+    assert len(results) == 0
+
+
 def test_admin_list_shows_all_demandes(admin_user, gestionnaire_user, employee):
     DemandeAttestation.objects.create(
         reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
