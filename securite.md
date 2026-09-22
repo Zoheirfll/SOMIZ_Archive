@@ -1068,6 +1068,62 @@ d'accès (ces vues étaient déjà correctement réservées ADMIN via
 
 ---
 
+## 39. Nouveau rôle GESTIONNAIRE et demandes d'attestation de travail (2026-09-22) — ✅ Implémenté
+
+Ajout du rôle `GESTIONNAIRE` (`User.Role`) et de l'app `attestations`
+(workflow de demande d'attestation de travail) — voir CLAUDE.md section
+"Demandes d'attestation de travail" et
+`docs/superpowers/specs/2026-09-22-demandes-attestation-travail-design.md`
+pour le détail fonctionnel. Points de sécurité vérifiés :
+
+- **Surface de permission** : GESTIONNAIRE réutilise **exactement** le
+  même mécanisme de scoping que CONSULTANT (`employee_scope_q()`,
+  `can_access_employee()`, testés déjà via `if self.is_admin` dans
+  `accounts/models.py` — aucune modification de ces méthodes n'a été
+  nécessaire) — aucune nouvelle surface de fuite de périmètre introduite
+  sur la lecture des employés/documents/contrats.
+- **Nouvelle permission `CanRequestAttestation`**
+  (`attestations/permissions.py`) : vérifie explicitement
+  `is_authenticated`, `is_active`, `consent_loi1807_accepted_at` **et**
+  `role in ('GESTIONNAIRE', 'ADMIN', 'SUPERADMIN')` — un CONSULTANT ne
+  peut jamais créer de demande, même en forgeant une requête directe
+  (testé : `test_can_request_attestation_blocks_consultant`).
+- **`DemandeAttestation.employee` en `PROTECT`** (pas `CASCADE`) : une
+  suppression définitive d'employé (déjà bloquée tant qu'il est `actif`,
+  voir section "Archivage employé" de CLAUDE.md) ne peut jamais effacer
+  silencieusement l'historique de ses demandes d'attestation.
+- **Endpoints de traitement (`apercu/`, `config/`, `stats/`) restent
+  `IsAdmin`** : un GESTIONNAIRE n'a jamais accès au modèle brut du
+  document (adresse, signataire...) ni au reporting global — testé
+  explicitement (`test_gestionnaire_cannot_access_apercu`,
+  `test_gestionnaire_cannot_access_config`,
+  `test_stats_forbidden_for_gestionnaire`).
+- **Workflow de statuts non-contournable côté client** :
+  `DemandeAttestationStatutSerializer` valide la transition (ordre
+  strict, pas de saut) et l'obligation d'un `motif_rejet` non vide pour
+  `Rejetée` **côté serveur** — un payload direct qui tenterait de sauter
+  un statut (`recue` → `prete`) est rejeté en 400, testé.
+- **Annulation limitée au strict nécessaire** :
+  `DemandeAttestationDetailView.perform_destroy` vérifie
+  `demandeur_id == request.user.id` **et** `statut == RECUE` avant tout
+  `DELETE` — un gestionnaire ne peut ni annuler la demande d'un autre
+  compte, ni annuler une demande déjà entrée en traitement (testé :
+  `test_demandeur_cannot_cancel_demande_once_imprimee`).
+- **Journal d'audit étendu, pas contourné** : `AuditLogListView` donne à
+  un ADMIN la visibilité sur les actions des comptes GESTIONNAIRE qu'il
+  administre (même règle déjà en place pour CONSULTANT) — un
+  GESTIONNAIRE reste incapable de consulter le journal lui-même
+  (`IsAdmin` inchangé sur cette vue).
+- **Scan optionnel** (`DemandeAttestationScanView`) : upload réservé
+  ADMIN only, jamais un point d'entrée exposé à un GESTIONNAIRE.
+
+**Migrations** : `accounts/migrations/0014_add_gestionnaire_role.py`
+(nouveau rôle + `libelle_role`), `attestations/migrations/0001_initial.py`
+(nouvelle app), `audit/migrations/0008_add_attestation_actions.py`
+(nouvelles valeurs `AuditLog.Action`).
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

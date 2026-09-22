@@ -9,6 +9,7 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 - `SUPERADMIN` — mêmes droits qu'un ADMIN (`User.is_admin` renvoie `True` pour les deux), **plus** la visibilité complète sur `/audit` (voir ci-dessous). Ne peut être créé/attribué que via `manage.py shell`/accès direct base — jamais via l'UI ni l'API `/admin-users/` (`UserSerializer.validate_role`/`UserCreateSerializer.validate_role` rejettent toute tentative). Un ADMIN ordinaire ne voit même pas les comptes SUPERADMIN dans `/users` (404 sur leur id, exclus de la liste).
 - `ADMIN` — droits complets (lecture, écriture, suppression, import, configuration), toujours accès organisation-wide
 - `CONSULTANT` — lecture seule (pas de boutons d'action visibles), peut être restreint à un **périmètre organisationnel** (voir section Scoping ci-dessous) ou laissé sans restriction (comportement historique)
+- `GESTIONNAIRE` — lecture seule type CONSULTANT sur son périmètre organisationnel (même mécanisme de scoping exactement), plus le droit de créer des demandes d'attestation de travail pour les employés de ce périmètre (voir section "Demandes d'attestation de travail"). `User.libelle_role` (ex. "Secrétaire", "Superviseur") est un simple libellé d'affichage par compte — aucune permission n'en dépend.
 
 ### Journal d'audit — visibilité par rôle (2026-08-30)
 
@@ -1226,6 +1227,78 @@ texte) — spec complète : `docs/superpowers/specs/2026-08-27-consentement-loi1
 
 ---
 
+## Demandes d'attestation de travail (2026-09-22)
+
+Un compte `GESTIONNAIRE` (libellé d'affichage "Secrétaire"/"Superviseur"
+possible, voir en-tête de ce fichier) peut demander une attestation de
+travail pour un employé de son périmètre organisationnel — traitée par un
+ADMIN/SUPERADMIN via un workflow de statuts, jusqu'à récupération physique
+du document signé. Spec complète :
+`docs/superpowers/specs/2026-09-22-demandes-attestation-travail-design.md`.
+
+- **App dédiée `attestations`** (`backend/attestations/`) : modèle
+  `DemandeAttestation` (`employee`, `contrat` optionnel, `motif`,
+  `commentaire`, `statut`, `motif_rejet`, `scan_document` optionnel,
+  `demandeur`, `traite_par`, `reference` unique format `NNNNN/AA`) ;
+  `ReferenceCounter` (compteur annuel, incrémenté sous
+  `select_for_update()` — voir `attestations/reference.py`) ;
+  `AttestationTemplateConfig` (singleton `pk=1`, champs du modèle papier :
+  adresse, ville, signataire, en-tête, pied de page, logo).
+- **Workflow des statuts** : `Reçue → Imprimée → Signée → Prête →
+  Récupérée`, plus `Rejetée` (terminal, motif obligatoire, atteignable
+  depuis n'importe quel statut avant `Récupérée`) — transitions
+  séquentielles uniquement, validées côté serveur
+  (`DemandeAttestationStatutSerializer.ORDRE`). Seul un ADMIN/SUPERADMIN
+  change un statut (`PATCH /api/attestations/demandes/<id>/statut/`), y
+  compris `Récupérée` — le gestionnaire n'est pas devant l'écran au
+  moment où il vient chercher le document physique.
+- **Périmètre** : `DemandeAttestationCreateSerializer.validate_employee()`
+  réutilise `User.can_access_employee()` — un GESTIONNAIRE ne peut créer
+  de demande que pour un employé de son périmètre (mêmes champs
+  `scope_*` que CONSULTANT, voir section Scoping). Un GESTIONNAIRE ne
+  voit que ses propres demandes (`GET /api/attestations/demandes/`), un
+  ADMIN voit tout.
+- **Annulation** : le demandeur peut supprimer sa propre demande
+  uniquement tant qu'elle est au statut `Reçue`
+  (`DemandeAttestationDetailView.perform_destroy`).
+- **Aperçu imprimable** : `GET /api/attestations/demandes/<id>/apercu/`
+  (ADMIN only) rend un gabarit HTML (`attestations/templates/
+  attestations/apercu.html`) fidèle au modèle papier, rempli avec
+  `AttestationTemplateConfig` + les données de la demande — impression
+  via `window.print()` côté frontend, même approche que l'export PDF de
+  `/statistiques`, aucune dépendance PDF backend. Le "lieu de naissance"
+  (champ personnalisé, pas de colonne directe sur `Employee`) est résolu
+  par recherche approximative du nom du champ (`EmployeeChampValeur`,
+  voir `AttestationApercuView.get`).
+- **Scan du document signé** : optionnel, jamais bloquant pour avancer un
+  statut (`POST /api/attestations/demandes/<id>/scan/`, ADMIN only) — un
+  simple aide-mémoire, pas un document RH permanent du dossier employé.
+- **Configuration du modèle** : `/parametres` → onglet "Attestation de
+  travail" (`AttestationConfigPanel` dans `Parametres.jsx`, pas de
+  `RefTable`/`RefForm` générique — un seul enregistrement). `GET/PUT
+  /api/attestations/config/`, ADMIN only.
+- **Audit** : nouvelles valeurs `AuditLog.Action`
+  (`CREATE_ATTESTATION`, `STATUT_ATTESTATION`, `DELETE_ATTESTATION`).
+  `AuditLogListView` étend la règle de visibilité déjà en place pour
+  CONSULTANT (un ADMIN voit ses propres actions + celles des comptes
+  qu'il administre) aux comptes GESTIONNAIRE.
+- **Reporting** : `GET /api/attestations/stats/?date_debut=&date_fin=`
+  (ADMIN only) — nombre de demandes par gestionnaire demandeur, par
+  employé, répartition par statut, délai moyen `Reçue → Récupérée`.
+  Affiché dans un onglet "Statistiques" sur `/attestations` elle-même
+  (pas dans `/statistiques`, qui reste dédiée aux indicateurs RH
+  globaux).
+- **UI** : `/attestations` (liste + reporting), `/attestations/nouvelle`
+  (formulaire, recherche employé via `/employees/search/` déjà scopée
+  serveur), `/attestations/:id` (détail, actions de statut, aperçu, scan,
+  annulation). Bouton "Demander une attestation" sur la fiche employé
+  (`DossierTab.jsx`, sidebar Documents) visible pour ADMIN/SUPERADMIN/
+  GESTIONNAIRE, pré-remplit l'employé via `location.state`. Badge navbar
+  "N en attente" (compte les demandes hors `Récupérée`/`Rejetée`), visible
+  ADMIN/SUPERADMIN uniquement.
+
+---
+
 ## Design System (v2 — actuel)
 
 Le design a été entièrement refondu. Chaque page suit ce pattern :
@@ -1346,6 +1419,9 @@ pas utilisables directement pour les changements de layout structurels
 | `/contrats/:id` | Détail contrat | Tous |
 | `/dashboard` | Tableau de bord (indicateurs instantanés) | ADMIN |
 | `/statistiques` | Statistiques RH détaillées (filtres, périmètre, export) | ADMIN |
+| `/attestations` | Demandes d'attestation de travail (liste ADMIN, "mes demandes" GESTIONNAIRE, reporting) | ADMIN, GESTIONNAIRE |
+| `/attestations/nouvelle` | Nouvelle demande d'attestation | ADMIN, GESTIONNAIRE |
+| `/attestations/:id` | Détail, traitement (statuts, aperçu, scan) | ADMIN (lecture pour le demandeur) |
 | `/users` | Gestion utilisateurs | ADMIN |
 | `/audit` | Logs d'audit | ADMIN |
 | `/parametres` | CRUD référentiels (Directions, Depts, Services, Postes...) | ADMIN |
