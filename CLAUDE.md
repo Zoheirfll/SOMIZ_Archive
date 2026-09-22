@@ -1261,22 +1261,40 @@ du document signé. Spec complète :
 - **Annulation** : le demandeur peut supprimer sa propre demande
   uniquement tant qu'elle est au statut `Reçue`
   (`DemandeAttestationDetailView.perform_destroy`).
-- **Aperçu imprimable** : `GET /api/attestations/demandes/<id>/apercu/`
-  (ADMIN only) rend un gabarit HTML (`attestations/templates/
-  attestations/apercu.html`) fidèle au modèle papier, rempli avec
-  `AttestationTemplateConfig` + les données de la demande — impression
-  via `window.print()` côté frontend, même approche que l'export PDF de
-  `/statistiques`, aucune dépendance PDF backend. Le "lieu de naissance"
-  (champ personnalisé, pas de colonne directe sur `Employee`) est résolu
-  par recherche approximative du nom du champ (`EmployeeChampValeur`,
-  voir `AttestationApercuView.get`).
+- **Document PDF** : `GET /api/attestations/demandes/<id>/apercu/`
+  (ADMIN only) renvoie un **PDF** (`application/pdf`, généré par
+  `attestations/pdf.py` avec **ReportLab** — nouvelle dépendance,
+  `requirements.txt`) reproduisant la mise en page du modèle papier :
+  logo + en-tête société, titre encadré, bloc REF/MATRICULE/CONTRAT aux
+  deux-points alignés, corps du texte, lieu/date, bloc signataire (espace
+  laissé libre pour la signature et le cachet apposés à la main), pied de
+  page avec coordonnées et mention "Édité le". Le frontend récupère le
+  PDF via axios puis l'ouvre en blob dans un onglet (lecteur PDF du
+  navigateur = impression et téléchargement directs) — **jamais** par
+  navigation directe vers `/api/...` : le proxy CRA de dev ne relaie pas
+  les requêtes de navigation (`Accept: text/html`) et la page
+  atterrissait sur le 404 du routeur React.
+  - Le "lieu de naissance" (champ personnalisé, pas de colonne directe
+    sur `Employee`) est résolu par recherche approximative du nom du champ
+    (`EmployeeChampValeur`, voir `AttestationApercuView.get`).
+  - Le N° de contrat figure toujours sur le document : si la demande ne
+    vise pas un contrat précis, le dernier contrat de l'employé est repris.
+  - **Aucune valeur n'est codée en dur dans le PDF** — tout l'en-tête, le
+    signataire et le pied de page viennent de `AttestationTemplateConfig`
+    (testé : `test_apercu_reprend_la_configuration_du_modele`). Les
+    `default` du modèle reprennent simplement les valeurs du document
+    papier en vigueur pour qu'une attestation soit correcte sans
+    configuration préalable.
 - **Scan du document signé** : optionnel, jamais bloquant pour avancer un
   statut (`POST /api/attestations/demandes/<id>/scan/`, ADMIN only) — un
   simple aide-mémoire, pas un document RH permanent du dossier employé.
 - **Configuration du modèle** : `/parametres` → onglet "Attestation de
   travail" (`AttestationConfigPanel` dans `Parametres.jsx`, pas de
   `RefTable`/`RefForm` générique — un seul enregistrement). `GET/PUT
-  /api/attestations/config/`, ADMIN only.
+  /api/attestations/config/`, ADMIN only ; le logo s'envoie séparément en
+  `PATCH` multipart (le `PUT` des champs texte exclut volontairement
+  `logo`, sinon l'URL de lecture renvoyée par l'API serait resoumise comme
+  valeur et rejetée par l'`ImageField`).
 - **Audit** : nouvelles valeurs `AuditLog.Action`
   (`CREATE_ATTESTATION`, `STATUT_ATTESTATION`, `DELETE_ATTESTATION`).
   `AuditLogListView` étend la règle de visibilité déjà en place pour

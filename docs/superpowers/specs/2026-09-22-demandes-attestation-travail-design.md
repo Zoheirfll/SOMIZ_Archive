@@ -35,13 +35,21 @@ Contraintes actées avec l'utilisateur :
   bloquant pour faire avancer les statuts.
 - Numéro de référence (`NNNNN/AA`) généré automatiquement par SOMIZ à la
   création de la demande.
-- SOMIZ **génère un aperçu imprimable** du document à partir d'un modèle
-  configurable (adresse, ville, nom/titre du signataire, en-tête, pied de
-  page, logo) — un seul modèle global pour toute la société, champs
-  configurables sur une mise en page fixe (pas d'éditeur de mise en page
-  libre). L'impression se fait via le navigateur (`window.print()`), même
-  pattern que l'export PDF déjà en place sur `/statistiques` — pas de
-  nouvelle dépendance PDF côté backend.
+- SOMIZ **génère le document** à partir d'un modèle configurable (adresse,
+  ville, nom/titre du signataire, en-tête, pied de page, logo) — un seul
+  modèle global pour toute la société, champs configurables sur une mise
+  en page fixe (pas d'éditeur de mise en page libre).
+
+  **Révision du 2026-09-22 (après première livraison)** : la génération
+  d'un aperçu **HTML** imprimé via `window.print()` (choix initial, pour
+  éviter une dépendance PDF backend) a été **abandonnée** — le rendu
+  n'était pas fidèle au modèle papier et n'était pas directement
+  imprimable/archivable. Remplacée par une génération **PDF serveur**
+  (ReportLab, `attestations/pdf.py`), qui reproduit la mise en page au
+  millimètre et donne un fichier imprimable tel quel. Les valeurs par
+  défaut de `AttestationTemplateConfig` reprennent désormais celles du
+  document papier en vigueur (elles restent toutes modifiables par un
+  ADMIN — c'est bien une configuration, pas un contenu figé).
 - Journal d'audit : réutilise `AuditLog` existant (nouveaux types
   d'action), pas de journal séparé.
 - Reporting (nombre de demandes par gestionnaire, par employé) : section
