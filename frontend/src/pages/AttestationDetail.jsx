@@ -154,8 +154,21 @@ export default function AttestationDetail() {
     fetchDemande(true);
   };
 
-  const ouvrirApercu = () => {
-    window.open(`/api/attestations/demandes/${id}/apercu/`, "_blank");
+  const ouvrirApercu = async () => {
+    // Navigation directe vers /api/.../apercu/ ne fonctionne pas en dev :
+    // le proxy CRA (package.json "proxy") ne relaie pas les requêtes de
+    // navigation (Accept: text/html) pour ne pas interférer avec le
+    // routeur React — on récupère donc le HTML via l'API (déjà proxifiée/
+    // authentifiée) puis on l'ouvre comme blob, cohérent avec le principe
+    // "pas de deep link direct" déjà en vigueur pour les documents.
+    try {
+      const res = await api.get(`/attestations/demandes/${id}/apercu/`, { responseType: "text" });
+      const blob = new Blob([res.data], { type: "text/html" });
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank");
+    } catch {
+      setMessage("Impossible de générer l'aperçu.");
+    }
   };
 
   if (loading || !demande) return (
