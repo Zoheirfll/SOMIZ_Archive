@@ -65,7 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'nom', 'prenom', 'role', 'is_active', 'last_login',
+            'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
             'scope_poles', 'scope_poles_nom',
             'scope_departements', 'scope_departements_nom',
@@ -105,7 +105,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'nom', 'prenom', 'role', 'password']
+        fields = ['id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'password']
         read_only_fields = ['id']
 
     def validate_role(self, value):

@@ -39,6 +39,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         SUPERADMIN = 'SUPERADMIN', 'Super-administrateur'
         ADMIN = 'ADMIN', 'Administrateur'
+        GESTIONNAIRE = 'GESTIONNAIRE', 'Gestionnaire'
         CONSULTANT = 'CONSULTANT', 'Consultant (lecture seule)'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -50,6 +51,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         choices=Role.choices,
         default=Role.CONSULTANT,
         verbose_name="Rôle"
+    )
+    libelle_role = models.CharField(
+        max_length=50, blank=True,
+        verbose_name="Libellé d'affichage",
+        help_text="Ex. 'Secrétaire', 'Superviseur' — remplace 'Gestionnaire' dans "
+                   "l'interface pour ce compte, sans changer ses permissions.",
     )
 
     # Sécurité : blocage après N tentatives
@@ -166,6 +173,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_consultant(self):
         return self.role == self.Role.CONSULTANT
+
+    @property
+    def is_gestionnaire(self):
+        return self.role == self.Role.GESTIONNAIRE
 
     def _scope_ids(self):
         """(direction_ids, pole_ids, departement_ids, service_ids,
