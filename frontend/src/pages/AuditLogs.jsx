@@ -27,6 +27,14 @@ const getActionColors = (theme) => ({
   LOGOUT: theme.textSecondary,
   LOGIN_FAIL: theme.danger,
   VIEW_AUDIT_LOG: theme.textSecondary,
+  CREATE_USER: "#7B1FA2",
+  MODIFY_USER: theme.warning,
+  DELETE_USER: theme.danger,
+  CONSENT: theme.primary,
+  MERGE_REFERENTIEL: theme.warning,
+  CREATE_REF: "#7B1FA2",
+  MODIFY_REF: theme.warning,
+  DELETE_REF: theme.danger,
 });
 
 // Champs d'affectation organisationnelle traçés par un transfert
