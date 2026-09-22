@@ -83,12 +83,18 @@ const Navbar = () => {
     api.get("/attestations/demandes/", { params: { pending: 1 } })
       .then((res) => {
         if (cancelled) return;
-        const results = res.data?.results || res.data || [];
-        setPendingAttestations(results.length);
+        // `count` si paginé (DRF), sinon la longueur d'un tableau brut —
+        // res.data.results.length sous-comptait dès que le nombre de
+        // demandes en attente dépassait une page.
+        const count = res.data?.count ?? (res.data?.results || res.data || []).length;
+        setPendingAttestations(count);
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [user?.role]);
+    // Recharge à chaque changement de page — le badge doit refléter les
+    // changements de statut faits sur /attestations/:id, jamais rechargés
+    // sinon puisque Navbar ne se démonte pas entre deux pages de l'app.
+  }, [user?.role, location.pathname]);
 
   const navLinks = [
     { path: "/employees", label: "Personnel" },
