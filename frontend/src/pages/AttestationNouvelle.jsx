@@ -4,6 +4,8 @@ import api from "../services/api";
 import { useTheme } from "../context/ThemeContext";
 import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
+import Navbar from "../components/Navbar";
+import PageBackground from "../components/PageBackground";
 
 export default function AttestationNouvelle() {
   const navigate = useNavigate();
@@ -66,7 +68,8 @@ export default function AttestationNouvelle() {
   };
 
   return (
-    <div>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
+      <Navbar />
       <div style={{
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
         padding: heroPadding(isMobile),
@@ -149,6 +152,6 @@ export default function AttestationNouvelle() {
           </button>
         </form>
       </div>
-    </div>
+    </PageBackground>
   );
 }

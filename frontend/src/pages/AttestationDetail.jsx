@@ -7,6 +7,8 @@ import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import StatutBadge from "../components/attestations/StatutBadge";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import Navbar from "../components/Navbar";
+import PageBackground from "../components/PageBackground";
 
 const PROCHAIN_STATUT = {
   recue: { value: "imprimee", label: "Marquer Imprimée" },
@@ -84,13 +86,19 @@ export default function AttestationDetail() {
     window.open(`/api/attestations/demandes/${id}/apercu/`, "_blank");
   };
 
-  if (loading || !demande) return <div style={{ textAlign: "center", padding: 40, color: theme.textSecondary }}>Chargement...</div>;
+  if (loading || !demande) return (
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
+      <Navbar />
+      <div style={{ textAlign: "center", padding: 40, color: theme.textSecondary }}>Chargement...</div>
+    </PageBackground>
+  );
 
   const peutAnnuler = demande.demandeur === user?.id && demande.statut === "recue";
   const suivant = PROCHAIN_STATUT[demande.statut];
 
   return (
-    <div>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
+      <Navbar />
       <div style={{
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
         padding: heroPadding(isMobile),
@@ -160,6 +168,6 @@ export default function AttestationDetail() {
       </div>
       {ConfirmDialog}
       {PromptDialog}
-    </div>
+    </PageBackground>
   );
 }

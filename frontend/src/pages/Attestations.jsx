@@ -6,6 +6,8 @@ import { useTheme } from "../context/ThemeContext";
 import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import StatutBadge from "../components/attestations/StatutBadge";
+import Navbar from "../components/Navbar";
+import PageBackground from "../components/PageBackground";
 
 const STATUTS = [
   { value: "", label: "Tous" },
@@ -47,10 +49,16 @@ export default function Attestations() {
     }
   }, [sousOnglet, isAdmin, stats]);
 
-  if (loading) return <div style={{ textAlign: "center", padding: 40, color: theme.textSecondary }}>Chargement...</div>;
+  if (loading) return (
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
+      <Navbar />
+      <div style={{ textAlign: "center", padding: 40, color: theme.textSecondary }}>Chargement...</div>
+    </PageBackground>
+  );
 
   return (
-    <div>
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
+      <Navbar />
       <div style={{
         background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)",
         padding: heroPadding(isMobile),
@@ -165,6 +173,6 @@ export default function Attestations() {
           </>
         )}
       </div>
-    </div>
+    </PageBackground>
   );
 }
