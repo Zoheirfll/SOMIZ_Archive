@@ -20,6 +20,17 @@ const STATUTS = [
   { value: "rejetee", label: "Rejetée" },
 ];
 
+// Même code couleur que StatutBadge, pour repérer un statut d'un coup
+// d'œil aussi bien dans le filtre que dans la liste.
+const STATUT_DOT_COLORS = {
+  recue: (theme) => theme.textSecondary,
+  imprimee: (theme) => theme.accent,
+  signee: (theme) => theme.accent,
+  prete: (theme) => theme.primary,
+  recuperee: (theme) => theme.primary,
+  rejetee: (theme) => theme.danger,
+};
+
 const SectionHeader = ({ children, theme }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
     <div style={{ width: 4, height: 16, borderRadius: 2, background: theme.primary }} />
@@ -181,23 +192,43 @@ export default function Attestations() {
         ) : (
           <>
             {isAdmin && (
-              <div style={{ marginBottom: 20, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {STATUTS.map((s) => (
-                  <button
-                    key={s.value}
-                    onClick={() => setStatutFiltre(s.value)}
-                    className="btn-lift"
-                    style={{
-                      padding: "7px 14px", borderRadius: 999, fontSize: 12, fontWeight: 700,
-                      border: `1px solid ${statutFiltre === s.value ? theme.primary : theme.border}`,
-                      background: statutFiltre === s.value ? theme.primaryBg : theme.surface,
-                      color: statutFiltre === s.value ? theme.primary : theme.textSecondary,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {s.label}
-                  </button>
-                ))}
+              <div style={{
+                ...cardStyle, padding: "10px 12px", marginBottom: 20,
+                display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center",
+              }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5,
+                  color: theme.textMuted, padding: "0 4px 0 2px", flexShrink: 0,
+                }}>
+                  Statut
+                </span>
+                {STATUTS.map((s) => {
+                  const actif = statutFiltre === s.value;
+                  return (
+                    <button
+                      key={s.value}
+                      onClick={() => setStatutFiltre(s.value)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        padding: "6px 13px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+                        border: "none",
+                        background: actif ? theme.primary : "transparent",
+                        color: actif ? "#fff" : theme.textSecondary,
+                        cursor: "pointer", transition: "background 0.15s, color 0.15s",
+                      }}
+                      onMouseEnter={(e) => { if (!actif) e.currentTarget.style.background = theme.bg; }}
+                      onMouseLeave={(e) => { if (!actif) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {s.value && (
+                        <span style={{
+                          width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                          background: actif ? "#fff" : STATUT_DOT_COLORS[s.value](theme),
+                        }} />
+                      )}
+                      {s.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
