@@ -95,6 +95,7 @@ const AuditLogs = () => {
     searchParams.get("date_debut") || searchParams.get("date_fin") ? null : "tout"
   ));
   const [filterableUsers, setFilterableUsers] = useState([]);
+  const [actionChoices, setActionChoices] = useState([]);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -103,6 +104,7 @@ const AuditLogs = () => {
 
   useEffect(() => {
     fetchFilterableUsers();
+    fetchActionChoices();
   }, []);
 
   const { overrides: shortcutOverrides } = useKeyboardShortcutsHelp();
@@ -130,6 +132,15 @@ const AuditLogs = () => {
       setFilterableUsers(
         [...visible].sort((a, b) => a.username.localeCompare(b.username)),
       );
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchActionChoices = async () => {
+    try {
+      const response = await api.get("/audit-logs/actions/");
+      setActionChoices(response.data);
     } catch (err) {
       console.error(err);
     }
@@ -296,8 +307,8 @@ const AuditLogs = () => {
             style={{ ...inputStyle, cursor: "pointer", minWidth: 200 }}
           >
             <option value="">Toutes les actions</option>
-            {Object.keys(ACTION_COLORS).map((a) => (
-              <option key={a} value={a}>{a}</option>
+            {actionChoices.map((a) => (
+              <option key={a.value} value={a.value}>{a.label}</option>
             ))}
           </select>
         </div>

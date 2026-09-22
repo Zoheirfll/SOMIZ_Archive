@@ -29,6 +29,21 @@ class AuditLogSerializer(serializers.ModelSerializer):
         ]
 
 
+class AuditLogActionsView(APIView):
+    """GET /api/audit-logs/actions/ — liste des actions possibles
+    (AuditLog.Action.choices), pour alimenter le filtre "Actions" de
+    /audit côté frontend sans dupliquer la liste en dur (elle était
+    jusqu'ici codée côté React, désynchronisée à chaque nouvelle action
+    ajoutée côté backend — voir securite.md point 38)."""
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        return Response([
+            {'value': value, 'label': label}
+            for value, label in AuditLog.Action.choices
+        ])
+
+
 class AuditLogListView(APIView):
     """GET /api/admin/audit-logs/?user=&action=&page=
 
@@ -39,7 +54,8 @@ class AuditLogListView(APIView):
     reste surveillable. Un ADMIN ordinaire voit SES PROPRES actions **et**
     celles de tous les CONSULTANT (qu'il administre et dont il doit
     pouvoir vérifier l'activité de consultation — traçabilité RGPD/Loi
-    18-07) — mais jamais celles d'un autre ADMIN ou d'un SUPERADMIN. Le
+    18-07) et des comptes GESTIONNAIRE (mêmes raisons) — mais jamais celles
+    d'un autre ADMIN ou d'un SUPERADMIN. Le
     filtre `user` de la query string est appliqué uniquement DANS ce
     périmètre pour un ADMIN (jamais un blanc-seing pour sortir de
     own+CONSULTANT), pas seulement caché côté UI."""
@@ -60,7 +76,7 @@ class AuditLogListView(APIView):
                 qs = qs.filter(username_snapshot__icontains=user_q)
         else:
             qs = qs.filter(
-                Q(user=request.user) | Q(user__role='CONSULTANT')
+                Q(user=request.user) | Q(user__role__in=['CONSULTANT', 'GESTIONNAIRE'])
             )
             if user_q:
                 qs = qs.filter(username_snapshot__icontains=user_q)
