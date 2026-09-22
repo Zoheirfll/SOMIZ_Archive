@@ -60,6 +60,7 @@ LOCAL_APPS = [
     'documents',
     'audit',
     'ocr',
+    'attestations',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

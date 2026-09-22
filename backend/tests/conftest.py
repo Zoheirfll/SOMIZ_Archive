@@ -169,6 +169,31 @@ def employee_document_file(db, employee, type_doc_facultatif, admin_user):
 
 
 @pytest.fixture
+def gestionnaire_user(db):
+    return User.objects.create_user(
+        username="gest_fixture", password="GestPass123!",
+        nom="Fixture", prenom="Gest",
+        role=User.Role.GESTIONNAIRE,
+        consent_loi1807_accepted_at=timezone.now(),
+    )
+
+
+@pytest.fixture
+def other_gestionnaire(db):
+    return User.objects.create_user(
+        username="gest_fixture2", password="GestPass123!",
+        nom="Fixture2", prenom="Gest",
+        role=User.Role.GESTIONNAIRE,
+        consent_loi1807_accepted_at=timezone.now(),
+    )
+
+
+@pytest.fixture
+def other_direction(db):
+    return Direction.objects.create(nom="Autre Direction")
+
+
+@pytest.fixture
 def contrat(db, employee, type_contrat, admin_user):
     return Contrat.objects.create(
         numero_contrat="CTR-2024-001",
