@@ -601,6 +601,11 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
             'id', 'nom', 'code', 'obligatoire', 'is_active', 'ordre', 'couleur',
             'nb_documents', 'parent', 'parent_nom', 'is_categorie', 'champ_source',
         ]
+        # Plus de saisie manuelle — un nouveau type est ajouté en fin de sa
+        # fratrie (TypeDocumentListCreateView.perform_create), le classement
+        # se change ensuite uniquement via les flèches ↑/↓ du tableau
+        # (/ref/types-documents/reorder/, qui écrit directement en base).
+        read_only_fields = ['ordre']
     def get_nb_documents(self, obj):
         return obj.documents.filter(is_active=True).count()
 
@@ -633,25 +638,6 @@ class TypeDocumentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Couleur invalide — attendu un code hexadécimal, ex. #166534.")
         return value.lower()
 
-    def validate_ordre(self, value):
-        # 0 = valeur par défaut "non précisée", volontairement exemptée pour
-        # ne pas bloquer les types déjà en base jamais explicitement
-        # réordonnés — mais dès qu'un admin choisit un numéro (1, 2, 6...),
-        # il doit être unique : sans ce garde-fou, plusieurs types se
-        # retrouvaient tous sur le même numéro, rendant le tri par ordre
-        # inopérant (l'admin ne savait plus lequel passait avant l'autre).
-        if not value:
-            return value
-        qs = TypeDocument.objects.filter(ordre=value)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        existing = qs.first()
-        if existing:
-            raise serializers.ValidationError(
-                f"Le numéro {value} est déjà utilisé par « {existing.nom} » — choisissez un autre ordre."
-            )
-        return value
-
     def validate_parent(self, value):
         if value is None:
             return value
@@ -678,6 +664,25 @@ class TypeDocumentListCreateView(ReferentielAuditMixin, generics.ListCreateAPIVi
         # Restreint au périmètre d'un CONSULTANT scopé sur les types de
         # documents — ADMIN et CONSULTANT non scopé voient tout, inchangé.
         return self.request.user.accessible_types_documents_qs().select_related('parent')
+
+    def perform_create(self, serializer):
+        # Plus de saisie manuelle de l'ordre à la création (voir
+        # TypeDocumentSerializer.ordre, read_only) — un nouveau type
+        # rejoint la fin de son groupe de fratrie (racine, ou sous-types
+        # de la même catégorie), même convention "paliers de 10" que
+        # TypesDocumentsReorderView. Le classement fin reste ensuite piloté
+        # par les flèches ↑/↓ (/ref/types-documents/reorder/). L'audit log
+        # (CREATE_REF) reste géré ici, comme le ferait ReferentielAuditMixin,
+        # puisqu'on ne peut pas laisser le mixin appeler serializer.save()
+        # sans l'argument ordre.
+        parent = serializer.validated_data.get('parent')
+        siblings = TypeDocument.objects.filter(parent=parent)
+        last_ordre = siblings.order_by('-ordre').values_list('ordre', flat=True).first() or 0
+        instance = serializer.save(ordre=last_ordre + 10)
+        AuditLog.log(
+            self.request, AuditLog.Action.CREATE_REF, target=instance,
+            details={'model': instance.__class__.__name__, 'nom': _ref_label(instance)},
+        )
 
 class TypeDocumentDetailView(TypeDocumentDestroyMixin, ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TypeDocumentSerializer

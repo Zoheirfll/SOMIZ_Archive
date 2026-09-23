@@ -125,6 +125,10 @@ const RefTable = ({
                       fontWeight: 700,
                       textTransform: "uppercase",
                       width: 120,
+                      position: "sticky",
+                      right: 0,
+                      background: theme.primaryBg,
+                      boxShadow: `-4px 0 6px -4px rgba(0,0,0,0.2)`,
                     }}
                   >
                     Actions
@@ -133,21 +137,23 @@ const RefTable = ({
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => (
+              {items.map((item, idx) => {
+                const rowBg = item.system
+                  ? theme.borderLight
+                  : item.is_categorie
+                    ? theme.accentBg
+                    : item.parent_nom
+                      ? theme.surfaceHover
+                      : idx % 2 === 0
+                        ? theme.surface
+                        : theme.surfaceHover;
+                return (
                 <tr
                   key={item.id}
                   className="table-row-hover"
                   style={{
                     borderBottom: `1px solid ${theme.primaryBorder}`,
-                    background: item.system
-                      ? theme.borderLight
-                      : item.is_categorie
-                        ? theme.accentBg
-                        : item.parent_nom
-                          ? theme.surfaceHover
-                          : idx % 2 === 0
-                            ? theme.surface
-                            : theme.surfaceHover,
+                    background: rowBg,
                   }}
                 >
                   {isAdmin && onToggleSelect && (
@@ -178,7 +184,15 @@ const RefTable = ({
                     </td>
                   ))}
                   {isAdmin && (
-                    <td style={{ padding: "11px 16px" }}>
+                    <td
+                      style={{
+                        padding: "11px 16px",
+                        position: "sticky",
+                        right: 0,
+                        background: rowBg,
+                        boxShadow: `-4px 0 6px -4px rgba(0,0,0,0.2)`,
+                      }}
+                    >
                       {item.system ? (
                         <div
                           style={{
@@ -262,7 +276,8 @@ const RefTable = ({
                     </td>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

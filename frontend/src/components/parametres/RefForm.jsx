@@ -806,18 +806,6 @@ const RefForm = ({
               plus uploadable directement.
             </div>
 
-            <label style={labelStyle}>Ordre d'affichage</label>
-            <input
-              type="number"
-              name="ordre"
-              value={form.ordre ?? 0}
-              onChange={handleChange}
-              className="input-focus"
-              style={inputStyle}
-              min="0"
-            />
-            <FieldError name="ordre" />
-
             <label style={labelStyle}>Obligatoire ?</label>
             <select
               name="obligatoire"

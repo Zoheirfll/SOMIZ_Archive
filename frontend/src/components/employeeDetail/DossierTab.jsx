@@ -178,10 +178,10 @@ const DossierTab = ({
                 {folderLabel && (
                   <div
                     onClick={() => toggleFolder(folderLabel)}
-                    style={folderHeaderStyle(doc.couleur, !openFolders.has(folderLabel))}
+                    style={folderHeaderStyle(doc.parent_couleur, !openFolders.has(folderLabel))}
                   >
                     <span>📁 {folderLabel}</span>
-                    <span style={folderToggleStyle(doc.couleur, openFolders.has(folderLabel))}>▾</span>
+                    <span style={folderToggleStyle(doc.parent_couleur, openFolders.has(folderLabel))}>▾</span>
                   </div>
                 )}
                 {folderOpen && (
@@ -477,10 +477,10 @@ const DossierTab = ({
                 {missingFolderLabel && (
                   <div
                     onClick={() => toggleFolder(missingFolderLabel)}
-                    style={folderHeaderStyle(doc.couleur, !openFolders.has(missingFolderLabel))}
+                    style={folderHeaderStyle(doc.parent_couleur, !openFolders.has(missingFolderLabel))}
                   >
                     <span>📁 {missingFolderLabel}</span>
-                    <span style={folderToggleStyle(doc.couleur, openFolders.has(missingFolderLabel))}>▾</span>
+                    <span style={folderToggleStyle(doc.parent_couleur, openFolders.has(missingFolderLabel))}>▾</span>
                   </div>
                 )}
                 {missingFolderOpen && (

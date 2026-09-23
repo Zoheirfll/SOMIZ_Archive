@@ -87,6 +87,7 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
     nb_fichiers = serializers.IntegerField(read_only=True)
     fichiers = EmployeeDocumentFileSerializer(many=True, read_only=True)
     couleur = serializers.SerializerMethodField()
+    parent_couleur = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeDocument
@@ -94,6 +95,7 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
             'id', 'type_doc', 'type_doc_id',
             'type_document', 'type_document_label', 'type_document_parent', 'obligatoire',
             'ordre', 'type_ordre', 'nb_fichiers', 'file_size_kb', 'fichiers', 'couleur',
+            'parent_couleur',
             'version', 'is_active', 'contrat',
             'uploaded_by', 'uploaded_by_name', 'uploaded_at',
             'notes',
@@ -106,6 +108,14 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
     def get_couleur(self, obj):
         t = obj.type_doc
         return t.couleur or (t.parent.couleur if t.parent_id else '') or None
+
+    def get_parent_couleur(self, obj):
+        # Couleur propre de la CATÉGORIE (jamais celle héritée par un
+        # sous-type, voir `couleur` ci-dessus) — utilisée uniquement pour
+        # l'en-tête 📁 du groupe, qui doit toujours refléter la catégorie
+        # elle-même, pas le premier document qui s'y trouve.
+        t = obj.type_doc
+        return t.parent.couleur if t.parent_id else None
 
     def get_ordre(self, obj):
         t = obj.type_doc
@@ -517,6 +527,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'ordre': t.parent.ordre if t.parent_id else t.ordre,
             'type_ordre': t.ordre,
             'couleur': t.couleur or (t.parent.couleur if t.parent_id else '') or None,
+            'parent_couleur': t.parent.couleur if t.parent_id else None,
         }
         for t in manquants
     ]

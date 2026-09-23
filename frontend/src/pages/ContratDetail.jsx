@@ -733,10 +733,10 @@ const ContratDetail = () => {
               {folderLabel && (
                 <div
                   onClick={() => toggleFolder(folderLabel)}
-                  style={folderHeaderStyle(doc.couleur, !openFolders.has(folderLabel))}
+                  style={folderHeaderStyle(doc.parent_couleur, !openFolders.has(folderLabel))}
                 >
                   <span>📁 {folderLabel}</span>
-                  <span style={folderToggleStyle(doc.couleur, openFolders.has(folderLabel))}>▾</span>
+                  <span style={folderToggleStyle(doc.parent_couleur, openFolders.has(folderLabel))}>▾</span>
                 </div>
               )}
               {folderOpen && (
