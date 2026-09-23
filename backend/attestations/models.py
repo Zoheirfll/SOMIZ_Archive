@@ -24,8 +24,6 @@ class ReferenceCounter(models.Model):
 class DemandeAttestation(models.Model):
     class Statut(models.TextChoices):
         RECUE = 'recue', 'Reçue'
-        IMPRIMEE = 'imprimee', 'Imprimée'
-        SIGNEE = 'signee', 'Signée'
         PRETE = 'prete', 'Prête'
         RECUPEREE = 'recuperee', 'Récupérée'
         REJETEE = 'rejetee', 'Rejetée'
@@ -40,9 +38,19 @@ class DemandeAttestation(models.Model):
         'employees.Contrat', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='demandes_attestation',
     )
-    motif = models.CharField(max_length=255)
+    motif = models.ForeignKey(
+        'employees.MotifArchivage', on_delete=models.PROTECT,
+        related_name='demandes_attestation',
+        limit_choices_to={'categorie': 'attestation'},
+    )
     commentaire = models.TextField(blank=True)
     statut = models.CharField(max_length=20, choices=Statut.choices, default=Statut.RECUE)
+    # Date de passage à chaque étape du stepper (voir AttestationDetail.jsx)
+    # — `created_at` sert déjà de date "Reçue", pas besoin d'un 3e champ.
+    # Renseignées automatiquement par DemandeAttestationStatutView.patch(),
+    # jamais modifiables directement via l'API.
+    date_prete = models.DateTimeField(null=True, blank=True)
+    date_recuperee = models.DateTimeField(null=True, blank=True)
     motif_rejet = models.TextField(blank=True)
     scan_document = models.FileField(
         upload_to=attestation_scan_upload_path, null=True, blank=True,

@@ -9,11 +9,23 @@ from attestations.permissions import CanRequestAttestation
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture
+def admin_user(admin_user):
+    """Surcharge la fixture globale (tests/conftest.py) : dans ce module,
+    `admin_user` représente un ADMIN chargé des attestations
+    (User.can_manage_attestations) — un ADMIN nouvellement créé ne l'est
+    pas par défaut (voir test_admin_non_charge_est_bloque_partout ci-dessous
+    pour le cas contraire)."""
+    admin_user.charge_attestation = True
+    admin_user.save(update_fields=['charge_attestation'])
+    return admin_user
+
+
 # ─── Modèles ────────────────────────────────────────────────────────────────
 
-def test_demande_attestation_default_statut_is_recue(employee, gestionnaire_user):
+def test_demande_attestation_default_statut_is_recue(employee, gestionnaire_user, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='Dossier administratif',
+        reference='00001/26', employee=employee, motif=motif_attestation,
         demandeur=gestionnaire_user,
     )
     assert demande.statut == DemandeAttestation.Statut.RECUE
@@ -88,13 +100,13 @@ def test_can_request_attestation_blocks_unconsented_user():
 # ─── Création / liste / annulation ──────────────────────────────────────────
 
 def test_gestionnaire_can_create_demande_for_employee_in_scope(
-    gestionnaire_user, employee, direction,
+    gestionnaire_user, employee, direction, motif_attestation,
 ):
     gestionnaire_user.scope_directions.add(direction)
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
     resp = client.post('/api/attestations/demandes/', {
-        'employee': str(employee.id), 'motif': 'Dossier administratif',
+        'employee': str(employee.id), 'motif': str(motif_attestation.id),
     }, format='json')
     assert resp.status_code == 201, resp.data
     assert resp.data['statut'] == 'recue'
@@ -103,24 +115,43 @@ def test_gestionnaire_can_create_demande_for_employee_in_scope(
     assert demande.demandeur_id == gestionnaire_user.id
 
 
+def test_gestionnaire_can_create_demande_with_motif_libre(
+    gestionnaire_user, employee, direction,
+):
+    """Le select "Motif" propose "Autre..." — un GESTIONNAIRE (pas ADMIN,
+    donc sans accès à /ref/motifs-attestation/ en écriture) peut quand même
+    créer un motif à la volée via `motif_autre`."""
+    from employees.models import MotifArchivage
+    gestionnaire_user.scope_directions.add(direction)
+    client = APIClient()
+    client.force_authenticate(gestionnaire_user)
+    resp = client.post('/api/attestations/demandes/', {
+        'employee': str(employee.id), 'motif_autre': 'Visa Schengen',
+    }, format='json')
+    assert resp.status_code == 201, resp.data
+    motif = MotifArchivage.objects.get(nom='Visa Schengen')
+    assert motif.categorie == MotifArchivage.Categorie.ATTESTATION
+    assert str(resp.data['motif']) == str(motif.id)
+
+
 def test_gestionnaire_cannot_create_demande_for_employee_out_of_scope(
-    gestionnaire_user, employee, other_direction,
+    gestionnaire_user, employee, other_direction, motif_attestation,
 ):
     gestionnaire_user.scope_directions.add(other_direction)
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
     resp = client.post('/api/attestations/demandes/', {
-        'employee': str(employee.id), 'motif': 'Dossier administratif',
+        'employee': str(employee.id), 'motif': str(motif_attestation.id),
     }, format='json')
     assert resp.status_code in (400, 403, 404)
 
 
-def test_gestionnaire_list_shows_only_own_demandes(gestionnaire_user, other_gestionnaire, employee):
+def test_gestionnaire_list_shows_only_own_demandes(gestionnaire_user, other_gestionnaire, employee, motif_attestation):
     DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     DemandeAttestation.objects.create(
-        reference='00002/26', employee=employee, motif='B', demandeur=other_gestionnaire,
+        reference='00002/26', employee=employee, motif=motif_attestation, demandeur=other_gestionnaire,
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
@@ -131,18 +162,18 @@ def test_gestionnaire_list_shows_only_own_demandes(gestionnaire_user, other_gest
     assert results[0]['reference'] == '00001/26'
 
 
-def test_pending_filter_counts_only_recue(admin_user, gestionnaire_user, employee):
+def test_pending_filter_counts_only_recue(admin_user, gestionnaire_user, employee, motif_attestation):
     DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
         statut='recue',
     )
     DemandeAttestation.objects.create(
-        reference='00002/26', employee=employee, motif='B', demandeur=gestionnaire_user,
-        statut='imprimee',
+        reference='00002/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+        statut='prete',
     )
     DemandeAttestation.objects.create(
-        reference='00003/26', employee=employee, motif='C', demandeur=gestionnaire_user,
-        statut='prete',
+        reference='00003/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+        statut='recuperee',
     )
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -153,10 +184,10 @@ def test_pending_filter_counts_only_recue(admin_user, gestionnaire_user, employe
 
 
 def test_search_filters_by_employee_or_reference_or_demandeur(
-    admin_user, gestionnaire_user, employee, other_gestionnaire,
+    admin_user, gestionnaire_user, employee, other_gestionnaire, motif_attestation,
 ):
     DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -171,9 +202,45 @@ def test_search_filters_by_employee_or_reference_or_demandeur(
     assert len(results) == 0
 
 
-def test_admin_list_shows_all_demandes(admin_user, gestionnaire_user, employee):
+def test_employee_filter_scopes_to_one_employee(
+    admin_user, gestionnaire_user, employee, other_gestionnaire, motif_attestation,
+):
+    """Onglet "Attestations" de la fiche employé (EmployeeDetail.jsx) —
+    ?employee=<id> ne renvoie que les demandes de CET employé, combiné avec
+    le scoping demandeur habituel (un GESTIONNAIRE ne voit toujours que ses
+    propres demandes, même filtrées par employé)."""
+    from employees.models import Employee
+    autre_employee = Employee.objects.create(
+        matricule='EMP-002', nom='Martin', prenom='Paul',
+        direction=employee.direction, departement=employee.departement,
+        service=employee.service, poste=employee.poste,
+        type_contrat=employee.type_contrat, categorie=employee.categorie,
+        created_by=admin_user,
+    )
     DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+    )
+    DemandeAttestation.objects.create(
+        reference='00002/26', employee=autre_employee, motif=motif_attestation, demandeur=gestionnaire_user,
+    )
+    DemandeAttestation.objects.create(
+        reference='00003/26', employee=employee, motif=motif_attestation, demandeur=other_gestionnaire,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.get('/api/attestations/demandes/', {'employee': str(employee.id)})
+    results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+    assert {r['reference'] for r in results} == {'00001/26', '00003/26'}
+
+    client.force_authenticate(gestionnaire_user)
+    resp = client.get('/api/attestations/demandes/', {'employee': str(employee.id)})
+    results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+    assert {r['reference'] for r in results} == {'00001/26'}
+
+
+def test_admin_list_shows_all_demandes(admin_user, gestionnaire_user, employee, motif_attestation):
+    DemandeAttestation.objects.create(
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -182,9 +249,9 @@ def test_admin_list_shows_all_demandes(admin_user, gestionnaire_user, employee):
     assert len(results) == 1
 
 
-def test_demandeur_can_cancel_own_demande_while_recue(gestionnaire_user, employee):
+def test_demandeur_can_cancel_own_demande_while_recue(gestionnaire_user, employee, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
@@ -193,10 +260,10 @@ def test_demandeur_can_cancel_own_demande_while_recue(gestionnaire_user, employe
     assert not DemandeAttestation.objects.filter(id=demande.id).exists()
 
 
-def test_demandeur_cannot_cancel_demande_once_imprimee(gestionnaire_user, employee):
+def test_demandeur_cannot_cancel_demande_once_prete(gestionnaire_user, employee, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
-        statut=DemandeAttestation.Statut.IMPRIMEE,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+        statut=DemandeAttestation.Statut.PRETE,
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
@@ -207,13 +274,13 @@ def test_demandeur_cannot_cancel_demande_once_imprimee(gestionnaire_user, employ
 
 # ─── Workflow des statuts ───────────────────────────────────────────────────
 
-ORDRE_STATUTS = ['recue', 'imprimee', 'signee', 'prete', 'recuperee']
+ORDRE_STATUTS = ['recue', 'prete', 'recuperee']
 
 
 @pytest.mark.parametrize('depuis,vers', list(zip(ORDRE_STATUTS, ORDRE_STATUTS[1:])))
-def test_admin_can_advance_statut_in_order(admin_user, employee, gestionnaire_user, depuis, vers):
+def test_admin_can_advance_statut_in_order(admin_user, employee, gestionnaire_user, motif_attestation, depuis, vers):
     demande = DemandeAttestation.objects.create(
-        reference=generate_reference(), employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference=generate_reference(), employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
         statut=depuis,
     )
     client = APIClient()
@@ -223,25 +290,29 @@ def test_admin_can_advance_statut_in_order(admin_user, employee, gestionnaire_us
     demande.refresh_from_db()
     assert demande.statut == vers
     assert demande.traite_par_id == admin_user.id
+    if vers == 'prete':
+        assert demande.date_prete is not None
+    elif vers == 'recuperee':
+        assert demande.date_recuperee is not None
 
 
-def test_admin_cannot_skip_statuses(admin_user, employee, gestionnaire_user):
+def test_admin_cannot_skip_statuses(admin_user, employee, gestionnaire_user, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference=generate_reference(), employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference=generate_reference(), employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
         statut='recue',
     )
     client = APIClient()
     client.force_authenticate(admin_user)
-    resp = client.patch(f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'prete'}, format='json')
+    resp = client.patch(f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'recuperee'}, format='json')
     assert resp.status_code == 400
     demande.refresh_from_db()
     assert demande.statut == 'recue'
 
 
-def test_admin_can_reject_from_any_non_terminal_status(admin_user, employee, gestionnaire_user):
+def test_admin_can_reject_from_any_non_terminal_status(admin_user, employee, gestionnaire_user, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference=generate_reference(), employee=employee, motif='A', demandeur=gestionnaire_user,
-        statut='signee',
+        reference=generate_reference(), employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+        statut='prete',
     )
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -255,9 +326,9 @@ def test_admin_can_reject_from_any_non_terminal_status(admin_user, employee, ges
     assert demande.motif_rejet == 'Employé non éligible'
 
 
-def test_reject_without_motif_is_rejected(admin_user, employee, gestionnaire_user):
+def test_reject_without_motif_is_rejected(admin_user, employee, gestionnaire_user, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference=generate_reference(), employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference=generate_reference(), employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
         statut='recue',
     )
     client = APIClient()
@@ -268,22 +339,22 @@ def test_reject_without_motif_is_rejected(admin_user, employee, gestionnaire_use
     assert resp.status_code == 400
 
 
-def test_gestionnaire_cannot_change_statut(gestionnaire_user, employee):
+def test_gestionnaire_cannot_change_statut(gestionnaire_user, employee, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference=generate_reference(), employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference=generate_reference(), employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
         statut='recue',
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
-    resp = client.patch(f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'imprimee'}, format='json')
+    resp = client.patch(f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'prete'}, format='json')
     assert resp.status_code == 403
 
 
 # ─── Scan ────────────────────────────────────────────────────────────────────
 
-def test_admin_can_upload_scan_at_any_statut(admin_user, employee, gestionnaire_user):
+def test_admin_can_upload_scan_at_any_statut(admin_user, employee, gestionnaire_user, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference=generate_reference(), employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference=generate_reference(), employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
         statut='prete',
     )
     client = APIClient()
@@ -343,9 +414,9 @@ def _texte_pdf(contenu):
     return PdfReader(BytesIO(contenu)).pages[0].extract_text()
 
 
-def test_apercu_renvoie_un_pdf_avec_les_donnees_de_la_demande(admin_user, employee, gestionnaire_user):
+def test_apercu_renvoie_un_pdf_avec_les_donnees_de_la_demande(admin_user, employee, gestionnaire_user, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='Dossier administratif',
+        reference='00001/26', employee=employee, motif=motif_attestation,
         demandeur=gestionnaire_user,
     )
     client = APIClient()
@@ -363,7 +434,7 @@ def test_apercu_renvoie_un_pdf_avec_les_donnees_de_la_demande(admin_user, employ
     assert 'ATTESTATION DE TRAVAIL' in texte
 
 
-def test_apercu_reprend_la_configuration_du_modele(admin_user, employee, gestionnaire_user):
+def test_apercu_reprend_la_configuration_du_modele(admin_user, employee, gestionnaire_user, motif_attestation):
     """Le document n'embarque aucune valeur codée en dur : tout l'en-tête,
     le signataire et le pied de page viennent de AttestationTemplateConfig,
     modifiable par un ADMIN dans /parametres."""
@@ -375,7 +446,7 @@ def test_apercu_reprend_la_configuration_du_modele(admin_user, employee, gestion
     config.save()
 
     demande = DemandeAttestation.objects.create(
-        reference='00002/26', employee=employee, motif='Banque', demandeur=gestionnaire_user,
+        reference='00002/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -388,10 +459,10 @@ def test_apercu_reprend_la_configuration_du_modele(admin_user, employee, gestion
 
 
 def test_apercu_reprend_le_dernier_contrat_si_la_demande_nen_vise_aucun(
-    admin_user, employee, gestionnaire_user, contrat,
+    admin_user, employee, gestionnaire_user, contrat, motif_attestation,
 ):
     demande = DemandeAttestation.objects.create(
-        reference='00003/26', employee=employee, motif='Banque', demandeur=gestionnaire_user,
+        reference='00003/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -399,9 +470,9 @@ def test_apercu_reprend_le_dernier_contrat_si_la_demande_nen_vise_aucun(
     assert contrat.numero_contrat in _texte_pdf(resp.content)
 
 
-def test_gestionnaire_cannot_access_apercu(gestionnaire_user, employee):
+def test_gestionnaire_cannot_access_apercu(gestionnaire_user, employee, motif_attestation):
     demande = DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     client = APIClient()
     client.force_authenticate(gestionnaire_user)
@@ -412,16 +483,16 @@ def test_gestionnaire_cannot_access_apercu(gestionnaire_user, employee):
 # ─── Reporting ──────────────────────────────────────────────────────────────
 
 def test_stats_counts_demandes_by_gestionnaire_and_employee(
-    admin_user, employee, gestionnaire_user, other_gestionnaire,
+    admin_user, employee, gestionnaire_user, other_gestionnaire, motif_attestation,
 ):
     DemandeAttestation.objects.create(
-        reference='00001/26', employee=employee, motif='A', demandeur=gestionnaire_user,
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     DemandeAttestation.objects.create(
-        reference='00002/26', employee=employee, motif='B', demandeur=gestionnaire_user,
+        reference='00002/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
     )
     DemandeAttestation.objects.create(
-        reference='00003/26', employee=employee, motif='C', demandeur=other_gestionnaire,
+        reference='00003/26', employee=employee, motif=motif_attestation, demandeur=other_gestionnaire,
     )
     client = APIClient()
     client.force_authenticate(admin_user)
@@ -439,3 +510,134 @@ def test_stats_forbidden_for_gestionnaire(gestionnaire_user):
     client.force_authenticate(gestionnaire_user)
     resp = client.get('/api/attestations/stats/')
     assert resp.status_code == 403
+
+
+# ─── ADMIN non chargé des attestations ──────────────────────────────────────
+
+def test_admin_non_charge_est_bloque_partout(db, employee, gestionnaire_user, motif_attestation):
+    """Un ADMIN pour qui `charge_attestation` n'est pas coché n'a plus aucun
+    accès à /attestations, comme un GESTIONNAIRE en dehors de son propre
+    périmètre de demandes — voir User.can_manage_attestations et
+    CanAccessAttestations/IsAttestationManager."""
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+    User = get_user_model()
+    admin_non_charge = User.objects.create_user(
+        username='admin_non_charge', password='AdminPass123!', nom='Non', prenom='Charge',
+        role='ADMIN', consent_loi1807_accepted_at=timezone.now(),
+    )
+    demande = DemandeAttestation.objects.create(
+        reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_non_charge)
+
+    assert client.get('/api/attestations/demandes/').status_code == 403
+    assert client.get(f'/api/attestations/demandes/{_url_ref(demande)}/').status_code == 403
+    assert client.patch(
+        f'/api/attestations/demandes/{_url_ref(demande)}/statut/', {'statut': 'prete'}, format='json',
+    ).status_code == 403
+    assert client.get('/api/attestations/config/').status_code == 403
+    assert client.get('/api/attestations/stats/').status_code == 403
+    assert client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/').status_code == 403
+
+
+def test_admin_charge_attestation_force_a_false_si_role_non_admin(gestionnaire_user):
+    """Garde-fou serveur (UserSerializer.validate) : charge_attestation ne
+    peut jamais rester coché sur un compte qui n'est pas ADMIN."""
+    gestionnaire_user.charge_attestation = True
+    gestionnaire_user.save(update_fields=['charge_attestation'])
+    assert gestionnaire_user.can_manage_attestations is False
+
+
+# ─── Action en masse ─────────────────────────────────────────────────────────
+
+def test_bulk_statut_marque_plusieurs_demandes_recues_comme_pretes(
+    admin_user, employee, gestionnaire_user, motif_attestation,
+):
+    d1 = DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation,
+        demandeur=gestionnaire_user, statut='recue',
+    )
+    d2 = DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation,
+        demandeur=gestionnaire_user, statut='recue',
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.post('/api/attestations/demandes/bulk-statut/', {
+        'ids': [str(d1.id), str(d2.id)], 'statut': 'prete',
+    }, format='json')
+    assert resp.status_code == 200, resp.data
+    assert set(resp.data['updated']) == {d1.reference, d2.reference}
+    assert resp.data['errors'] == []
+    d1.refresh_from_db(); d2.refresh_from_db()
+    assert d1.statut == d2.statut == 'prete'
+    assert d1.traite_par_id == d2.traite_par_id == admin_user.id
+
+
+def test_bulk_statut_reporte_les_transitions_invalides_sans_bloquer_le_lot(
+    admin_user, employee, gestionnaire_user, motif_attestation,
+):
+    valide = DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation,
+        demandeur=gestionnaire_user, statut='recue',
+    )
+    deja_recuperee = DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation,
+        demandeur=gestionnaire_user, statut='recuperee',
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.post('/api/attestations/demandes/bulk-statut/', {
+        'ids': [str(valide.id), str(deja_recuperee.id)], 'statut': 'prete',
+    }, format='json')
+    assert resp.status_code == 200, resp.data
+    assert resp.data['updated'] == [valide.reference]
+    assert len(resp.data['errors']) == 1
+    assert resp.data['errors'][0]['reference'] == deja_recuperee.reference
+    valide.refresh_from_db()
+    assert valide.statut == 'prete'
+
+
+def test_bulk_statut_forbidden_for_gestionnaire(gestionnaire_user, employee, motif_attestation):
+    demande = DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+        statut='recue',
+    )
+    client = APIClient()
+    client.force_authenticate(gestionnaire_user)
+    resp = client.post('/api/attestations/demandes/bulk-statut/', {
+        'ids': [str(demande.id)], 'statut': 'prete',
+    }, format='json')
+    assert resp.status_code == 403
+
+
+# ─── Badge navbar côté demandeur ─────────────────────────────────────────────
+
+def test_pending_filter_cote_gestionnaire_compte_ses_demandes_pretes(
+    gestionnaire_user, other_gestionnaire, employee, motif_attestation,
+):
+    """Symétrique de test_pending_filter_counts_only_recue côté ADMIN : un
+    GESTIONNAIRE voit dans son propre badge uniquement SES demandes Prêtes à
+    récupérer, jamais celles d'un autre GESTIONNAIRE ni ses propres demandes
+    à un autre statut."""
+    DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation,
+        demandeur=gestionnaire_user, statut='prete',
+    )
+    DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation,
+        demandeur=gestionnaire_user, statut='recue',
+    )
+    DemandeAttestation.objects.create(
+        reference=generate_reference(), employee=employee, motif=motif_attestation,
+        demandeur=other_gestionnaire, statut='prete',
+    )
+    client = APIClient()
+    client.force_authenticate(gestionnaire_user)
+    resp = client.get('/api/attestations/demandes/', {'pending': 1})
+    results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+    assert len(results) == 1
+    assert results[0]['statut'] == 'prete'
+    assert str(results[0]['demandeur']) == str(gestionnaire_user.id)

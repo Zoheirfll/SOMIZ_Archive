@@ -23,6 +23,9 @@ describe("AttestationNouvelle", () => {
       if (url === "/employees/search/") {
         return Promise.resolve({ data: [{ id: "emp1", nom: "Dupont", prenom: "Jean", matricule: "M1" }] });
       }
+      if (url === "/ref/motifs-attestation/") {
+        return Promise.resolve({ data: [{ id: "mot1", nom: "Dossier administratif", is_active: true }] });
+      }
       if (url.includes("/contrats/")) {
         return Promise.resolve({ data: [] });
       }
@@ -35,12 +38,44 @@ describe("AttestationNouvelle", () => {
     await userEvent.type(screen.getByLabelText(/employé/i), "Dupont");
     await waitFor(() => expect(screen.getByText(/Dupont — M1/)).toBeInTheDocument());
     fireEvent.click(screen.getByText(/Dupont — M1/));
-    await userEvent.type(screen.getByLabelText(/motif/i), "Dossier administratif");
+    await waitFor(() => expect(screen.getByLabelText(/motif/i)).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText(/motif/i), "mot1");
     fireEvent.click(screen.getByText(/Envoyer la demande/i));
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       "/attestations/demandes/",
-      expect.objectContaining({ employee: "emp1", motif: "Dossier administratif" })
+      expect.objectContaining({ employee: "emp1", motif: "mot1" })
+    ));
+  });
+
+  test("permet de saisir un motif libre via \"Autre...\"", async () => {
+    api.get.mockImplementation((url) => {
+      if (url === "/employees/search/") {
+        return Promise.resolve({ data: [{ id: "emp1", nom: "Dupont", prenom: "Jean", matricule: "M1" }] });
+      }
+      if (url === "/ref/motifs-attestation/") {
+        return Promise.resolve({ data: [{ id: "mot1", nom: "Dossier administratif", is_active: true }] });
+      }
+      if (url.includes("/contrats/")) {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    api.post.mockResolvedValueOnce({ data: { id: "d1", reference: "00001/26" } });
+
+    render(<AttestationNouvelle />);
+
+    await userEvent.type(screen.getByLabelText(/employé/i), "Dupont");
+    await waitFor(() => expect(screen.getByText(/Dupont — M1/)).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/Dupont — M1/));
+    await waitFor(() => expect(screen.getByLabelText(/motif/i)).toBeInTheDocument());
+    await userEvent.selectOptions(screen.getByLabelText(/motif/i), "__autre__");
+    await userEvent.type(screen.getByPlaceholderText(/Précisez le motif/i), "Visa Schengen");
+    fireEvent.click(screen.getByText(/Envoyer la demande/i));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      "/attestations/demandes/",
+      expect.objectContaining({ employee: "emp1", motif_autre: "Visa Schengen" })
     ));
   });
 });

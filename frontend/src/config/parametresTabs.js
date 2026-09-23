@@ -13,7 +13,8 @@ export const TABS = [
   { key: "types-contrat", label: "Types de contrat" },
   { key: "categories", label: "Catégories" },
   { key: "echelles", label: "Échelles" },
-  { key: "motifs-archivage", label: "Motifs d'archivage" },
+  { key: "motifs-archivage", label: "Archivage" },
+  { key: "motifs-attestation", label: "Attestation" },
   { key: "types-documents", label: "Types de documents" },
   { key: "champs-personnalises", label: "Champs personnalisés" },
   { key: "attestation-config", label: "Attestation de travail" },
@@ -33,8 +34,12 @@ export const TAB_GROUPS = [
     keys: ["postes", "types-contrat", "categories", "echelles"],
   },
   {
+    label: "Motifs",
+    keys: ["motifs-archivage", "motifs-attestation"],
+  },
+  {
     label: "Dossier RH",
-    keys: ["types-documents", "champs-personnalises", "motifs-archivage", "attestation-config"],
+    keys: ["types-documents", "champs-personnalises", "attestation-config"],
   },
 ];
 
@@ -92,6 +97,7 @@ export const REF_COLUMNS_INFO = {
   categories: { obligatoires: ["nom"], optionnelles: ["description"] },
   echelles: { obligatoires: ["nom"], optionnelles: ["description"] },
   "motifs-archivage": { obligatoires: ["nom"], optionnelles: ["description"] },
+  "motifs-attestation": { obligatoires: ["nom"], optionnelles: ["description"] },
 };
 
 // Champs "système" de la fiche employé — pilotent le scoping/périmètre RGPD,

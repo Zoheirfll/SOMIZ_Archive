@@ -286,14 +286,31 @@ class Categorie(models.Model):
 
 
 class MotifArchivage(models.Model):
+    """Référentiel générique de "motifs" — pas seulement l'archivage d'un
+    employé malgré le nom historique du modèle (conservé pour ne pas
+    casser la FK Employee.motif_archivage et les migrations existantes) :
+    `categorie` distingue les motifs d'archivage des motifs de demande
+    d'attestation de travail (DemandeAttestation.motif), chacun avec son
+    propre espace dans /parametres ("Motifs" > Archivage / Attestation).
+    Le nom n'est unique qu'au sein d'une catégorie — deux usages différents
+    peuvent légitimement partager le même libellé (ex. "Fin de contrat")."""
+    class Categorie(models.TextChoices):
+        ARCHIVAGE = 'archivage', 'Archivage'
+        ATTESTATION = 'attestation', 'Attestation de travail'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    nom = models.CharField(max_length=100, unique=True, verbose_name="Motif d'archivage")
+    nom = models.CharField(max_length=100, verbose_name="Motif")
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices, default=Categorie.ARCHIVAGE,
+        verbose_name="Catégorie",
+    )
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'motifs_archivage'
-        verbose_name = "Motif d'archivage"
+        verbose_name = "Motif"
+        unique_together = [('nom', 'categorie')]
         ordering = ['nom']
 
     def __str__(self):

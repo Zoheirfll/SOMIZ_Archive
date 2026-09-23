@@ -76,9 +76,19 @@ const Navbar = () => {
   };
 
   const [pendingAttestations, setPendingAttestations] = useState(0);
+  // SUPERADMIN toujours, ADMIN seulement si chargé des attestations (voir
+  // User.can_manage_attestations côté backend) — un ADMIN non chargé n'a
+  // plus aucun accès à /attestations, ni lien navbar ni badge.
+  const canSeeAttestations = user?.role === "GESTIONNAIRE" || !!user?.can_manage_attestations;
 
   useEffect(() => {
-    if (!["ADMIN", "SUPERADMIN"].includes(user?.role)) return;
+    // Traiteurs (SUPERADMIN/ADMIN chargé) : comptent les demandes Reçues à
+    // traiter. GESTIONNAIRE (et SUPERADMIN en tant que demandeur) : compte
+    // ses propres demandes Prêtes à récupérer — même endpoint
+    // (`pending=1`), la branche demandeur/traiteur du backend
+    // (`get_queryset`) choisit le bon filtre. Voir
+    // DemandeAttestationListCreateView.get_queryset.
+    if (!canSeeAttestations) return;
     let cancelled = false;
     api.get("/attestations/demandes/", { params: { pending: 1 } })
       .then((res) => {
@@ -101,7 +111,7 @@ const Navbar = () => {
     { path: "/organigramme", label: "Organigramme" },
     {
       path: "/attestations", label: "Attestations",
-      show: ["ADMIN", "SUPERADMIN", "GESTIONNAIRE"].includes(user?.role),
+      show: canSeeAttestations,
     },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },

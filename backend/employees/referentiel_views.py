@@ -7,6 +7,7 @@ import os
 import re
 from django.conf import settings
 from django.db import transaction
+from django.db.models import ProtectedError
 from rest_framework import generics, serializers, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -569,27 +570,85 @@ class EchelleDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPI
     queryset = Echelle.objects.all()
 
 
-class MotifArchivageSerializer(serializers.ModelSerializer):
+class MotifSerializer(serializers.ModelSerializer):
     nb_employes = serializers.SerializerMethodField()
+    nb_demandes = serializers.SerializerMethodField()
     class Meta:
         model = MotifArchivage
-        fields = ['id', 'nom', 'description', 'is_active', 'nb_employes']
+        fields = ['id', 'nom', 'categorie', 'description', 'is_active', 'nb_employes', 'nb_demandes']
+        read_only_fields = ['categorie']
     def get_nb_employes(self, obj):
         return obj.employees.count()
+    def get_nb_demandes(self, obj):
+        return obj.demandes_attestation.count()
+
+    def validate_nom(self, value):
+        # `categorie` en read_only (fixée par la vue, pas par le payload,
+        # voir MotifArchivageListCreateView.perform_create) : le validateur
+        # unique_together auto-généré par DRF ne peut pas s'appuyer dessus
+        # (absente de validated_data) et laisse passer un doublon jusqu'à
+        # la contrainte DB — IntegrityError brute, 500 nu côté client.
+        # Vérification explicite ici, scopée à la bonne catégorie (celle de
+        # l'instance en édition, celle de la vue à la création).
+        categorie = self.instance.categorie if self.instance else getattr(self.context.get('view'), 'categorie', None)
+        qs = MotifArchivage.objects.filter(nom__iexact=value.strip(), categorie=categorie)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Un motif avec ce nom existe déjà dans cet espace.")
+        return value
+
+
+class MotifDestroyMixin:
+    """Un motif referme par PROTECT depuis Employee.motif_archivage (SET_NULL,
+    jamais bloquant) ou DemandeAttestation.motif (PROTECT, une demande garde
+    toujours la trace du motif exact utilisé — voir CLAUDE.md) — seul ce
+    second cas peut bloquer la suppression. `perform_destroy` (via
+    ReferentielAuditMixin, qui journalise avant `.delete()`) tourne dans une
+    transaction : si `.delete()` échoue, l'entrée d'audit déjà écrite est
+    annulée avec le reste, pas de trace d'une suppression qui n'a pas eu
+    lieu."""
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            with transaction.atomic():
+                self.perform_destroy(instance)
+        except ProtectedError:
+            return Response(
+                {"error": "Impossible de supprimer — des demandes d'attestation utilisent encore ce motif."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MotifArchivageListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics.ListCreateAPIView):
-    serializer_class = MotifArchivageSerializer
+    serializer_class = MotifSerializer
     search_fields = ['nom']
+    categorie = MotifArchivage.Categorie.ARCHIVAGE
     def get_permissions(self):
         return [IsAdmin()] if self.request.method == 'POST' else [IsAdminOrConsultant()]
     def get_queryset(self):
-        return self.filter_search(MotifArchivage.objects.all())
+        return self.filter_search(MotifArchivage.objects.filter(categorie=self.categorie))
+    def perform_create(self, serializer):
+        instance = serializer.save(categorie=self.categorie)
+        AuditLog.log(
+            self.request, AuditLog.Action.CREATE_REF, target=instance,
+            details={'model': instance.__class__.__name__, 'nom': _ref_label(instance)},
+        )
 
-class MotifArchivageDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = MotifArchivageSerializer
+class MotifArchivageDetailView(MotifDestroyMixin, ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = MotifSerializer
     permission_classes = [IsAdmin]
-    queryset = MotifArchivage.objects.all()
+    queryset = MotifArchivage.objects.filter(categorie=MotifArchivage.Categorie.ARCHIVAGE)
+
+
+class MotifAttestationListCreateView(MotifArchivageListCreateView):
+    categorie = MotifArchivage.Categorie.ATTESTATION
+
+class MotifAttestationDetailView(MotifDestroyMixin, ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = MotifSerializer
+    permission_classes = [IsAdmin]
+    queryset = MotifArchivage.objects.filter(categorie=MotifArchivage.Categorie.ATTESTATION)
 
 class TypeDocumentSerializer(serializers.ModelSerializer):
     nb_documents = serializers.SerializerMethodField()
@@ -932,6 +991,7 @@ class ReferentielBulkDeleteView(APIView):
         'categories': Categorie,
         'echelles': Echelle,
         'motifs-archivage': MotifArchivage,
+        'motifs-attestation': MotifArchivage,
         'types-documents': TypeDocument,
         'champs-personnalises': ChampPersonnalise,
     }
@@ -978,11 +1038,23 @@ class ReferentielBulkDeleteView(APIView):
                     nb_supprimes += 1
                 continue
 
-            AuditLog.log(
-                request, AuditLog.Action.DELETE_REF, target=instance,
-                details={'model': ModelClass.__name__, 'nom': _ref_label(instance)},
-            )
-            instance.delete()
+            try:
+                with transaction.atomic():
+                    AuditLog.log(
+                        request, AuditLog.Action.DELETE_REF, target=instance,
+                        details={'model': ModelClass.__name__, 'nom': _ref_label(instance)},
+                    )
+                    instance.delete()
+            except ProtectedError:
+                # Seul motifs-attestation est concerné aujourd'hui
+                # (DemandeAttestation.motif, on_delete=PROTECT) — message
+                # générique pour rester valable si un futur modèle référencé
+                # ici gagne aussi une FK protégée.
+                erreurs.append({
+                    'id': id_, 'nom': instance.nom,
+                    'erreur': "Des éléments dépendent encore de cette entrée.",
+                })
+                continue
             nb_supprimes += 1
 
         return Response({
@@ -1023,6 +1095,7 @@ class ReferentielMergeView(APIView):
         'categories': Categorie,
         'echelles': Echelle,
         'motifs-archivage': MotifArchivage,
+        'motifs-attestation': MotifArchivage,
     }
 
     MAX_SOURCES = 500
@@ -1074,6 +1147,18 @@ class ReferentielMergeView(APIView):
         sources = list(ModelClass.objects.filter(pk__in=source_ids))
         if len(sources) != len(set(str(s) for s in source_ids)):
             return Response({'error': 'Une ou plusieurs sources sont introuvables.'}, status=404)
+
+        # motifs-archivage et motifs-attestation partagent le même modèle
+        # (MotifArchivage.categorie) — empêche de fusionner un motif d'un
+        # espace vers l'autre par erreur (cible/sources doivent tous
+        # appartenir à la catégorie de l'onglet appelé).
+        if model in ('motifs-archivage', 'motifs-attestation'):
+            categorie_attendue = 'archivage' if model == 'motifs-archivage' else 'attestation'
+            if target.categorie != categorie_attendue or any(s.categorie != categorie_attendue for s in sources):
+                return Response(
+                    {'error': "Cible et sources doivent appartenir au même espace (Archivage / Attestation)."},
+                    status=400,
+                )
 
         try:
             with transaction.atomic():

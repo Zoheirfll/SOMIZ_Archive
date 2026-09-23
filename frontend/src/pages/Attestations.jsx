@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
+import { useConfirm } from "../components/ConfirmDialog";
 import StatutBadge from "../components/attestations/StatutBadge";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
@@ -13,8 +14,6 @@ import { ClipboardIcon, FileTextIcon } from "../components/icons";
 const STATUTS = [
   { value: "", label: "Tous" },
   { value: "recue", label: "Reçue" },
-  { value: "imprimee", label: "Imprimée" },
-  { value: "signee", label: "Signée" },
   { value: "prete", label: "Prête" },
   { value: "recuperee", label: "Récupérée" },
   { value: "rejetee", label: "Rejetée" },
@@ -24,8 +23,6 @@ const STATUTS = [
 // d'œil aussi bien dans le filtre que dans la liste.
 const STATUT_DOT_COLORS = {
   recue: (theme) => theme.textSecondary,
-  imprimee: (theme) => theme.accent,
-  signee: (theme) => theme.accent,
   prete: (theme) => theme.primary,
   recuperee: (theme) => theme.primary,
   rejetee: (theme) => theme.danger,
@@ -44,7 +41,11 @@ export default function Attestations() {
   const { user } = useAuth();
   const theme = useTheme();
   const isMobile = useIsMobile();
-  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
+  // SUPERADMIN toujours, ADMIN seulement si chargé des attestations — un
+  // ADMIN non chargé n'atteint de toute façon jamais cette page (voir
+  // ProtectedRoute requireFn dans App.js) mais can_manage_attestations
+  // reste la source de vérité pour cette variable.
+  const isAdmin = !!user?.can_manage_attestations;
   const [demandes, setDemandes] = useState([]);
   const [statutFiltre, setStatutFiltre] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -52,6 +53,9 @@ export default function Attestations() {
   const [loading, setLoading] = useState(true);
   const [sousOnglet, setSousOnglet] = useState("liste");
   const [stats, setStats] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const fetchDemandes = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -67,6 +71,40 @@ export default function Attestations() {
   };
 
   useEffect(() => { fetchDemandes(); }, [statutFiltre, search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // La sélection perd son sens si la liste change sous ses pieds (filtre,
+  // recherche, refresh après action) — repart de zéro plutôt que de garder
+  // des ids qui ne correspondent plus aux lignes affichées.
+  useEffect(() => { setSelected(new Set()); }, [demandes]);
+
+  const toggleSelected = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedDemandes = demandes.filter((d) => selected.has(d.id));
+  const canBulkPrete = selectedDemandes.length > 0 && selectedDemandes.every((d) => d.statut === "recue");
+  const canBulkRecuperee = selectedDemandes.length > 0 && selectedDemandes.every((d) => d.statut === "prete");
+
+  const handleBulkStatut = async (statut, label) => {
+    if (!(await confirm(
+      `${label} ${selectedDemandes.length} demande(s) sélectionnée(s) ?`
+    ))) return;
+    setBulkLoading(true);
+    try {
+      await api.post("/attestations/demandes/bulk-statut/", {
+        ids: selectedDemandes.map((d) => d.id),
+        statut,
+      });
+      setSelected(new Set());
+      await fetchDemandes(true);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -296,6 +334,52 @@ export default function Attestations() {
               </div>
             )}
 
+            {isAdmin && demandes.length > 0 && (
+              <div style={{
+                ...cardStyle, padding: "10px 12px", marginBottom: 14,
+                display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center",
+              }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, color: theme.textSecondary, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={selected.size > 0 && selected.size === demandes.length}
+                    onChange={(e) => setSelected(e.target.checked ? new Set(demandes.map((d) => d.id)) : new Set())}
+                  />
+                  {selected.size > 0 ? `${selected.size} sélectionnée(s)` : "Tout sélectionner"}
+                </label>
+                <div style={{ flex: 1 }} />
+                <button
+                  disabled={!canBulkPrete || bulkLoading}
+                  onClick={() => handleBulkStatut("prete", "Marquer comme prêtes")}
+                  style={{
+                    border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700,
+                    background: canBulkPrete ? theme.primary : theme.bg,
+                    color: canBulkPrete ? "#fff" : theme.textMuted,
+                    cursor: canBulkPrete && !bulkLoading ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Marquer prêtes {selected.size > 0 ? `(${selected.size})` : ""}
+                </button>
+                <button
+                  disabled={!canBulkRecuperee || bulkLoading}
+                  onClick={() => handleBulkStatut("recuperee", "Marquer comme récupérées")}
+                  style={{
+                    border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700,
+                    background: canBulkRecuperee ? theme.primary : theme.bg,
+                    color: canBulkRecuperee ? "#fff" : theme.textMuted,
+                    cursor: canBulkRecuperee && !bulkLoading ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Marquer récupérées {selected.size > 0 ? `(${selected.size})` : ""}
+                </button>
+                {selected.size > 0 && !canBulkPrete && !canBulkRecuperee && (
+                  <span style={{ fontSize: 11, color: theme.textMuted, width: "100%" }}>
+                    Sélection mixte — regroupez des demandes de même statut ("Reçue" pour passer à "Prête", "Prête" pour passer à "Récupérée").
+                  </span>
+                )}
+              </div>
+            )}
+
             {demandes.length === 0 ? (
               <div style={{
                 ...cardStyle, padding: "56px 24px", display: "flex", flexDirection: "column",
@@ -326,6 +410,15 @@ export default function Attestations() {
                       flexWrap: isMobile ? "wrap" : "nowrap",
                     }}
                   >
+                    {isAdmin && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(d.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); toggleSelected(d.id); }}
+                        style={{ flexShrink: 0, cursor: "pointer" }}
+                      />
+                    )}
                     <div style={{
                       width: 38, height: 38, borderRadius: 10, background: theme.primaryBg,
                       color: theme.primary, display: "flex", alignItems: "center", justifyContent: "center",
@@ -350,6 +443,7 @@ export default function Attestations() {
           </>
         )}
       </div>
+      {ConfirmDialog}
     </PageBackground>
   );
 }

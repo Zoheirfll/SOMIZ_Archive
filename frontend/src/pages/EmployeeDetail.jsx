@@ -13,6 +13,7 @@ import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import InfoNotice from "../components/InfoNotice";
 import CarriereTab from "../components/employeeDetail/CarriereTab";
+import AttestationsTab from "../components/employeeDetail/AttestationsTab";
 import ContratsTab from "../components/employeeDetail/ContratsTab";
 import DossierTab from "../components/employeeDetail/DossierTab";
 import EmployeeForm from "./EmployeeForm";
@@ -1418,6 +1419,9 @@ const EmployeeDetail = () => {
             },
             { key: "contrats", label: `Contrats (${contrats.length})` },
             { key: "carriere", label: "Carrière" },
+            ...(user?.can_manage_attestations || user?.role === "GESTIONNAIRE"
+              ? [{ key: "attestations", label: "Attestations" }]
+              : []),
           ].map((tab) => (
             <button
               key={tab.key}
@@ -1477,6 +1481,13 @@ const EmployeeDetail = () => {
           categories={categories}
           echelles={echelles}
           fetchHistorique={fetchHistorique}
+        />
+
+        <AttestationsTab
+          activeTab={activeTab}
+          employee={employee}
+          user={user}
+          navigate={navigate}
         />
 
         {/* Documents + Viewer */}

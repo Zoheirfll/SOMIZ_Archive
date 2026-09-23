@@ -12,19 +12,22 @@ import PageBackground from "../components/PageBackground";
 import { EyeIcon, CheckIcon, DownloadIcon } from "../components/icons";
 
 const PROCHAIN_STATUT = {
-  recue: { value: "imprimee", label: "Marquer Imprimée" },
-  imprimee: { value: "signee", label: "Marquer Signée" },
-  signee: { value: "prete", label: "Marquer Prête" },
+  recue: { value: "prete", label: "Marquer Prête" },
   prete: { value: "recuperee", label: "Marquer Récupérée" },
 };
 
 const ETAPES = [
-  { value: "recue", label: "Reçue" },
-  { value: "imprimee", label: "Imprimée" },
-  { value: "signee", label: "Signée" },
-  { value: "prete", label: "Prête" },
-  { value: "recuperee", label: "Récupérée" },
+  { value: "recue", label: "Reçue", dateKey: "created_at" },
+  { value: "prete", label: "Prête", dateKey: "date_prete" },
+  { value: "recuperee", label: "Récupérée", dateKey: "date_recuperee" },
 ];
+
+const formatDateEtape = (isoString) => {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+};
 
 const Field = ({ label, value, theme, danger }) => (
   <div>
@@ -37,7 +40,8 @@ const Field = ({ label, value, theme, danger }) => (
   </div>
 );
 
-const StatutStepper = ({ statutActuel, theme, isMobile }) => {
+const StatutStepper = ({ demande, theme, isMobile }) => {
+  const statutActuel = demande.statut;
   if (statutActuel === "rejetee") {
     return (
       <div style={{
@@ -54,6 +58,7 @@ const StatutStepper = ({ statutActuel, theme, isMobile }) => {
       {ETAPES.map((etape, i) => {
         const atteinte = i <= idxActuel;
         const courante = i === idxActuel;
+        const dateEtape = formatDateEtape(demande[etape.dateKey]);
         return (
           <div key={etape.value} style={{ display: "flex", alignItems: "center", flex: i < ETAPES.length - 1 ? 1 : "0 0 auto" }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
@@ -68,12 +73,19 @@ const StatutStepper = ({ statutActuel, theme, isMobile }) => {
                 {atteinte ? <CheckIcon size={12} /> : <span style={{ fontSize: 10, fontWeight: 700 }}>{i + 1}</span>}
               </div>
               {!isMobile && (
-                <div style={{
-                  fontSize: 10, fontWeight: courante ? 700 : 600, marginTop: 6, textAlign: "center",
-                  color: atteinte ? theme.text : theme.textMuted, whiteSpace: "nowrap",
-                }}>
-                  {etape.label}
-                </div>
+                <>
+                  <div style={{
+                    fontSize: 10, fontWeight: courante ? 700 : 600, marginTop: 6, textAlign: "center",
+                    color: atteinte ? theme.text : theme.textMuted, whiteSpace: "nowrap",
+                  }}>
+                    {etape.label}
+                  </div>
+                  {atteinte && dateEtape && (
+                    <div style={{ fontSize: 9, color: theme.textMuted, marginTop: 2, whiteSpace: "nowrap" }}>
+                      {dateEtape}
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {i < ETAPES.length - 1 && (
@@ -95,7 +107,10 @@ export default function AttestationDetail() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useIsMobile();
-  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
+  // SUPERADMIN toujours, ADMIN seulement si chargé des attestations — voir
+  // User.can_manage_attestations et ProtectedRoute (App.js) qui bloque déjà
+  // l'accès à cette page pour un ADMIN non chargé.
+  const isAdmin = !!user?.can_manage_attestations;
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
 
@@ -206,14 +221,14 @@ export default function AttestationDetail() {
 
       <div style={{ padding: contentPadding(isMobile), maxWidth: 800, margin: "0 auto" }}>
         <div style={{ ...cardStyle, padding: isMobile ? "20px 16px 28px" : "24px 32px 32px", marginBottom: 20 }}>
-          <StatutStepper statutActuel={demande.statut} theme={theme} isMobile={isMobile} />
+          <StatutStepper demande={demande} theme={theme} isMobile={isMobile} />
         </div>
 
         <div style={{ ...cardStyle, padding: 22, marginBottom: 16 }}>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 18 }}>
             <Field label="Employé" value={demande.employee_nom} theme={theme} />
             <Field label="Demandeur" value={demande.demandeur_nom} theme={theme} />
-            <Field label="Motif" value={demande.motif} theme={theme} />
+            <Field label="Motif" value={demande.motif_nom} theme={theme} />
             {demande.contrat_numero && <Field label="Contrat" value={demande.contrat_numero} theme={theme} />}
             {demande.traite_par_nom && <Field label="Traité par" value={demande.traite_par_nom} theme={theme} />}
           </div>

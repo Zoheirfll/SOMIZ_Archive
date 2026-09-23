@@ -194,6 +194,14 @@ def other_direction(db):
 
 
 @pytest.fixture
+def motif_attestation(db):
+    from employees.models import MotifArchivage
+    return MotifArchivage.objects.create(
+        nom="Dossier administratif", categorie=MotifArchivage.Categorie.ATTESTATION,
+    )
+
+
+@pytest.fixture
 def contrat(db, employee, type_contrat, admin_user):
     return Contrat.objects.create(
         numero_contrat="CTR-2024-001",

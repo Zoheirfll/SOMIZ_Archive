@@ -1108,7 +1108,7 @@ pour le détail fonctionnel. Points de sécurité vérifiés :
   `demandeur_id == request.user.id` **et** `statut == RECUE` avant tout
   `DELETE` — un gestionnaire ne peut ni annuler la demande d'un autre
   compte, ni annuler une demande déjà entrée en traitement (testé :
-  `test_demandeur_cannot_cancel_demande_once_imprimee`).
+  `test_demandeur_cannot_cancel_demande_once_prete`).
 - **Journal d'audit étendu, pas contourné** : `AuditLogListView` donne à
   un ADMIN la visibilité sur les actions des comptes GESTIONNAIRE qu'il
   administre (même règle déjà en place pour CONSULTANT) — un
@@ -1121,6 +1121,50 @@ pour le détail fonctionnel. Points de sécurité vérifiés :
 (nouveau rôle + `libelle_role`), `attestations/migrations/0001_initial.py`
 (nouvelle app), `audit/migrations/0008_add_attestation_actions.py`
 (nouvelles valeurs `AuditLog.Action`).
+
+---
+
+## 40. Simplification du workflow d'attestation + motif en référentiel protégé (2026-09-23) — ✅ Implémenté
+
+Suite du point 39 — voir CLAUDE.md sections "Demandes d'attestation de
+travail" et "Motifs — référentiel générique". Deux changements touchant la
+sécurité/l'intégrité des données :
+
+- **Workflow réduit à 3 statuts** (`Reçue`/`Prête`/`Récupérée`, suppression
+  d'`Imprimée`/`Signée`) — `DemandeAttestationStatutSerializer.ORDRE` mis à
+  jour en même temps, aucune transition non validée introduite (testé,
+  `test_admin_can_advance_statut_in_order`/`test_admin_cannot_skip_statuses`).
+  Migration `attestations/migrations/0004_motif_dates.py` : les demandes
+  déjà aux anciens statuts intermédiaires retombent sur `Reçue` (pas de
+  perte de données, juste un statut moins précis rétroactivement).
+- **`DemandeAttestation.motif` passe de texte libre à FK protégée**
+  (`on_delete=PROTECT` vers `MotifArchivage`) — empêche qu'une demande
+  perde silencieusement la trace du motif exact utilisé si l'entrée de
+  référentiel est supprimée ensuite. `MotifDestroyMixin`
+  (`employees/referentiel_views.py`) intercepte `ProtectedError` et
+  renvoie un 400 explicite (dans une transaction, pour que l'entrée
+  d'audit "suppression" déjà écrite soit annulée si `.delete()` échoue) —
+  sans ce garde-fou, la suppression via `/ref/motifs-attestation/<id>/`
+  aurait renvoyé un 500 nu.
+- **Exception contrôlée à `IsAdmin` sur l'écriture référentiel** : un
+  GESTIONNAIRE n'a toujours pas accès à `POST /ref/motifs-attestation/`
+  (référentiel classique, ADMIN only), mais peut faire apparaître un motif
+  inédit via `motif_autre` (texte libre) sur
+  `POST /api/attestations/demandes/` —
+  `DemandeAttestationCreateSerializer.create()` fait le `get_or_create` du
+  `MotifArchivage` correspondant **côté serveur**, jamais en donnant au
+  client un accès direct au référentiel. Portée strictement limitée à la
+  catégorie Attestation (`categorie=MotifArchivage.Categorie.ATTESTATION`
+  forcé dans le `create()`, jamais lu depuis le payload) — un GESTIONNAIRE
+  ne peut ni créer de motif d'archivage, ni modifier/supprimer un motif
+  existant par ce biais (validation : un seul champ, `nom`, en écriture).
+- **Fusion motifs-archivage/motifs-attestation** (`ReferentielMergeView`,
+  qui partagent le même modèle `MotifArchivage`) : garde-fou explicite —
+  cible et sources doivent appartenir à la même `categorie`, sinon 400.
+  Sans ce contrôle, fusionner par erreur un motif d'archivage dans un
+  motif d'attestation (ou l'inverse) aurait été possible en passant
+  directement les ids par l'API, malgré la séparation visuelle en deux
+  onglets côté `/parametres`.
 
 ---
 

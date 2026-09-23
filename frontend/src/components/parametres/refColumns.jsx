@@ -208,6 +208,21 @@ export function getRefColumns({
           render: (i) => <StatusBadge active={i.is_active} theme={theme} />,
         },
       ];
+    case "motifs-attestation":
+      return [
+        { key: "nom", label: "Nom", bold: true },
+        { key: "description", label: "Description" },
+        {
+          key: "nb_demandes",
+          label: "Demandes",
+          render: (i) => <Badge count={i.nb_demandes} color={theme.primary} />,
+        },
+        {
+          key: "is_active",
+          label: "Statut",
+          render: (i) => <StatusBadge active={i.is_active} theme={theme} />,
+        },
+      ];
     case "types-documents":
       return [
         {

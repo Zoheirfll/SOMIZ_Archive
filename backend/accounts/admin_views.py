@@ -65,7 +65,8 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'is_active', 'last_login',
+            'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation',
+            'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
             'scope_poles', 'scope_poles_nom',
             'scope_departements', 'scope_departements_nom',
@@ -100,12 +101,23 @@ class UserSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate(self, attrs):
+        # charge_attestation n'a de sens que pour un ADMIN (voir
+        # User.can_manage_attestations) — un compte qui n'est pas/plus
+        # ADMIN ne doit jamais le garder coché, sinon il resterait "chargé"
+        # silencieusement si son rôle change plus tard vers ADMIN sans
+        # repasser par ce champ.
+        role = attrs.get('role', self.instance.role if self.instance else None)
+        if role != 'ADMIN':
+            attrs['charge_attestation'] = False
+        return attrs
+
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=10)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'password']
+        fields = ['id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation', 'password']
         read_only_fields = ['id']
 
     def validate_role(self, value):
@@ -128,6 +140,13 @@ class UserCreateSerializer(serializers.ModelSerializer):
                 "Seul un Super-administrateur peut créer un compte Administrateur."
             )
         return value
+
+    def validate(self, attrs):
+        # Même garde-fou qu'en modification (UserSerializer.validate) —
+        # charge_attestation ne peut être coché qu'à la création d'un ADMIN.
+        if attrs.get('role') != 'ADMIN':
+            attrs['charge_attestation'] = False
+        return attrs
 
     def validate_password(self, value):
         # min_length=10 ci-dessus déjà couvert par MinimumLengthValidator, mais

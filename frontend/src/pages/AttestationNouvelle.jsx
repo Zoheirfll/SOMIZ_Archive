@@ -6,6 +6,8 @@ import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
+import EmployeeAvatar from "../components/EmployeeAvatar";
+import { formatDateFR } from "../utils/formatDate";
 
 export default function AttestationNouvelle() {
   const navigate = useNavigate();
@@ -17,7 +19,9 @@ export default function AttestationNouvelle() {
   const [employee, setEmployee] = useState(null);
   const [contrats, setContrats] = useState([]);
   const [contratId, setContratId] = useState("");
+  const [motifs, setMotifs] = useState([]);
   const [motif, setMotif] = useState("");
+  const [motifAutre, setMotifAutre] = useState("");
   const [commentaire, setCommentaire] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -27,6 +31,13 @@ export default function AttestationNouvelle() {
     if (!employeeId) return;
     api.get(`/employees/${employeeId}/`).then((res) => setEmployee(res.data));
   }, [location.state]);
+
+  useEffect(() => {
+    api.get("/ref/motifs-attestation/").then((res) => {
+      const list = res.data.results || res.data;
+      setMotifs(list.filter((m) => m.is_active));
+    });
+  }, []);
 
   useEffect(() => {
     if (!employee) { setContrats([]); setContratId(""); return; }
@@ -50,7 +61,9 @@ export default function AttestationNouvelle() {
     if (!employee) { setError("Sélectionnez un employé dans la liste."); return; }
     setSubmitting(true);
     try {
-      const payload = { employee: employee.id, motif, commentaire };
+      const payload = { employee: employee.id, commentaire };
+      if (motif === "__autre__") payload.motif_autre = motifAutre.trim();
+      else payload.motif = motif;
       if (contratId) payload.contrat = contratId;
       const res = await api.post("/attestations/demandes/", payload);
       navigate(`/attestations/${res.data.reference.replace("/", "-")}`);
@@ -58,6 +71,7 @@ export default function AttestationNouvelle() {
       setError(
         err.response?.data?.error ||
         err.response?.data?.motif?.[0] ||
+        err.response?.data?.motif_autre?.[0] ||
         err.response?.data?.employee?.[0] ||
         err.response?.data?.non_field_errors?.[0] ||
         "Impossible de créer la demande."
@@ -101,7 +115,8 @@ export default function AttestationNouvelle() {
               <div style={{
                 position: "absolute", zIndex: 10, left: 0, right: 0, top: "100%",
                 background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 8,
-                boxShadow: theme.shadowLg, marginTop: -4, overflow: "hidden",
+                boxShadow: theme.shadowLg, marginTop: -4,
+                maxHeight: 280, overflowY: "auto",
               }}>
                 {suggestions.map((s) => (
                   <div
@@ -118,6 +133,46 @@ export default function AttestationNouvelle() {
               </div>
             )}
           </div>
+
+          {employee && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 14,
+              background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`,
+              borderRadius: 10, padding: "12px 14px", marginBottom: 16,
+            }}>
+              <EmployeeAvatar employee={employee} size={48} shape="square" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: theme.text, fontSize: 14, fontWeight: 700 }}>
+                  {employee.prenom} {employee.nom}
+                </div>
+                <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                  {employee.matricule}
+                  {employee.poste_nom && <> · {employee.poste_nom}</>}
+                </div>
+                <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
+                  {[employee.direction_nom, employee.departement_nom, employee.service_nom]
+                    .filter(Boolean)
+                    .join(" › ")}
+                </div>
+                {employee.date_embauche && (
+                  <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 3 }}>
+                    Recruté(e) le {formatDateFR(employee.date_embauche)}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEmployee(null); setQuery(""); }}
+                title="Changer d'employé"
+                style={{
+                  background: "none", border: "none", color: theme.textMuted,
+                  fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0,
+                }}
+              >
+                Changer
+              </button>
+            </div>
+          )}
 
           {contrats.length > 1 && (
             <>
@@ -136,15 +191,31 @@ export default function AttestationNouvelle() {
           )}
 
           <label htmlFor="motif" style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginTop: 4, display: "block" }}>Motif</label>
-          <input
+          <select
             id="motif"
             className="input-focus"
             value={motif}
-            onChange={(e) => setMotif(e.target.value)}
-            placeholder="Ex. Dossier administratif, Banque..."
+            onChange={(e) => { setMotif(e.target.value); if (e.target.value !== "__autre__") setMotifAutre(""); }}
             required
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12, fontSize: 14 }}
-          />
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: motif === "__autre__" ? 8 : 12, fontSize: 14 }}
+          >
+            <option value="">-- Sélectionner --</option>
+            {motifs.map((m) => (
+              <option key={m.id} value={m.id}>{m.nom}</option>
+            ))}
+            <option value="__autre__">Autre...</option>
+          </select>
+          {motif === "__autre__" && (
+            <input
+              className="input-focus"
+              value={motifAutre}
+              onChange={(e) => setMotifAutre(e.target.value)}
+              placeholder="Précisez le motif"
+              required
+              autoFocus
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12, fontSize: 14 }}
+            />
+          )}
 
           <label htmlFor="commentaire" style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>Commentaire (optionnel)</label>
           <textarea

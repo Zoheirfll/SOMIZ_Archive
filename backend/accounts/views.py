@@ -150,6 +150,7 @@ class LoginView(APIView):
                 'prenom': user.prenom,
                 'role': user.role,
                 'needs_consent': not bool(user.consent_loi1807_accepted_at),
+                'can_manage_attestations': user.can_manage_attestations,
             }
         })
         _set_auth_cookies(request, response, refresh.access_token, refresh)
@@ -193,6 +194,7 @@ class UserMeView(APIView):
             'full_name': user.full_name,
             'role': user.role,
             'is_admin': user.is_admin,
+            'can_manage_attestations': user.can_manage_attestations,
             'needs_consent': not bool(user.consent_loi1807_accepted_at),
         })
 

@@ -1031,11 +1031,12 @@ page — l'onglet "Organisation" ne montre implicitement que les employés
 Actif (plus de filtre "Statut" à ce niveau). Spec complète :
 `docs/superpowers/specs/2026-09-02-archivage-employes-design.md`.
 
-- **`MotifArchivage`** — nouveau référentiel simple (`nom` unique,
-  `description`, `is_active`), même pattern que `Categorie`/`TypeContrat`
-  (CRUD `/ref/motifs-archivage/`, onglet "Motifs d'archivage" dans
-  `/parametres`, import xlsx). `Employee.motif_archivage` (FK nullable,
-  `SET_NULL`) est **toujours facultatif**.
+- **`MotifArchivage`** — référentiel simple (`nom`, `description`,
+  `is_active`), même pattern que `Categorie`/`TypeContrat`. `Employee.motif_archivage`
+  (FK nullable, `SET_NULL`) est **toujours facultatif**. Depuis 2026-09-23,
+  ce modèle sert de référentiel générique "Motifs" (voir section "Motifs —
+  référentiel générique" plus bas) : `nom` n'est plus unique globalement
+  mais scopé par `categorie`.
 - **Un employé Actif n'a jamais de motif** — `EmployeeCreateUpdateSerializer.validate()`
   force `motif_archivage=None` dès que `statut` résultant vaut `actif`,
   même si le payload en envoie un (garde-fou serveur, pas seulement
@@ -1077,6 +1078,55 @@ Actif (plus de filtre "Statut" à ce niveau). Spec complète :
   récemment — voir section "Liste employés — colonnes configurables").
 - Dashboard **non modifié** par ce chantier (continue de compter tous les
   statuts) — laissé hors scope volontairement.
+
+---
+
+## Motifs — référentiel générique (2026-09-23)
+
+`MotifArchivage` (`backend/employees/models.py`) n'est plus réservé à
+l'archivage employé malgré son nom historique (conservé pour ne pas casser
+la FK `Employee.motif_archivage` et les migrations existantes) : un champ
+`categorie` (`archivage` / `attestation`) distingue désormais deux espaces
+indépendants, chacun avec son propre onglet dans `/parametres` — sous-menu
+**"Motifs"** (nouveau groupe de la sidebar, séparé de "Dossier RH") →
+**"Archivage"** et **"Attestation"**. `nom` n'est plus unique globalement,
+seulement au sein d'une catégorie (`unique_together = [('nom', 'categorie')]`)
+— deux usages différents peuvent légitimement partager le même libellé.
+
+- **Deux endpoints, un seul modèle** : `/ref/motifs-archivage/` et
+  `/ref/motifs-attestation/` (`MotifArchivageListCreateView`/
+  `MotifAttestationListCreateView`, `referentiel_views.py`) filtrent tous
+  les deux `MotifArchivage` par `categorie` — `MotifAttestationListCreateView`
+  hérite de `MotifArchivageListCreateView` et ne change que l'attribut
+  `categorie`. Import CSV/xlsx (`ReferentielImportView.MOTIF_CATEGORIES`),
+  suppression en masse et fusion (`ReferentielBulkDeleteView`/
+  `ReferentielMergeView.MODELS`) suivent le même principe — la fusion
+  vérifie explicitement que cible et sources appartiennent à la même
+  catégorie (garde-fou contre un mélange Archivage/Attestation par erreur
+  d'id).
+- **Suppression protégée pour les motifs d'attestation** :
+  `DemandeAttestation.motif` est en `on_delete=PROTECT` (contrairement à
+  `Employee.motif_archivage`, `SET_NULL`) — une demande doit garder la
+  trace exacte du motif utilisé. `MotifDestroyMixin` (`referentiel_views.py`)
+  intercepte `ProtectedError` et renvoie un 400 explicite plutôt qu'un 500,
+  dans une transaction (l'entrée d'audit "suppression" déjà écrite est
+  annulée avec le reste si `.delete()` échoue).
+- **`DemandeAttestation.motif`** — FK vers `MotifArchivage` (catégorie
+  Attestation), plus un champ texte libre. Le formulaire
+  `AttestationNouvelle.jsx` propose un `<select>` alimenté par
+  `GET /ref/motifs-attestation/` (actifs uniquement), plus une option
+  **"Autre..."** qui affiche un champ texte libre (`motifAutre`) — un
+  GESTIONNAIRE n'a pas accès en écriture au référentiel (`POST
+  /ref/motifs-attestation/` est ADMIN only) mais peut quand même faire
+  apparaître un motif inédit : `motif_autre` est envoyé à la place de
+  `motif`, et `DemandeAttestationCreateSerializer.create()` fait le
+  `get_or_create` (insensible à la casse) du `MotifArchivage` correspondant
+  côté serveur, en dehors du contrôle d'accès référentiel normal.
+- **Migration de données** (`attestations/migrations/0004_motif_dates.py`) :
+  l'ancien champ texte `motif` de `DemandeAttestation` a été converti en FK
+  — chaque valeur texte distincte déjà en base a été transformée en (ou
+  rattachée à) un `MotifArchivage` catégorie Attestation, via un champ FK
+  intermédiaire (`motif_fk`) le temps de la bascule.
 
 ---
 
@@ -1237,21 +1287,30 @@ du document signé. Spec complète :
 `docs/superpowers/specs/2026-09-22-demandes-attestation-travail-design.md`.
 
 - **App dédiée `attestations`** (`backend/attestations/`) : modèle
-  `DemandeAttestation` (`employee`, `contrat` optionnel, `motif`,
-  `commentaire`, `statut`, `motif_rejet`, `scan_document` optionnel,
-  `demandeur`, `traite_par`, `reference` unique format `NNNNN/AA`) ;
-  `ReferenceCounter` (compteur annuel, incrémenté sous
-  `select_for_update()` — voir `attestations/reference.py`) ;
-  `AttestationTemplateConfig` (singleton `pk=1`, champs du modèle papier :
-  adresse, ville, signataire, en-tête, pied de page, logo).
-- **Workflow des statuts** : `Reçue → Imprimée → Signée → Prête →
+  `DemandeAttestation` (`employee`, `contrat` optionnel, `motif` — FK vers
+  `employees.MotifArchivage` (catégorie Attestation), voir section "Motifs
+  — référentiel générique" —, `commentaire`, `statut`, `motif_rejet`,
+  `scan_document` optionnel, `demandeur`, `traite_par`, `reference` unique
+  format `NNNNN/AA`, `date_prete`/`date_recuperee`) ; `ReferenceCounter`
+  (compteur annuel, incrémenté sous `select_for_update()` — voir
+  `attestations/reference.py`) ; `AttestationTemplateConfig` (singleton
+  `pk=1`, champs du modèle papier : adresse, ville, signataire, en-tête,
+  pied de page, logo).
+- **Workflow des statuts (simplifié le 2026-09-23)** : `Reçue → Prête →
   Récupérée`, plus `Rejetée` (terminal, motif obligatoire, atteignable
   depuis n'importe quel statut avant `Récupérée`) — transitions
   séquentielles uniquement, validées côté serveur
   (`DemandeAttestationStatutSerializer.ORDRE`). Seul un ADMIN/SUPERADMIN
   change un statut (`PATCH /api/attestations/demandes/<id>/statut/`), y
   compris `Récupérée` — le gestionnaire n'est pas devant l'écran au
-  moment où il vient chercher le document physique.
+  moment où il vient chercher le document physique. Les anciens statuts
+  intermédiaires `Imprimée`/`Signée` ont été supprimés (pas seulement
+  masqués) — migration `attestations/migrations/0004_motif_dates.py` :
+  les demandes qui s'y trouvaient sont retombées sur `Reçue`.
+  `DemandeAttestationStatutView.patch()` horodate le passage à `Prête`
+  (`date_prete`) et `Récupérée` (`date_recuperee`) — `created_at` sert
+  déjà de date "Reçue". `AttestationDetail.jsx#StatutStepper` affiche ces
+  3 dates sous chaque cercle du stepper.
 - **Périmètre** : `DemandeAttestationCreateSerializer.validate_employee()`
   réutilise `User.can_access_employee()` — un GESTIONNAIRE ne peut créer
   de demande que pour un employé de son périmètre (mêmes champs
@@ -1261,6 +1320,19 @@ du document signé. Spec complète :
 - **Annulation** : le demandeur peut supprimer sa propre demande
   uniquement tant qu'elle est au statut `Reçue`
   (`DemandeAttestationDetailView.perform_destroy`).
+- **Onglet "Attestations" sur la fiche employé** (2026-09-23,
+  `components/employeeDetail/AttestationsTab.jsx`, à côté de "Carrière")
+  — historique des demandes pour CET employé précis
+  (`GET /attestations/demandes/?employee=<id>`, `employee_id` combiné avec
+  le scoping demandeur/admin habituel dans
+  `DemandeAttestationListCreateView.get_queryset()`). Onglet visible
+  uniquement si `user.can_manage_attestations || role === "GESTIONNAIRE"`
+  (même condition que l'accès à `/attestations`) — masqué du tout pour
+  CONSULTANT et pour un ADMIN non chargé des attestations, pas seulement
+  vidé. Un GESTIONNAIRE n'y voit que ses propres demandes pour cet
+  employé (jamais celles d'un collègue) ; bouton "+ Nouvelle demande"
+  affiché pour SUPERADMIN/GESTIONNAIRE uniquement, même règle que le
+  bouton déjà présent dans la sidebar Documents (`DossierTab.jsx`).
 - **Document PDF** : `GET /api/attestations/demandes/<id>/apercu/`
   (ADMIN only) renvoie un **PDF** (`application/pdf`, généré par
   `attestations/pdf.py` avec **ReportLab** — nouvelle dépendance,

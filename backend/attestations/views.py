@@ -1,6 +1,7 @@
 from datetime import datetime, time
 
 from django.db.models import Count, F, Avg, ExpressionWrapper, DurationField, Q
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone as tz
@@ -9,11 +10,10 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.permissions import IsAdmin, IsAdminOrConsultant
 from audit.models import AuditLog
 from .models import DemandeAttestation, AttestationTemplateConfig
 from .pdf import build_attestation_pdf
-from .permissions import CanRequestAttestation
+from .permissions import CanAccessAttestations, CanRequestAttestation, IsAttestationManager
 from .serializers import (
     DemandeAttestationSerializer, DemandeAttestationCreateSerializer,
     DemandeAttestationStatutSerializer, AttestationTemplateConfigSerializer,
@@ -36,14 +36,15 @@ class ReferenceLookupMixin:
 
 
 class DemandeAttestationListCreateView(generics.ListCreateAPIView):
-    """GET /api/attestations/demandes/ — ADMIN/SUPERADMIN voient toutes les
-    demandes, un GESTIONNAIRE ne voit que les siennes.
-    POST /api/attestations/demandes/ — GESTIONNAIRE/ADMIN/SUPERADMIN."""
+    """GET /api/attestations/demandes/ — SUPERADMIN et ADMIN chargé des
+    attestations (User.can_manage_attestations) voient toutes les demandes,
+    un GESTIONNAIRE ne voit que les siennes.
+    POST /api/attestations/demandes/ — GESTIONNAIRE/SUPERADMIN."""
 
     def get_permissions(self):
         if self.request.method == 'POST':
             return [CanRequestAttestation()]
-        return [IsAdminOrConsultant()]
+        return [CanAccessAttestations()]
 
     def get_serializer_class(self):
         return DemandeAttestationCreateSerializer if self.request.method == 'POST' else DemandeAttestationSerializer
@@ -54,6 +55,15 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
         )
         user = self.request.user
 
+        employee_id = self.request.query_params.get('employee')
+        if employee_id:
+            # Onglet "Attestations" de la fiche employé (EmployeeDetail.jsx)
+            # — historique des demandes pour CET employé précis, toujours
+            # combiné avec le filtrage demandeur/admin ci-dessous (un
+            # GESTIONNAIRE ne voit ici que ses propres demandes pour cet
+            # employé, jamais celles d'un collègue).
+            qs = qs.filter(employee_id=employee_id)
+
         q = self.request.query_params.get('q')
         if q:
             qs = qs.filter(
@@ -63,39 +73,47 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
                 Q(demandeur__nom__icontains=q) | Q(demandeur__prenom__icontains=q)
             )
 
-        if user.is_admin:
+        if user.can_manage_attestations:
             statut = self.request.query_params.get('statut')
             if statut:
                 qs = qs.filter(statut=statut)
             if self.request.query_params.get('pending'):
-                # Badge navbar : uniquement les demandes pas encore prises
-                # en charge — dès qu'un ADMIN passe une demande à
-                # "Imprimée" (ou plus loin), elle a été traitée, le badge
-                # ne doit plus la compter même si le document n'est pas
-                # encore récupéré par le gestionnaire.
+                # Badge navbar (côté traiteur) : uniquement les demandes pas
+                # encore prises en charge — dès qu'un ADMIN chargé passe une
+                # demande à "Prête" (ou plus loin), elle a été traitée, le
+                # badge ne doit plus la compter même si le document n'est
+                # pas encore récupéré par le gestionnaire.
                 qs = qs.filter(statut=DemandeAttestation.Statut.RECUE)
             return qs
-        return qs.filter(demandeur=user)
+        qs = qs.filter(demandeur=user)
+        if self.request.query_params.get('pending'):
+            # Badge navbar (côté demandeur) : demandes prêtes à récupérer,
+            # symétrique du badge ADMIN ci-dessus — le badge disparaît dès
+            # qu'un ADMIN enregistre la récupération (statut Récupérée),
+            # jamais avant, puisque seul un ADMIN peut changer le statut.
+            qs = qs.filter(statut=DemandeAttestation.Statut.PRETE)
+        return qs
 
     def perform_create(self, serializer):
         demande = serializer.save()
         AuditLog.log(
             self.request, AuditLog.Action.CREATE_ATTESTATION, target=demande,
-            details={'employee': str(demande.employee), 'motif': demande.motif},
+            details={'employee': str(demande.employee), 'motif': demande.motif.nom},
         )
 
 
 class DemandeAttestationDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIView):
-    """GET accessible ADMIN + demandeur (sa propre demande).
-    DELETE réservé au demandeur, uniquement au statut RECUE."""
+    """GET accessible aux traiteurs (SUPERADMIN/ADMIN chargé) + au demandeur
+    (sa propre demande). DELETE réservé au demandeur, uniquement au statut
+    RECUE."""
     serializer_class = DemandeAttestationSerializer
-    permission_classes = [IsAdminOrConsultant]
+    permission_classes = [CanAccessAttestations]
     queryset = DemandeAttestation.objects.select_related('employee', 'contrat', 'demandeur', 'traite_par')
 
     def get_object(self):
         obj = super().get_object()
         user = self.request.user
-        if not user.is_admin and obj.demandeur_id != user.id:
+        if not user.can_manage_attestations and obj.demandeur_id != user.id:
             raise PermissionDenied("Cette demande ne vous appartient pas.")
         return obj
 
@@ -107,14 +125,14 @@ class DemandeAttestationDetailView(ReferenceLookupMixin, generics.RetrieveDestro
             )
         AuditLog.log(
             self.request, AuditLog.Action.DELETE_ATTESTATION, target=instance,
-            details={'employee': str(instance.employee), 'motif': instance.motif},
+            details={'employee': str(instance.employee), 'motif': instance.motif.nom},
         )
         instance.delete()
 
 
 class DemandeAttestationStatutView(ReferenceLookupMixin, generics.UpdateAPIView):
-    """PATCH /api/attestations/demandes/<ref>/statut/ — ADMIN/SUPERADMIN uniquement."""
-    permission_classes = [IsAdmin]
+    """PATCH /api/attestations/demandes/<ref>/statut/ — SUPERADMIN et ADMIN chargé uniquement."""
+    permission_classes = [IsAttestationManager]
     serializer_class = DemandeAttestationStatutSerializer
     queryset = DemandeAttestation.objects.all()
     http_method_names = ['patch']
@@ -124,7 +142,15 @@ class DemandeAttestationStatutView(ReferenceLookupMixin, generics.UpdateAPIView)
         ancien_statut = instance.statut
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        demande = serializer.save(traite_par=request.user)
+        extra = {'traite_par': request.user}
+        nouveau_statut = serializer.validated_data.get('statut')
+        # Horodatage du stepper (voir AttestationDetail.jsx) — Reçue utilise
+        # déjà created_at, pas besoin de le dupliquer ici.
+        if nouveau_statut == DemandeAttestation.Statut.PRETE:
+            extra['date_prete'] = tz.now()
+        elif nouveau_statut == DemandeAttestation.Statut.RECUPEREE:
+            extra['date_recuperee'] = tz.now()
+        demande = serializer.save(**extra)
         AuditLog.log(
             request, AuditLog.Action.STATUT_ATTESTATION, target=demande,
             details={
@@ -135,10 +161,54 @@ class DemandeAttestationStatutView(ReferenceLookupMixin, generics.UpdateAPIView)
         return Response(DemandeAttestationSerializer(demande).data)
 
 
+class DemandeAttestationBulkStatutView(APIView):
+    """POST /api/attestations/demandes/bulk-statut/ — SUPERADMIN/ADMIN chargé
+    uniquement. Body: {"ids": [...], "statut": "prete"|"recuperee"}.
+    Applique la même transition à plusieurs demandes en une fois (liste
+    /attestations, sélection en masse) — chaque id est traité
+    indépendamment via DemandeAttestationStatutSerializer (mêmes règles de
+    transition séquentielle que le changement unitaire) pour qu'une
+    demande déjà à un autre statut ne bloque pas le reste du lot."""
+    permission_classes = [IsAttestationManager]
+
+    def post(self, request):
+        ids = request.data.get('ids') or []
+        statut = request.data.get('statut')
+        if not isinstance(ids, list) or not ids:
+            return Response({'error': "Aucune demande sélectionnée."}, status=400)
+        if statut not in (DemandeAttestation.Statut.PRETE, DemandeAttestation.Statut.RECUPEREE):
+            return Response({'error': "Statut invalide pour une action en masse."}, status=400)
+
+        updated = []
+        errors = []
+        for demande in DemandeAttestation.objects.filter(id__in=ids):
+            ancien_statut = demande.statut
+            serializer = DemandeAttestationStatutSerializer(
+                demande, data={'statut': statut}, partial=True,
+            )
+            if not serializer.is_valid():
+                errors.append({'id': str(demande.id), 'reference': demande.reference,
+                                'erreur': next(iter(serializer.errors.values()))[0] if serializer.errors else "Transition invalide."})
+                continue
+            extra = {'traite_par': request.user}
+            if statut == DemandeAttestation.Statut.PRETE:
+                extra['date_prete'] = tz.now()
+            else:
+                extra['date_recuperee'] = tz.now()
+            demande = serializer.save(**extra)
+            AuditLog.log(
+                request, AuditLog.Action.STATUT_ATTESTATION, target=demande,
+                details={'de': ancien_statut, 'vers': demande.statut},
+            )
+            updated.append(demande.reference)
+
+        return Response({'updated': updated, 'errors': errors})
+
+
 class DemandeAttestationScanView(ReferenceLookupMixin, generics.UpdateAPIView):
-    """POST/PATCH /api/attestations/demandes/<ref>/scan/ — ADMIN uniquement,
+    """POST/PATCH /api/attestations/demandes/<ref>/scan/ — ADMIN chargé (ou SUPERADMIN) uniquement,
     jamais bloquant sur le statut (aide-mémoire optionnel, voir spec)."""
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAttestationManager]
     queryset = DemandeAttestation.objects.all()
     http_method_names = ['post', 'patch']
 
@@ -154,8 +224,8 @@ class DemandeAttestationScanView(ReferenceLookupMixin, generics.UpdateAPIView):
 
 
 class AttestationTemplateConfigView(generics.RetrieveUpdateAPIView):
-    """GET/PUT /api/attestations/config/ — singleton, ADMIN only."""
-    permission_classes = [IsAdmin]
+    """GET/PUT /api/attestations/config/ — singleton, SUPERADMIN/ADMIN chargé only."""
+    permission_classes = [IsAttestationManager]
     serializer_class = AttestationTemplateConfigSerializer
 
     def get_object(self):
@@ -164,10 +234,10 @@ class AttestationTemplateConfigView(generics.RetrieveUpdateAPIView):
 
 
 class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
-    """GET /api/attestations/demandes/<ref>/apercu/ — ADMIN only, renvoie le
+    """GET /api/attestations/demandes/<ref>/apercu/ — SUPERADMIN/ADMIN chargé only, renvoie le
     PDF de l'attestation (reproduit le modèle papier, voir
     attestations/pdf.py), affichable et imprimable tel quel."""
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAttestationManager]
     queryset = DemandeAttestation.objects.select_related('employee', 'contrat', 'employee__poste')
 
     def get(self, request, *args, **kwargs):
@@ -203,8 +273,8 @@ class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
 
 
 class AttestationStatsView(APIView):
-    """GET /api/attestations/stats/?date_debut=&date_fin= — ADMIN only."""
-    permission_classes = [IsAdmin]
+    """GET /api/attestations/stats/?date_debut=&date_fin= — SUPERADMIN/ADMIN chargé only."""
+    permission_classes = [IsAttestationManager]
 
     def get(self, request):
         qs = DemandeAttestation.objects.all()
@@ -235,8 +305,15 @@ class AttestationStatsView(APIView):
             qs.values('statut').annotate(count=Count('id')).values_list('statut', 'count')
         )
 
+        # date_recuperee (renseignée par DemandeAttestationStatutView.patch)
+        # est plus précise que updated_at — mais reste absente pour les
+        # demandes déjà récupérées avant l'ajout de ce champ, d'où le
+        # repli sur updated_at pour ne pas fausser la moyenne à zéro.
         duree = qs.filter(statut=DemandeAttestation.Statut.RECUPEREE).annotate(
-            duree=ExpressionWrapper(F('updated_at') - F('created_at'), output_field=DurationField())
+            duree=ExpressionWrapper(
+                Coalesce(F('date_recuperee'), F('updated_at')) - F('created_at'),
+                output_field=DurationField(),
+            )
         ).aggregate(moyenne=Avg('duree'))['moyenne']
 
         return Response({

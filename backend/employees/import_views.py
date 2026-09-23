@@ -616,6 +616,19 @@ class ReferentielImportView(APIView):
             'required': {'nom'},
             'optional': {'description'},
         },
+        'motifs-attestation': {
+            'model': MotifArchivage,
+            'required': {'nom'},
+            'optional': {'description'},
+        },
+    }
+
+    # Catégorie fixe injectée à la création selon la clé d'onglet — les deux
+    # entrées MODELS ci-dessus pointent sur le même modèle MotifArchivage,
+    # seule la catégorie distingue les deux espaces de /parametres.
+    MOTIF_CATEGORIES = {
+        'motifs-archivage': MotifArchivage.Categorie.ARCHIVAGE,
+        'motifs-attestation': MotifArchivage.Categorie.ATTESTATION,
     }
 
     def post(self, request, model):
@@ -728,6 +741,15 @@ class ReferentielImportView(APIView):
                 (c.direction_id, c.departement_id, c.nom.upper())
                 for c in ModelClass.objects.all()
             }
+        elif model in self.MOTIF_CATEGORIES:
+            # Le nom n'est unique qu'au sein d'une catégorie (Archivage /
+            # Attestation, voir MotifArchivage.Meta.unique_together) — les
+            # deux onglets partagent le même modèle mais jamais leurs noms.
+            existants = {
+                (None, n.upper())
+                for n in ModelClass.objects.filter(categorie=self.MOTIF_CATEGORIES[model])
+                .values_list('nom', flat=True)
+            }
         else:
             existants = {(None, n.upper()) for n in ModelClass.objects.values_list('nom', flat=True)}
 
@@ -817,6 +839,8 @@ class ReferentielImportView(APIView):
                 kwargs['direction'] = direction
             if departement:
                 kwargs['departement'] = departement
+            if model in self.MOTIF_CATEGORIES:
+                kwargs['categorie'] = self.MOTIF_CATEGORIES[model]
 
             a_creer.append(ModelClass(**kwargs))
             resultats.append({'ligne': num_ligne, 'nom': nom})
@@ -912,6 +936,10 @@ class ReferentielImportTemplateView(APIView):
         'motifs-archivage': {
             'headers': ['nom', 'description'],
             'example': ['Fin de contrat', ''],
+        },
+        'motifs-attestation': {
+            'headers': ['nom', 'description'],
+            'example': ['Ouverture de compte bancaire', ''],
         },
     }
 

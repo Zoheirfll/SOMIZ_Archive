@@ -666,6 +666,7 @@ const RefForm = ({
       case "categories":
       case "echelles":
       case "motifs-archivage":
+      case "motifs-attestation":
         return (
           <>
             <label style={labelStyle}>
@@ -684,7 +685,9 @@ const RefForm = ({
                     ? "Échelle 10, Échelle 12..."
                     : activeTab === "motifs-archivage"
                       ? "Fin de contrat, Démission..."
-                      : "Cadre, Technicien..."
+                      : activeTab === "motifs-attestation"
+                        ? "Ouverture de compte bancaire, Visa..."
+                        : "Cadre, Technicien..."
               }
             />
             <FieldError name="nom" />

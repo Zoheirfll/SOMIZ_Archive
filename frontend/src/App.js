@@ -117,7 +117,10 @@ function App() {
           <Route
             path="/attestations"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}>
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}
+                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_attestations}
+              >
                 <Attestations />
               </ProtectedRoute>
             }
@@ -133,7 +136,10 @@ function App() {
           <Route
             path="/attestations/:ref"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}>
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}
+                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_attestations}
+              >
                 <AttestationDetail />
               </ProtectedRoute>
             }

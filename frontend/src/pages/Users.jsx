@@ -58,6 +58,7 @@ const Users = () => {
     nom: "",
     prenom: "",
     role: "CONSULTANT",
+    charge_attestation: false,
     password: "",
     password2: "",
   });
@@ -124,7 +125,8 @@ const Users = () => {
   };
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setForm({ ...form, [e.target.name]: value });
     if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: null });
   };
 
@@ -155,6 +157,7 @@ const Users = () => {
         prenom: form.prenom,
         role: form.role,
         libelle_role: form.role === "GESTIONNAIRE" ? (form.libelle_role || "") : "",
+        charge_attestation: form.role === "ADMIN" ? !!form.charge_attestation : false,
         password: form.password,
       });
       const hasScope =
@@ -179,7 +182,7 @@ const Users = () => {
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
-      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", password: "", password2: "" });
+      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
@@ -195,6 +198,15 @@ const Users = () => {
   const toggleActive = async (user) => {
     try {
       await api.patch(`/admin-users/${user.id}/`, { is_active: !user.is_active });
+      fetchUsers(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleChargeAttestation = async (targetUser) => {
+    try {
+      await api.patch(`/admin-users/${targetUser.id}/`, { charge_attestation: !targetUser.charge_attestation });
       fetchUsers(true);
     } catch (err) {
       console.error(err);
@@ -391,6 +403,23 @@ const Users = () => {
                   </div>
                 )}
 
+                {form.role === "ADMIN" && (
+                  <div>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        name="charge_attestation"
+                        checked={!!form.charge_attestation}
+                        onChange={handleChange}
+                      />
+                      Chargé des attestations de travail
+                    </label>
+                    <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
+                      Reçoit et traite les demandes d'attestation (/attestations). Un Super-administrateur y a toujours accès, quel que soit ce réglage.
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label style={labelStyle}>Mot de passe</label>
                   <input
@@ -533,6 +562,14 @@ const Users = () => {
                         fontWeight: 700,
                         textTransform: "uppercase",
                         letterSpacing: "0.06em",
+                        ...(h === "Actions"
+                          ? {
+                              position: "sticky",
+                              right: 0,
+                              background: theme.bg,
+                              boxShadow: "-4px 0 6px -4px rgba(0,0,0,0.2)",
+                            }
+                          : {}),
                       }}
                     >
                       {h}
@@ -541,13 +578,15 @@ const Users = () => {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u, idx) => (
+                {users.map((u, idx) => {
+                  const rowBg = idx % 2 === 0 ? theme.surface : theme.surfaceHover;
+                  return (
                   <tr
                     key={u.id}
                     className="table-row-hover"
                     style={{
                       borderBottom: `1px solid ${theme.border}`,
-                      background: idx % 2 === 0 ? theme.surface : theme.surfaceHover,
+                      background: rowBg,
                     }}
                   >
                     <td style={{ padding: "13px 16px", color: theme.primary, fontFamily: "monospace", fontWeight: 700, fontSize: 13 }}>
@@ -651,9 +690,17 @@ const Users = () => {
                         {u.is_active ? "Actif" : "Désactivé"}
                       </span>
                     </td>
-                    <td style={{ padding: "13px 16px" }}>
+                    <td
+                      style={{
+                        padding: "13px 16px",
+                        position: "sticky",
+                        right: 0,
+                        background: rowBg,
+                        boxShadow: "-4px 0 6px -4px rgba(0,0,0,0.2)",
+                      }}
+                    >
                       {isAdmin && (
-                        <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button
                             onClick={() => toggleActive(u)}
                             style={{
@@ -694,6 +741,25 @@ const Users = () => {
                           >
                             <IconKey /> Reset MDP
                           </button>
+                          {u.role === "ADMIN" && user?.role === "SUPERADMIN" && (
+                            <button
+                              onClick={() => toggleChargeAttestation(u)}
+                              title="Reçoit et traite les demandes d'attestation de travail (/attestations)"
+                              style={{
+                                background: u.charge_attestation ? theme.primaryBg : theme.bg,
+                                border: `1px solid ${u.charge_attestation ? theme.primaryBorder : theme.border}`,
+                                color: u.charge_attestation ? theme.primary : theme.textSecondary,
+                                borderRadius: 8,
+                                padding: "5px 12px",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {u.charge_attestation ? "Attestations ✓" : "Attestations ✗"}
+                            </button>
+                          )}
                           {["CONSULTANT", "GESTIONNAIRE"].includes(u.role) && (
                             <button
                               onClick={() => navigate(`/users/${u.id}/perimetre`)}
@@ -734,7 +800,8 @@ const Users = () => {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             </div>

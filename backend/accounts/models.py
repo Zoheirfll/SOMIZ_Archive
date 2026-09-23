@@ -58,6 +58,18 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text="Ex. 'Secrétaire', 'Superviseur' — remplace 'Gestionnaire' dans "
                    "l'interface pour ce compte, sans changer ses permissions.",
     )
+    # Un ADMIN n'a par défaut aucun accès aux demandes d'attestation
+    # (/attestations) — seuls les comptes explicitement cochés ici le
+    # reçoivent et le traitent (voir can_manage_attestations ci-dessous).
+    # Sans effet pour les autres rôles : un SUPERADMIN garde toujours accès
+    # complet indépendamment de ce champ, un CONSULTANT/GESTIONNAIRE n'y a
+    # jamais accès en traitement.
+    charge_attestation = models.BooleanField(
+        default=False, verbose_name="Chargé des attestations de travail",
+        help_text="Réservé aux comptes Administrateur : reçoit et traite les "
+                   "demandes d'attestation de travail (/attestations). Un "
+                   "Super-administrateur y a toujours accès, quel que soit ce champ.",
+    )
 
     # Sécurité : blocage après N tentatives
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
@@ -177,6 +189,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_gestionnaire(self):
         return self.role == self.Role.GESTIONNAIRE
+
+    @property
+    def can_manage_attestations(self):
+        """True si ce compte reçoit/traite les demandes d'attestation de
+        travail (/attestations en tant qu'ADMIN) — un SUPERADMIN l'a
+        toujours, un ADMIN ordinaire seulement si charge_attestation est
+        coché (voir ce champ). N'a aucun rapport avec CanRequestAttestation
+        (qui demande — GESTIONNAIRE/SUPERADMIN), c'est le pendant côté
+        traiteur."""
+        return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_attestation)
 
     def _scope_ids(self):
         """(direction_ids, pole_ids, departement_ids, service_ids,

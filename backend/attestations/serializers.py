@@ -1,6 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
+from employees.models import MotifArchivage
 from .models import DemandeAttestation, AttestationTemplateConfig
 from .reference import generate_reference
 
@@ -11,18 +12,20 @@ class DemandeAttestationSerializer(serializers.ModelSerializer):
     demandeur_nom = serializers.CharField(source='demandeur.full_name', read_only=True)
     traite_par_nom = serializers.SerializerMethodField()
     contrat_numero = serializers.SerializerMethodField()
+    motif_nom = serializers.CharField(source='motif.nom', read_only=True)
 
     class Meta:
         model = DemandeAttestation
         fields = [
             'id', 'reference', 'employee', 'employee_nom', 'employee_matricule',
-            'contrat', 'contrat_numero', 'motif', 'commentaire', 'statut',
+            'contrat', 'contrat_numero', 'motif', 'motif_nom', 'commentaire', 'statut',
             'motif_rejet', 'scan_document', 'demandeur', 'demandeur_nom',
-            'traite_par', 'traite_par_nom', 'created_at', 'updated_at',
+            'traite_par', 'traite_par_nom', 'created_at', 'date_prete',
+            'date_recuperee', 'updated_at',
         ]
         read_only_fields = [
             'id', 'reference', 'statut', 'motif_rejet', 'demandeur', 'traite_par',
-            'created_at', 'updated_at',
+            'created_at', 'date_prete', 'date_recuperee', 'updated_at',
         ]
 
     def get_employee_nom(self, obj):
@@ -36,9 +39,20 @@ class DemandeAttestationSerializer(serializers.ModelSerializer):
 
 
 class DemandeAttestationCreateSerializer(serializers.ModelSerializer):
+    # "Autre..." dans le select du formulaire — un motif absent du
+    # référentiel /ref/motifs-attestation/ (réservé ADMIN en écriture) peut
+    # être saisi ici en texte libre par un GESTIONNAIRE ; `create()` le
+    # rattache (ou crée) le MotifArchivage correspondant, jamais l'inverse
+    # (ce champ n'accepte que du texte, jamais un id existant).
+    motif = serializers.PrimaryKeyRelatedField(
+        queryset=MotifArchivage.objects.filter(categorie=MotifArchivage.Categorie.ATTESTATION, is_active=True),
+        required=False,
+    )
+    motif_autre = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=100)
+
     class Meta:
         model = DemandeAttestation
-        fields = ['employee', 'contrat', 'motif', 'commentaire']
+        fields = ['employee', 'contrat', 'motif', 'motif_autre', 'commentaire']
 
     def validate_employee(self, value):
         user = self.context['request'].user
@@ -54,10 +68,25 @@ class DemandeAttestationCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'contrat': "Ce contrat n'appartient pas à l'employé sélectionné."}
             )
+        motif_autre = (attrs.get('motif_autre') or '').strip()
+        if not attrs.get('motif') and not motif_autre:
+            raise serializers.ValidationError({'motif': "Motif requis."})
+        if attrs.get('motif') and motif_autre:
+            raise serializers.ValidationError({'motif': "Choisissez un motif existant OU saisissez-en un nouveau, pas les deux."})
         return attrs
 
     def create(self, validated_data):
+        motif_autre = (validated_data.pop('motif_autre', '') or '').strip()
         with transaction.atomic():
+            if motif_autre:
+                motif = MotifArchivage.objects.filter(
+                    nom__iexact=motif_autre, categorie=MotifArchivage.Categorie.ATTESTATION,
+                ).first()
+                if not motif:
+                    motif = MotifArchivage.objects.create(
+                        nom=motif_autre, categorie=MotifArchivage.Categorie.ATTESTATION,
+                    )
+                validated_data['motif'] = motif
             validated_data['reference'] = generate_reference()
             validated_data['demandeur'] = self.context['request'].user
             return super().create(validated_data)
@@ -69,8 +98,6 @@ class DemandeAttestationCreateSerializer(serializers.ModelSerializer):
 class DemandeAttestationStatutSerializer(serializers.ModelSerializer):
     ORDRE = [
         DemandeAttestation.Statut.RECUE,
-        DemandeAttestation.Statut.IMPRIMEE,
-        DemandeAttestation.Statut.SIGNEE,
         DemandeAttestation.Statut.PRETE,
         DemandeAttestation.Statut.RECUPEREE,
     ]

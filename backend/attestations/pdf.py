@@ -143,7 +143,7 @@ def _draw_body(c, demande, config, lieu_naissance):
     y = _y(171)
     c.drawString(X_LABEL * mm, y, "Motif")
     c.drawString(X_COLON_LONG * mm, y, ':')
-    c.drawString(X_VALUE_LONG * mm, y, (demande.motif or '').upper())
+    c.drawString(X_VALUE_LONG * mm, y, demande.motif.nom.upper())
 
     # Formule de clôture
     c.drawString(

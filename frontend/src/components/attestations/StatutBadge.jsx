@@ -4,8 +4,6 @@ export default function StatutBadge({ statut }) {
   const theme = useTheme();
   const STATUT_META = {
     recue: { label: "Reçue", bg: theme.badgeBg, color: theme.badgeColor, dot: theme.textSecondary },
-    imprimee: { label: "Imprimée", bg: theme.accentBg, color: theme.accent, dot: theme.accent },
-    signee: { label: "Signée", bg: theme.accentBg, color: theme.accent, dot: theme.accent },
     prete: { label: "Prête", bg: theme.primaryBg, color: theme.primary, dot: theme.primary },
     recuperee: { label: "Récupérée", bg: theme.primaryBg, color: theme.primary, dot: theme.primary },
     rejetee: { label: "Rejetée", bg: theme.dangerBg, color: theme.danger, dot: theme.danger },
