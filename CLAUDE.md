@@ -230,6 +230,67 @@ Sections) — pas de fusion, pas de migration de données.
 
 ---
 
+## URLs lisibles — slug sur les référentiels organisationnels (2026-09-27)
+
+Les query params de filtrage/navigation sur `/employees` (`?direction=`,
+`?departement=`, `?service=`, `?pole=`, `?cellule=`, `?section=`) portent
+désormais un **slug lisible** (ex. `direction-administration-generale`),
+plus un UUID brut — cohérent avec `/employees/010451` (déjà résolu par
+matricule) et `/attestations/00001-26` (déjà résolu par référence). Seuls
+les query params sont concernés : les clés primaires en base et les routes
+déjà lisibles ne changent pas. `?user=`/`?categorie=` (audit) étaient déjà
+du texte, `?dossier_complet=0/1` déjà lisible — non touchés.
+
+- `Direction`, `Pole`, `Departement`, `Service`, `Cellule`, `Section`
+  (`backend/employees/models.py`) portent un champ `slug`
+  (`SlugField(editable=False)`), recalculé dans `save()` dès que `nom` (ou
+  le parent, pour Pole/Departement/Service/Cellule/Section) change —
+  `_generate_unique_slug()` désambiguïse par suffixe numérique (`-2`,
+  `-3`...) en cas de collision, scopé au même périmètre que l'unicité de
+  `nom` déjà en place (Direction : global ; Pole/Departement : par
+  Direction ; Service : par Departement). **Cellule et Section n'ont
+  toujours aucune contrainte d'unicité sur `nom`** — leur slug gère seul
+  la désambiguïsation, scopé par `direction_id or departement_id` (le
+  parent renseigné) via `unique_together = [['direction', 'departement', 'slug']]`.
+- Backend — les filtres passent de `qs.filter(direction=direction)` à
+  `qs.filter(direction__slug=direction)` (et équivalent pour les autres
+  niveaux) dans `EmployeeListCreateView` (`employees/views.py`),
+  `EmployeeExportView` (`employees/export_views.py`), et les vues cascade
+  `PoleListCreateView`/`DepartementListCreateView`/`ServiceListCreateView`/
+  `CelluleListCreateView`/`SectionListCreateView` (`employees/referentiel_views.py`).
+  `ReferentielSearchMixin.filter_search()` supporte aussi `?slug=<valeur>`
+  (filtre exact) sur toutes les listes référentiels — utilisé par le
+  frontend pour résoudre "slug → objet complet" sans jamais repasser par
+  une route détail par UUID.
+- `Employees.jsx` : les fetchs cascade et la construction des params
+  d'appel `/employees/` envoient `.slug` (plus `.id`) ; la résolution d'un
+  lien entrant (`?direction=<slug>` depuis Statistiques/Organigramme)
+  passe par `GET /ref/.../?slug=<valeur>` (premier résultat) plutôt que
+  par une route détail par pk. Le mécanisme de breadcrumb interne
+  (`lvl`/`dir`/`dep`/`svc`, `slugify()` client-side) est indépendant et
+  n'a pas été touché.
+- `Statistiques.jsx` (`navigate(/employees?direction=${entry.slug})`) et
+  `Organigramme.jsx` (`navigate(/employees?${niveau}=${node.slug})`)
+  construisent leurs liens avec le slug reçu de l'API — `audit/stats.py`
+  (`_repartition_direction`, `_repartition_departement`, `_completude_par`)
+  expose désormais `slug` en plus de `id` dans ses lignes d'agrégation.
+- `?employee=` sur `GET /api/attestations/demandes/` (onglet "Attestations"
+  de la fiche employé, `AttestationsTab.jsx`) est passé au **matricule**
+  plutôt qu'à l'UUID employé — `DemandeAttestationListCreateView` filtre
+  désormais sur `employee__matricule`, même principe que
+  `EmployeeDetailView.get_object` (résolution UUID-ou-matricule déjà en
+  place, `employees/views.py`).
+- Migration `employees/0038_alter_departement_unique_together_and_more.py` :
+  ajoute les colonnes `slug` sans contrainte, backfill par script
+  (`RunPython`, ordre Direction → Pole/Departement → Service →
+  Cellule/Section — dépendance de scope), **puis** seulement ajoute les
+  contraintes d'unicité — nécessaire sur PostgreSQL pour éviter une
+  collision d'index (`AddField` avec `unique=True` direct crée déjà un
+  index `_like` que l'`AlterField` suivant recrée à l'identique et fait
+  échouer la migration avec `DuplicateTable`).
+
+---
+
 ## Hiérarchie des types de documents — sous-dossiers (2026-07-24)
 
 `TypeDocument` supporte 2 niveaux via un champ auto-référent `parent`

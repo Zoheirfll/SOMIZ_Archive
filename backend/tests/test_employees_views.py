@@ -92,7 +92,7 @@ class TestEmployeeListView:
         employee.service = None
         employee.save()
         client = auth_client(admin_user)
-        resp = client.get(EMPLOYEES_URL, {"section": str(section.id)})
+        resp = client.get(EMPLOYEES_URL, {"section": section.slug})
         assert resp.status_code == 200
         assert any(e["id"] == str(employee.id) for e in resp.data["results"])
 

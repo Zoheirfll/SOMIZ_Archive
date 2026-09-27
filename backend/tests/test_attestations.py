@@ -228,12 +228,12 @@ def test_employee_filter_scopes_to_one_employee(
     )
     client = APIClient()
     client.force_authenticate(admin_user)
-    resp = client.get('/api/attestations/demandes/', {'employee': str(employee.id)})
+    resp = client.get('/api/attestations/demandes/', {'employee': employee.matricule})
     results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
     assert {r['reference'] for r in results} == {'00001/26', '00003/26'}
 
     client.force_authenticate(gestionnaire_user)
-    resp = client.get('/api/attestations/demandes/', {'employee': str(employee.id)})
+    resp = client.get('/api/attestations/demandes/', {'employee': employee.matricule})
     results = resp.data['results'] if isinstance(resp.data, dict) else resp.data
     assert {r['reference'] for r in results} == {'00001/26'}
 
