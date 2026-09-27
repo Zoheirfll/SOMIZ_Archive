@@ -6,7 +6,7 @@ import api from "../services/api";
 import { useTheme, useThemeMode } from "../context/ThemeContext";
 import useIsMobile from "../hooks/useIsMobile";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
-import { KeyboardIcon, SunIcon, MoonIcon } from "./icons";
+import { KeyboardIcon, SunIcon, MoonIcon, SearchIcon } from "./icons";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -30,7 +30,7 @@ const Navbar = () => {
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
-  const { openHelp } = useKeyboardShortcutsHelp();
+  const { openHelp, openPalette } = useKeyboardShortcutsHelp();
   const theme = useTheme();
   const { mode, toggleMode } = useThemeMode();
 
@@ -458,6 +458,25 @@ const Navbar = () => {
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
             </div>
+            <button
+              onClick={openPalette}
+              aria-label="Recherche rapide"
+              title="Recherche rapide"
+              style={{
+                background: "transparent",
+                border: `1px solid ${theme.border}`,
+                borderRadius: 8,
+                color: theme.text,
+                width: 38,
+                height: 38,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <SearchIcon size={17} />
+            </button>
             <ThemeToggleButton style={{ width: 38, height: 38 }} />
             <button
               aria-label={drawerOpen ? "Fermer le menu" : "Ouvrir le menu"}
