@@ -187,6 +187,19 @@ class TestBuildStatsDetailEcheances:
         assert 'CTR-ECH-1' in numeros
         assert 'CTR-ECH-2' not in numeros
 
+    def test_contrats_echeance_respects_custom_jours(self, direction, departement, type_contrat, admin_user):
+        today = timezone.localdate()
+        emp = _make_employee(direction=direction, departement=departement, statut='actif')
+        Contrat.objects.create(
+            numero_contrat='CTR-ECH-4', employee=emp, type_contrat=type_contrat,
+            date_debut=today - timedelta(days=300), date_fin=today + timedelta(days=95),
+            statut='actif', created_by=admin_user,
+        )
+        result_default = build_stats_detail(None, None)
+        assert 'CTR-ECH-4' not in [c['numero_contrat'] for c in result_default['contrats_echeance']]
+        result_120 = build_stats_detail(None, None, echeance_jours=120)
+        assert 'CTR-ECH-4' in [c['numero_contrat'] for c in result_120['contrats_echeance']]
+
     def test_contrats_echeance_excludes_non_actif(self, direction, departement, type_contrat, admin_user):
         today = timezone.localdate()
         emp = _make_employee(direction=direction, departement=departement, statut='actif')

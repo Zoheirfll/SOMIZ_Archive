@@ -1,8 +1,9 @@
 import pytest
+from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIClient
-from employees.models import Employee
+from employees.models import Employee, Contrat
 from audit.models import AuditLog
 
 User = get_user_model()
@@ -57,6 +58,28 @@ class TestStatsDetailView:
         resp = auth_client(admin_user).get('/api/reporting/stats-detail/')
         row = next(r for r in resp.data['repartition_direction'] if r['id'] == str(direction.id))
         assert row['count'] == 1
+
+    def test_echeance_jours_param_is_forwarded(self, admin_user, direction, departement, type_contrat):
+        today = timezone.localdate()
+        emp = Employee.objects.create(
+            matricule="EMP-ECH1", nom="Test", prenom="X",
+            direction=direction, departement=departement, statut='actif', created_by=admin_user,
+        )
+        Contrat.objects.create(
+            numero_contrat='CTR-ECH-V1', employee=emp, type_contrat=type_contrat,
+            date_debut=today - timedelta(days=300), date_fin=today + timedelta(days=100),
+            statut='actif', created_by=admin_user,
+        )
+        resp_default = auth_client(admin_user).get('/api/reporting/stats-detail/')
+        assert 'CTR-ECH-V1' not in [c['numero_contrat'] for c in resp_default.data['contrats_echeance']]
+        resp_120 = auth_client(admin_user).get('/api/reporting/stats-detail/?echeance_jours=120')
+        assert 'CTR-ECH-V1' in [c['numero_contrat'] for c in resp_120.data['contrats_echeance']]
+
+    def test_invalid_echeance_jours_returns_400(self, admin_user):
+        resp = auth_client(admin_user).get('/api/reporting/stats-detail/?echeance_jours=abc')
+        assert resp.status_code == 400
+        resp2 = auth_client(admin_user).get('/api/reporting/stats-detail/?echeance_jours=9999')
+        assert resp2.status_code == 400
 
 
 @pytest.mark.django_db

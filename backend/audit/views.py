@@ -191,6 +191,19 @@ def _parse_date_param(request, name):
         return 'invalid'
 
 
+def _parse_echeance_jours(request):
+    raw = request.query_params.get('echeance_jours')
+    if not raw:
+        return 90
+    try:
+        jours = int(raw)
+    except ValueError:
+        return 'invalid'
+    if not (1 <= jours <= 365):
+        return 'invalid'
+    return jours
+
+
 class StatsDetailView(APIView):
     """
     GET /api/reporting/stats-detail/?date_debut=&date_fin=
@@ -205,9 +218,10 @@ class StatsDetailView(APIView):
     def get(self, request):
         date_debut = _parse_date_param(request, 'date_debut')
         date_fin = _parse_date_param(request, 'date_fin')
-        if date_debut == 'invalid' or date_fin == 'invalid':
-            return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
-        data = build_stats_detail(date_debut, date_fin, requesting_user=request.user)
+        echeance_jours = _parse_echeance_jours(request)
+        if date_debut == 'invalid' or date_fin == 'invalid' or echeance_jours == 'invalid':
+            return Response({'error': 'Paramètre invalide.'}, status=400)
+        data = build_stats_detail(date_debut, date_fin, requesting_user=request.user, echeance_jours=echeance_jours)
         return Response(data)
 
 
@@ -242,9 +256,10 @@ class StatsExportView(APIView):
     def get(self, request):
         date_debut = _parse_date_param(request, 'date_debut')
         date_fin = _parse_date_param(request, 'date_fin')
-        if date_debut == 'invalid' or date_fin == 'invalid':
-            return Response({'error': 'Date invalide (format attendu YYYY-MM-DD).'}, status=400)
-        data = build_stats_detail(date_debut, date_fin, requesting_user=request.user)
+        echeance_jours = _parse_echeance_jours(request)
+        if date_debut == 'invalid' or date_fin == 'invalid' or echeance_jours == 'invalid':
+            return Response({'error': 'Paramètre invalide.'}, status=400)
+        data = build_stats_detail(date_debut, date_fin, requesting_user=request.user, echeance_jours=echeance_jours)
 
         wb = openpyxl.Workbook()
         wb.remove(wb.active)

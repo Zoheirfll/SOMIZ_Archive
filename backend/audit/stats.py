@@ -216,9 +216,9 @@ def _pyramide_anciennete():
     return _pyramide(Employee.objects.filter(statut='actif'), 'date_embauche', ANCIENNETE_TRANCHES)
 
 
-def _contrats_echeance():
+def _contrats_echeance(jours=90):
     today = timezone.localdate()
-    limite = today + timedelta(days=90)
+    limite = today + timedelta(days=jours)
     contrats = Contrat.objects.filter(
         statut='actif', date_fin__isnull=False, date_fin__range=[today, limite]
     ).select_related('employee').order_by('date_fin')
@@ -408,7 +408,7 @@ def _activite_par_admin(date_debut, date_fin):
     return result
 
 
-def build_stats_detail(date_debut, date_fin, requesting_user=None):
+def build_stats_detail(date_debut, date_fin, requesting_user=None, echeance_jours=90):
     """
     requesting_user : si fourni, la réponse inclut 'mon_activite' (décompte
     des actions de ce compte) et, s'il s'agit d'un SUPERADMIN,
@@ -430,7 +430,7 @@ def build_stats_detail(date_debut, date_fin, requesting_user=None):
         'evolution_mensuelle': _evolution_mensuelle(date_debut, date_fin),
         'pyramide_age': _pyramide_age(),
         'pyramide_anciennete': _pyramide_anciennete(),
-        'contrats_echeance': _contrats_echeance(),
+        'contrats_echeance': _contrats_echeance(echeance_jours),
         'completude_par_direction': _completude_par_direction(),
         'completude_par_departement': _completude_par_departement(),
     }
