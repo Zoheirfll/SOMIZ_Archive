@@ -97,6 +97,8 @@ const presetToRange = (preset) => {
   return { date_debut: toIso(debut), date_fin: toIso(fin) };
 };
 
+const ECHEANCE_PRESETS = [30, 60, 90, 120, 180, 365];
+
 // Lien pré-filtré vers /audit (utilisateur + période) — l'endpoint
 // AuditLogListView ne filtre que sur un `action` unique, jamais sur le
 // contenu de `details` : impossible de pointer précisément vers, par
@@ -189,6 +191,8 @@ const Statistiques = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({ preset: "12m", dateDebut: "", dateFin: "" });
+  const [echeanceJours, setEcheanceJours] = useState(90);
+  const [echeanceCustomMode, setEcheanceCustomMode] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -213,20 +217,21 @@ const Statistiques = () => {
       navigate("/employees");
       return;
     }
-    fetchStats(presetToRange("12m") || {});
+    fetchStats({ ...(presetToRange("12m") || {}), echeance_jours: echeanceJours });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, navigate, fetchStats]);
 
   const handlePresetClick = (preset) => {
     setFilters({ preset, dateDebut: "", dateFin: "" });
     const range = presetToRange(preset);
-    fetchStats(range || {}, true);
+    fetchStats({ ...(range || {}), echeance_jours: echeanceJours }, true);
   };
 
   const handleDateChange = (field, value) => {
     const next = { ...filters, preset: null, [field]: value };
     setFilters(next);
     if (next.dateDebut && next.dateFin) {
-      fetchStats({ date_debut: next.dateDebut, date_fin: next.dateFin }, true);
+      fetchStats({ date_debut: next.dateDebut, date_fin: next.dateFin, echeance_jours: echeanceJours }, true);
     }
   };
 
@@ -237,11 +242,16 @@ const Statistiques = () => {
     return presetToRange(filters.preset || "12m") || {};
   };
 
+  const handleEcheanceChange = (jours) => {
+    setEcheanceJours(jours);
+    fetchStats({ ...currentDateParams(), echeance_jours: jours }, true);
+  };
+
   const handleExportExcel = async () => {
     setExportMenuOpen(false);
     try {
       const response = await api.get("/reporting/stats-export.xlsx/", {
-        params: currentDateParams(),
+        params: { ...currentDateParams(), echeance_jours: echeanceJours },
         responseType: "blob",
       });
       const url = URL.createObjectURL(response.data);
@@ -468,7 +478,46 @@ const Statistiques = () => {
         </div>
 
         <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd, marginBottom: 20 }}>
-          <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Contrats arrivant à échéance (90 jours)</h2>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+            <h2 style={{ color: theme.text, margin: 0, fontSize: 15, fontWeight: 700 }}>
+              Contrats arrivant à échéance ({echeanceJours} jours)
+            </h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label htmlFor="echeance-select" style={{ fontSize: 12, color: theme.textSecondary }}>Seuil</label>
+              <select
+                id="echeance-select"
+                value={echeanceCustomMode ? "custom" : echeanceJours}
+                onChange={(e) => {
+                  if (e.target.value === "custom") {
+                    setEcheanceCustomMode(true);
+                  } else {
+                    setEcheanceCustomMode(false);
+                    handleEcheanceChange(Number(e.target.value));
+                  }
+                }}
+                style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
+              >
+                {ECHEANCE_PRESETS.map((j) => (
+                  <option key={j} value={j}>{j} jours</option>
+                ))}
+                <option value="custom">Personnalisé…</option>
+              </select>
+              {echeanceCustomMode && (
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  aria-label="Seuil personnalisé (jours)"
+                  defaultValue={echeanceJours}
+                  onBlur={(e) => {
+                    const v = Number(e.target.value);
+                    if (v >= 1 && v <= 365) handleEcheanceChange(v);
+                  }}
+                  style={{ width: 70, border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
+                />
+              )}
+            </div>
+          </div>
           {stats.contrats_echeance.length === 0 ? (
             <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucun contrat à échéance.</div>
           ) : (

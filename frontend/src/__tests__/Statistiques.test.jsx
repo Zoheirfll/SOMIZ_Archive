@@ -122,7 +122,41 @@ describe("Statistiques — filtres", () => {
     fireEvent.change(screen.getByLabelText("Date fin"), { target: { value: "2026-02-28" } });
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(
       "/reporting/stats-detail/",
-      expect.objectContaining({ params: { date_debut: "2026-02-01", date_fin: "2026-02-28" } })
+      expect.objectContaining({ params: { date_debut: "2026-02-01", date_fin: "2026-02-28", echeance_jours: 90 } })
+    ));
+  });
+});
+
+describe("Statistiques — seuil d'échéance réglable", () => {
+  test("le titre de la section reflète le seuil par défaut (90 jours)", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage();
+    expect(await screen.findByText("Contrats arrivant à échéance (90 jours)")).toBeInTheDocument();
+  });
+
+  test("changer le seuil refetch avec le nouveau nombre de jours et met à jour le titre", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage();
+    await screen.findByText("Recrutements");
+    api.get.mockClear();
+    fireEvent.change(screen.getByLabelText("Seuil"), { target: { value: "180" } });
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      "/reporting/stats-detail/",
+      expect.objectContaining({ params: expect.objectContaining({ echeance_jours: 180 }) })
+    ));
+    expect(await screen.findByText("Contrats arrivant à échéance (180 jours)")).toBeInTheDocument();
+  });
+
+  test("un seuil personnalisé refetch avec la valeur saisie", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage();
+    await screen.findByText("Recrutements");
+    fireEvent.change(screen.getByLabelText("Seuil"), { target: { value: "custom" } });
+    api.get.mockClear();
+    fireEvent.blur(screen.getByLabelText("Seuil personnalisé (jours)"), { target: { value: "45" } });
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      "/reporting/stats-detail/",
+      expect.objectContaining({ params: expect.objectContaining({ echeance_jours: 45 }) })
     ));
   });
 });
