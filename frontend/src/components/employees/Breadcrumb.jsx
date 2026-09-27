@@ -1,8 +1,22 @@
 import { useTheme } from "../../context/ThemeContext";
 import { IconChevronRight } from "./icons";
 
-const Breadcrumb = ({ items }) => {
+const Breadcrumb = ({ items, variant = "default" }) => {
   const theme = useTheme();
+  const isHero = variant === "hero";
+  const colors = isHero
+    ? {
+        link: "rgba(255,255,255,0.8)",
+        current: "rgba(255,255,255,0.95)",
+        separator: "rgba(255,255,255,0.4)",
+        hoverBg: "rgba(255,255,255,0.12)",
+      }
+    : {
+        link: theme.primary,
+        current: theme.text,
+        separator: theme.textMuted,
+        hoverBg: theme.primaryBg,
+      };
   return (
   <nav
     style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}
@@ -12,7 +26,7 @@ const Breadcrumb = ({ items }) => {
         {idx > 0 && (
           <span
             style={{
-              color: theme.textMuted,
+              color: colors.separator,
               display: "flex",
               alignItems: "center",
             }}
@@ -24,23 +38,23 @@ const Breadcrumb = ({ items }) => {
           onClick={item.onClick}
           disabled={!item.onClick || idx === items.length - 1}
           style={{
-            background: "none",
-            border: "none",
-            padding: "3px 8px",
-            borderRadius: 6,
-            color: idx === items.length - 1 ? theme.text : theme.primary,
+            background: isHero ? "rgba(255,255,255,0.12)" : "none",
+            border: isHero ? "none" : "none",
+            padding: isHero ? "5px 12px" : "3px 8px",
+            borderRadius: isHero ? 6 : 6,
+            color: idx === items.length - 1 ? colors.current : colors.link,
             fontWeight: idx === items.length - 1 ? 700 : 500,
-            fontSize: 13,
+            fontSize: isHero ? 12 : 13,
             cursor: idx === items.length - 1 ? "default" : "pointer",
             fontFamily: theme.fontFamily,
             transition: "background 0.15s",
           }}
           onMouseEnter={(e) => {
             if (idx < items.length - 1)
-              e.currentTarget.style.background = theme.primaryBg;
+              e.currentTarget.style.background = colors.hoverBg;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "none";
+            e.currentTarget.style.background = isHero ? "rgba(255,255,255,0.12)" : "none";
           }}
         >
           {item.label}
