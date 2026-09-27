@@ -30,11 +30,16 @@ const persistOverrides = (overrides) => {
  */
 export function KeyboardShortcutsProvider({ children }) {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [overrides, setOverrides] = useState(loadOverrides);
 
   const openHelp = useCallback(() => setHelpOpen(true), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
   const toggleHelp = useCallback(() => setHelpOpen((v) => !v), []);
+
+  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const togglePalette = useCallback(() => setPaletteOpen((v) => !v), []);
 
   const setOverride = useCallback((id, combo) => {
     setOverrides((prev) => {
@@ -66,6 +71,10 @@ export function KeyboardShortcutsProvider({ children }) {
         openHelp,
         closeHelp,
         toggleHelp,
+        paletteOpen,
+        openPalette,
+        closePalette,
+        togglePalette,
         overrides,
         setOverride,
         resetOverride,

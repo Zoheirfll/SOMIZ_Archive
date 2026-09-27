@@ -175,3 +175,10 @@ export const InfoIcon = ({ size = 14, ...props }) => (
     <line x1="12" y1="8" x2="12" y2="8" />
   </svg>
 );
+
+export const SearchIcon = ({ size = 16, ...props }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);

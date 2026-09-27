@@ -7,6 +7,7 @@ export const DEFAULT_SHORTCUTS = [
   { id: "nav-back", combo: "Alt+ArrowLeft", label: "Retour (page précédente)", category: "navigation" },
   { id: "nav-forward", combo: "Alt+ArrowRight", label: "Avancer (page suivante)", category: "navigation" },
   { id: "help-toggle", combo: "?", label: "Afficher / masquer cette aide", category: "navigation" },
+  { id: "command-palette", combo: "Ctrl+K", label: "Recherche rapide (employés, attestations, pages)", category: "navigation" },
 
   { id: "nav-employees", combo: "Alt+E", label: "Employés", path: "/employees", category: "quick" },
   { id: "nav-organigramme", combo: "Alt+O", label: "Organigramme", path: "/organigramme", category: "quick" },
