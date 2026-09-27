@@ -1460,6 +1460,28 @@ du document signé. Spec complète :
   Affiché dans un onglet "Statistiques" sur `/attestations` elle-même
   (pas dans `/statistiques`, qui reste dédiée aux indicateurs RH
   globaux).
+  - **Enrichi le 2026-09-27** (aligné sur le look & feel de
+    `/statistiques`) : `total` (nb de demandes sur la période),
+    `par_gestionnaire`/`par_employe` reformatés en `{id, nom, count}`
+    (au lieu de `{demandeur_id, demandeur_nom, count}` /
+    `{employee_id, employee_nom, count}`) pour être directement
+    consommables par `StatDonutChart` (`frontend/src/components/charts/`,
+    déjà utilisé par `/statistiques`) ; `par_statut` passé d'un dict
+    `{code: count}` à une liste `[{id, nom, count}]` (libellés lisibles,
+    codes à `count=0` omis). Nouveau champ `evolution_mensuelle`
+    (`[{mois, recues, recuperees}]`, un point par mois calendaire
+    couvrant la période, même principe que
+    `audit.stats._evolution_mensuelle` mais sur les dates de création/
+    récupération des demandes plutôt qu'une plage de dates fixe — utile
+    y compris sur le préréglage "Tout", où il n'y a pas de plage
+    explicite à découper).
+  - Frontend (`Attestations.jsx`, onglet Statistiques) : mêmes
+    préréglages de période que `/statistiques` (30j/3m/12m/année en
+    cours/tout + plage libre), 3 cartes KPI (Total, En attente = statut
+    `recue`, Délai moyen), 3 `StatDonutChart` (Par statut/gestionnaire/
+    employé) et un `StatAreaChart` (évolution reçues vs récupérées) —
+    réutilise les mêmes composants graphiques que `/statistiques`
+    plutôt que des listes texte ad hoc.
 - **URL par référence, pas par UUID** : `/attestations/<ref>` (et les
   endpoints `/api/attestations/demandes/<ref>/...`) utilisent la
   référence (`00001/26`) plutôt que l'UUID technique — plus lisible/

@@ -68,9 +68,10 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Chercher l'utilisateur
+        # Chercher l'utilisateur — recherche insensible à la casse (voir
+        # UserManager.get_by_natural_key, même règle pour /django-admin/).
         try:
-            user = User.objects.get(username=username)
+            user = User.objects.get(username__iexact=username)
         except User.DoesNotExist:
             # Exécute quand même un hashage de mot de passe "factice" pour que
             # le temps de réponse soit le même que pour un mauvais mot de passe

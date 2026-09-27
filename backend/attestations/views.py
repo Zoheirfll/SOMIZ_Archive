@@ -1,7 +1,7 @@
 from datetime import datetime, time
 
 from django.db.models import Count, F, Avg, ExpressionWrapper, DurationField, Q
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, TruncMonth
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone as tz
@@ -12,11 +12,12 @@ from rest_framework.views import APIView
 
 from audit.models import AuditLog
 from .models import DemandeAttestation, AttestationTemplateConfig
-from .pdf import build_attestation_pdf
+from .pdf import build_attestation_pdf, LOGO_PAR_DEFAUT
 from .permissions import CanAccessAttestations, CanRequestAttestation, IsAttestationManager
 from .serializers import (
     DemandeAttestationSerializer, DemandeAttestationCreateSerializer,
-    DemandeAttestationStatutSerializer, AttestationTemplateConfigSerializer,
+    DemandeAttestationStatutSerializer,
+    AttestationTemplateConfigSerializer,
 )
 
 
@@ -51,7 +52,9 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = DemandeAttestation.objects.select_related(
-            'employee', 'contrat', 'demandeur', 'traite_par'
+            'employee', 'employee__direction', 'employee__departement', 'employee__service',
+            'employee__poste', 'employee__type_contrat', 'employee__categorie',
+            'contrat', 'demandeur', 'traite_par',
         )
         user = self.request.user
 
@@ -61,8 +64,9 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
             # — historique des demandes pour CET employé précis, toujours
             # combiné avec le filtrage demandeur/admin ci-dessous (un
             # GESTIONNAIRE ne voit ici que ses propres demandes pour cet
-            # employé, jamais celles d'un collègue).
-            qs = qs.filter(employee_id=employee_id)
+            # employé, jamais celles d'un collègue). URL lisible : matricule
+            # plutôt qu'UUID, même principe que ReferenceLookupMixin.
+            qs = qs.filter(employee__matricule=employee_id)
 
         q = self.request.query_params.get('q')
         if q:
@@ -108,7 +112,11 @@ class DemandeAttestationDetailView(ReferenceLookupMixin, generics.RetrieveDestro
     RECUE."""
     serializer_class = DemandeAttestationSerializer
     permission_classes = [CanAccessAttestations]
-    queryset = DemandeAttestation.objects.select_related('employee', 'contrat', 'demandeur', 'traite_par')
+    queryset = DemandeAttestation.objects.select_related(
+        'employee', 'employee__direction', 'employee__departement', 'employee__service',
+        'employee__poste', 'employee__type_contrat', 'employee__categorie',
+        'contrat', 'demandeur', 'traite_par',
+    )
 
     def get_object(self):
         obj = super().get_object()
@@ -233,6 +241,19 @@ class AttestationTemplateConfigView(generics.RetrieveUpdateAPIView):
         return obj
 
 
+class DefaultAttestationLogoView(APIView):
+    """GET /api/attestations/config/logo-defaut/ — SUPERADMIN/ADMIN chargé
+    only. Sert le logo embarqué (attestations/assets/logo_somiz.png) utilisé
+    par build_attestation_pdf() tant qu'aucun logo n'a été téléversé
+    (AttestationTemplateConfig.logo vide) — sans cet endpoint, le panneau
+    /parametres affichait "Aucun logo" alors que le PDF généré en montrait
+    bien un, aucune trace de ce fichier de secours n'étant exposée côté API."""
+    permission_classes = [IsAttestationManager]
+
+    def get(self, request):
+        return HttpResponse(LOGO_PAR_DEFAUT.read_bytes(), content_type='image/png')
+
+
 class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
     """GET /api/attestations/demandes/<ref>/apercu/ — SUPERADMIN/ADMIN chargé only, renvoie le
     PDF de l'attestation (reproduit le modèle papier, voir
@@ -244,6 +265,32 @@ class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
         from employees.models import Contrat, EmployeeChampValeur
 
         demande = self.get_object()
+        today = tz.localdate()
+
+        # La date imprimée sur le document ("Arzew le :"/"Édité le :") se
+        # fige à la première génération — entre l'impression et la
+        # signature effective, un jour ou deux peuvent s'écouler (ex.
+        # imprimé le 23, signé le 24). Rouvrir l'aperçu un autre jour ne
+        # doit pas silencieusement afficher une date différente de celle
+        # déjà imprimée : sans confirmation explicite (?confirmer_date=1),
+        # on renvoie 409 plutôt que le PDF, avec l'ancienne et la nouvelle
+        # date pour que le frontend affiche une modale d'avertissement.
+        if demande.date_document and demande.date_document != today:
+            if request.query_params.get('confirmer_date') != '1':
+                return Response(
+                    {
+                        'needs_confirmation': True,
+                        'date_document': demande.date_document.isoformat(),
+                        'date_nouvelle': today.isoformat(),
+                    },
+                    status=409,
+                )
+            demande.date_document = today
+            demande.save(update_fields=['date_document'])
+        elif not demande.date_document:
+            demande.date_document = today
+            demande.save(update_fields=['date_document'])
+
         config, _ = AttestationTemplateConfig.objects.get_or_create(pk=1)
         lieu_naissance = EmployeeChampValeur.objects.filter(
             employee=demande.employee, champ__nom__icontains='lieu de naissance',
@@ -262,7 +309,7 @@ class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
             ).first() or ''
 
         pdf = build_attestation_pdf(
-            demande, config, tz.localdate(),
+            demande, config, demande.date_document,
             lieu_naissance=lieu_naissance, contrat_numero=contrat_numero,
         )
         response = HttpResponse(pdf, content_type='application/pdf')
@@ -292,18 +339,26 @@ class AttestationStatsView(APIView):
               .annotate(count=Count('id')).order_by('-count')
         )
         for row in par_gestionnaire:
-            row['demandeur_nom'] = f"{row.pop('demandeur__prenom')} {row.pop('demandeur__nom')}"
+            row['id'] = row.pop('demandeur_id')
+            row['nom'] = f"{row.pop('demandeur__prenom')} {row.pop('demandeur__nom')}"
 
         par_employe = list(
             qs.values('employee_id', 'employee__nom', 'employee__prenom', 'employee__matricule')
               .annotate(count=Count('id')).order_by('-count')
         )
         for row in par_employe:
-            row['employee_nom'] = f"{row.pop('employee__prenom')} {row.pop('employee__nom')}"
+            row['id'] = row.pop('employee_id')
+            row['nom'] = f"{row.pop('employee__prenom')} {row.pop('employee__nom')}"
 
-        par_statut = dict(
+        counts_par_statut = dict(
             qs.values('statut').annotate(count=Count('id')).values_list('statut', 'count')
         )
+        labels_statut = dict(DemandeAttestation.Statut.choices)
+        par_statut = [
+            {'id': code, 'nom': labels_statut[code], 'count': counts_par_statut.get(code, 0)}
+            for code in labels_statut
+            if counts_par_statut.get(code, 0) > 0
+        ]
 
         # date_recuperee (renseignée par DemandeAttestationStatutView.patch)
         # est plus précise que updated_at — mais reste absente pour les
@@ -316,9 +371,36 @@ class AttestationStatsView(APIView):
             )
         ).aggregate(moyenne=Avg('duree'))['moyenne']
 
+        # Évolution mensuelle : demandes reçues (créées) vs récupérées ce
+        # mois-là — même principe que audit.stats._evolution_mensuelle,
+        # mais sur un mois calendaire plutôt qu'une plage arbitraire, pour
+        # rester lisible même sur "Tout" (pas de plage de dates fournie).
+        recues_par_mois = {
+            row['mois'].strftime('%Y-%m'): row['count']
+            for row in qs.annotate(mois=TruncMonth('created_at'))
+                         .values('mois').annotate(count=Count('id')).order_by('mois')
+        }
+        recuperees_par_mois = {
+            row['mois'].strftime('%Y-%m'): row['count']
+            for row in qs.filter(statut=DemandeAttestation.Statut.RECUPEREE)
+                         .annotate(mois=TruncMonth(Coalesce(F('date_recuperee'), F('updated_at'))))
+                         .values('mois').annotate(count=Count('id')).order_by('mois')
+        }
+        tous_les_mois = sorted(set(recues_par_mois) | set(recuperees_par_mois))
+        evolution_mensuelle = [
+            {
+                'mois': mois,
+                'recues': recues_par_mois.get(mois, 0),
+                'recuperees': recuperees_par_mois.get(mois, 0),
+            }
+            for mois in tous_les_mois
+        ]
+
         return Response({
+            'total': qs.count(),
             'par_gestionnaire': par_gestionnaire,
             'par_employe': par_employe,
             'par_statut': par_statut,
+            'evolution_mensuelle': evolution_mensuelle,
             'delai_moyen_jours': round(duree.total_seconds() / 86400, 1) if duree else None,
         })

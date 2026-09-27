@@ -38,7 +38,10 @@ const AttestationConfigPanel = ({ theme }) => {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    api.get("/attestations/config/").then((res) => setConfig(res.data));
+    api
+      .get("/attestations/config/")
+      .then((res) => setConfig(res.data))
+      .catch(() => setMessage("Impossible de charger la configuration."));
   }, []);
 
   const handleSave = async (e) => {
@@ -104,14 +107,15 @@ const AttestationConfigPanel = ({ theme }) => {
           Logo de l'en-tête
         </label>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          {config.logo ? (
-            <img
-              src={config.logo}
-              alt="Logo de l'attestation"
-              style={{ height: 46, maxWidth: 120, objectFit: "contain", background: "#fff", borderRadius: 6, padding: 4 }}
-            />
-          ) : (
-            <span style={{ fontSize: 12, color: theme.textMuted }}>Aucun logo</span>
+          <img
+            src={config.logo || "/api/attestations/config/logo-defaut/"}
+            alt="Logo de l'attestation"
+            style={{ height: 46, maxWidth: 120, objectFit: "contain", background: "#fff", borderRadius: 6, padding: 4 }}
+          />
+          {!config.logo && (
+            <span style={{ fontSize: 12, color: theme.textMuted }}>
+              Logo par défaut (aucun logo téléversé) — c'est celui-ci qui apparaît sur les attestations générées.
+            </span>
           )}
           <label className="btn-lift" style={{
             display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
@@ -134,6 +138,21 @@ const AttestationConfigPanel = ({ theme }) => {
       {champ("telex", "Télex")}
       {champ("signataire_titre", "Titre du signataire")}
       {champ("signataire_nom", "Nom du signataire")}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 12, fontWeight: 700, color: theme.text, display: "block", marginBottom: 4 }}>
+          Signé par intérim (P.I)
+        </label>
+        <select
+          className="input-focus"
+          value={config.signataire_interim ? "oui" : "non"}
+          onChange={(e) => setConfig({ ...config, signataire_interim: e.target.value === "oui" })}
+          style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${theme.border}` }}
+        >
+          <option value="non">Non</option>
+          <option value="oui">Oui</option>
+        </select>
+      </div>
+      {config.signataire_interim && champ("signataire_interim_nom", "Nom du signataire intérimaire")}
       {message && <div style={{ color: theme.primary, marginBottom: 12 }}>{message}</div>}
       <button type="submit" disabled={saving} className="btn-lift" style={{
         background: theme.primary, color: "#fff", border: "none", borderRadius: 8,
@@ -153,6 +172,25 @@ const Parametres = () => {
   const inputStyle = getInputStyle(theme);
   const { user } = useAuth();
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
+  // Un ADMIN non chargé des attestations (User.can_manage_attestations,
+  // toujours vrai pour SUPERADMIN) n'a aucun accès backend à ces deux
+  // onglets (motifs "Attestation" en lecture large mais sans intérêt hors
+  // contexte, "Attestation de travail" carrément 403 sur IsAttestationManager
+  // — voir attestations/permissions.py) — les masquer plutôt que de laisser
+  // l'utilisateur atterrir sur une page qui échoue.
+  const canManageAttestations = !!user?.can_manage_attestations;
+  const visibleTabGroups = useMemo(
+    () =>
+      canManageAttestations
+        ? TAB_GROUPS
+        : TAB_GROUPS.map((group) => ({
+            ...group,
+            keys: group.keys.filter(
+              (key) => key !== "motifs-attestation" && key !== "attestation-config",
+            ),
+          })).filter((group) => group.keys.length > 0),
+    [canManageAttestations],
+  );
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
@@ -248,6 +286,13 @@ const Parametres = () => {
   });
 
   useEffect(() => {
+    if (
+      !canManageAttestations &&
+      (activeTab === "motifs-attestation" || activeTab === "attestation-config")
+    ) {
+      setActiveTab("directions");
+      return;
+    }
     fetchTab(activeTab, page, search);
     setSelectedIds(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -826,7 +871,7 @@ const Parametres = () => {
                 className="input-focus"
                 style={{ ...inputStyle, marginBottom: 0, fontWeight: 700 }}
               >
-                {TAB_GROUPS.map((group) => (
+                {visibleTabGroups.map((group) => (
                   <optgroup key={group.label} label={group.label}>
                     {group.keys.map((key) => {
                       const tab = TABS.find((t) => t.key === key);
@@ -852,7 +897,7 @@ const Parametres = () => {
                 overflowY: "auto",
               }}
             >
-              {TAB_GROUPS.map((group) => (
+              {visibleTabGroups.map((group) => (
                 <div key={group.label} style={{ marginBottom: 18 }}>
                   <div
                     style={{

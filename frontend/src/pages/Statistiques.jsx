@@ -455,7 +455,7 @@ const Statistiques = () => {
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Répartition par Direction</h2>
             <StatDonutChart
               data={stats.repartition_direction}
-              onSliceClick={(entry) => navigate(`/employees?direction=${entry.id}`)}
+              onSliceClick={(entry) => navigate(`/employees?direction=${entry.slug}`)}
             />
           </div>
 
@@ -463,7 +463,7 @@ const Statistiques = () => {
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Répartition par Département</h2>
             <StatDonutChart
               data={stats.repartition_departement}
-              onSliceClick={(entry) => navigate(`/employees?departement=${entry.id}`)}
+              onSliceClick={(entry) => navigate(`/employees?departement=${entry.slug}`)}
             />
           </div>
         </div>
@@ -612,7 +612,7 @@ const Statistiques = () => {
                     displayValue={`${r.taux}%`}
                     max={100}
                     color={r.taux >= 80 ? theme.primary : r.taux >= 50 ? theme.accent : theme.danger}
-                    onClick={() => navigate(`/employees?direction=${r.id}&dossier_complet=0`)}
+                    onClick={() => navigate(`/employees?direction=${r.slug}&dossier_complet=0`)}
                   />
                 ))
               )}
@@ -633,7 +633,7 @@ const Statistiques = () => {
                   displayValue={`${r.taux}%`}
                   max={100}
                   color={r.taux >= 80 ? theme.primary : r.taux >= 50 ? theme.accent : theme.danger}
-                  onClick={() => navigate(`/employees?departement=${r.id}&dossier_complet=0`)}
+                  onClick={() => navigate(`/employees?departement=${r.slug}&dossier_complet=0`)}
                 />
               ))
             )}

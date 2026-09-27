@@ -187,17 +187,17 @@ class EmployeeExportAllView(APIView):
                 Q(matricule__icontains=q)
             )
         if direction:
-            qs = qs.filter(direction=direction)
+            qs = qs.filter(direction__slug=direction)
         if dept:
-            qs = qs.filter(departement=dept)
+            qs = qs.filter(departement__slug=dept)
         if service:
-            qs = qs.filter(service=service)
+            qs = qs.filter(service__slug=service)
         if pole:
-            qs = qs.filter(departement__pole=pole)
+            qs = qs.filter(departement__pole__slug=pole)
         if cellule:
-            qs = qs.filter(cellule=cellule)
+            qs = qs.filter(cellule__slug=cellule)
         if section:
-            qs = qs.filter(section=section)
+            qs = qs.filter(section__slug=section)
         # Même comportement par défaut que EmployeeListCreateView — voir
         # CLAUDE.md section Archivage employé.
         if statut:

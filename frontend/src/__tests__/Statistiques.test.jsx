@@ -166,7 +166,7 @@ describe("Statistiques — répartitions organisation et profils", () => {
     api.get.mockResolvedValue({
       data: {
         ...baseStats,
-        repartition_direction: [{ id: "d1", nom: "Direction Générale", count: 10 }],
+        repartition_direction: [{ id: "d1", slug: "d1", nom: "Direction Générale", count: 10 }],
         repartition_categorie: [{ nom: "Cadre", count: 7 }],
       },
     });
@@ -177,7 +177,7 @@ describe("Statistiques — répartitions organisation et profils", () => {
 
   test("clic sur une barre Direction navigue vers /employees filtré", async () => {
     api.get.mockResolvedValue({
-      data: { ...baseStats, repartition_direction: [{ id: "d1", nom: "Direction Générale", count: 10 }] },
+      data: { ...baseStats, repartition_direction: [{ id: "d1", slug: "d1", nom: "Direction Générale", count: 10 }] },
     });
     renderPage();
     const bar = await screen.findByText("Direction Générale");
@@ -260,7 +260,7 @@ describe("Statistiques — contrats à échéance et complétude", () => {
     api.get.mockResolvedValue({
       data: {
         ...baseStats,
-        completude_par_departement: [{ id: "dpt1", nom: "Paie", direction_nom: "Direction Générale", total: 10, complets: 6, taux: 60 }],
+        completude_par_departement: [{ id: "dpt1", slug: "dpt1", nom: "Paie", direction_nom: "Direction Générale", total: 10, complets: 6, taux: 60 }],
       },
     });
     renderPage();
@@ -273,7 +273,7 @@ describe("Statistiques — contrats à échéance et complétude", () => {
     api.get.mockResolvedValue({
       data: {
         ...baseStats,
-        completude_par_direction: [{ id: "dir1", nom: "Direction Générale", total: 20, complets: 15, taux: 75 }],
+        completude_par_direction: [{ id: "dir1", slug: "dir1", nom: "Direction Générale", total: 20, complets: 15, taux: 75 }],
       },
     });
     renderPage();

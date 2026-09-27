@@ -43,13 +43,14 @@ describe("Attestations", () => {
   });
 
   test("l'onglet Statistiques affiche le nombre de demandes par gestionnaire", async () => {
-    useAuth.mockReturnValue({ user: { role: "ADMIN", id: "u1", full_name: "Admin Test" } });
+    useAuth.mockReturnValue({ user: { role: "ADMIN", id: "u1", full_name: "Admin Test", can_manage_attestations: true } });
     api.get.mockImplementation((url) => {
       if (url === "/attestations/demandes/") return Promise.resolve({ data: { results: [] } });
       if (url === "/attestations/stats/") return Promise.resolve({
         data: {
-          par_gestionnaire: [{ demandeur_id: "u2", demandeur_nom: "Ali Ben", count: 4 }],
-          par_employe: [], par_statut: {}, delai_moyen_jours: 2.5,
+          total: 4,
+          par_gestionnaire: [{ id: "u2", nom: "Ali Ben", count: 4 }],
+          par_employe: [], par_statut: [], evolution_mensuelle: [], delai_moyen_jours: 2.5,
         },
       });
       return Promise.resolve({ data: {} });

@@ -101,6 +101,20 @@ class UserSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate_username(self, value):
+        # La connexion (LoginView, UserManager.get_by_natural_key) est
+        # désormais insensible à la casse ("Admin"/"admin" identiques) — deux
+        # comptes qui ne different que par la casse seraient donc ambigus à
+        # la connexion (l'un des deux deviendrait injoignable). La contrainte
+        # `unique=True` du modèle reste sensible à la casse côté DB, d'où
+        # cette vérification explicite en plus.
+        qs = User.objects.filter(username__iexact=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("Cet identifiant est déjà utilisé.")
+        return value
+
     def validate(self, attrs):
         # charge_attestation n'a de sens que pour un ADMIN (voir
         # User.can_manage_attestations) — un compte qui n'est pas/plus
@@ -139,6 +153,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Seul un Super-administrateur peut créer un compte Administrateur."
             )
+        return value
+
+    def validate_username(self, value):
+        # Même règle que UserSerializer.validate_username — la connexion est
+        # insensible à la casse, deux comptes "Admin"/"admin" seraient donc
+        # ambigus.
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("Cet identifiant est déjà utilisé.")
         return value
 
     def validate(self, attrs):

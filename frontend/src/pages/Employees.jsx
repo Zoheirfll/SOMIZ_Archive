@@ -310,16 +310,16 @@ const Employees = () => {
       try {
         const [deptRes, poleRes, celRes, secRes] = await Promise.all([
           api.get("/ref/departements/", {
-            params: { direction: selectedDirection.id },
+            params: { direction: selectedDirection.slug },
           }),
           api.get("/ref/poles/", {
-            params: { direction: selectedDirection.id },
+            params: { direction: selectedDirection.slug },
           }),
           api.get("/ref/cellules/", {
-            params: { direction: selectedDirection.id },
+            params: { direction: selectedDirection.slug },
           }),
           api.get("/ref/sections/", {
-            params: { direction: selectedDirection.id },
+            params: { direction: selectedDirection.slug },
           }),
         ]);
         setDepartements(deptRes.data.results || deptRes.data);
@@ -344,7 +344,7 @@ const Employees = () => {
       setHierarchyLoading(true);
       try {
         const res = await api.get("/ref/departements/", {
-          params: { pole: selectedPole.id },
+          params: { pole: selectedPole.slug },
         });
         setDepartementsDePole(res.data.results || res.data);
       } catch {
@@ -363,13 +363,13 @@ const Employees = () => {
       try {
         const [srvRes, celRes, secRes] = await Promise.all([
           api.get("/ref/services/", {
-            params: { departement: selectedDepartement.id },
+            params: { departement: selectedDepartement.slug },
           }),
           api.get("/ref/cellules/", {
-            params: { departement: selectedDepartement.id },
+            params: { departement: selectedDepartement.slug },
           }),
           api.get("/ref/sections/", {
-            params: { departement: selectedDepartement.id },
+            params: { departement: selectedDepartement.slug },
           }),
         ]);
         setServices(srvRes.data.results || srvRes.data);
@@ -410,9 +410,9 @@ const Employees = () => {
         if (ancienneteMin) params.anciennete_min = ancienneteMin;
         if (ancienneteMax) params.anciennete_max = ancienneteMax;
         if (orgFilter) params[orgFilter.type] = orgFilter.id;
-        else if (selectedService) params.service = selectedService.id;
-        else if (selectedDepartement) params.departement = selectedDepartement.id;
-        else if (selectedDirection) params.direction = selectedDirection.id;
+        else if (selectedService) params.service = selectedService.slug;
+        else if (selectedDepartement) params.departement = selectedDepartement.slug;
+        else if (selectedDirection) params.direction = selectedDirection.slug;
       }
       const response = await api.get("/employees/", { params });
       setEmployees(response.data.results || response.data);
@@ -450,9 +450,9 @@ const Employees = () => {
       if (statut) params.statut = statut;
       if (vue === "archives") params.vue = "archives";
       if (orgFilter) params[orgFilter.type] = orgFilter.id;
-      else if (selectedService) params.service = selectedService.id;
-      else if (selectedDepartement) params.departement = selectedDepartement.id;
-      else if (selectedDirection) params.direction = selectedDirection.id;
+      else if (selectedService) params.service = selectedService.slug;
+      else if (selectedDepartement) params.departement = selectedDepartement.slug;
+      else if (selectedDirection) params.direction = selectedDirection.slug;
       const response = await api.get("/employees/export/", {
         params,
         responseType: "blob",
@@ -545,39 +545,44 @@ const Employees = () => {
   // directement sur la liste des employés filtrée, sans repasser par le
   // drill-down carte par carte.
   useEffect(() => {
-    const directionId = searchParams.get("direction");
-    const departementId = searchParams.get("departement");
-    const serviceId = searchParams.get("service");
-    const poleId = searchParams.get("pole");
-    const celluleId = searchParams.get("cellule");
-    const sectionId = searchParams.get("section");
+    const directionSlug = searchParams.get("direction");
+    const departementSlug = searchParams.get("departement");
+    const serviceSlug = searchParams.get("service");
+    const poleSlug = searchParams.get("pole");
+    const celluleSlug = searchParams.get("cellule");
+    const sectionSlug = searchParams.get("section");
     const hasAgeOuAnciennete = ageMin || ageMax || ancienneteMin || ancienneteMax;
-    if (!directionId && !departementId && !serviceId && !poleId && !celluleId && !sectionId && !hasAgeOuAnciennete)
+    if (!directionSlug && !departementSlug && !serviceSlug && !poleSlug && !celluleSlug && !sectionSlug && !hasAgeOuAnciennete)
       return;
-    if (hasAgeOuAnciennete && !directionId && !departementId && !serviceId && !poleId && !celluleId && !sectionId) {
+    if (hasAgeOuAnciennete && !directionSlug && !departementSlug && !serviceSlug && !poleSlug && !celluleSlug && !sectionSlug) {
       setView("employees");
       return;
     }
     (async () => {
       try {
-        if (serviceId) {
-          const res = await api.get(`/ref/services/${serviceId}/`);
-          setSelectedService(res.data);
-        } else if (celluleId) {
-          const res = await api.get(`/ref/cellules/${celluleId}/`);
-          setOrgFilter({ type: "cellule", id: celluleId, nom: res.data.nom });
-        } else if (sectionId) {
-          const res = await api.get(`/ref/sections/${sectionId}/`);
-          setOrgFilter({ type: "section", id: sectionId, nom: res.data.nom });
-        } else if (departementId) {
-          const res = await api.get(`/ref/departements/${departementId}/`);
-          setSelectedDepartement(res.data);
-        } else if (poleId) {
-          const res = await api.get(`/ref/poles/${poleId}/`);
-          setOrgFilter({ type: "pole", id: poleId, nom: res.data.nom });
-        } else if (directionId) {
-          const res = await api.get(`/ref/directions/${directionId}/`);
-          setSelectedDirection(res.data);
+        // Les query params (?direction=, ?service=...) portent un slug
+        // lisible, pas un UUID — résolu via le filtre exact `?slug=` des
+        // listes référentiels plutôt qu'une route détail par pk.
+        const bySlug = async (endpoint, slug) => {
+          const res = await api.get(endpoint, { params: { slug } });
+          const list = res.data.results || res.data;
+          return list[0] || null;
+        };
+        if (serviceSlug) {
+          setSelectedService(await bySlug("/ref/services/", serviceSlug));
+        } else if (celluleSlug) {
+          const obj = await bySlug("/ref/cellules/", celluleSlug);
+          if (obj) setOrgFilter({ type: "cellule", id: obj.slug, nom: obj.nom });
+        } else if (sectionSlug) {
+          const obj = await bySlug("/ref/sections/", sectionSlug);
+          if (obj) setOrgFilter({ type: "section", id: obj.slug, nom: obj.nom });
+        } else if (departementSlug) {
+          setSelectedDepartement(await bySlug("/ref/departements/", departementSlug));
+        } else if (poleSlug) {
+          const obj = await bySlug("/ref/poles/", poleSlug);
+          if (obj) setOrgFilter({ type: "pole", id: obj.slug, nom: obj.nom });
+        } else if (directionSlug) {
+          setSelectedDirection(await bySlug("/ref/directions/", directionSlug));
         }
         setView("employees");
       } catch (err) {

@@ -470,6 +470,65 @@ def test_apercu_reprend_le_dernier_contrat_si_la_demande_nen_vise_aucun(
     assert contrat.numero_contrat in _texte_pdf(resp.content)
 
 
+def test_apercu_fige_la_date_du_document_au_premier_appel(admin_user, employee, gestionnaire_user, motif_attestation):
+    """La date imprimée sur le document ("Arzew le :") doit rester la même
+    d'un aperçu à l'autre le même jour — entre l'impression et la signature
+    effective, un admin peut rouvrir l'aperçu plusieurs fois sans que la
+    date change tant qu'on reste le même jour."""
+    demande = DemandeAttestation.objects.create(
+        reference='00004/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp1 = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
+    assert resp1.status_code == 200
+    demande.refresh_from_db()
+    assert demande.date_document is not None
+
+    resp2 = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
+    assert resp2.status_code == 200
+    demande.refresh_from_db()
+    date_figee = demande.date_document
+    assert date_figee is not None
+    # Un second appel le même jour ne modifie pas la date déjà figée.
+    assert demande.date_document == date_figee
+
+
+def test_apercu_demande_confirmation_si_la_date_a_change(admin_user, employee, gestionnaire_user, motif_attestation):
+    """Rouvrir l'aperçu un jour différent de la première génération renvoie
+    409 (pas le PDF) tant que ?confirmer_date=1 n'est pas passé — voir
+    AttestationApercuView.get. `?confirmer_date=1` applique la nouvelle
+    date et régénère normalement."""
+    from datetime import timedelta
+    from django.utils import timezone
+    demande = DemandeAttestation.objects.create(
+        reference='00005/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+    )
+    # Simule une première génération "hier".
+    hier = timezone.localdate() - timedelta(days=1)
+    demande.date_document = hier
+    demande.save(update_fields=['date_document'])
+
+    client = APIClient()
+    client.force_authenticate(admin_user)
+
+    resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
+    assert resp.status_code == 409
+    payload = resp.json()
+    assert payload['needs_confirmation'] is True
+    assert payload['date_document'] == hier.isoformat()
+
+    demande.refresh_from_db()
+    assert demande.date_document == hier  # inchangée tant que non confirmé
+
+    resp_confirme = client.get(
+        f'/api/attestations/demandes/{_url_ref(demande)}/apercu/', {'confirmer_date': '1'},
+    )
+    assert resp_confirme.status_code == 200
+    demande.refresh_from_db()
+    assert demande.date_document != hier
+
+
 def test_gestionnaire_cannot_access_apercu(gestionnaire_user, employee, motif_attestation):
     demande = DemandeAttestation.objects.create(
         reference='00001/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
@@ -478,6 +537,84 @@ def test_gestionnaire_cannot_access_apercu(gestionnaire_user, employee, motif_at
     client.force_authenticate(gestionnaire_user)
     resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
     assert resp.status_code == 403
+
+
+# ─── Signature P.I (intérim) — réglage global de AttestationTemplateConfig ──
+
+def test_admin_active_la_signature_interim_dans_la_config(admin_user):
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.put(
+        '/api/attestations/config/',
+        {'signataire_interim': True, 'signataire_interim_nom': 'C.INTERIM'},
+        format='json',
+    )
+    assert resp.status_code == 200
+    config = AttestationTemplateConfig.objects.get(pk=1)
+    assert config.signataire_interim is True
+    assert config.signataire_interim_nom == 'C.INTERIM'
+
+
+def test_activer_interim_sans_nom_est_rejete(admin_user):
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.put(
+        '/api/attestations/config/',
+        {'signataire_interim': True, 'signataire_interim_nom': ''},
+        format='json',
+    )
+    assert resp.status_code == 400
+
+
+def test_desactiver_interim_efface_le_nom(admin_user):
+    config, _ = AttestationTemplateConfig.objects.get_or_create(pk=1)
+    config.signataire_interim = True
+    config.signataire_interim_nom = 'C.INTERIM'
+    config.save()
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.put(
+        '/api/attestations/config/',
+        {'signataire_interim': False}, format='json',
+    )
+    assert resp.status_code == 200
+    config.refresh_from_db()
+    assert config.signataire_interim is False
+    assert config.signataire_interim_nom == ''
+
+
+def test_apercu_affiche_pi_et_le_nom_interimaire(admin_user, employee, gestionnaire_user, motif_attestation):
+    config, _ = AttestationTemplateConfig.objects.get_or_create(pk=1)
+    config.signataire_nom = 'A.BOUSMAHA'
+    config.signataire_interim = True
+    config.signataire_interim_nom = 'C.INTERIM'
+    config.save()
+    demande = DemandeAttestation.objects.create(
+        reference='00007/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
+    texte = _texte_pdf(resp.content)
+    assert 'P.I' in texte
+    assert 'C.INTERIM' in texte
+    assert 'A.BOUSMAHA' not in texte
+
+
+def test_apercu_sans_interim_garde_le_signataire_de_la_config(admin_user, employee, gestionnaire_user, motif_attestation):
+    config, _ = AttestationTemplateConfig.objects.get_or_create(pk=1)
+    config.signataire_nom = 'A.BOUSMAHA'
+    config.signataire_interim = False
+    config.save()
+    demande = DemandeAttestation.objects.create(
+        reference='00008/26', employee=employee, motif=motif_attestation, demandeur=gestionnaire_user,
+    )
+    client = APIClient()
+    client.force_authenticate(admin_user)
+    resp = client.get(f'/api/attestations/demandes/{_url_ref(demande)}/apercu/')
+    texte = _texte_pdf(resp.content)
+    assert 'P.I' not in texte
+    assert 'A.BOUSMAHA' in texte
 
 
 # ─── Reporting ──────────────────────────────────────────────────────────────
@@ -498,7 +635,7 @@ def test_stats_counts_demandes_by_gestionnaire_and_employee(
     client.force_authenticate(admin_user)
     resp = client.get('/api/attestations/stats/')
     assert resp.status_code == 200
-    par_gest = {r['demandeur_nom']: r['count'] for r in resp.data['par_gestionnaire']}
+    par_gest = {r['nom']: r['count'] for r in resp.data['par_gestionnaire']}
     assert par_gest[gestionnaire_user.full_name] == 2
     assert par_gest[other_gestionnaire.full_name] == 1
     par_emp = resp.data['par_employe']

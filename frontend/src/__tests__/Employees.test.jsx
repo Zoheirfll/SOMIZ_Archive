@@ -42,9 +42,9 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ThemeProvider, ...optio
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const mockDirection = { id: "dir-1", nom: "Direction Générale", code: "DG", nb_departements: 2 };
-const mockDept     = { id: "dept-1", nom: "Ressources Humaines", code: "RH", nb_services: 1 };
-const mockService  = { id: "svc-1", nom: "Paie", code: "PAI", nb_employes: 5 };
+const mockDirection = { id: "dir-1", slug: "dir-1", nom: "Direction Générale", code: "DG", nb_departements: 2 };
+const mockDept     = { id: "dept-1", slug: "dept-1", nom: "Ressources Humaines", code: "RH", nb_services: 1 };
+const mockService  = { id: "svc-1", slug: "svc-1", nom: "Paie", code: "PAI", nb_employes: 5 };
 
 const makeEmployee = (id, nom = "Dupont", matricule = "EMP-001", statut = "actif") => ({
   id, nom, prenom: "Jean", matricule, statut,

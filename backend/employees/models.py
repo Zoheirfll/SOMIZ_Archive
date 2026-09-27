@@ -9,6 +9,28 @@ import os
 from django.db import models, transaction
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
+from django.utils.text import slugify
+
+
+def _generate_unique_slug(model_cls, nom, scope_filters, instance_pk):
+    """
+    Calcule un slug unique pour `nom`, scopé par `scope_filters` (dict de
+    filtres .filter(), ex. {'departement_id': ...}) — ajoute un suffixe
+    numérique en cas de collision (ex. Cellule/Section sans contrainte
+    d'unicité sur `nom`). `instance_pk` exclut l'instance courante en
+    édition (sinon elle collisionnerait avec son propre slug).
+    """
+    base = slugify(nom)[:150] or 'item'
+    slug = base
+    n = 2
+    qs = model_cls.objects.filter(**scope_filters)
+    if instance_pk is not None:
+        qs = qs.exclude(pk=instance_pk)
+    while qs.filter(slug=slug).exists():
+        suffix = f'-{n}'
+        slug = f'{base[:160 - len(suffix)]}{suffix}'
+        n += 1
+    return slug
 
 
 def _safe_path_segment(value):
@@ -31,6 +53,7 @@ def employee_photo_upload_path(instance, filename):
 class Direction(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     nom = models.CharField(max_length=150, unique=True, verbose_name="Nom")
+    slug = models.SlugField(max_length=160, unique=True, editable=False, blank=True)
     code = models.CharField(max_length=20, unique=True, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -48,6 +71,19 @@ class Direction(models.Model):
     def __str__(self):
         return self.nom
 
+    def save(self, *args, **kwargs):
+        if not self.slug or self._slug_source_changed():
+            self.slug = _generate_unique_slug(Direction, self.nom, {}, self.pk)
+        super().save(*args, **kwargs)
+
+    def _slug_source_changed(self):
+        if not self.pk:
+            return True
+        try:
+            return Direction.objects.only('nom').get(pk=self.pk).nom != self.nom
+        except Direction.DoesNotExist:
+            return True
+
 
 class Pole(models.Model):
     """
@@ -64,6 +100,7 @@ class Pole(models.Model):
         related_name='poles', verbose_name="Direction"
     )
     nom = models.CharField(max_length=150, verbose_name="Nom")
+    slug = models.SlugField(max_length=160, editable=False, blank=True)
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -77,10 +114,26 @@ class Pole(models.Model):
         db_table = 'poles'
         verbose_name = "Pôle"
         ordering = ['direction__nom', 'nom']
-        unique_together = [['direction', 'nom']]
+        unique_together = [['direction', 'nom'], ['direction', 'slug']]
 
     def __str__(self):
         return f"{self.direction.nom} → {self.nom}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug or self._slug_source_changed():
+            self.slug = _generate_unique_slug(
+                Pole, self.nom, {'direction_id': self.direction_id}, self.pk
+            )
+        super().save(*args, **kwargs)
+
+    def _slug_source_changed(self):
+        if not self.pk:
+            return True
+        try:
+            prev = Pole.objects.only('nom', 'direction_id').get(pk=self.pk)
+            return prev.nom != self.nom or prev.direction_id != self.direction_id
+        except Pole.DoesNotExist:
+            return True
 
 
 class Departement(models.Model):
@@ -99,6 +152,7 @@ class Departement(models.Model):
         related_name='departements', verbose_name="Pôle"
     )
     nom = models.CharField(max_length=150, verbose_name="Nom")
+    slug = models.SlugField(max_length=160, editable=False, blank=True)
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -112,10 +166,26 @@ class Departement(models.Model):
         db_table = 'departements'
         verbose_name = "Département"
         ordering = ['direction__nom', 'nom']
-        unique_together = [['direction', 'nom']]
+        unique_together = [['direction', 'nom'], ['direction', 'slug']]
 
     def __str__(self):
         return f"{self.direction.nom} → {self.nom}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug or self._slug_source_changed():
+            self.slug = _generate_unique_slug(
+                Departement, self.nom, {'direction_id': self.direction_id}, self.pk
+            )
+        super().save(*args, **kwargs)
+
+    def _slug_source_changed(self):
+        if not self.pk:
+            return True
+        try:
+            prev = Departement.objects.only('nom', 'direction_id').get(pk=self.pk)
+            return prev.nom != self.nom or prev.direction_id != self.direction_id
+        except Departement.DoesNotExist:
+            return True
 
 
 class Service(models.Model):
@@ -125,6 +195,7 @@ class Service(models.Model):
         related_name='services', verbose_name="Département"
     )
     nom = models.CharField(max_length=150, verbose_name="Nom")
+    slug = models.SlugField(max_length=160, editable=False, blank=True)
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -138,10 +209,26 @@ class Service(models.Model):
         db_table = 'services'
         verbose_name = "Service"
         ordering = ['departement__nom', 'nom']
-        unique_together = [['departement', 'nom']]
+        unique_together = [['departement', 'nom'], ['departement', 'slug']]
 
     def __str__(self):
         return f"{self.departement.nom} → {self.nom}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug or self._slug_source_changed():
+            self.slug = _generate_unique_slug(
+                Service, self.nom, {'departement_id': self.departement_id}, self.pk
+            )
+        super().save(*args, **kwargs)
+
+    def _slug_source_changed(self):
+        if not self.pk:
+            return True
+        try:
+            prev = Service.objects.only('nom', 'departement_id').get(pk=self.pk)
+            return prev.nom != self.nom or prev.departement_id != self.departement_id
+        except Service.DoesNotExist:
+            return True
 
 
 class Cellule(models.Model):
@@ -161,6 +248,7 @@ class Cellule(models.Model):
         related_name='cellules', verbose_name="Département"
     )
     nom = models.CharField(max_length=150, verbose_name="Nom")
+    slug = models.SlugField(max_length=160, editable=False, blank=True)
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -174,6 +262,7 @@ class Cellule(models.Model):
         db_table = 'cellules'
         verbose_name = "Cellule"
         ordering = ['nom']
+        unique_together = [['direction', 'departement', 'slug']]
 
     def __str__(self):
         parent = self.direction.nom if self.direction_id else self.departement.nom
@@ -185,6 +274,28 @@ class Cellule(models.Model):
             raise ValidationError(
                 "Une Cellule doit être rattachée à exactement une Direction OU un Département."
             )
+
+    def save(self, *args, **kwargs):
+        if not self.slug or self._slug_source_changed():
+            self.slug = _generate_unique_slug(
+                Cellule, self.nom,
+                {'direction_id': self.direction_id, 'departement_id': self.departement_id},
+                self.pk,
+            )
+        super().save(*args, **kwargs)
+
+    def _slug_source_changed(self):
+        if not self.pk:
+            return True
+        try:
+            prev = Cellule.objects.only('nom', 'direction_id', 'departement_id').get(pk=self.pk)
+            return (
+                prev.nom != self.nom
+                or prev.direction_id != self.direction_id
+                or prev.departement_id != self.departement_id
+            )
+        except Cellule.DoesNotExist:
+            return True
 
 
 class Section(models.Model):
@@ -207,6 +318,7 @@ class Section(models.Model):
         related_name='sections', verbose_name="Département"
     )
     nom = models.CharField(max_length=150, verbose_name="Nom")
+    slug = models.SlugField(max_length=160, editable=False, blank=True)
     code = models.CharField(max_length=20, blank=True, verbose_name="Code")
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -220,6 +332,7 @@ class Section(models.Model):
         db_table = 'sections'
         verbose_name = "Section"
         ordering = ['nom']
+        unique_together = [['direction', 'departement', 'slug']]
 
     def __str__(self):
         parent = self.direction.nom if self.direction_id else self.departement.nom
@@ -231,6 +344,28 @@ class Section(models.Model):
             raise ValidationError(
                 "Une Section doit être rattachée à exactement une Direction OU un Département."
             )
+
+    def save(self, *args, **kwargs):
+        if not self.slug or self._slug_source_changed():
+            self.slug = _generate_unique_slug(
+                Section, self.nom,
+                {'direction_id': self.direction_id, 'departement_id': self.departement_id},
+                self.pk,
+            )
+        super().save(*args, **kwargs)
+
+    def _slug_source_changed(self):
+        if not self.pk:
+            return True
+        try:
+            prev = Section.objects.only('nom', 'direction_id', 'departement_id').get(pk=self.pk)
+            return (
+                prev.nom != self.nom
+                or prev.direction_id != self.direction_id
+                or prev.departement_id != self.departement_id
+            )
+        except Section.DoesNotExist:
+            return True
 
 
 class Poste(models.Model):

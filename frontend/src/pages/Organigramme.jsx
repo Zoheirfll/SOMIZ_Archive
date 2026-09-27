@@ -295,7 +295,7 @@ const Organigramme = () => {
       cellule: "cellule",
       section: "section",
     };
-    navigate(`/employees?${paramByLevel[level]}=${node.id}`);
+    navigate(`/employees?${paramByLevel[level]}=${node.slug}`);
   };
 
   // Enfants affichés à l'écran courant : les Directions à la racine, ou

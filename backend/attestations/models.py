@@ -51,6 +51,18 @@ class DemandeAttestation(models.Model):
     # jamais modifiables directement via l'API.
     date_prete = models.DateTimeField(null=True, blank=True)
     date_recuperee = models.DateTimeField(null=True, blank=True)
+    # Date imprimée sur le document PDF lui-même ("Arzew le :"/"Édité le :",
+    # voir attestations/pdf.py) — distincte de date_prete/date_recuperee qui
+    # tracent le workflow de statut. Figée à la première génération du PDF
+    # (AttestationApercuView.get) plutôt que recalculée à chaque aperçu :
+    # entre l'impression et la signature effective, un jour ou deux peuvent
+    # s'écouler (ex. imprimé le 23, signé le 24) — si la date changeait à
+    # chaque réouverture de l'aperçu, un second aperçu le lendemain aurait
+    # silencieusement affiché une date différente de celle réellement
+    # imprimée/signée. Une régénération à une date différente de celle déjà
+    # figée exige une confirmation explicite (voir needs_confirmation dans
+    # la vue) avant d'être appliquée.
+    date_document = models.DateField(null=True, blank=True)
     motif_rejet = models.TextField(blank=True)
     scan_document = models.FileField(
         upload_to=attestation_scan_upload_path, null=True, blank=True,
@@ -107,6 +119,13 @@ class AttestationTemplateConfig(models.Model):
         default="Chef de Département Administration du Personnel",
     )
     signataire_nom = models.CharField(max_length=150, blank=True, default="A.BOUSMAHA")
+    # Signature "P.I" (Pour Intérim, 2026-09-23) — un cadre en intérim signe
+    # temporairement à la place du signataire habituel ci-dessus. Réglage
+    # global (comme le reste de cette config) plutôt que par demande : le
+    # temps que dure l'intérim, toutes les attestations générées portent ce
+    # nom ; un ADMIN désactive l'option pour revenir au signataire titulaire.
+    signataire_interim = models.BooleanField(default=False)
+    signataire_interim_nom = models.CharField(max_length=150, blank=True)
     logo = models.ImageField(upload_to=attestation_logo_upload_path, null=True, blank=True)
 
     class Meta:

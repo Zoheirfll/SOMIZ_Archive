@@ -28,6 +28,16 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_superuser', True)
         return self.create_user(username, password, **extra_fields)
 
+    def get_by_natural_key(self, username):
+        # Identifiant insensible à la casse ("Admin" == "admin") — sinon le
+        # comportement par défaut de BaseUserManager (comparaison exacte)
+        # oblige à retaper l'identifiant avec la casse exacte utilisée à la
+        # création, ce qu'aucun utilisateur ne s'attend à devoir faire pour
+        # un identifiant de connexion. Utilisé par /django-admin/login/ et
+        # tout code passant par authenticate() — LoginView (accounts/views.py)
+        # fait sa propre recherche __iexact en parallèle.
+        return self.get(**{f'{self.model.USERNAME_FIELD}__iexact': username})
+
 
 class User(AbstractBaseUser, PermissionsMixin):
     """

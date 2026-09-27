@@ -88,21 +88,25 @@ def _indicateurs(date_debut, date_fin):
 
 def _repartition_direction():
     rows = Employee.objects.filter(statut='actif').values(
-        'direction_id', 'direction__nom'
+        'direction_id', 'direction__nom', 'direction__slug'
     ).annotate(count=Count('id')).order_by('-count')
     return [
-        {'id': str(r['direction_id']), 'nom': r['direction__nom'] or 'Non renseigné', 'count': r['count']}
+        {
+            'id': str(r['direction_id']), 'slug': r['direction__slug'],
+            'nom': r['direction__nom'] or 'Non renseigné', 'count': r['count'],
+        }
         for r in rows if r['direction_id']
     ]
 
 
 def _repartition_departement():
     rows = Employee.objects.filter(statut='actif').values(
-        'departement_id', 'departement__nom', 'departement__direction__nom'
+        'departement_id', 'departement__nom', 'departement__slug', 'departement__direction__nom'
     ).annotate(count=Count('id')).order_by('-count')
     return [
         {
-            'id': str(r['departement_id']), 'nom': r['departement__nom'] or 'Non renseigné',
+            'id': str(r['departement_id']), 'slug': r['departement__slug'],
+            'nom': r['departement__nom'] or 'Non renseigné',
             'direction_nom': r['departement__direction__nom'], 'count': r['count'],
         }
         for r in rows if r['departement_id']
@@ -243,7 +247,7 @@ def _completude_par(group_field, extra_values=()):
         obligatoire=True, is_active=True, sous_types__isnull=True
     ))
     base = Employee.objects.filter(statut='actif').exclude(**{f'{group_field}__isnull': True})
-    groupes = base.values(f'{group_field}_id', f'{group_field}__nom', *extra_values).annotate(
+    groupes = base.values(f'{group_field}_id', f'{group_field}__nom', f'{group_field}__slug', *extra_values).annotate(
         total=Count('id', distinct=True)
     )
     result = []
@@ -256,6 +260,7 @@ def _completude_par(group_field, extra_values=()):
         complets = complets_qs.distinct().count()
         row = {
             'id': str(group_id),
+            'slug': g[f'{group_field}__slug'],
             'nom': g[f'{group_field}__nom'],
             'total': total,
             'complets': complets,

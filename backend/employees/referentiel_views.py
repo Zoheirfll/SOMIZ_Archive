@@ -163,7 +163,7 @@ class DirectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Direction
         fields = [
-            'id', 'nom', 'code', 'description', 'is_active',
+            'id', 'slug', 'nom', 'code', 'description', 'is_active',
             'nb_departements', 'nb_poles', 'nb_cellules', 'nb_sections',
             'responsable', 'responsable_nom',
         ]
@@ -189,7 +189,7 @@ class PoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pole
         fields = [
-            'id', 'direction', 'direction_nom', 'nom', 'code', 'description', 'is_active',
+            'id', 'slug', 'direction', 'direction_nom', 'nom', 'code', 'description', 'is_active',
             'nb_departements', 'responsable', 'responsable_nom',
         ]
     def get_nb_departements(self, obj):
@@ -206,7 +206,7 @@ class DepartementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Departement
         fields = [
-            'id', 'direction', 'direction_nom', 'pole', 'pole_nom', 'nom', 'code', 'description', 'is_active',
+            'id', 'slug', 'direction', 'direction_nom', 'pole', 'pole_nom', 'nom', 'code', 'description', 'is_active',
             'nb_services', 'responsable', 'responsable_nom',
         ]
     def get_nb_services(self, obj):
@@ -232,7 +232,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = [
-            'id', 'departement', 'departement_nom', 'direction_nom',
+            'id', 'slug', 'departement', 'departement_nom', 'direction_nom',
             'nom', 'code', 'description', 'is_active', 'nb_employes',
             'responsable', 'responsable_nom',
         ]
@@ -251,7 +251,7 @@ class CelluleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cellule
         fields = [
-            'id', 'direction', 'direction_nom', 'departement', 'departement_nom',
+            'id', 'slug', 'direction', 'direction_nom', 'departement', 'departement_nom',
             'nom', 'code', 'description', 'is_active', 'nb_employes',
             'responsable', 'responsable_nom',
         ]
@@ -333,6 +333,12 @@ class ReferentielSearchMixin:
             for field in self.search_fields:
                 condition |= Q(**{f'{field}__icontains': q})
             qs = qs.filter(condition)
+        # Résolution exacte "slug -> objet" — utilisée par le frontend pour
+        # retrouver l'objet complet correspondant à un query param lisible
+        # (ex. /employees?direction=<slug>), sans jamais exposer l'UUID.
+        slug = self.request.query_params.get('slug', '').strip()
+        if slug:
+            qs = qs.filter(slug=slug)
         return qs
 
 
@@ -369,7 +375,7 @@ class PoleListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, generics
             qs = self.request.user.accessible_poles_qs().select_related('direction')
         direction = self.request.query_params.get('direction')
         if direction:
-            qs = qs.filter(direction=direction)
+            qs = qs.filter(direction__slug=direction)
         return self.filter_search(qs)
 
 class PoleDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -398,10 +404,10 @@ class DepartementListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, g
             qs = self.request.user.accessible_departements_qs().select_related('direction', 'pole')
         direction = self.request.query_params.get('direction')
         if direction:
-            qs = qs.filter(direction=direction)
+            qs = qs.filter(direction__slug=direction)
         pole = self.request.query_params.get('pole')
         if pole:
-            qs = qs.filter(pole=pole)
+            qs = qs.filter(pole__slug=pole)
         return self.filter_search(qs)
 
 class DepartementDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -421,7 +427,7 @@ class ServiceListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, gener
             qs = self.request.user.accessible_services_qs().select_related('departement__direction')
         departement = self.request.query_params.get('departement')
         if departement:
-            qs = qs.filter(departement=departement)
+            qs = qs.filter(departement__slug=departement)
         return self.filter_search(qs)
 
 class ServiceDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -441,10 +447,10 @@ class CelluleListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, gener
             qs = self.request.user.accessible_cellules_qs().select_related('direction', 'departement')
         direction = self.request.query_params.get('direction')
         if direction:
-            qs = qs.filter(direction=direction)
+            qs = qs.filter(direction__slug=direction)
         departement = self.request.query_params.get('departement')
         if departement:
-            qs = qs.filter(departement=departement)
+            qs = qs.filter(departement__slug=departement)
         return self.filter_search(qs)
 
 class CelluleDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):
@@ -461,7 +467,7 @@ class SectionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Section
         fields = [
-            'id', 'direction', 'direction_nom', 'departement', 'departement_nom',
+            'id', 'slug', 'direction', 'direction_nom', 'departement', 'departement_nom',
             'nom', 'code', 'description', 'is_active', 'nb_employes',
             'responsable', 'responsable_nom',
         ]
@@ -492,10 +498,10 @@ class SectionListCreateView(ReferentielAuditMixin, ReferentielSearchMixin, gener
             qs = self.request.user.accessible_sections_qs().select_related('direction', 'departement')
         direction = self.request.query_params.get('direction')
         if direction:
-            qs = qs.filter(direction=direction)
+            qs = qs.filter(direction__slug=direction)
         departement = self.request.query_params.get('departement')
         if departement:
-            qs = qs.filter(departement=departement)
+            qs = qs.filter(departement__slug=departement)
         return self.filter_search(qs)
 
 class SectionDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPIView):

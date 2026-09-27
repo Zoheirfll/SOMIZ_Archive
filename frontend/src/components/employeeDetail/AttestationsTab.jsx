@@ -23,14 +23,14 @@ const AttestationsTab = ({ activeTab, employee, user, navigate }) => {
     if (activeTab !== "attestations" || !canSee) return;
     let cancelled = false;
     setLoading(true);
-    api.get("/attestations/demandes/", { params: { employee: employee.id } })
+    api.get("/attestations/demandes/", { params: { employee: employee.matricule } })
       .then((res) => {
         if (cancelled) return;
         setDemandes(res.data.results || res.data);
       })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [activeTab, canSee, employee.id]);
+  }, [activeTab, canSee, employee.matricule]);
 
   if (activeTab !== "attestations") return null;
 

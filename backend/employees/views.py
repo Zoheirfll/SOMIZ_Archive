@@ -297,20 +297,20 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
                 )))
             )
         if service:
-            qs = qs.filter(service=service)
+            qs = qs.filter(service__slug=service)
         if dept:
-            qs = qs.filter(departement=dept)
+            qs = qs.filter(departement__slug=dept)
         if direction:
-            qs = qs.filter(direction=direction)
+            qs = qs.filter(direction__slug=direction)
         pole = self.request.query_params.get('pole')
         if pole:
-            qs = qs.filter(departement__pole=pole)
+            qs = qs.filter(departement__pole__slug=pole)
         cellule = self.request.query_params.get('cellule')
         if cellule:
-            qs = qs.filter(cellule=cellule)
+            qs = qs.filter(cellule__slug=cellule)
         section = self.request.query_params.get('section')
         if section:
-            qs = qs.filter(section=section)
+            qs = qs.filter(section__slug=section)
         # Onglet "Archivés" (?vue=archives) : les 3 statuts non-Actif
         # sortent de l'organisation (voir CLAUDE.md section Archivage
         # employé) — ?statut= reste utilisable en plus pour affiner à un

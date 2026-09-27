@@ -10,6 +10,22 @@ import StatutBadge from "../components/attestations/StatutBadge";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
 import { ClipboardIcon, FileTextIcon } from "../components/icons";
+import StatDonutChart from "../components/charts/StatDonutChart";
+import StatAreaChart from "../components/charts/StatAreaChart";
+
+// Mêmes préréglages de période que /statistiques, pour une expérience
+// cohérente entre les deux pages de reporting de l'application.
+const presetToRange = (preset) => {
+  const fin = new Date();
+  const debut = new Date();
+  if (preset === "30j") debut.setDate(fin.getDate() - 30);
+  else if (preset === "3m") debut.setMonth(fin.getMonth() - 3);
+  else if (preset === "12m") debut.setFullYear(fin.getFullYear() - 1);
+  else if (preset === "annee") { debut.setMonth(0); debut.setDate(1); }
+  else if (preset === "tout") return null;
+  const toIso = (d) => d.toISOString().slice(0, 10);
+  return { date_debut: toIso(debut), date_fin: toIso(fin) };
+};
 
 const STATUTS = [
   { value: "", label: "Tous" },
@@ -53,6 +69,7 @@ export default function Attestations() {
   const [loading, setLoading] = useState(true);
   const [sousOnglet, setSousOnglet] = useState("liste");
   const [stats, setStats] = useState(null);
+  const [statsFilters, setStatsFilters] = useState({ preset: "12m", dateDebut: "", dateFin: "" });
   const [selected, setSelected] = useState(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const { confirm, ConfirmDialog } = useConfirm();
@@ -111,11 +128,29 @@ export default function Attestations() {
     setSearch(searchInput.trim());
   };
 
+  const fetchStats = (range) => {
+    api.get("/attestations/stats/", { params: range || {} }).then((res) => setStats(res.data));
+  };
+
   useEffect(() => {
     if (sousOnglet === "stats" && isAdmin && !stats) {
-      api.get("/attestations/stats/").then((res) => setStats(res.data));
+      fetchStats(presetToRange(statsFilters.preset));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sousOnglet, isAdmin, stats]);
+
+  const handleStatsPresetClick = (preset) => {
+    setStatsFilters({ preset, dateDebut: "", dateFin: "" });
+    fetchStats(presetToRange(preset));
+  };
+
+  const handleStatsDateChange = (field, value) => {
+    const next = { ...statsFilters, preset: null, [field]: value };
+    setStatsFilters(next);
+    if (next.dateDebut && next.dateFin) {
+      fetchStats({ date_debut: next.dateDebut, date_fin: next.dateFin });
+    }
+  };
 
   const cardStyle = {
     background: theme.surface,
@@ -182,59 +217,114 @@ export default function Attestations() {
         )}
 
         {sousOnglet === "stats" && isAdmin ? (
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20 }}>
-            {stats && stats.delai_moyen_jours != null && (
-              <div style={{ ...cardStyle, padding: 20, gridColumn: isMobile ? "1" : "1 / -1" }}>
-                <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>
-                  Délai moyen de traitement
-                </div>
-                <div style={{ color: theme.primary, fontSize: 28, fontWeight: 800, marginTop: 4 }}>
-                  {stats.delai_moyen_jours} j
-                </div>
+          <div>
+            <div style={{
+              ...cardStyle, padding: "10px 12px", marginBottom: 20,
+              display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center",
+            }}>
+              {[
+                { key: "30j", label: "30 jours" },
+                { key: "3m", label: "3 mois" },
+                { key: "12m", label: "12 mois" },
+                { key: "annee", label: "Année en cours" },
+                { key: "tout", label: "Tout" },
+              ].map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => handleStatsPresetClick(p.key)}
+                  style={{
+                    background: statsFilters.preset === p.key ? theme.primaryBg : "transparent",
+                    border: `1px solid ${statsFilters.preset === p.key ? theme.primaryBorder : theme.border}`,
+                    color: statsFilters.preset === p.key ? theme.primary : theme.textSecondary,
+                    borderRadius: 20, padding: "6px 14px", fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", fontFamily: theme.fontFamily,
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: isMobile ? 0 : "auto" }}>
+                <label htmlFor="att-stats-debut" style={{ fontSize: 12, color: theme.textSecondary }}>Date début</label>
+                <input
+                  id="att-stats-debut"
+                  type="date"
+                  value={statsFilters.dateDebut}
+                  onChange={(e) => handleStatsDateChange("dateDebut", e.target.value)}
+                  style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
+                />
+                <label htmlFor="att-stats-fin" style={{ fontSize: 12, color: theme.textSecondary }}>Date fin</label>
+                <input
+                  id="att-stats-fin"
+                  type="date"
+                  value={statsFilters.dateFin}
+                  onChange={(e) => handleStatsDateChange("dateFin", e.target.value)}
+                  style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
+                />
               </div>
+            </div>
+
+            {!stats ? (
+              <div style={{ ...cardStyle, padding: 40, textAlign: "center", color: theme.textSecondary }}>Chargement...</div>
+            ) : (
+              <>
+                <div style={{
+                  display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 16, marginBottom: 20,
+                }}>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>
+                      Total demandes
+                    </div>
+                    <div style={{ color: theme.text, fontSize: 26, fontWeight: 800, marginTop: 4 }}>
+                      {stats.total ?? 0}
+                    </div>
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>
+                      En attente (reçues)
+                    </div>
+                    <div style={{ color: theme.text, fontSize: 26, fontWeight: 800, marginTop: 4 }}>
+                      {stats.par_statut?.find((s) => s.id === "recue")?.count ?? 0}
+                    </div>
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>
+                      Délai moyen de traitement
+                    </div>
+                    <div style={{ color: theme.primary, fontSize: 26, fontWeight: 800, marginTop: 4 }}>
+                      {stats.delai_moyen_jours != null ? `${stats.delai_moyen_jours} j` : "—"}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <SectionHeader theme={theme}>Par statut</SectionHeader>
+                    <StatDonutChart data={stats.par_statut} height={200} />
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <SectionHeader theme={theme}>Par gestionnaire</SectionHeader>
+                    <StatDonutChart data={stats.par_gestionnaire} height={200} />
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <SectionHeader theme={theme}>Par employé</SectionHeader>
+                    <StatDonutChart data={stats.par_employe} height={200} />
+                  </div>
+                </div>
+
+                <div style={{ ...cardStyle, padding: 24 }}>
+                  <SectionHeader theme={theme}>Évolution mensuelle — reçues vs récupérées</SectionHeader>
+                  <StatAreaChart
+                    data={stats.evolution_mensuelle}
+                    xKey="mois"
+                    series={[
+                      { key: "recues", label: "Reçues", color: theme.primary },
+                      { key: "recuperees", label: "Récupérées", color: theme.departementColor },
+                    ]}
+                  />
+                </div>
+              </>
             )}
-            <div style={{ ...cardStyle, padding: 20 }}>
-              <SectionHeader theme={theme}>Par gestionnaire</SectionHeader>
-              {(stats?.par_gestionnaire || []).length === 0 ? (
-                <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
-              ) : (
-                (stats?.par_gestionnaire || []).map((r) => (
-                  <div key={r.demandeur_id} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "10px 0", borderTop: `1px solid ${theme.border}`,
-                  }}>
-                    <span style={{ fontSize: 13, color: theme.text }}>{r.demandeur_nom}</span>
-                    <span style={{
-                      fontSize: 12, fontWeight: 700, color: theme.primary, background: theme.primaryBg,
-                      borderRadius: 999, padding: "2px 10px",
-                    }}>
-                      {r.count}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-            <div style={{ ...cardStyle, padding: 20 }}>
-              <SectionHeader theme={theme}>Par employé</SectionHeader>
-              {(stats?.par_employe || []).length === 0 ? (
-                <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
-              ) : (
-                (stats?.par_employe || []).map((r) => (
-                  <div key={r.employee_id} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "10px 0", borderTop: `1px solid ${theme.border}`,
-                  }}>
-                    <span style={{ fontSize: 13, color: theme.text }}>{r.employee_nom}</span>
-                    <span style={{
-                      fontSize: 12, fontWeight: 700, color: theme.primary, background: theme.primaryBg,
-                      borderRadius: 999, padding: "2px 10px",
-                    }}>
-                      {r.count}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         ) : (
           <>

@@ -9,7 +9,20 @@ from .reference import generate_reference
 class DemandeAttestationSerializer(serializers.ModelSerializer):
     employee_nom = serializers.SerializerMethodField()
     employee_matricule = serializers.CharField(source='employee.matricule', read_only=True)
+    # Champs de vérification affichés sur la fiche de la demande (2026-09-23) —
+    # un admin doit pouvoir confirmer l'identité/l'affectation de l'employé
+    # sans quitter la page pour rouvrir sa fiche complète.
+    employee_date_naissance = serializers.DateField(source='employee.date_naissance', read_only=True, default=None)
+    employee_date_embauche = serializers.DateField(source='employee.date_embauche', read_only=True, default=None)
+    employee_direction_nom = serializers.CharField(source='employee.direction.nom', read_only=True, default=None)
+    employee_departement_nom = serializers.CharField(source='employee.departement.nom', read_only=True, default=None)
+    employee_service_nom = serializers.CharField(source='employee.service.nom', read_only=True, default=None)
+    employee_poste_nom = serializers.CharField(source='employee.poste.nom', read_only=True, default=None)
+    employee_type_contrat_nom = serializers.CharField(source='employee.type_contrat.nom', read_only=True, default=None)
+    employee_categorie_nom = serializers.CharField(source='employee.categorie.nom', read_only=True, default=None)
     demandeur_nom = serializers.CharField(source='demandeur.full_name', read_only=True)
+    demandeur_role = serializers.CharField(source='demandeur.role', read_only=True)
+    demandeur_libelle_role = serializers.CharField(source='demandeur.libelle_role', read_only=True)
     traite_par_nom = serializers.SerializerMethodField()
     contrat_numero = serializers.SerializerMethodField()
     motif_nom = serializers.CharField(source='motif.nom', read_only=True)
@@ -18,14 +31,18 @@ class DemandeAttestationSerializer(serializers.ModelSerializer):
         model = DemandeAttestation
         fields = [
             'id', 'reference', 'employee', 'employee_nom', 'employee_matricule',
+            'employee_date_naissance', 'employee_date_embauche',
+            'employee_direction_nom', 'employee_departement_nom', 'employee_service_nom',
+            'employee_poste_nom', 'employee_type_contrat_nom', 'employee_categorie_nom',
             'contrat', 'contrat_numero', 'motif', 'motif_nom', 'commentaire', 'statut',
             'motif_rejet', 'scan_document', 'demandeur', 'demandeur_nom',
+            'demandeur_role', 'demandeur_libelle_role',
             'traite_par', 'traite_par_nom', 'created_at', 'date_prete',
-            'date_recuperee', 'updated_at',
+            'date_recuperee', 'date_document', 'updated_at',
         ]
         read_only_fields = [
             'id', 'reference', 'statut', 'motif_rejet', 'demandeur', 'traite_par',
-            'created_at', 'date_prete', 'date_recuperee', 'updated_at',
+            'created_at', 'date_prete', 'date_recuperee', 'date_document', 'updated_at',
         ]
 
     def get_employee_nom(self, obj):
@@ -136,6 +153,24 @@ class AttestationTemplateConfigSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'societe_nom', 'societe_soustitre', 'societe_capital', 'holding',
             'adresse', 'ville', 'telephone', 'fax', 'telex',
-            'signataire_titre', 'signataire_nom', 'logo',
+            'signataire_titre', 'signataire_nom',
+            'signataire_interim', 'signataire_interim_nom', 'logo',
         ]
         read_only_fields = ['id']
+
+    def validate(self, attrs):
+        interim = attrs.get(
+            'signataire_interim',
+            self.instance.signataire_interim if self.instance else False,
+        )
+        nom = attrs.get(
+            'signataire_interim_nom',
+            self.instance.signataire_interim_nom if self.instance else '',
+        )
+        if interim and not (nom or '').strip():
+            raise serializers.ValidationError(
+                {'signataire_interim_nom': "Nom du signataire intérimaire requis."}
+            )
+        if not interim:
+            attrs['signataire_interim_nom'] = ''
+        return attrs
