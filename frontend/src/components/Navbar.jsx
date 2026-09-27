@@ -371,6 +371,38 @@ const Navbar = () => {
             </div>
 
             <button
+              onClick={openPalette}
+              aria-label="Recherche rapide"
+              title="Recherche rapide (Ctrl+K)"
+              style={{
+                background: "transparent",
+                border: `1px solid ${theme.border}`,
+                color: theme.textSecondary,
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.15s",
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = theme.primaryBg;
+                e.currentTarget.style.borderColor = theme.primaryBorder;
+                e.currentTarget.style.color = theme.primary;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.borderColor = theme.border;
+                e.currentTarget.style.color = theme.textSecondary;
+              }}
+            >
+              <SearchIcon size={16} />
+            </button>
+
+            <button
               onClick={openHelp}
               aria-label="Raccourcis clavier"
               title="Raccourcis clavier (?)"
