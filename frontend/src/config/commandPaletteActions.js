@@ -37,12 +37,23 @@ const QUICK_ACTIONS = [
  * (DEFAULT_SHORTCUTS, catégorie "quick"), les pages du menu Administration,
  * et les actions de création rapide. Filtré une seule fois par rôle ; le
  * filtrage texte de la recherche est fait par l'appelant.
+ *
+ * Note: Les pages du menu Administration (ADMIN_MENU_PAGES) sont la source
+ * de vérité pour /import, /users, /parametres, /audit — elles sont exclues
+ * de quickPages pour éviter les doublons (même destination, libellés
+ * différents ou identiques). Dashboard est conservé depuis quickPages car
+ * il n'a pas d'équivalent dans ADMIN_MENU_PAGES.
  */
 export function getPageActions(user) {
   const admin = isAdmin(user?.role);
 
+  // Chemin de source de vérité pour les pages admin — exclure ces chemins
+  // de quickPages pour éviter les doublons
+  const adminMenuPaths = new Set(ADMIN_MENU_PAGES.map((p) => p.path));
+
   const quickPages = DEFAULT_SHORTCUTS
     .filter((s) => s.category === "quick" && (!s.adminOnly || admin))
+    .filter((s) => !adminMenuPaths.has(s.path)) // Exclure les chemins déjà dans adminPages
     .map((s) => ({ id: s.id, label: s.label, path: s.path }));
 
   const adminPages = admin

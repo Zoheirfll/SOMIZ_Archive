@@ -32,9 +32,22 @@ describe("getPageActions", () => {
     const items = getPageActions({ role: "SUPERADMIN" });
     const ids = items.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
+
+    // Vérifier que les paires (label, path) sont uniques
+    // (détecte les doublons même si les ids diffèrent)
+    const labelPathPairs = items.map((i) => `${i.label}|${i.path}`);
+    expect(new Set(labelPathPairs).size).toBe(labelPathPairs.length);
+
     items.forEach((i) => {
       expect(typeof i.label).toBe("string");
       expect(i.path.startsWith("/")).toBe(true);
     });
+  });
+
+  test("un ADMIN voit le Dashboard dans les résultats", () => {
+    const items = getPageActions({ role: "ADMIN" });
+    const dashboardItem = items.find((i) => i.path === "/dashboard");
+    expect(dashboardItem).toBeDefined();
+    expect(dashboardItem.label).toBe("Dashboard");
   });
 });
