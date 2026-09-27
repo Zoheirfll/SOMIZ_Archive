@@ -207,7 +207,7 @@ describe("EmployeeDetail — rendu initial", () => {
   test("affiche le nom complet", async () => {
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText(/Jean Dupont/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Jean Dupont/).length).toBeGreaterThan(0);
     });
   });
 
@@ -443,11 +443,11 @@ describe("EmployeeDetail — onglets contrat (dossier)", () => {
 });
 
 describe("EmployeeDetail — navigation", () => {
-  test("bouton ← Retour navigue en arrière", async () => {
+  test("le fil d'Ariane navigue vers /employees au clic sur \"Personnel\"", async () => {
     renderPage();
-    await waitFor(() => screen.getByText("← Retour"));
-    fireEvent.click(screen.getByText("← Retour"));
-    expect(mockNavigate).toHaveBeenCalledWith(-1);
+    await waitFor(() => screen.getByText("Personnel"));
+    fireEvent.click(screen.getByText("Personnel"));
+    expect(mockNavigate).toHaveBeenCalledWith("/employees");
   });
 
   // Depuis 2026-09-14, "Modifier" édite la fiche sur place (formulaire

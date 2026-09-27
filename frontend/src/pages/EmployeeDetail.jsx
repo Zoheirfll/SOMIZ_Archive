@@ -25,6 +25,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
 import { formatDateTime, stripExt } from "../utils/employeeDocsDisplay";
 import { formatDateFR } from "../utils/formatDate";
+import Breadcrumb from "../components/employees/Breadcrumb";
 
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
@@ -1050,9 +1051,15 @@ const EmployeeDetail = () => {
       <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: isMobile ? "20px 16px 20px" : "28px 32px 32px", position: "relative", overflow: "hidden" }}>
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <button onClick={() => navigate(-1)} title="Retour (Alt+←)" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", color: "#fff", borderRadius: 8, padding: "6px 14px", fontSize: 13, cursor: "pointer", marginBottom: 16, fontFamily: "inherit" }}>
-            ← Retour
-          </button>
+          <div style={{ marginBottom: 16 }}>
+            <Breadcrumb
+              variant="hero"
+              items={[
+                { label: "Personnel", onClick: () => navigate("/employees") },
+                { label: `${employee.prenom} ${employee.nom}` },
+              ]}
+            />
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             <div style={{ position: "relative", width: 96, height: 96, flexShrink: 0 }}>
               <EmployeeAvatar employee={employee} size={96} fontSize={32} light shape="square" />
