@@ -4,10 +4,10 @@ import { useTheme } from "../../context/ThemeContext";
 import ChartTooltip from "./ChartTooltip";
 import { colorAt } from "./chartColors";
 
-// Au-delà de ce nombre d'entrées, un champ de recherche apparaît au-dessus
-// de la légende — inutile pour un donut à peu de catégories (ex. "Par
+// Un champ de recherche apparaît au-dessus de la légende dès qu'il y a de
+// quoi filtrer — inutile pour un donut à une seule catégorie (ex. "Par
 // Direction" avec 1 seule direction).
-const SEARCH_THRESHOLD = 8;
+const SEARCH_THRESHOLD = 1;
 
 // Légende maison, scrollable et à hauteur fixe (= hauteur du donut) — une
 // vraie légende Recharts grandit avec le nombre d'entrées et de longs

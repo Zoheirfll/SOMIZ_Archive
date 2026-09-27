@@ -9,12 +9,17 @@ const renderChart = (props) =>
 const manyEntries = Array.from({ length: 10 }, (_, i) => ({ id: `p${i}`, nom: `Poste ${i}`, count: i + 1 }));
 
 describe("StatDonutChart — recherche", () => {
-  test("n'affiche pas de champ de recherche pour peu d'entrées", () => {
+  test("n'affiche pas de champ de recherche pour une seule entrée", () => {
     renderChart({ data: [{ id: "d1", nom: "Direction A", count: 5 }] });
     expect(screen.queryByPlaceholderText("Rechercher...")).not.toBeInTheDocument();
   });
 
-  test("affiche un champ de recherche au-delà de 8 entrées", () => {
+  test("affiche un champ de recherche dès 2 entrées", () => {
+    renderChart({ data: [{ id: "d1", nom: "Direction A", count: 5 }, { id: "d2", nom: "Direction B", count: 3 }] });
+    expect(screen.getByPlaceholderText("Rechercher...")).toBeInTheDocument();
+  });
+
+  test("affiche un champ de recherche pour une répartition nombreuse (ex. Fonction)", () => {
     renderChart({ data: manyEntries });
     expect(screen.getByPlaceholderText("Rechercher...")).toBeInTheDocument();
   });
