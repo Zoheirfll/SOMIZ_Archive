@@ -620,6 +620,7 @@ const Statistiques = () => {
           </div>
           <div className="anim-fade-in delay-1" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Complétude par Département</h2>
+            <StatRadarChart data={stats.completude_par_departement} />
             {stats.completude_par_departement.length === 0 ? (
               <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
             ) : (
