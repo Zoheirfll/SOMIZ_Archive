@@ -95,7 +95,7 @@ class TestBuildStatsDetailRepartitions:
         row = next(r for r in result['repartition_categorie'] if r['nom'] == 'Non renseigné')
         assert row['count'] == 1
 
-    def test_repartition_fonction_caps_at_top_10_plus_autres(self, direction, departement, admin_user):
+    def test_repartition_fonction_lists_all_without_cap(self, direction, departement):
         from employees.models import Poste
         for i in range(12):
             poste = Poste.objects.create(nom=f"Poste {i}")
@@ -104,7 +104,8 @@ class TestBuildStatsDetailRepartitions:
                 matricule=f"EMP-F{i:03d}",
             )
         result = build_stats_detail(None, None)
-        assert len(result['repartition_fonction']) <= 11  # 10 + "Autres"
+        assert len(result['repartition_fonction']) == 12
+        assert not any(r['nom'] == 'Autres' for r in result['repartition_fonction'])
 
 
 @pytest.mark.django_db

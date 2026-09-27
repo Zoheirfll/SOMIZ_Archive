@@ -32,7 +32,6 @@ from employees.models import Employee, Contrat, TypeDocument, EmployeeDocument
 from audit.models import AuditLog
 
 STATUTS_ARCHIVE = ['Inactif', 'Archivé', 'Démobilisé']
-TOP_FONCTIONS = 10
 
 AGE_TRANCHES = [(0, 24, '<25'), (25, 34, '25-34'), (35, 44, '35-44'), (45, 54, '45-54'), (55, 200, '55+')]
 ANCIENNETE_TRANCHES = [
@@ -121,15 +120,6 @@ def _repartition_simple(field_nom):
         nom = r[field_nom] or 'Non renseigné'
         merged[nom] = merged.get(nom, 0) + r['count']
     return [{'nom': nom, 'count': count} for nom, count in sorted(merged.items(), key=lambda x: -x[1])]
-
-
-def _repartition_fonction():
-    full = _repartition_simple('poste__nom')
-    if len(full) <= TOP_FONCTIONS:
-        return full
-    top = full[:TOP_FONCTIONS]
-    autres_count = sum(r['count'] for r in full[TOP_FONCTIONS:])
-    return top + [{'nom': 'Autres', 'count': autres_count}]
 
 
 def _years_between(start, end):
@@ -436,7 +426,7 @@ def build_stats_detail(date_debut, date_fin, requesting_user=None):
         'repartition_departement': _repartition_departement(),
         'repartition_categorie': _repartition_simple('categorie__nom'),
         'repartition_type_contrat': _repartition_simple('type_contrat__nom'),
-        'repartition_fonction': _repartition_fonction(),
+        'repartition_fonction': _repartition_simple('poste__nom'),
         'evolution_mensuelle': _evolution_mensuelle(date_debut, date_fin),
         'pyramide_age': _pyramide_age(),
         'pyramide_anciennete': _pyramide_anciennete(),
