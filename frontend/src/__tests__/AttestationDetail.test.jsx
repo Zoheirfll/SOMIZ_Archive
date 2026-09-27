@@ -10,6 +10,11 @@ jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
 jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+const mockNavigate = jest.fn();
+jest.mock("react-router-dom", () => ({
+  ...jest.requireActual("react-router-dom"),
+  useNavigate: () => mockNavigate,
+}));
 
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
@@ -21,6 +26,25 @@ const renderDetail = () => rtlRender(
   </MemoryRouter>,
   { wrapper: ThemeProvider }
 );
+
+describe("AttestationDetail — fil d'Ariane", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  test("le fil d'Ariane navigue vers /attestations au clic sur \"Attestations\"", async () => {
+    useAuth.mockReturnValue({ user: { role: "ADMIN", id: "u1", can_manage_attestations: true } });
+    api.get.mockResolvedValueOnce({ data: {
+      id: "d1", reference: "00001/26", employee_nom: "Jean Dupont", motif_nom: "Dossier administratif",
+      statut: "recue", demandeur: "u2", demandeur_nom: "Ali Ben", commentaire: "",
+      created_at: "2026-09-01T10:00:00Z",
+    }});
+    renderDetail();
+    await waitFor(() => screen.getByText("Attestations"));
+    fireEvent.click(screen.getByText("Attestations"));
+    expect(mockNavigate).toHaveBeenCalledWith("/attestations");
+  });
+});
 
 describe("AttestationDetail", () => {
   beforeEach(() => {
@@ -44,7 +68,7 @@ describe("AttestationDetail", () => {
     api.get.mockResolvedValueOnce({ data: { ...demandeMock, statut: "prete" } });
     api.patch.mockResolvedValueOnce({ data: { statut: "prete" } });
     renderDetail();
-    await waitFor(() => expect(screen.getByText("00001/26")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("00001/26").length).toBeGreaterThan(0));
     fireEvent.click(screen.getByText(/Marquer Prête/i));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/attestations/demandes/d1/statut/", { statut: "prete" }
@@ -82,7 +106,7 @@ describe("AttestationDetail", () => {
       created_at: "2026-09-01T10:00:00Z", date_document: "2026-09-24",
     }});
     renderDetail();
-    await waitFor(() => expect(screen.getByText("00001/26")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("00001/26").length).toBeGreaterThan(0));
     expect(screen.getByText("Chef SAP")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText(/Aperçu PDF/i));
@@ -118,7 +142,7 @@ describe("AttestationDetail", () => {
     }});
 
     renderDetail();
-    await waitFor(() => expect(screen.getByText("00001/26")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("00001/26").length).toBeGreaterThan(0));
 
     fireEvent.click(screen.getByText(/Aperçu PDF/i));
     await waitFor(() => screen.getByText(/23\/09\/2026/));
@@ -150,7 +174,7 @@ describe("AttestationDetail", () => {
       employee_service_nom: "Service Administration du Personnel",
     }});
     renderDetail();
-    await waitFor(() => expect(screen.getByText("00001/26")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("00001/26").length).toBeGreaterThan(0));
 
     expect(screen.getByText(/Informations de l'employé/i)).toBeInTheDocument();
     expect(screen.getByText("010578")).toBeInTheDocument();

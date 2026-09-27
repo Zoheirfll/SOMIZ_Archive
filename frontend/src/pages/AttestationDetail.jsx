@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -11,6 +11,7 @@ import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
 import { EyeIcon, CheckIcon, PrinterIcon } from "../components/icons";
 import { formatDateFR } from "../utils/formatDate";
+import Breadcrumb from "../components/employees/Breadcrumb";
 
 // FileReader plutôt que Blob.text() (non implémentée par le polyfill Blob
 // de jsdom utilisé par les tests Jest, alors que FileReader l'est) — pour
@@ -268,9 +269,13 @@ export default function AttestationDetail() {
         padding: heroPadding(isMobile),
       }}>
         <div style={{ maxWidth: 800, margin: "0 auto" }}>
-          <Link to="/attestations" style={{ color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
-            ← Retour aux demandes
-          </Link>
+          <Breadcrumb
+            variant="hero"
+            items={[
+              { label: "Attestations", onClick: () => navigate("/attestations") },
+              { label: demande.reference },
+            ]}
+          />
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
             <h1 style={{ color: "#fff", fontSize: 24, margin: 0, fontWeight: 800 }}>{demande.reference}</h1>
             <StatutBadge statut={demande.statut} />
