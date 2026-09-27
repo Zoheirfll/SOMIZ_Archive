@@ -15,7 +15,7 @@ from openpyxl.styles import Font
 
 from accounts.permissions import IsAdmin
 from audit.models import AuditLog
-from audit.stats import build_stats_detail
+from audit.stats import build_stats_detail, _categorize_emp_log, _ACTIVITY_KEYS
 from employees.models import Employee, EmployeeDocument
 
 
@@ -42,6 +42,14 @@ class AuditLogActionsView(APIView):
             {'value': value, 'label': label}
             for value, label in AuditLog.Action.choices
         ])
+
+
+_CATEGORIE_TO_DOC_ACTION = {
+    'documents_supprimes': AuditLog.Action.DELETE_DOC,
+    'documents_modifies': AuditLog.Action.MODIFY_DOC,
+    'documents_uploades': AuditLog.Action.UPLOAD,
+}
+_EMP_LOG_ACTIONS = [AuditLog.Action.CREATE_EMP, AuditLog.Action.MODIFY_EMP, AuditLog.Action.DELETE_EMP]
 
 
 class AuditLogListView(APIView):
@@ -83,6 +91,22 @@ class AuditLogListView(APIView):
 
         if action:
             qs = qs.filter(action=action)
+
+        # Filtre par catégorie d'activité (lien de preuve depuis
+        # /statistiques "Mon activité" — voir audit/stats.py
+        # _categorize_emp_log, seule source de vérité de cette
+        # classification). Une valeur inconnue est ignorée silencieusement,
+        # comme les dates invalides plus bas.
+        categorie = request.query_params.get('categorie')
+        if categorie in _CATEGORIE_TO_DOC_ACTION:
+            qs = qs.filter(action=_CATEGORIE_TO_DOC_ACTION[categorie])
+        elif categorie in _ACTIVITY_KEYS:
+            matching_ids = [
+                log.id for log in qs.filter(action__in=_EMP_LOG_ACTIONS)
+                if _categorize_emp_log(log.action, log.details)[0] == categorie
+            ]
+            qs = qs.filter(id__in=matching_ids)
+
         if target:
             qs = qs.filter(target_label__icontains=target)
         # Filtre de date — bornes inclusives sur le jour civil (fuseau
