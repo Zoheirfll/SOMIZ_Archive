@@ -90,6 +90,7 @@ const AuditLogs = () => {
     action: searchParams.get("action") || "",
     date_debut: searchParams.get("date_debut") || "",
     date_fin: searchParams.get("date_fin") || "",
+    categorie: searchParams.get("categorie") || "",
   }));
   const [datePreset, setDatePreset] = useState(() => (
     searchParams.get("date_debut") || searchParams.get("date_fin") ? null : "tout"
@@ -152,6 +153,7 @@ const AuditLogs = () => {
       const params = { page };
       if (filters.user) params.user = filters.user;
       if (filters.action) params.action = filters.action;
+      if (filters.categorie) params.categorie = filters.categorie;
       if (filters.date_debut) params.date_debut = filters.date_debut;
       if (filters.date_fin) params.date_fin = filters.date_fin;
       const response = await api.get("/reporting/audit-logs/", { params });

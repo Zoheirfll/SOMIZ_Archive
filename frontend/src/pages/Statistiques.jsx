@@ -106,9 +106,10 @@ const ECHEANCE_PRESETS = [30, 60, 90, 120, 180, 365];
 // selon qu'ils viennent d'une action unitaire ou en masse — voir
 // audit/stats.py _categorize_emp_log) — le lien ouvre donc le journal de
 // ce compte sur la période, non filtré par type d'action.
-const buildAuditLink = (username, periode) => {
+const buildAuditLink = (username, periode, categorie) => {
   if (!username || !periode) return null;
   const params = new URLSearchParams({ user: username, date_debut: periode.debut, date_fin: periode.fin });
+  if (categorie) params.set("categorie", categorie);
   return `/audit?${params.toString()}`;
 };
 
@@ -154,7 +155,25 @@ const ACTIVITY_ENTITY_GROUPS = [
   },
 ];
 
-const ActivityGroups = ({ activity, theme, isMobile }) => {
+const ActivityTile = ({ theme, label, value, href, navigate, title }) => (
+  <div>
+    <div style={{ color: theme.textMuted, fontSize: 11, marginBottom: 4 }}>{label}</div>
+    {href ? (
+      <a
+        href={href}
+        title={title}
+        onClick={(e) => { e.preventDefault(); navigate(href); }}
+        style={{ color: theme.primary, fontSize: 22, fontWeight: 800, textDecoration: "none", cursor: "pointer" }}
+      >
+        {value}
+      </a>
+    ) : (
+      <div style={{ color: theme.primary, fontSize: 22, fontWeight: 800 }}>{value}</div>
+    )}
+  </div>
+);
+
+const ActivityGroups = ({ activity, theme, isMobile, username, periode, navigate }) => {
   const groups = ACTIVITY_ENTITY_GROUPS
     .map((g) => ({ ...g, tiles: g.tiles.filter((t) => activity[t.key] > 0) }))
     .filter((g) => g.tiles.length > 0);
@@ -172,10 +191,19 @@ const ActivityGroups = ({ activity, theme, isMobile }) => {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : `repeat(${Math.min(g.tiles.length, 4)}, 1fr)`, gap: 16 }}>
             {g.tiles.map(({ key, label }) => (
-              <div key={key}>
-                <div style={{ color: theme.textMuted, fontSize: 11, marginBottom: 4 }}>{label}</div>
-                <div style={{ color: theme.primary, fontSize: 22, fontWeight: 800 }}>{activity[key]}</div>
-              </div>
+              <ActivityTile
+                key={key}
+                theme={theme}
+                label={label}
+                value={activity[key]}
+                href={buildAuditLink(username, periode, key)}
+                navigate={navigate}
+                title={
+                  key === "documents_uploades"
+                    ? "Ce lien liste les uploads du journal — un document supprimé depuis reste dans cette liste mais plus dans le compteur ci-dessus."
+                    : undefined
+                }
+              />
             ))}
           </div>
         </div>
@@ -617,7 +645,10 @@ const Statistiques = () => {
                   </a>
                 )}
               </div>
-              <ActivityGroups activity={stats.mon_activite} theme={theme} isMobile={isMobile} />
+              <ActivityGroups
+                activity={stats.mon_activite} theme={theme} isMobile={isMobile}
+                username={user?.username} periode={stats.periode} navigate={navigate}
+              />
             </div>
           );
         })()}
@@ -666,9 +697,24 @@ const Statistiques = () => {
                                 <span style={{ color: theme.textMuted, fontSize: 11, marginLeft: 6 }}>(SUPERADMIN)</span>
                               )}
                             </td>
-                            {columns.map((c) => (
-                              <td key={c.key} style={{ padding: "8px 6px" }}>{a[c.key]}</td>
-                            ))}
+                            {columns.map((c) => {
+                              const cellHref = buildAuditLink(a.username, stats.periode, c.key);
+                              return (
+                                <td key={c.key} style={{ padding: "8px 6px" }}>
+                                  {cellHref ? (
+                                    <a
+                                      href={cellHref}
+                                      onClick={(e) => { e.preventDefault(); navigate(cellHref); }}
+                                      style={{ color: theme.text, textDecoration: "none" }}
+                                    >
+                                      {a[c.key]}
+                                    </a>
+                                  ) : (
+                                    a[c.key]
+                                  )}
+                                </td>
+                              );
+                            })}
                             <td style={{ padding: "8px 6px" }}>
                               {link && (
                                 <a href={link} onClick={(e) => { e.preventDefault(); navigate(link); }} style={{ color: theme.primary, fontSize: 12, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>

@@ -67,6 +67,17 @@ describe("AuditLogs — pré-filtrage depuis l'URL (lien 'Voir l'audit' de /stat
       );
     });
   });
+
+  test("pré-remplit et transmet le filtre catégorie depuis la query string", async () => {
+    api.get.mockResolvedValue(mockResponse([]));
+    renderPage(["/audit?user=jadmin&categorie=employes_archives&date_debut=2026-01-01&date_fin=2026-12-31"]);
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        "/reporting/audit-logs/",
+        { params: expect.objectContaining({ categorie: "employes_archives" }) },
+      );
+    });
+  });
 });
 
 describe("AuditLogs — rendu initial", () => {

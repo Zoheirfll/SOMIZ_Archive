@@ -329,6 +329,25 @@ describe("Statistiques — mon activité", () => {
     expect(link.getAttribute("href")).toBe("/audit?user=admin&date_debut=2026-01-01&date_fin=2026-12-31");
   });
 
+  test("chaque tuile d'activité est un lien vers /audit filtré par catégorie", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage("ADMIN");
+    await screen.findByText("Recrutements");
+    const tile = screen.getByText("4").closest("a");
+    expect(tile).not.toBeNull();
+    expect(tile.getAttribute("href")).toBe(
+      "/audit?user=admin&date_debut=2026-01-01&date_fin=2026-12-31&categorie=employes_crees"
+    );
+  });
+
+  test("la tuile Documents uploadés porte une info-bulle d'avertissement", async () => {
+    api.get.mockResolvedValue({ data: baseStats });
+    renderPage("ADMIN");
+    await screen.findByText("Recrutements");
+    const tile = screen.getByText("20").closest("a");
+    expect(tile.getAttribute("title")).toMatch(/reste dans cette liste/);
+  });
+
   test("affiche un message si aucune activité sur la période", async () => {
     api.get.mockResolvedValue({
       data: {
@@ -388,5 +407,12 @@ describe("Statistiques — mon activité", () => {
     const links = screen.getAllByText("Audit →");
     expect(links).toHaveLength(2);
     expect(links[0].getAttribute("href")).toBe("/audit?user=jadmin&date_debut=2026-01-01&date_fin=2026-12-31");
+    // Chaque cellule de compteur est elle-même un lien filtré par catégorie
+    const fourLinks = screen.getAllByText("4").map((el) => el.closest("a")).filter(Boolean);
+    const createdCell = fourLinks.find((a) => a.getAttribute("href")?.includes("categorie=employes_crees") && a.getAttribute("href")?.includes("jadmin"));
+    expect(createdCell).toBeTruthy();
+    expect(createdCell.getAttribute("href")).toBe(
+      "/audit?user=jadmin&date_debut=2026-01-01&date_fin=2026-12-31&categorie=employes_crees"
+    );
   });
 });
