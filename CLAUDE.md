@@ -1189,11 +1189,11 @@ complète : `docs/superpowers/specs/2026-09-06-ocr-documents-design.md`.
 `/statistiques` (ADMIN/SUPERADMIN, distincte de `/dashboard`) : analyse RH
 détaillée — répartitions Direction/Département/Catégorie/Type de
 contrat/Fonction, évolution mensuelle recrutements vs archivages,
-pyramides âge/ancienneté, contrats arrivant à échéance (90 jours),
-complétude par unité, filtres de date (préréglages + plage libre) avec
-comparaison à la période précédente, export Excel (`.xlsx`) et PDF
-(impression navigateur). Logique de calcul centralisée dans
-`backend/audit/stats.py` (`build_stats_detail()`), consommée par
+pyramides âge/ancienneté, contrats arrivant à échéance (seuil réglable,
+90 jours par défaut), complétude par unité, filtres de date (préréglages
++ plage libre) avec comparaison à la période précédente, export Excel
+(`.xlsx`) et PDF (impression navigateur). Logique de calcul centralisée
+dans `backend/audit/stats.py` (`build_stats_detail()`), consommée par
 `GET /api/reporting/stats-detail/` (JSON) et
 `GET /api/reporting/stats-export.xlsx/` (export).
 
@@ -1236,6 +1236,42 @@ Ce mécanisme est propre à `/statistiques` — il ne touche pas au scoping
 CONSULTANT (`employee_scope_q`/`can_access_employee`, voir section
 Scoping) ni à la visibilité du journal d'audit par rôle (voir en-tête de
 ce fichier), qui restent des mécanismes indépendants.
+
+### Recherche, seuil réglable, drill-down et liens de preuve (2026-09-27)
+
+- **Recherche dans les donuts** — `StatDonutChart.jsx` affiche un champ de
+  recherche au-dessus de la légende dès que la répartition dépasse 8
+  entrées (filtre la légende, grise les tranches non correspondantes sans
+  changer le total affiché au centre). `repartition_fonction` n'agrège
+  plus au-delà d'un Top 10 (`TOP_FONCTIONS`/`_repartition_fonction()`
+  supprimés côté backend) — toutes les fonctions sont renvoyées, sinon la
+  recherche ne pourrait jamais retrouver une fonction cachée dans
+  "Autres".
+- **Seuil d'échéance réglable** — `_contrats_echeance(jours=90)` et
+  `build_stats_detail(..., echeance_jours=90)` acceptent désormais un
+  nombre de jours ; `GET /api/reporting/stats-detail/` et
+  `stats-export.xlsx/` lisent `?echeance_jours=` (1-365, 400 sinon). UI :
+  sélecteur de seuil (30/60/90/120/180/365 jours + valeur personnalisée)
+  au-dessus du tableau "Contrats arrivant à échéance".
+- **Drill-down complétude** — cliquer sur une barre de département ou une
+  ligne de la liste sous le radar Direction navigue vers
+  `/employees?direction=<id>&dossier_complet=0` (ou `?departement=`),
+  réutilisant le filtre `dossier_complet` déjà existant sur
+  `EmployeeListCreateView`.
+- **Liens de preuve catégorisés** — chaque tuile de "Mon activité" et
+  chaque cellule de "Activité par administrateur" est un lien vers
+  `/audit?user=...&categorie=<clé>&date_debut=...&date_fin=...`.
+  `AuditLogListView` (`backend/audit/views.py`) accepte `?categorie=`,
+  qui réutilise `_categorize_emp_log`/`_ACTIVITY_KEYS` de
+  `audit/stats.py` (seule source de vérité de cette classification) pour
+  les catégories issues de `CREATE_EMP`/`MODIFY_EMP`/`DELETE_EMP`, et
+  mappe directement `documents_supprimes`/`documents_modifies`/
+  `documents_uploades` sur `DELETE_DOC`/`MODIFY_DOC`/`UPLOAD`. Le lien
+  `documents_uploades` est une approximation (best effort sur le journal
+  `UPLOAD`, jamais parfaitement aligné avec le compteur qui ne compte que
+  les documents encore présents) — signalée par une info-bulle sur la
+  tuile côté UI. Une catégorie inconnue est ignorée silencieusement,
+  comme les autres paramètres invalides de cette vue.
 
 ---
 
@@ -1346,6 +1382,52 @@ du document signé. Spec complète :
   navigation directe vers `/api/...` : le proxy CRA de dev ne relaie pas
   les requêtes de navigation (`Accept: text/html`) et la page
   atterrissait sur le 404 du routeur React.
+  - **Date imprimée figée au premier aperçu (2026-09-23)** — la date "Arzew
+    le :"/"Édité le :" imprimée sur le document (`demande.date_document`,
+    `DateField` distinct de `date_prete`/`date_recuperee` qui tracent le
+    workflow de statut) se fige à la toute première génération plutôt que
+    d'être recalculée à chaque ouverture de l'aperçu : entre l'impression
+    et la signature effective, un jour ou deux peuvent s'écouler (imprimé
+    le 23, signé le 24) — rouvrir l'aperçu le lendemain ne doit pas
+    silencieusement dater le document différemment de ce qui a été
+    réellement imprimé/signé. `AttestationApercuView.get` renvoie **409**
+    (`{needs_confirmation, date_document, date_nouvelle}`, pas le PDF) si
+    la date du jour diffère de celle déjà figée et que
+    `?confirmer_date=1` n'est pas passé ; le frontend
+    (`AttestationDetail.jsx#ouvrirApercu`) intercepte ce 409, affiche une
+    modale `useConfirm()` avec les deux dates, et ne relance la requête
+    avec `confirmer_date=1` (qui met à jour `date_document` et régénère)
+    que si l'ADMIN confirme explicitement.
+    - **Piège jsdom** : `Blob.text()` n'est pas implémentée par le
+      polyfill `Blob` de jsdom (tests Jest) — `err.response.data.text()`
+      échouerait silencieusement en test alors que ça fonctionne dans un
+      vrai navigateur. `lireBlobEnTexte()` (`AttestationDetail.jsx`) lit
+      le corps JSON de la réponse 409 via `FileReader.readAsText()` à la
+      place, supportée par jsdom comme par tout navigateur.
+  - **Typographie calée sur le papier (2026-09-23)** — le rendu doit être
+    identique au modèle papier en vigueur, pas seulement contenir les
+    mêmes informations. Trois règles, toutes constatées sur un exemplaire
+    signé : (1) **rien n'est en gras dans le corps**, seuls le titre
+    encadré et l'en-tête société le sont (une première version mettait
+    tous les libellés en `Helvetica-Bold`, donnant un document
+    visiblement plus lourd que l'original) ; (2) les **valeurs saisies
+    sont dans un corps plus petit que les libellés** (`TAILLE_VALEUR`
+    9.5 vs `TAILLE_LABEL` 11.5) — le texte fixe du formulaire et les
+    données de l'employé ne sont pas à la même taille sur le papier ;
+    (3) l'interligne du corps est resserré (~13 mm) avec un intervalle
+    volontairement plus large avant "Et occupe le poste de" — le papier
+    n'a pas un pas régulier, d'où les constantes `Y_*` relevées une à une
+    plutôt qu'une boucle à pas fixe. `Helvetica` est utilisée comme
+    équivalent métrique de l'Arial du papier (police de base ReportLab,
+    pas de fichier de fontes à embarquer).
+  - **Piège `setCharSpace`** : l'espacement inter-lettres du titre ne se
+    règle que sur un objet texte (`Canvas` n'expose pas `setCharSpace`),
+    et il fait partie de l'**état graphique PDF** — sans
+    `saveState()`/`restoreState()` autour, il reste actif sur tout le
+    reste du document : texte étiré et, surtout, valeurs qui chevauchent
+    leur libellé (les positions dynamiques de `_label_valeur()` sont
+    calculées avec `stringWidth()`, qui ignore la chasse et sous-estime
+    donc la largeur réellement rendue).
   - Le "lieu de naissance" (champ personnalisé, pas de colonne directe
     sur `Employee`) est résolu par recherche approximative du nom du champ
     (`EmployeeChampValeur`, voir `AttestationApercuView.get`).
