@@ -7,6 +7,10 @@ import { MemoryRouter } from "react-router-dom";
 jest.mock("../services/api", () => ({
   __esModule: true, default: { get: jest.fn(), post: jest.fn() },
 }));
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ user: { role: "GESTIONNAIRE", id: "u1", full_name: "Gest Test" } }),
+}));
 
 import api from "../services/api";
 import AttestationNouvelle from "../pages/AttestationNouvelle";
@@ -35,9 +39,11 @@ describe("AttestationNouvelle", () => {
 
     render(<AttestationNouvelle />);
 
+    const findSuggestion = () =>
+      screen.getByText(/Jean Dupont/i, { selector: "span" }).closest("div");
     await userEvent.type(screen.getByLabelText(/employé/i), "Dupont");
-    await waitFor(() => expect(screen.getByText(/Dupont — M1/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Dupont — M1/));
+    await waitFor(() => expect(findSuggestion()).toBeInTheDocument());
+    fireEvent.click(findSuggestion());
     await waitFor(() => expect(screen.getByLabelText(/motif/i)).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText(/motif/i), "mot1");
     fireEvent.click(screen.getByText(/Envoyer la demande/i));
@@ -65,9 +71,11 @@ describe("AttestationNouvelle", () => {
 
     render(<AttestationNouvelle />);
 
+    const findSuggestion2 = () =>
+      screen.getByText(/Jean Dupont/i, { selector: "span" }).closest("div");
     await userEvent.type(screen.getByLabelText(/employé/i), "Dupont");
-    await waitFor(() => expect(screen.getByText(/Dupont — M1/)).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Dupont — M1/));
+    await waitFor(() => expect(findSuggestion2()).toBeInTheDocument());
+    fireEvent.click(findSuggestion2());
     await waitFor(() => expect(screen.getByLabelText(/motif/i)).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByLabelText(/motif/i), "__autre__");
     await userEvent.type(screen.getByPlaceholderText(/Précisez le motif/i), "Visa Schengen");

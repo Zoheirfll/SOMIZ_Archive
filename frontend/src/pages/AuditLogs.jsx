@@ -141,7 +141,7 @@ const AuditLogs = () => {
   const fetchActionChoices = async () => {
     try {
       const response = await api.get("/audit-logs/actions/");
-      setActionChoices(response.data);
+      setActionChoices(response.data.results || response.data);
     } catch (err) {
       console.error(err);
     }

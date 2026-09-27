@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 jest.mock("../services/api", () => ({
   __esModule: true, default: { get: jest.fn() },
 }));
+jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
 jest.mock("../context/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
@@ -39,7 +40,7 @@ describe("Attestations", () => {
     useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", id: "u2", full_name: "Gest Test" } });
     api.get.mockResolvedValueOnce({ data: { results: [] } });
     render(<Attestations />);
-    await waitFor(() => expect(screen.getByText(/Nouvelle demande/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("link", { name: /Nouvelle demande/i })).toBeInTheDocument());
   });
 
   test("l'onglet Statistiques affiche le nombre de demandes par gestionnaire", async () => {
@@ -58,6 +59,6 @@ describe("Attestations", () => {
     render(<Attestations />);
     fireEvent.click(await screen.findByText(/Statistiques/i));
     await waitFor(() => expect(screen.getByText("Ali Ben")).toBeInTheDocument());
-    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getAllByText("4").length).toBeGreaterThan(0);
   });
 });

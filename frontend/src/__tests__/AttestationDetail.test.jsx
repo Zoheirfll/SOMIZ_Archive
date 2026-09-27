@@ -24,7 +24,13 @@ const renderDetail = () => rtlRender(
 
 describe("AttestationDetail", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    // resetAllMocks (pas seulement clearAllMocks) — clearAllMocks ne vide
+    // pas la file des mockResolvedValueOnce/mockReturnValueOnce non
+    // consommés par un test précédent (ex. useAuth.mockReturnValue posé
+    // une seule fois par test), ce qui faisait fuiter des réponses d'un
+    // test au suivant quand l'ordre d'exécution changeait (suite complète
+    // vs fichier isolé).
+    jest.resetAllMocks();
   });
 
   test("un ADMIN peut faire avancer le statut", async () => {

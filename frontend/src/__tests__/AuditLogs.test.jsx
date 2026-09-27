@@ -200,7 +200,12 @@ describe("AuditLogs — filtres", () => {
   });
 
   test("filtrer par action recharge les logs", async () => {
-    api.get.mockResolvedValue(mockResponse([]));
+    api.get.mockImplementation((url) => {
+      if (url === "/audit-logs/actions/") {
+        return Promise.resolve({ data: [{ value: "LOGIN", label: "Connexion" }] });
+      }
+      return Promise.resolve(mockResponse([]));
+    });
     renderPage();
     await waitFor(() => screen.getByText("Aucune entrée trouvée."));
 

@@ -175,6 +175,11 @@ describe("ContratDetail — documents", () => {
 
   test("affiche la taille du fichier dans le viewer", async () => {
     renderPage();
+    // Le viewer reste vide tant qu'aucun document n'a été cliqué (voir
+    // ContratDetail.jsx#fetchContrat) — il faut sélectionner le document
+    // avant que la taille du fichier s'affiche.
+    await waitFor(() => screen.getAllByText("Contrat de travail")[0]);
+    fireEvent.click(screen.getAllByText("Contrat de travail")[0]);
     await waitFor(() => {
       expect(screen.getAllByText(/0\.20 Mo/).length).toBeGreaterThan(0);
     });

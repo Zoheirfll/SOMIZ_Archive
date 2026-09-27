@@ -861,8 +861,8 @@ describe("EmployeeDetail — préservation sélection contrat après upload", ()
   });
 });
 
-describe("EmployeeDetail — sélection par défaut cohérente avec le contrat affiché", () => {
-  test("le fichier chargé par défaut appartient au contrat récent, pas à un contrat plus ancien", async () => {
+describe("EmployeeDetail — aucune sélection automatique de fichier à l'ouverture", () => {
+  test("le viewer reste vide tant qu'aucun document n'a été cliqué, même avec plusieurs contrats", async () => {
     const oldFile = { id: "file-old", file_name: "diplome_ancien.pdf", mime_type: "application/pdf" };
     const oldDoc = {
       id: "doc-old", type_document: "DIPLOME", is_active: true,
@@ -900,13 +900,14 @@ describe("EmployeeDetail — sélection par défaut cohérente avec le contrat a
       expect(tabBtn).toHaveAttribute("aria-pressed", "true");
     });
 
-    // Le fichier chargé (appelé via /files/{id}/view/) doit être celui du contrat récent
-    await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith(
-        expect.stringContaining(`files/${recentFile.id}`),
-        expect.any(Object),
-      );
-    });
+    // Aucun fichier n'est chargé automatiquement (voir EmployeeDetail.jsx —
+    // le viewer reste vide tant que l'utilisateur n'a rien cliqué, plutôt
+    // que d'ouvrir un fichier au hasard à l'ouverture de la fiche/au
+    // changement de contrat).
+    expect(api.get).not.toHaveBeenCalledWith(
+      expect.stringContaining(`files/${recentFile.id}`),
+      expect.any(Object),
+    );
     expect(api.get).not.toHaveBeenCalledWith(
       expect.stringContaining(`files/${oldFile.id}`),
       expect.any(Object),
