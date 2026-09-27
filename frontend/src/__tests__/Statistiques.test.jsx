@@ -230,6 +230,32 @@ describe("Statistiques — contrats à échéance et complétude", () => {
     const badge = row.querySelector('[data-testid="jours-restants-badge"]');
     expect(badge).toHaveTextContent("10");
   });
+
+  test("clic sur une barre de complétude Département navigue vers /employees filtré incomplets", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...baseStats,
+        completude_par_departement: [{ id: "dpt1", nom: "Paie", direction_nom: "Direction Générale", total: 10, complets: 6, taux: 60 }],
+      },
+    });
+    renderPage();
+    const bar = await screen.findByText("Paie");
+    fireEvent.click(bar);
+    expect(mockNavigate).toHaveBeenCalledWith("/employees?departement=dpt1&dossier_complet=0");
+  });
+
+  test("clic sur une ligne de complétude Direction navigue vers /employees filtré incomplets", async () => {
+    api.get.mockResolvedValue({
+      data: {
+        ...baseStats,
+        completude_par_direction: [{ id: "dir1", nom: "Direction Générale", total: 20, complets: 15, taux: 75 }],
+      },
+    });
+    renderPage();
+    const rows = await screen.findAllByText("Direction Générale");
+    fireEvent.click(rows[rows.length - 1]);
+    expect(mockNavigate).toHaveBeenCalledWith("/employees?direction=dir1&dossier_complet=0");
+  });
 });
 
 describe("Statistiques — export", () => {

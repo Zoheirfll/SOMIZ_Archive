@@ -566,6 +566,23 @@ const Statistiques = () => {
           <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Complétude par Direction (radar)</h2>
             <StatRadarChart data={stats.completude_par_direction} />
+            <div style={{ marginTop: 16 }}>
+              {stats.completude_par_direction.length === 0 ? (
+                <div style={{ color: theme.textMuted, fontSize: 13 }}>Aucune donnée.</div>
+              ) : (
+                stats.completude_par_direction.map((r) => (
+                  <RepartitionBar
+                    key={r.id}
+                    label={r.nom}
+                    count={r.taux}
+                    displayValue={`${r.taux}%`}
+                    max={100}
+                    color={r.taux >= 80 ? theme.primary : r.taux >= 50 ? theme.accent : theme.danger}
+                    onClick={() => navigate(`/employees?direction=${r.id}&dossier_complet=0`)}
+                  />
+                ))
+              )}
+            </div>
           </div>
           <div className="anim-fade-in delay-1" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Complétude par Département</h2>
@@ -581,6 +598,7 @@ const Statistiques = () => {
                   displayValue={`${r.taux}%`}
                   max={100}
                   color={r.taux >= 80 ? theme.primary : r.taux >= 50 ? theme.accent : theme.danger}
+                  onClick={() => navigate(`/employees?departement=${r.id}&dossier_complet=0`)}
                 />
               ))
             )}
