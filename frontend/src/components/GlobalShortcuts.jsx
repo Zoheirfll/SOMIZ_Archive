@@ -4,6 +4,7 @@ import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import { useShortcut } from "../hooks/useKeyboardShortcuts";
 import { DEFAULT_SHORTCUTS, resolveCombo } from "../config/keyboardShortcuts";
 import KeyboardShortcutsHelp from "./KeyboardShortcutsHelp";
+import CommandPalette from "./CommandPalette";
 
 const isAdmin = (role) => ["ADMIN", "SUPERADMIN"].includes(role);
 
@@ -22,7 +23,7 @@ export default function GlobalShortcuts() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { helpOpen, toggleHelp, closeHelp, overrides } = useKeyboardShortcutsHelp();
+  const { helpOpen, toggleHelp, closeHelp, paletteOpen, togglePalette, closePalette, overrides } = useKeyboardShortcutsHelp();
 
   const disabled = !user || location.pathname === "/login" || location.pathname === "/consentement";
 
@@ -33,6 +34,7 @@ export default function GlobalShortcuts() {
     if (s.id === "nav-back") handler = () => navigate(-1);
     else if (s.id === "nav-forward") handler = () => navigate(1);
     else if (s.id === "help-toggle") handler = toggleHelp;
+    else if (s.id === "command-palette") handler = togglePalette;
     else handler = () => navigate(s.path);
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useShortcut(combo, handler, { enabled });
@@ -40,5 +42,10 @@ export default function GlobalShortcuts() {
 
   useShortcut("Escape", closeHelp, { enabled: helpOpen, allowInInputs: true });
 
-  return helpOpen ? <KeyboardShortcutsHelp onClose={closeHelp} /> : null;
+  return (
+    <>
+      {helpOpen && <KeyboardShortcutsHelp onClose={closeHelp} />}
+      <CommandPalette isOpen={paletteOpen} onClose={closePalette} />
+    </>
+  );
 }
