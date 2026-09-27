@@ -144,6 +144,12 @@ const Employees = () => {
   const dossierComplet = searchParams.get("dossier_complet");
   const typeManquant = searchParams.get("type_manquant") || "";
   const typePresent = searchParams.get("type_present") || "";
+  // Drill-down depuis les pyramides âge/ancienneté de /statistiques (clic
+  // sur une barre) — voir CLAUDE.md section Page Statistiques.
+  const ageMin = searchParams.get("age_min");
+  const ageMax = searchParams.get("age_max");
+  const ancienneteMin = searchParams.get("anciennete_min");
+  const ancienneteMax = searchParams.get("anciennete_max");
   const [typeManquantLabel, setTypeManquantLabel] = useState("");
   const [docTypesList, setDocTypesList] = useState([]);
   const [docFilterOpen, setDocFilterOpen] = useState(false);
@@ -182,6 +188,10 @@ const Employees = () => {
         n.delete("dossier_complet");
         n.delete("type_manquant");
         n.delete("type_present");
+        n.delete("age_min");
+        n.delete("age_max");
+        n.delete("anciennete_min");
+        n.delete("anciennete_max");
         n.set("page", "1");
         return n;
       },
@@ -395,6 +405,10 @@ const Employees = () => {
         if (dossierComplet !== null) params.dossier_complet = dossierComplet;
         if (typeManquant) params.type_manquant = typeManquant;
         if (typePresent) params.type_present = typePresent;
+        if (ageMin) params.age_min = ageMin;
+        if (ageMax) params.age_max = ageMax;
+        if (ancienneteMin) params.anciennete_min = ancienneteMin;
+        if (ancienneteMax) params.anciennete_max = ancienneteMax;
         if (orgFilter) params[orgFilter.type] = orgFilter.id;
         else if (selectedService) params.service = selectedService.id;
         else if (selectedDepartement) params.departement = selectedDepartement.id;
@@ -419,6 +433,10 @@ const Employees = () => {
     dossierComplet,
     typeManquant,
     typePresent,
+    ageMin,
+    ageMax,
+    ancienneteMin,
+    ancienneteMax,
     selectedService,
     selectedDepartement,
     selectedDirection,
@@ -533,8 +551,13 @@ const Employees = () => {
     const poleId = searchParams.get("pole");
     const celluleId = searchParams.get("cellule");
     const sectionId = searchParams.get("section");
-    if (!directionId && !departementId && !serviceId && !poleId && !celluleId && !sectionId)
+    const hasAgeOuAnciennete = ageMin || ageMax || ancienneteMin || ancienneteMax;
+    if (!directionId && !departementId && !serviceId && !poleId && !celluleId && !sectionId && !hasAgeOuAnciennete)
       return;
+    if (hasAgeOuAnciennete && !directionId && !departementId && !serviceId && !poleId && !celluleId && !sectionId) {
+      setView("employees");
+      return;
+    }
     (async () => {
       try {
         if (serviceId) {
@@ -581,7 +604,11 @@ const Employees = () => {
       searchParams.get("section") ||
       searchParams.get("dossier_complet") !== null ||
       searchParams.get("type_manquant") ||
-      searchParams.get("type_present")
+      searchParams.get("type_present") ||
+      searchParams.get("age_min") ||
+      searchParams.get("age_max") ||
+      searchParams.get("anciennete_min") ||
+      searchParams.get("anciennete_max")
     ) {
       return;
     }
@@ -1295,6 +1322,10 @@ const Employees = () => {
             customFields={customFields}
             isColumnVisible={isColumnVisible}
             dossierComplet={dossierComplet}
+            ageMin={ageMin}
+            ageMax={ageMax}
+            ancienneteMin={ancienneteMin}
+            ancienneteMax={ancienneteMax}
             typeManquant={typeManquant}
             typeManquantLabel={typeManquantLabel}
             typePresent={typePresent}

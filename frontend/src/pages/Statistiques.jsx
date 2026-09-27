@@ -497,11 +497,17 @@ const Statistiques = () => {
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20, marginBottom: 20 }}>
           <div className="anim-fade-in" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Pyramide des âges</h2>
-            <StatHistogram data={stats.pyramide_age} xKey="tranche" dataKey="count" color={theme.departementColor} />
+            <StatHistogram
+              data={stats.pyramide_age} xKey="tranche" dataKey="count" color={theme.departementColor}
+              onBarClick={(entry) => navigate(`/employees?age_min=${entry.min}&age_max=${entry.max}`)}
+            />
           </div>
           <div className="anim-fade-in delay-1" style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16, padding: 24, boxShadow: theme.shadowMd }}>
             <h2 style={{ color: theme.text, margin: "0 0 16px", fontSize: 15, fontWeight: 700 }}>Pyramide d'ancienneté</h2>
-            <StatHistogram data={stats.pyramide_anciennete} xKey="tranche" dataKey="count" color={theme.serviceColor} />
+            <StatHistogram
+              data={stats.pyramide_anciennete} xKey="tranche" dataKey="count" color={theme.serviceColor}
+              onBarClick={(entry) => navigate(`/employees?anciennete_min=${entry.min}&anciennete_max=${entry.max}`)}
+            />
           </div>
         </div>
 

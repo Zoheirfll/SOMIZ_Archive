@@ -38,6 +38,10 @@ const EmployeesTable = ({
   customFields,
   isColumnVisible,
   dossierComplet,
+  ageMin,
+  ageMax,
+  ancienneteMin,
+  ancienneteMax,
   typeManquant,
   typeManquantLabel,
   typePresent,
@@ -451,8 +455,8 @@ const EmployeesTable = ({
         </div>
       </div>
 
-      {/* Chips filtres actifs (dossier + documents) */}
-      {(dossierComplet !== null || typeManquant || typePresent) && (
+      {/* Chips filtres actifs (dossier + documents + âge/ancienneté) */}
+      {(dossierComplet !== null || typeManquant || typePresent || ageMin || ageMax || ancienneteMin || ancienneteMax) && (
         <div
           className="anim-slide-down"
           style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}
@@ -512,6 +516,44 @@ const EmployeesTable = ({
               }}
             >
               Présent : {typePresentLabel || "…"}
+            </span>
+          )}
+          {(ageMin || ageMax) && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: theme.primaryBg,
+                border: `1px solid ${theme.primaryBorder}`,
+                borderRadius: 20,
+                padding: "6px 8px 6px 14px",
+                fontSize: 13,
+                color: theme.primary,
+                fontWeight: 600,
+                fontFamily: theme.fontFamily,
+              }}
+            >
+              Âge : {Number(ageMax) >= 100 ? `${ageMin}+ ans` : `${ageMin}-${ageMax} ans`}
+            </span>
+          )}
+          {(ancienneteMin || ancienneteMax) && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                background: theme.primaryBg,
+                border: `1px solid ${theme.primaryBorder}`,
+                borderRadius: 20,
+                padding: "6px 8px 6px 14px",
+                fontSize: 13,
+                color: theme.primary,
+                fontWeight: 600,
+                fontFamily: theme.fontFamily,
+              }}
+            >
+              Ancienneté : {Number(ancienneteMax) >= 100 ? `${ancienneteMin}+ ans` : `${ancienneteMin}-${ancienneteMax} ans`}
             </span>
           )}
           <button

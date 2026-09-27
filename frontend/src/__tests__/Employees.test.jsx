@@ -408,6 +408,37 @@ describe("Employees — filtre complétude (arrivée depuis le dashboard)", () =
     });
   });
 
+  test("?anciennete_min/max bascule directement sur la liste employés et transmet les paramètres", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?anciennete_min=5&anciennete_max=9");
+    jest.runAllTimers();
+    expect(await screen.findByText("EMP-001")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(
+        "/employees/",
+        expect.objectContaining({ params: expect.objectContaining({ anciennete_min: "5", anciennete_max: "9" }) })
+      );
+    });
+  });
+
+  test("?age_min/max affiche un chip Âge et se ferme avec le bouton Effacer", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?age_min=25&age_max=34");
+    jest.runAllTimers();
+    expect(await screen.findByText("Âge : 25-34 ans")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Effacer tous les filtres dossier"));
+    await waitFor(() => {
+      expect(screen.queryByText("Âge : 25-34 ans")).not.toBeInTheDocument();
+    });
+  });
+
+  test("?anciennete_min=10&anciennete_max=200 affiche un chip de tranche ouverte (10+ ans)", async () => {
+    setupCompletudeRoute();
+    renderPageAtRoute("/employees?anciennete_min=10&anciennete_max=200");
+    jest.runAllTimers();
+    expect(await screen.findByText("Ancienneté : 10+ ans")).toBeInTheDocument();
+  });
+
   test("sans filtre complétude, aucun chip n'est affiché", async () => {
     await goToEmployeesListAndWait("ADMIN");
     expect(screen.queryByLabelText("Effacer le filtre")).not.toBeInTheDocument();

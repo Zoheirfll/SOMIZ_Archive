@@ -6,7 +6,7 @@ API Views — CRUD Employés + Upload + Viewer inline sécurisé
 import mimetypes
 import os
 import magic
-from datetime import date as date_cls
+from datetime import date as date_cls, timedelta
 from django.conf import settings
 from django.core.files.base import File
 from django.db import transaction
@@ -202,6 +202,35 @@ def resolve_employee(raw, queryset=None):
     return obj
 
 
+def _safe_replace_year(d, year):
+    """d.replace(year=year), avec repli sur le 28 février pour un 29 février
+    tombant sur une année non bissextile (borne de tranche d'âge/ancienneté
+    approximative de toute façon — voir _years_bracket_to_date_range)."""
+    try:
+        return d.replace(year=year)
+    except ValueError:
+        return d.replace(year=year, day=28)
+
+
+def _years_bracket_to_date_range(min_years, max_years):
+    """
+    Convertit une tranche d'âge/ancienneté en années (bornes inclusives,
+    ex. la tranche "25-34" des pyramides de /statistiques) en un intervalle
+    de dates de naissance/d'embauche correspondant — même logique que
+    audit/stats.py _years_between, utilisée pour le drill-down "cliquer sur
+    une barre de pyramide" vers la liste des employés de cette tranche.
+    `None` pour une borne = pas de limite sur ce côté (tranche ouverte,
+    ex. "55+").
+    """
+    today = timezone.localdate()
+    date_min = date_max = None
+    if max_years is not None:
+        date_min = _safe_replace_year(today, today.year - max_years - 1) + timedelta(days=1)
+    if min_years is not None:
+        date_max = _safe_replace_year(today, today.year - min_years)
+    return date_min, date_max
+
+
 # ─── EMPLOYEES ────────────────────────────────────────────────────────────────
 
 class EmployeeListCreateView(generics.ListCreateAPIView):
@@ -357,6 +386,33 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(
                 documents__fichiers__ocr_result__raw_text__icontains=q_contenu
             ).distinct()
+
+        # Drill-down depuis les pyramides âge/ancienneté de /statistiques
+        # (clic sur une barre) — voir audit/stats.py _pyramide, dont chaque
+        # tranche expose désormais 'min'/'max' repris tels quels ici.
+        age_min = self.request.query_params.get('age_min')
+        age_max = self.request.query_params.get('age_max')
+        if age_min is not None or age_max is not None:
+            date_min, date_max = _years_bracket_to_date_range(
+                int(age_min) if age_min not in (None, '') else None,
+                int(age_max) if age_max not in (None, '') else None,
+            )
+            if date_min:
+                qs = qs.filter(date_naissance__gte=date_min)
+            if date_max:
+                qs = qs.filter(date_naissance__lte=date_max)
+
+        anciennete_min = self.request.query_params.get('anciennete_min')
+        anciennete_max = self.request.query_params.get('anciennete_max')
+        if anciennete_min is not None or anciennete_max is not None:
+            date_min, date_max = _years_bracket_to_date_range(
+                int(anciennete_min) if anciennete_min not in (None, '') else None,
+                int(anciennete_max) if anciennete_max not in (None, '') else None,
+            )
+            if date_min:
+                qs = qs.filter(date_embauche__gte=date_min)
+            if date_max:
+                qs = qs.filter(date_embauche__lte=date_max)
 
         return qs
 

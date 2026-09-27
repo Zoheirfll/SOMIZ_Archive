@@ -205,7 +205,10 @@ def _pyramide(qs, date_field, tranches):
             if lo <= n <= hi:
                 buckets[label] += 1
                 break
-    return [{'tranche': label, 'count': buckets[label]} for *_r, label in tranches]
+    return [
+        {'tranche': label, 'count': buckets[label], 'min': lo, 'max': hi}
+        for lo, hi, label in tranches
+    ]
 
 
 def _pyramide_age():

@@ -4,7 +4,7 @@ import ChartTooltip from "./ChartTooltip";
 
 // Histogramme (barres) pour les pyramides âge/ancienneté — orientation
 // horizontale (tranches en ordonnée) avec tooltip et dégradé de couleur.
-const StatHistogram = ({ data, xKey, dataKey, color, height = 220 }) => {
+const StatHistogram = ({ data, xKey, dataKey, color, height = 220, onBarClick }) => {
   const theme = useTheme();
   if (!data || data.length === 0) {
     return (
@@ -20,7 +20,11 @@ const StatHistogram = ({ data, xKey, dataKey, color, height = 220 }) => {
         <XAxis type="number" allowDecimals={false} tick={{ fill: theme.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
         <YAxis dataKey={xKey} type="category" tick={{ fill: theme.textSecondary, fontSize: 12 }} axisLine={false} tickLine={false} width={64} />
         <Tooltip content={<ChartTooltip />} cursor={{ fill: theme.borderLight }} />
-        <Bar dataKey={dataKey} name="Effectif" radius={[0, 6, 6, 0]} maxBarSize={22} isAnimationActive={true}>
+        <Bar
+          dataKey={dataKey} name="Effectif" radius={[0, 6, 6, 0]} maxBarSize={22} isAnimationActive={true}
+          onClick={onBarClick ? (entry) => onBarClick(entry) : undefined}
+          style={{ cursor: onBarClick ? "pointer" : "default" }}
+        >
           {data.map((entry) => (
             <Cell key={entry[xKey]} fill={color} />
           ))}

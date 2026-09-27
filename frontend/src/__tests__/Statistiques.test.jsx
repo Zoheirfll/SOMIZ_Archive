@@ -201,6 +201,31 @@ describe("Statistiques — évolution et pyramides", () => {
     expect(screen.getByText("Pyramide des âges")).toBeInTheDocument();
     expect(screen.getByText("Pyramide d'ancienneté")).toBeInTheDocument();
   });
+
+  test("clic sur une barre de la pyramide des âges navigue vers /employees filtré par tranche", async () => {
+    api.get.mockResolvedValue({
+      data: { ...baseStats, pyramide_age: [{ tranche: "25-34", count: 5, min: 25, max: 34 }] },
+    });
+    const { container } = renderPage();
+    await screen.findByText("Pyramide des âges");
+    // Recharts (ResponsiveContainer) a besoin d'un tick supplémentaire dans
+    // jsdom avant de mesurer le conteneur et rendre les barres.
+    await waitFor(() => expect(container.querySelector(".recharts-bar-rectangle")).not.toBeNull());
+    fireEvent.click(container.querySelector(".recharts-bar-rectangle"));
+    expect(mockNavigate).toHaveBeenCalledWith("/employees?age_min=25&age_max=34");
+  });
+
+  test("clic sur une barre de la pyramide d'ancienneté navigue vers /employees filtré par tranche", async () => {
+    api.get.mockResolvedValue({
+      data: { ...baseStats, pyramide_anciennete: [{ tranche: "5-10 ans", count: 4, min: 5, max: 9 }] },
+    });
+    const { container } = renderPage();
+    await screen.findByText("Pyramide d'ancienneté");
+    await waitFor(() => expect(container.querySelector(".recharts-bar-rectangle")).not.toBeNull());
+    const bars = container.querySelectorAll(".recharts-bar-rectangle");
+    fireEvent.click(bars[bars.length - 1]);
+    expect(mockNavigate).toHaveBeenCalledWith("/employees?anciennete_min=5&anciennete_max=9");
+  });
 });
 
 describe("Statistiques — contrats à échéance et complétude", () => {
@@ -296,10 +321,10 @@ describe("Statistiques — mon activité", () => {
     expect(screen.getByText("Mon activité")).toBeInTheDocument();
     expect(screen.getByText("Employés")).toBeInTheDocument();
     expect(screen.getByText("Créés")).toBeInTheDocument();
-    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText("4", { selector: "a" })).toBeInTheDocument();
     expect(screen.getByText("Documents")).toBeInTheDocument();
     expect(screen.getByText("Uploadés")).toBeInTheDocument();
-    expect(screen.getByText("20")).toBeInTheDocument();
+    expect(screen.getByText("20", { selector: "a" })).toBeInTheDocument();
   });
 
   test("masque un compteur à zéro (ex. employés archivés)", async () => {
@@ -333,7 +358,7 @@ describe("Statistiques — mon activité", () => {
     api.get.mockResolvedValue({ data: baseStats });
     renderPage("ADMIN");
     await screen.findByText("Recrutements");
-    const tile = screen.getByText("4").closest("a");
+    const tile = screen.getByText("4", { selector: "a" });
     expect(tile).not.toBeNull();
     expect(tile.getAttribute("href")).toBe(
       "/audit?user=admin&date_debut=2026-01-01&date_fin=2026-12-31&categorie=employes_crees"
