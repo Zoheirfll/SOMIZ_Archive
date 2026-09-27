@@ -151,8 +151,8 @@ describe("ContratDetail — rendu initial", () => {
 describe("ContratDetail — fil d'ariane", () => {
   test("bouton ← navigue en arrière", async () => {
     renderPage();
-    await waitFor(() => screen.getByText("← Employés"));
-    fireEvent.click(screen.getByText("← Employés"));
+    await waitFor(() => screen.getByText("Employés"));
+    fireEvent.click(screen.getByText("Employés"));
     expect(mockNavigate).toHaveBeenCalledWith("/employees");
   });
 

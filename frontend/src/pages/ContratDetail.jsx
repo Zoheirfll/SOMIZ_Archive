@@ -16,6 +16,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import { formatDateFR } from "../utils/formatDate";
 import usePageTitle from "../hooks/usePageTitle";
 import { employeeSlug } from "../utils/employeeSlug";
+import Breadcrumb from "../components/employees/Breadcrumb";
 
 const getStatutColors = (theme) => ({
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -532,16 +533,15 @@ const ContratDetail = () => {
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           {/* Breadcrumb */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
-            <button onClick={() => navigate("/employees")} style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "rgba(255,255,255,0.8)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
-              ← Employés
-            </button>
-            <span style={{ color: "rgba(255,255,255,0.4)" }}>›</span>
-            <button onClick={() => navigate(`/employees/${employeeSlug(contrat)}`)} style={{ background: "rgba(255,255,255,0.12)", border: "none", color: "rgba(255,255,255,0.8)", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>
-              {contrat.employee_matricule} — {contrat.employee_nom}
-            </button>
-            <span style={{ color: "rgba(255,255,255,0.4)" }}>›</span>
-            <span style={{ color: "rgba(255,255,255,0.9)", fontWeight: 700, fontSize: 12, fontFamily: "monospace" }}>{contrat.numero_contrat}</span>
+          <div style={{ marginBottom: 24 }}>
+            <Breadcrumb
+              variant="hero"
+              items={[
+                { label: "Employés", onClick: () => navigate("/employees") },
+                { label: `${contrat.employee_matricule} — ${contrat.employee_nom}`, onClick: () => navigate(`/employees/${employeeSlug(contrat)}`) },
+                { label: contrat.numero_contrat },
+              ]}
+            />
           </div>
 
           {/* Hero content */}
