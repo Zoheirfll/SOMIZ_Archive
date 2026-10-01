@@ -3,7 +3,7 @@ from django.urls import path
 from .views import (
     DemandeAttestationListCreateView, DemandeAttestationDetailView,
     DemandeAttestationStatutView, DemandeAttestationBulkStatutView, DemandeAttestationScanView,
-    AttestationTemplateConfigView, DefaultAttestationLogoView,
+    AttestationTemplateConfigView, AttestationTemplateConfigApercuView, DefaultAttestationLogoView,
     AttestationApercuView, AttestationStatsView,
 )
 
@@ -18,6 +18,7 @@ urlpatterns = [
     path('demandes/<str:ref>/scan/', DemandeAttestationScanView.as_view()),
     path('demandes/<str:ref>/apercu/', AttestationApercuView.as_view()),
     path('config/', AttestationTemplateConfigView.as_view()),
+    path('config/apercu/', AttestationTemplateConfigApercuView.as_view()),
     path('config/logo-defaut/', DefaultAttestationLogoView.as_view()),
     path('stats/', AttestationStatsView.as_view()),
 ]

@@ -1,4 +1,5 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
+from types import SimpleNamespace
 
 from django.db.models import Count, F, Avg, ExpressionWrapper, DurationField, Q
 from django.db.models.functions import Coalesce, TruncMonth
@@ -241,6 +242,50 @@ class AttestationTemplateConfigView(generics.RetrieveUpdateAPIView):
         return obj
 
 
+class AttestationTemplateConfigApercuView(APIView):
+    """POST /api/attestations/config/apercu/ — SUPERADMIN/ADMIN chargé only.
+
+    Génère un PDF d'aperçu à partir des valeurs du formulaire de
+    configuration EN COURS D'ÉDITION dans /parametres (pas encore
+    enregistrées, body = mêmes champs que AttestationTemplateConfigSerializer),
+    avec un employé/une demande fictifs — pour voir l'effet d'un changement
+    (police, gras, libellé) sans avoir à cliquer "Enregistrer" ni dépendre
+    d'une vraie demande existante. Rien n'est persisté : l'instance chargée
+    est mutée en mémoire seulement, jamais sauvegardée. Le logo reste celui
+    déjà enregistré (fichier binaire, pas dans le body JSON du formulaire)."""
+    permission_classes = [IsAttestationManager]
+
+    def post(self, request):
+        config, _ = AttestationTemplateConfig.objects.get_or_create(pk=1)
+        serializer = AttestationTemplateConfigSerializer(config, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            if field != 'logo':
+                setattr(config, field, value)
+
+        demande_exemple = SimpleNamespace(
+            reference="00000/00",
+            employee=SimpleNamespace(
+                matricule="000000",
+                nom="EXEMPLE",
+                prenom="Ali",
+                date_naissance=date(1985, 6, 15),
+                date_embauche=date(2015, 1, 1),
+                poste_id=1,
+                poste=SimpleNamespace(nom="Agent Administratif"),
+            ),
+            motif=SimpleNamespace(nom="Exemple de motif"),
+        )
+        pdf = build_attestation_pdf(
+            demande_exemple, config, date.today(),
+            lieu_naissance="Arzew", contrat_numero="0000/00",
+            mention="(mode test — données fictives, non enregistrées)",
+        )
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = 'inline; filename="apercu_attestation.pdf"'
+        return response
+
+
 class DefaultAttestationLogoView(APIView):
     """GET /api/attestations/config/logo-defaut/ — SUPERADMIN/ADMIN chargé
     only. Sert le logo embarqué (attestations/assets/logo_somiz.png) utilisé
@@ -311,6 +356,7 @@ class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
         pdf = build_attestation_pdf(
             demande, config, demande.date_document,
             lieu_naissance=lieu_naissance, contrat_numero=contrat_numero,
+            mention="(mode test)" if config.mode_test else '',
         )
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = (

@@ -127,6 +127,13 @@ class AttestationTemplateConfig(models.Model):
     signataire_interim = models.BooleanField(default=False)
     signataire_interim_nom = models.CharField(max_length=150, blank=True)
     logo = models.ImageField(upload_to=attestation_logo_upload_path, null=True, blank=True)
+    # Mention "(mode test)" imprimée sur TOUTE attestation générée (aperçu ET
+    # vraies demandes), tant que ce chantier n'a pas été validé en conditions
+    # réelles — évite qu'un document généré pendant les tests soit confondu
+    # avec une vraie attestation officielle. Activé par défaut ; un ADMIN le
+    # désactive lui-même dans /parametres une fois les tests terminés, sans
+    # repasser par du code.
+    mode_test = models.BooleanField(default=True)
 
     class Meta:
         db_table = 'attestation_template_config'

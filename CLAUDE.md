@@ -1467,13 +1467,17 @@ du document signé. Spec complète :
       place, supportée par jsdom comme par tout navigateur.
   - **Typographie calée sur le papier (2026-09-23)** — le rendu doit être
     identique au modèle papier en vigueur, pas seulement contenir les
-    mêmes informations. Trois règles, toutes constatées sur un exemplaire
-    signé : (1) **rien n'est en gras dans le corps**, seuls le titre
-    encadré et l'en-tête société le sont (une première version mettait
-    tous les libellés en `Helvetica-Bold`, donnant un document
-    visiblement plus lourd que l'original) ; (2) les **valeurs saisies
+    mêmes informations. Règles constatées sur un exemplaire signé
+    (**corrigées le 2026-09-27** d'après une photo de l'original — la
+    règle précédente "rien n'est en gras" était fausse) : (1) **libellés
+    fixes en gras** (`Helvetica-Bold` 12,5 pt, taille calée sur la
+    largeur de la ligne "La présente Attestation..." ≈ 75 % de la page),
+    y compris "Arzew le :" et le bloc signataire ; valeurs en normal ;
+    majuscules sans accents (`_maj()`, "DEPARTEMENT") ; titre sans
+    espacement inter-lettres, cadre épais à ombre portée ; pied de page en
+    italique ; (2) les **valeurs saisies
     sont dans un corps plus petit que les libellés** (`TAILLE_VALEUR`
-    9.5 vs `TAILLE_LABEL` 11.5) — le texte fixe du formulaire et les
+    10.5 vs `TAILLE_LABEL` 12.5) — le texte fixe du formulaire et les
     données de l'employé ne sont pas à la même taille sur le papier ;
     (3) l'interligne du corps est resserré (~13 mm) avec un intervalle
     volontairement plus large avant "Et occupe le poste de" — le papier
@@ -1500,6 +1504,15 @@ du document signé. Spec complète :
     `default` du modèle reprennent simplement les valeurs du document
     papier en vigueur pour qu'une attestation soit correcte sans
     configuration préalable.
+- **Mode test + aperçu live (2026-09-27)** — `AttestationTemplateConfig.mode_test`
+  (bool, `True` par défaut) imprime "(mode test)" en rouge sous le titre de
+  **toute** attestation générée, tant qu'un ADMIN ne décoche pas la case
+  dans `/parametres` → "Attestation de travail" (évite qu'un document
+  imprimé pendant les tests passe pour officiel). Ce même panneau affiche
+  un aperçu PDF live à côté du formulaire (debounce 500 ms) via
+  `POST /api/attestations/config/apercu/` (`AttestationTemplateConfigApercuView`) :
+  valeurs du formulaire non enregistrées + employé fictif, rien n'est
+  persisté (instance mutée en mémoire seulement).
 - **Scan du document signé** : optionnel, jamais bloquant pour avancer un
   statut (`POST /api/attestations/demandes/<id>/scan/`, ADMIN only) — un
   simple aide-mémoire, pas un document RH permanent du dossier employé.

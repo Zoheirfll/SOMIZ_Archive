@@ -36,6 +36,9 @@ const AttestationConfigPanel = ({ theme }) => {
   const [config, setConfig] = useState(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewError, setPreviewError] = useState("");
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     api
@@ -43,6 +46,32 @@ const AttestationConfigPanel = ({ theme }) => {
       .then((res) => setConfig(res.data))
       .catch(() => setMessage("Impossible de charger la configuration."));
   }, []);
+
+  // Aperçu PDF live : régénéré à chaque frappe (debounce 500ms), sur des
+  // données d'employé fictives — pour voir tout de suite l'effet d'un
+  // changement de police/gras/libellé sans enregistrer ni dépendre d'une
+  // vraie demande. Le logo affiché reste celui déjà enregistré (fichier
+  // binaire, pas dans ce formulaire texte).
+  useEffect(() => {
+    if (!config) return;
+    const { logo, id, ...champsTexte } = config;
+    const timer = setTimeout(() => {
+      api
+        .post("/attestations/config/apercu/", champsTexte, { responseType: "blob" })
+        .then((res) => {
+          const url = URL.createObjectURL(res.data);
+          setPreviewUrl((old) => {
+            if (old) URL.revokeObjectURL(old);
+            return url;
+          });
+          setPreviewError("");
+        })
+        .catch(() => setPreviewError("Impossible de générer l'aperçu."));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [config]);
+
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -98,7 +127,8 @@ const AttestationConfigPanel = ({ theme }) => {
   );
 
   return (
-    <form onSubmit={handleSave} style={{ maxWidth: 500 }}>
+    <div style={{ display: "flex", gap: 24, flexDirection: isMobile ? "column" : "row", alignItems: "flex-start" }}>
+    <form onSubmit={handleSave} style={{ maxWidth: 500, flex: "0 0 auto", width: isMobile ? "100%" : 500 }}>
       <div style={{
         marginBottom: 18, padding: 14, borderRadius: 10,
         border: `1px solid ${theme.border}`, background: theme.bg,
@@ -138,6 +168,22 @@ const AttestationConfigPanel = ({ theme }) => {
       {champ("telex", "Télex")}
       {champ("signataire_titre", "Titre du signataire")}
       {champ("signataire_nom", "Nom du signataire")}
+      <div style={{
+        marginBottom: 12, padding: 10, borderRadius: 8,
+        border: `1px solid ${theme.danger || "#dc2626"}`, background: theme.dangerBg || "#fef2f2",
+      }}>
+        <label style={{ fontSize: 12, fontWeight: 700, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={!!config.mode_test}
+            onChange={(e) => setConfig({ ...config, mode_test: e.target.checked })}
+          />
+          Mode test — imprime "(mode test)" sur toutes les attestations générées
+        </label>
+        <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
+          À décocher une fois les tests terminés, pour repasser en documents officiels sans mention.
+        </div>
+      </div>
       <div style={{ marginBottom: 12 }}>
         <label style={{ fontSize: 12, fontWeight: 700, color: theme.text, display: "block", marginBottom: 4 }}>
           Signé par intérim (P.I)
@@ -161,6 +207,27 @@ const AttestationConfigPanel = ({ theme }) => {
         Enregistrer
       </button>
     </form>
+    <div style={{
+      flex: "1 1 420px", minWidth: 0, position: isMobile ? "static" : "sticky", top: 20,
+      border: `1px solid ${theme.border}`, borderRadius: 10, background: theme.bg,
+      padding: 14, minHeight: 400,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 8 }}>
+        Aperçu (données d'exemple, non enregistrées)
+      </div>
+      {previewError && <div style={{ color: theme.danger, fontSize: 13 }}>{previewError}</div>}
+      {previewUrl && (
+        <iframe
+          src={previewUrl}
+          title="Aperçu de l'attestation"
+          style={{ width: "100%", height: 640, border: "none", borderRadius: 6, background: "#fff" }}
+        />
+      )}
+      {!previewUrl && !previewError && (
+        <div style={{ color: theme.textMuted, fontSize: 13 }}>Génération de l'aperçu...</div>
+      )}
+    </div>
+    </div>
   );
 };
 
