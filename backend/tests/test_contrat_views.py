@@ -202,3 +202,17 @@ class TestContratDocumentListView:
         client = auth_client(admin_user)
         resp = client.get(contrat_docs_url(uuid.uuid4()))
         assert resp.status_code == 404
+
+
+class TestDateFinEmployeeVersContrat:
+    """Employee.date_fin_contrat saisie sur la fiche est reportée sur le
+    dernier contrat (sinon /statistiques, qui lit Contrat.date_fin, l'ignore)."""
+
+    def test_patch_employe_reporte_date_fin_sur_dernier_contrat(self, admin_user, employee, contrat):
+        client = auth_client(admin_user)
+        resp = client.patch(f"/api/employees/{employee.pk}/", {"date_fin_contrat": "2027-08-27"}, format="json")
+        assert resp.status_code == 200
+        contrat.refresh_from_db()
+        employee.refresh_from_db()
+        assert str(contrat.date_fin) == "2027-08-27"
+        assert str(employee.date_fin_contrat) == "2027-08-27"

@@ -62,7 +62,7 @@ const EmployeeDetail = () => {
 
   const [employee, setEmployee] = useState(null);
   usePageTitle(employee ? `${employee.prenom} ${employee.nom}` : "Employé");
-  const [adjacent, setAdjacent] = useState({ prev: null, next: null });
+  const [adjacent, setAdjacent] = useState({ prev: null, next: null, first: null, last: null, position: null, total: 0 });
   const [contrats, setContrats] = useState([]);
   const [selectedContratId, setSelectedContratId] = useState(null);
   const [activeTab, setActiveTab] = useState(
@@ -182,9 +182,35 @@ const EmployeeDetail = () => {
   const fetchAdjacent = async () => {
     try {
       const r = await api.get(`/employees/${id}/adjacent/`);
-      setAdjacent({ prev: r.data.prev || null, next: r.data.next || null });
+      setAdjacent({
+        prev: r.data.prev || null,
+        next: r.data.next || null,
+        first: r.data.first || null,
+        last: r.data.last || null,
+        position: r.data.position ?? null,
+        total: r.data.total ?? 0,
+      });
     } catch {
-      setAdjacent({ prev: null, next: null });
+      setAdjacent({ prev: null, next: null, first: null, last: null, position: null, total: 0 });
+    }
+  };
+
+  // Saisie d'un numéro de position (1..total) dans la liste triée par N° Contrat.
+  const [positionInput, setPositionInput] = useState("");
+  useEffect(() => {
+    setPositionInput(adjacent.position != null ? String(adjacent.position) : "");
+  }, [adjacent.position]);
+  const goToPosition = async () => {
+    const n = parseInt(positionInput, 10);
+    if (!n || n === adjacent.position) {
+      setPositionInput(adjacent.position != null ? String(adjacent.position) : "");
+      return;
+    }
+    try {
+      const r = await api.get(`/employees/${id}/adjacent/`, { params: { position: Math.min(Math.max(n, 1), adjacent.total) } });
+      if (r.data.target) navigate(`/employees/${r.data.target.id}`);
+    } catch {
+      setPositionInput(adjacent.position != null ? String(adjacent.position) : "");
     }
   };
 
@@ -1144,42 +1170,77 @@ const EmployeeDetail = () => {
                   }
                 />
                 <div style={{ display: "flex", gap: 6, marginLeft: 6 }}>
-                  <button
-                    onClick={() => navigate(`/employees/${adjacent.prev.id}`)}
-                    disabled={!adjacent.prev}
-                    title={adjacent.prev ? `${adjacent.prev.prenom} ${adjacent.prev.nom} (${adjacent.prev.matricule})` : "Aucun employé précédent"}
-                    className={adjacent.prev ? "btn-lift" : undefined}
-                    style={{
-                      background: "rgba(255,255,255,0.12)",
-                      border: "1px solid rgba(255,255,255,0.25)",
-                      color: adjacent.prev ? "#fff" : "rgba(255,255,255,0.35)",
-                      borderRadius: 8,
-                      width: 28,
-                      height: 28,
-                      fontSize: 14,
-                      cursor: adjacent.prev ? "pointer" : "default",
-                    }}
-                  >
-                    ←
-                  </button>
-                  <button
-                    onClick={() => navigate(`/employees/${adjacent.next.id}`)}
-                    disabled={!adjacent.next}
-                    title={adjacent.next ? `${adjacent.next.prenom} ${adjacent.next.nom} (${adjacent.next.matricule})` : "Aucun employé suivant"}
-                    className={adjacent.next ? "btn-lift" : undefined}
-                    style={{
-                      background: "rgba(255,255,255,0.12)",
-                      border: "1px solid rgba(255,255,255,0.25)",
-                      color: adjacent.next ? "#fff" : "rgba(255,255,255,0.35)",
-                      borderRadius: 8,
-                      width: 28,
-                      height: 28,
-                      fontSize: 14,
-                      cursor: adjacent.next ? "pointer" : "default",
-                    }}
-                  >
-                    →
-                  </button>
+                  {[
+                    { key: "first", label: "⏮", vide: "Vous êtes déjà au premier employé", pre: "Premier" },
+                    { key: "prev", label: "←", vide: "Aucun employé précédent", pre: "" },
+                  ].map(({ key, label, vide, pre }) => {
+                    const target = adjacent[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => navigate(`/employees/${target.id}`)}
+                        disabled={!target}
+                        title={target ? `${pre ? pre + " : " : ""}${target.prenom} ${target.nom} (${target.matricule})` : vide}
+                        className={target ? "btn-lift" : undefined}
+                        style={{
+                          background: "rgba(255,255,255,0.12)",
+                          border: "1px solid rgba(255,255,255,0.25)",
+                          color: target ? "#fff" : "rgba(255,255,255,0.35)",
+                          borderRadius: 10,
+                          width: 40,
+                          height: 40,
+                          fontSize: 20,
+                          lineHeight: 1,
+                          cursor: target ? "pointer" : "default",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, color: "#fff", fontSize: 14 }}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={adjacent.total || 1}
+                      value={positionInput}
+                      onChange={(e) => setPositionInput(e.target.value)}
+                      onBlur={goToPosition}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                      aria-label="Numéro de position"
+                      title="Saisir un numéro puis Entrée"
+                      style={{ width: 56, height: 40, boxSizing: "border-box", textAlign: "center", fontSize: 16, fontWeight: 700, color: "#fff", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 10 }}
+                    />
+                    <span style={{ opacity: 0.75 }}>/ {adjacent.total}</span>
+                  </div>
+                  {[
+                    { key: "next", label: "→", vide: "Aucun employé suivant", pre: "" },
+                    { key: "last", label: "⏭", vide: "Vous êtes déjà au dernier employé", pre: "Dernier" },
+                  ].map(({ key, label, vide, pre }) => {
+                    const target = adjacent[key];
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => navigate(`/employees/${target.id}`)}
+                        disabled={!target}
+                        title={target ? `${pre ? pre + " : " : ""}${target.prenom} ${target.nom} (${target.matricule})` : vide}
+                        className={target ? "btn-lift" : undefined}
+                        style={{
+                          background: "rgba(255,255,255,0.12)",
+                          border: "1px solid rgba(255,255,255,0.25)",
+                          color: target ? "#fff" : "rgba(255,255,255,0.35)",
+                          borderRadius: 10,
+                          width: 40,
+                          height: 40,
+                          fontSize: 20,
+                          lineHeight: 1,
+                          cursor: target ? "pointer" : "default",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 2 }}>

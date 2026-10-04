@@ -486,9 +486,29 @@ class EmployeeAdjacentView(generics.GenericAPIView):
             e = Employee.objects.only('id', 'nom', 'prenom', 'matricule').get(pk=eid)
             return {'id': str(e.id), 'nom': e.nom, 'prenom': e.prenom, 'matricule': e.matricule}
 
+        # ?position=N : saut direct au N-ième employé (1-indexé) de la liste triée.
+        position = request.query_params.get('position')
+        if position is not None:
+            try:
+                n = int(position)
+            except ValueError:
+                return Response({'error': 'position invalide'}, status=400)
+            if not 1 <= n <= len(ordered_ids):
+                return Response({'error': f'position hors limites (1-{len(ordered_ids)})'}, status=400)
+            return Response({'target': summary(ordered_ids[n - 1])})
+
         prev_id = ordered_ids[idx - 1] if idx not in (None, 0) else None
         next_id = ordered_ids[idx + 1] if idx is not None and idx < len(ordered_ids) - 1 else None
-        return Response({'prev': summary(prev_id), 'next': summary(next_id)})
+        # Premier/dernier de la liste triée : null si l'employé courant l'est
+        # déjà (le bouton « début/fin » est alors grisé côté frontend).
+        first_id = ordered_ids[0] if idx not in (None, 0) else None
+        last_id = ordered_ids[-1] if idx is not None and idx < len(ordered_ids) - 1 else None
+        return Response({
+            'prev': summary(prev_id), 'next': summary(next_id),
+            'first': summary(first_id), 'last': summary(last_id),
+            'position': idx + 1 if idx is not None else None,
+            'total': len(ordered_ids),
+        })
 
 
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):

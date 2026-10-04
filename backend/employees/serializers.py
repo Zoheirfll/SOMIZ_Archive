@@ -613,6 +613,20 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
             attrs['date_fin_contrat'] = None
         return attrs
 
+    def update(self, instance, validated_data):
+        # Sens inverse de Employee.sync_statut_from_dernier_contrat : la date
+        # de fin saisie sur la fiche employé est reportée sur son contrat le
+        # plus récent. Sans ça, /statistiques (qui lit Contrat.date_fin)
+        # ignorait l'échéance, et le prochain enregistrement du contrat
+        # écrasait la date de l'employé par celle, vide, du contrat.
+        instance = super().update(instance, validated_data)
+        if 'date_fin_contrat' in validated_data:
+            dernier = instance.contrats.order_by('-numero_contrat').first()
+            if dernier and dernier.date_fin != instance.date_fin_contrat:
+                dernier.date_fin = instance.date_fin_contrat
+                dernier.save()
+        return instance
+
 
 # ─── HISTORIQUE DE CARRIÈRE ───────────────────────────────────────────────────
 
