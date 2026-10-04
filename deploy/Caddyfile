@@ -1,0 +1,31 @@
+# HTTPS automatique (Let's Encrypt) pour ${DOMAIN}.
+# Prérequis : l'enregistrement DNS A du domaine pointe vers l'IP du VPS et les
+# ports 80/443 sont ouverts.
+{$DOMAIN} {
+	encode gzip
+
+	# Les fichiers statiques du build React/Django sont servis directement.
+	handle /static/* {
+		root * /srv
+		file_server
+	}
+
+	# Tout le reste (API, /django-admin/, index.html de React) passe par Django.
+	# Les documents RH ne sont JAMAIS servis directement : /media-internal/ n'est
+	# pas monté ici, ils ne sortent que par l'API authentifiée.
+	handle {
+		reverse_proxy web:8000 {
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# 20 Mo par fichier (MAX_UPLOAD_SIZE_MB) + marge multipart.
+	request_body {
+		max_size 25MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+}

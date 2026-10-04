@@ -1,0 +1,99 @@
+# SOMIZ — production sur petit VPS (1 vCore / 2 Go RAM).
+# Lancer depuis ce dossier :  docker compose -f docker-compose.prod.yml up -d --build
+# Secrets dans deploy/.env (jamais commité — copier .env.production.example).
+
+name: somiz
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    # Réglages bas pour 2 Go de RAM partagés avec les autres services.
+    command: >
+      postgres -c shared_buffers=128MB -c effective_cache_size=512MB
+      -c work_mem=4MB -c max_connections=30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      retries: 5
+    # Pas de port publié : accessible uniquement depuis le réseau Docker.
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru --save ""
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+    volumes:
+      - media:/app/media
+      - logs:/app/logs
+      - static:/app/staticfiles
+    # Migrations + collectstatic au démarrage, puis gunicorn.
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000
+             --workers 2 --timeout 60"
+
+  # OCR en tâche de fond. Gourmand en RAM : désactivé par défaut, l'activer avec
+  #   docker compose -f docker-compose.prod.yml --profile ocr up -d
+  worker:
+    profiles: ["ocr"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - media:/app/media
+      - logs:/app/logs
+    command: celery -A config worker -l info --concurrency=1
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  media:
+  logs:
+  static:
+  caddy_data:
+  caddy_config:

@@ -36,3 +36,7 @@ ngrok.exe
 
 # ─── Claude Code (config/skills locaux, pas du code applicatif) ─────────────
 .claude/
+
+# ─── Déploiement ─────────────────────────────────────────────────────────────
+deploy/.env
+deploy/backups/
