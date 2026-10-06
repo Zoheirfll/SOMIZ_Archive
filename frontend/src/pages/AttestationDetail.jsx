@@ -6,6 +6,7 @@ import { useTheme } from "../context/ThemeContext";
 import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import StatutBadge from "../components/attestations/StatutBadge";
+import ImportanceBadge from "../components/attestations/ImportanceBadge";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
@@ -307,6 +308,7 @@ export default function AttestationDetail() {
         }}>
           <InfoCard title="Détails de la demande" theme={theme}>
             <Field label="Motif" value={demande.motif_nom} theme={theme} />
+            <Field label="Importance" value={<ImportanceBadge importance={demande.importance} />} theme={theme} />
             {demande.contrat_numero && <Field label="Contrat" value={demande.contrat_numero} theme={theme} />}
           </InfoCard>
 

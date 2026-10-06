@@ -882,7 +882,7 @@ class SystemFieldLabelListView(generics.ListAPIView):
     """
     serializer_class = SystemFieldLabelSerializer
     permission_classes = [IsAdminOrConsultant]
-    queryset = SystemFieldLabel.objects.all()
+    queryset = SystemFieldLabel.objects.order_by('code')
 
 
 class SystemFieldLabelUpdateView(APIView):

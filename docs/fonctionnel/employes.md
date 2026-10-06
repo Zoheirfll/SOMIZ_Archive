@@ -412,3 +412,42 @@ Actif (plus de filtre "Statut" à ce niveau). Spec complète :
   récemment — voir section "Liste employés — colonnes configurables").
 - Dashboard **non modifié** par ce chantier (continue de compter tous les
   statuts) — laissé hors scope volontairement.
+
+## Date de fin de contrat — synchronisation Employé ↔ Contrat (2026-10-05)
+
+**Symptôme** : un contrat arrivant à échéance dans l'année (ex. fiche de
+011927, fin au 27/08/2027) n'apparaissait pas dans « Contrats arrivant à
+échéance » de `/statistiques`, alors que la fiche affichait bien la date.
+
+**Cause** : deux sources pour la même information. `/statistiques`
+(`audit.stats._contrats_echeance`) lit `Contrat.date_fin` ; la fiche affiche
+`Employee.date_fin_contrat`. Le sens Contrat → Employé existait
+(`Employee.sync_statut_from_dernier_contrat`, appelé à chaque
+`Contrat.save()/delete()`), mais **pas le sens inverse** : modifier la date
+de fin depuis le formulaire employé (`PATCH /employees/<id>/`) ne touchait
+jamais le contrat. Risque associé : le prochain enregistrement du contrat
+écrasait la date de l'employé par celle, vide, du contrat.
+
+**Règle actuelle (bidirectionnelle)** :
+- Contrat → Employé : inchangé (statut + date de fin du contrat au plus
+  grand `numero_contrat`).
+- Employé → Contrat : `EmployeeCreateUpdateSerializer.update` reporte
+  `date_fin_contrat` sur ce même « dernier contrat » quand le champ est
+  présent dans le PATCH. Passe par `Contrat.save()`, donc la synchro inverse
+  s'exécute sans boucle (idempotente).
+- Date de **début** : rien à synchroniser, `Employee` n'a pas de champ
+  `date_debut_contrat` ; la fiche lit `contrats[0].date_debut`. À la création
+  d'un employé, le formulaire envoie déjà `date_embauche` → `date_debut` et
+  `date_fin_contrat` → `date_fin` du premier contrat.
+
+**Correction de données (2026-10-05)** : 5 contrats avaient `date_fin` vide
+alors que l'employé avait une date (011927, 012277, 013049, 010584, 010451) ;
+la date de l'employé a été copiée sur le contrat (shell Django, après
+vérification en lecture seule des écarts).
+
+**Test** : `TestDateFinEmployeeVersContrat` dans `tests/test_contrat_views.py`.
+Suite complète : 635 tests OK.
+
+**À retenir** : toute nouvelle écriture directe sur `Employee.date_fin_contrat`
+(import, script) doit aussi passer par le dernier contrat, sinon l'écart
+réapparaît.

@@ -28,8 +28,18 @@ class DemandeAttestation(models.Model):
         RECUPEREE = 'recuperee', 'Récupérée'
         REJETEE = 'rejetee', 'Rejetée'
 
+    class Importance(models.TextChoices):
+        HAUTE = 'haute', 'Haute'
+        MOYENNE = 'moyenne', 'Moyenne'
+        FAIBLE = 'faible', 'Faible'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=20, unique=True, editable=False)
+    # Urgence indiquée par le demandeur à la création — aide l'ADMIN à
+    # prioriser le traitement, sans effet sur le workflow de statuts.
+    importance = models.CharField(
+        max_length=10, choices=Importance.choices, default=Importance.MOYENNE,
+    )
     employee = models.ForeignKey(
         'employees.Employee', on_delete=models.PROTECT,
         related_name='demandes_attestation',

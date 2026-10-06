@@ -34,7 +34,7 @@ class DemandeAttestationSerializer(serializers.ModelSerializer):
             'employee_date_naissance', 'employee_date_embauche',
             'employee_direction_nom', 'employee_departement_nom', 'employee_service_nom',
             'employee_poste_nom', 'employee_type_contrat_nom', 'employee_categorie_nom',
-            'contrat', 'contrat_numero', 'motif', 'motif_nom', 'commentaire', 'statut',
+            'contrat', 'contrat_numero', 'motif', 'motif_nom', 'commentaire', 'importance', 'statut',
             'motif_rejet', 'scan_document', 'demandeur', 'demandeur_nom',
             'demandeur_role', 'demandeur_libelle_role',
             'traite_par', 'traite_par_nom', 'created_at', 'date_prete',
@@ -69,7 +69,7 @@ class DemandeAttestationCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DemandeAttestation
-        fields = ['employee', 'contrat', 'motif', 'motif_autre', 'commentaire']
+        fields = ['employee', 'contrat', 'motif', 'motif_autre', 'commentaire', 'importance']
 
     def validate_employee(self, value):
         user = self.context['request'].user

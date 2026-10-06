@@ -7,6 +7,7 @@ import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import { useConfirm } from "../components/ConfirmDialog";
 import StatutBadge from "../components/attestations/StatutBadge";
+import ImportanceBadge from "../components/attestations/ImportanceBadge";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
 import { ClipboardIcon, FileTextIcon } from "../components/icons";
@@ -525,6 +526,7 @@ export default function Attestations() {
                         Demandé par {d.demandeur_nom}
                       </div>
                     </div>
+                    <ImportanceBadge importance={d.importance} />
                     <StatutBadge statut={d.statut} />
                   </Link>
                 ))}

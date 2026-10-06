@@ -41,6 +41,14 @@ du document signé. Spec complète :
   (`date_prete`) et `Récupérée` (`date_recuperee`) — `created_at` sert
   déjà de date "Reçue". `AttestationDetail.jsx#StatutStepper` affiche ces
   3 dates sous chaque cercle du stepper.
+- **Importance (2026-10-05)** : `DemandeAttestation.importance`
+  (`haute`/`moyenne`/`faible`, défaut `moyenne`, migration `0009`) choisie
+  par le demandeur à la création (`AttestationNouvelle.jsx`) pour aider
+  l'ADMIN à prioriser. Information seulement : aucun effet sur le workflow
+  de statuts ni sur les permissions, et non modifiable après création (pas
+  dans les `read_only_fields` du serializer de statut). Affichée via
+  `components/attestations/ImportanceBadge.jsx` dans la liste et le détail.
+  Pas encore de tri/filtre par importance dans `/attestations`.
 - **Périmètre** : `DemandeAttestationCreateSerializer.validate_employee()`
   réutilise `User.can_access_employee()` — un GESTIONNAIRE ne peut créer
   de demande que pour un employé de son périmètre (mêmes champs

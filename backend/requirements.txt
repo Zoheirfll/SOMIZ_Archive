@@ -51,6 +51,7 @@ python-decouple==3.8
 
 # Serveur WSGI production
 gunicorn==22.0.0
+whitenoise==6.12.0
 
 # Utilitaires
 typing_extensions==4.15.0

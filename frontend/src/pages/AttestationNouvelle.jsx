@@ -7,6 +7,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
 import EmployeeAvatar from "../components/EmployeeAvatar";
+import { IMPORTANCES } from "../components/attestations/ImportanceBadge";
 import { formatDateFR } from "../utils/formatDate";
 
 export default function AttestationNouvelle() {
@@ -22,6 +23,7 @@ export default function AttestationNouvelle() {
   const [motifs, setMotifs] = useState([]);
   const [motif, setMotif] = useState("");
   const [motifAutre, setMotifAutre] = useState("");
+  const [importance, setImportance] = useState("moyenne");
   const [commentaire, setCommentaire] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +63,7 @@ export default function AttestationNouvelle() {
     if (!employee) { setError("Sélectionnez un employé dans la liste."); return; }
     setSubmitting(true);
     try {
-      const payload = { employee: employee.id, commentaire };
+      const payload = { employee: employee.id, commentaire, importance };
       if (motif === "__autre__") payload.motif_autre = motifAutre.trim();
       else payload.motif = motif;
       if (contratId) payload.contrat = contratId;
@@ -216,6 +218,19 @@ export default function AttestationNouvelle() {
               style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12, fontSize: 14 }}
             />
           )}
+
+          <label htmlFor="importance" style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>Importance</label>
+          <select
+            id="importance"
+            className="input-focus"
+            value={importance}
+            onChange={(e) => setImportance(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, marginTop: 4, marginBottom: 12, fontSize: 14 }}
+          >
+            {IMPORTANCES.map((i) => (
+              <option key={i.value} value={i.value}>{i.label}</option>
+            ))}
+          </select>
 
           <label htmlFor="commentaire" style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>Commentaire (optionnel)</label>
           <textarea
