@@ -1225,6 +1225,28 @@ Détail : `docs/fonctionnel/notifications.md`.
 
 ---
 
+## 42. Mise à jour de PyJWT 2.13.0 → 2.15.1 (2026-10-06) — ✅ Implémenté
+
+Alertes Dependabot : 1 critique (contournement de la détection PEM
+asymétrique), 5 élevées (contournement BOM, conteneurs JWK acceptés comme
+secret HMAC, clés HMAC vides, redirections de `PyJWKClient`, clés DER comme
+secret HMAC), 8 moyennes (DoS par récursion, ReDoS `is_pem_format`...).
+`PyJWT` signe/vérifie les JWT de `djangorestframework-simplejwt` (cookies
+httpOnly) : correctif appliqué en priorité. `simplejwt 5.5.1` accepte toute
+la branche 2.x. Vérifié par la suite backend complète (666 tests) puis les
+tests d'authentification/permissions/notifications après installation.
+
+- Une alerte moyenne (mutation du dictionnaire d'options de `jwt.decode()`)
+  n'a **aucune version corrigée publiée** à ce jour : à revérifier.
+- `serialize-javascript` (frontend) : override relevé à `^7.1.2`.
+- **Non corrigé (décision à prendre)** : les ~20 alertes npm restantes
+  (`webpack-dev-server`, `braces`, `node-forge`, `webpack-dev-middleware`...)
+  viennent de `react-scripts` (CRA, abandonné) et ne concernent que
+  l'outillage de développement, pas le bundle de production. Le correctif
+  réel est une migration vers Vite ; `npm audit fix --force` casserait le build.
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

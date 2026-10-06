@@ -29,6 +29,14 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
+  // Desktop étroit (769–1500 px, ex. portable 1366 px) : la barre ne tient
+  // pas sur une ligne avec nom + rôle, 5 icônes et le bouton Déconnexion.
+  // On masque le bloc texte (l'avatar reste cliquable, avec infobulle) et on
+  // resserre les marges plutôt que de laisser la page défiler à l'horizontale.
+  const isCompact = useIsMobile(1500);
+  // Sous ~1300 px, même l'étiquette de rôle abrégée ferait déborder la barre.
+  const isNarrow = useIsMobile(1300);
+  const ROLE_SHORT = { SUPERADMIN: "SUPER", ADMIN: "ADMIN", CONSULTANT: "CONSULT.", GESTIONNAIRE: "GEST." };
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const { openHelp, openPalette } = useKeyboardShortcutsHelp();
@@ -140,7 +148,7 @@ const Navbar = () => {
       style={{
         background: theme.surface,
         borderBottom: `1px solid ${theme.border}`,
-        padding: isMobile ? "0 16px" : "0 32px",
+        padding: isMobile ? "0 16px" : isCompact ? "0 20px" : "0 32px",
         height: 64,
         display: "flex",
         alignItems: "center",
@@ -191,7 +199,7 @@ const Navbar = () => {
                   border: "none",
                   borderRadius: 8,
                   color: theme.text,
-                  padding: "7px 14px",
+                  padding: isCompact ? "7px 10px" : "7px 14px",
                   cursor: "pointer",
                   fontSize: 13,
                   fontWeight: 700,
@@ -326,9 +334,10 @@ const Navbar = () => {
       )}
 
       {/* Profil (desktop) / hamburger (mobile) */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: isCompact ? 8 : 10, flexShrink: 0 }}>
         {!isMobile && (
           <>
+            {!isCompact && (
             <div
               onClick={() => navigate("/profil")}
               style={{ textAlign: "right", cursor: "pointer" }}
@@ -349,9 +358,22 @@ const Navbar = () => {
                 {user?.role}
               </div>
             </div>
+            )}
 
             <div
+              role="button"
+              tabIndex={0}
+              aria-label={`Mon profil — ${user?.prenom || ""} ${user?.nom || ""} (${user?.role || ""})`}
+              title={`${user?.prenom || ""} ${user?.nom || ""} — ${user?.role || ""}`}
+              onClick={() => navigate("/profil")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate("/profil");
+                }
+              }}
               style={{
+                cursor: "pointer",
                 width: 36,
                 height: 36,
                 background: theme.primaryBg,
@@ -370,6 +392,27 @@ const Navbar = () => {
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
             </div>
+
+            {isCompact && !isNarrow && user?.role && (
+              <span
+                title={user.role}
+                style={{
+                  color: theme.primary,
+                  background: theme.primaryBg,
+                  border: `1px solid ${theme.primaryBorder}`,
+                  borderRadius: 6,
+                  padding: "2px 6px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {ROLE_SHORT[user.role] || user.role}
+              </span>
+            )}
 
             <NotificationBell />
             <button
@@ -444,11 +487,13 @@ const Navbar = () => {
                 background: "transparent",
                 border: `1px solid ${theme.border}`,
                 color: theme.textSecondary,
-                padding: "7px 14px",
+                padding: isCompact ? "7px 10px" : "7px 14px",
                 borderRadius: 8,
                 cursor: "pointer",
                 fontSize: 13,
                 fontWeight: 500,
+                whiteSpace: "nowrap",
+                flexShrink: 0,
                 fontFamily: theme.fontFamily,
                 transition: "all 0.15s",
               }}

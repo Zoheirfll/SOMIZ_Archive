@@ -52,7 +52,7 @@
     "css-select": "^4.3.0",
     "svgo": "^2.8.4",
     "postcss": "^8.5.28",
-    "serialize-javascript": "^7.0.5",
+    "serialize-javascript": "^7.1.2",
     "uuid": "^11.1.1"
   },
   "devDependencies": {

@@ -23,7 +23,7 @@ django-redis==5.4.0
 async-timeout==5.0.1
 
 # JWT
-PyJWT==2.13.0
+PyJWT==2.15.1
 
 # Fichiers & images
 Pillow==12.3.0
