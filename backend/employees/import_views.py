@@ -469,6 +469,9 @@ class EmployeeImportView(APIView):
                 },
             )
 
+        from notifications.alerts import notifier_import_termine
+        notifier_import_termine(nb_crees, len(erreurs), request.user)
+
         return Response({
             'nb_crees': nb_crees,
             'nb_erreurs': len(erreurs),

@@ -61,6 +61,7 @@ LOCAL_APPS = [
     'audit',
     'ocr',
     'attestations',
+    'notifications',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -68,6 +69,9 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # ─── MIDDLEWARE ───────────────────────────────────────────────────────────────
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Sert les fichiers racine du build React (pdf.worker.min.js, logo, favicon...)
+    # que la route fourre-tout de config/urls.py renverrait sinon en index.html.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -361,3 +365,7 @@ LOGIN_LOCKOUT_DURATION = timedelta(minutes=30)
 AUDIT_ALERT_THRESHOLD = 20  # consultations par heure avant alerte
 
 STATICFILES_DIRS = [BASE_DIR / 'frontend_build' / 'static']
+# Fichiers de frontend/public/ copiés à la racine du build (hors /static) : sans
+# ça, GET /pdf.worker.min.js répond index.html et le visionneur PDF échoue.
+# WHITENOISE_INDEX_FILE reste False : index.html reste servi par React Router.
+WHITENOISE_ROOT = BASE_DIR / 'frontend_build'

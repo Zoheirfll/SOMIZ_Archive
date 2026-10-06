@@ -14,6 +14,7 @@ urlpatterns = [
         path('ref/import/<str:model>/template/', __import__('employees.import_views', fromlist=['ReferentielImportTemplateView']).ReferentielImportTemplateView.as_view()),
         path('ocr/', include('ocr.urls')),
         path('attestations/', include('attestations.urls')),
+        path('notifications/', include('notifications.urls')),
     ])),
     # React — doit être en dernier
     re_path(r'^(?!api/|django-admin/|static/).*$', TemplateView.as_view(template_name='index.html')),

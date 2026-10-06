@@ -78,6 +78,20 @@ Copier ensuite `deploy/backups/*.gpg` **hors du VPS** (poste local, autre
 hébergeur). Planifier avec `cron` (ex. chaque nuit). Tester une restauration au
 moins une fois : une sauvegarde jamais restaurée n'est pas une sauvegarde.
 
+### Tâches quotidiennes des notifications
+
+Pas de Celery beat dans la stack : deux commandes à planifier avec `cron` sur
+l'hôte (adapter le chemin du dépôt) :
+
+```cron
+# Échéances de contrats + comptes sans consentement (idempotent)
+0 7 * * * cd /opt/somiz/deploy && docker compose -f docker-compose.prod.yml exec -T web python manage.py notifier_echeances_contrat
+# Purge des notifications lues depuis plus de 30 jours
+30 3 * * * cd /opt/somiz/deploy && docker compose -f docker-compose.prod.yml exec -T web python manage.py purge_notifications
+```
+Voir `docs/fonctionnel/notifications.md`. Tester d'abord `purge_notifications
+--dry-run`.
+
 ## 6. Fin des tests — purge
 
 Jamais de purge sans : (1) sauvegarde, (2) liste précise validée de ce qui est

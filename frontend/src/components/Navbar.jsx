@@ -7,6 +7,7 @@ import { useTheme, useThemeMode } from "../context/ThemeContext";
 import useIsMobile from "../hooks/useIsMobile";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import { KeyboardIcon, SunIcon, MoonIcon, SearchIcon } from "./icons";
+import NotificationBell from "./NotificationBell";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -370,6 +371,7 @@ const Navbar = () => {
               {user?.nom?.[0]}
             </div>
 
+            <NotificationBell />
             <button
               onClick={openPalette}
               aria-label="Recherche rapide"
@@ -490,6 +492,7 @@ const Navbar = () => {
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
             </div>
+            <NotificationBell size={38} />
             <button
               onClick={openPalette}
               aria-label="Recherche rapide"

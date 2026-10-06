@@ -608,9 +608,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     def register_failed_login(self):
         """Incrémente le compteur d'échecs et verrouille si nécessaire."""
         self.failed_login_attempts += 1
+        newly_locked = False
         if self.failed_login_attempts >= settings.MAX_LOGIN_ATTEMPTS:
+            newly_locked = not self.is_locked()
             self.locked_until = timezone.now() + settings.LOGIN_LOCKOUT_DURATION
         self.save(update_fields=['failed_login_attempts', 'locked_until'])
+        if newly_locked:
+            from notifications.alerts import notifier_compte_verrouille
+            notifier_compte_verrouille(self)
 
     def reset_login_attempts(self):
         """Réinitialise après connexion réussie."""

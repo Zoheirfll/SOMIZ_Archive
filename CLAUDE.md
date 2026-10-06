@@ -50,6 +50,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - [`docs/fonctionnel/statistiques-audit.md`](docs/fonctionnel/statistiques-audit.md) — À lire avant de toucher à /statistiques, à audit/stats.py ou aux liens de preuve vers /audit.
 - [`docs/fonctionnel/comptes-conformite.md`](docs/fonctionnel/comptes-conformite.md) — À lire avant de toucher à la suppression de compte, aux permissions IsAdmin/IsAdminOrConsultant ou au flux de consentement.
 - [`docs/fonctionnel/attestations.md`](docs/fonctionnel/attestations.md) — À lire avant de toucher à l'app attestations (workflow de statuts, PDF ReportLab, configuration du modèle, mode test, statistiques).
+- [`docs/fonctionnel/notifications.md`](docs/fonctionnel/notifications.md) — À lire avant de toucher aux notifications in-app (cloche, `notifications/service.py`, purge) ou d'ajouter une source d'événement qui notifie des utilisateurs.
 - [`docs/fonctionnel/ui-conventions.md`](docs/fonctionnel/ui-conventions.md) — À lire avant d'écrire ou de modifier une page/un composant React : design system, dates, modales de confirmation, refresh silencieux, responsive.
 
 **Règles critiques à ne jamais oublier, même sans avoir lu le détail :**

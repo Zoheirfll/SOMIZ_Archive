@@ -640,6 +640,9 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
             target=employee,
             details=details
         )
+        if changed:
+            from notifications.alerts import notifier_employe_modifie
+            notifier_employe_modifie(employee, changed, self.request.user)
 
     def perform_destroy(self, instance):
         """Suppression définitive et irréversible — employé, contrats,

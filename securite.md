@@ -909,6 +909,34 @@ authentification applicative en face — ces outils ne remplacent aucun
 contrôle d'accès SOMIZ (JWT, RBAC, scoping), ils ne font qu'exposer le port
 tel quel à quiconque connaît l'URL.
 
+**Complément 2026-10-05 — lenteur du tunnel et démo via build de production**
+(dev uniquement, mêmes réserves : données de test seulement).
+- Lenteur observée avec `cloudflared tunnel --url http://localhost:3000` :
+  timeouts QUIC/UDP répétés (`no recent network activity`, reconnexions et
+  changement de région) + serveur de dev React lourd + PDF annulés. Parades :
+  `--protocol http2`, cible `127.0.0.1`, et build de production servi par
+  Django (un seul port, même origine ; `backend/frontend_build`).
+- Piège découvert : via un tunnel HTTP/2, les uploads arrivent en
+  `Transfer-Encoding: chunked`, que `runserver` (HTTP/1.0) ne sait pas lire
+  (`Bad request syntax ('0')`, POST jamais traité). Parade de démo :
+  `scripts/demo_server.py` (waitress + `StaticFilesHandler`), non ajouté à
+  `requirements.txt` (outil de démo, pas de prod).
+- Piège 2 : la route fourre-tout de `config/urls.py` renvoie `index.html`
+  pour les fichiers de `frontend/public/` copiés à la racine du build
+  (`/pdf.worker.min.js` → visionneur PDF « Failed to load PDF file » ;
+  `/logo_somiz.png`, `/favicon.ico` cassés). **Corrigé le 2026-10-05 avec
+  WhiteNoise** (décision validée) : middleware `whitenoise.middleware.
+  WhiteNoiseMiddleware` + `WHITENOISE_ROOT = frontend_build` dans
+  `settings.py`, `whitenoise==6.12.0` dans `requirements.txt`.
+  `WHITENOISE_INDEX_FILE` reste à False (index.html toujours servi par la
+  route React). Alternatives écartées : route `django.views.static.serve`
+  (moins performante), déplacement du worker dans `/static` (ne règle pas
+  logo/favicon), simple consigne au frontal (déploiement pas encore
+  décidé). Le contournement temporaire de `demo_server.py` a été retiré.
+- Après chaque nouveau tunnel : mettre l'URL dans `CLOUDFLARE_URL`
+  (`backend/.env`) et redémarrer Django (sinon CSRF refuse POST/PATCH/DELETE).
+- Script : `scripts/demo-tunnel.ps1`.
+
 ---
 
 ## 36. Rotation par défaut des documents — enregistrement réservé ADMIN/SUPERADMIN (2026-09-17) — ✅ Implémenté
@@ -1165,6 +1193,35 @@ sécurité/l'intégrité des données :
   motif d'attestation (ou l'inverse) aurait été possible en passant
   directement les ids par l'API, malgré la séparation visuelle en deux
   onglets côté `/parametres`.
+
+---
+
+## 41. Système de notifications in-app — socle (2026-10-06) — ✅ Implémenté
+
+Détail : `docs/fonctionnel/notifications.md`.
+
+- **Isolation par destinataire** : toutes les routes `/api/notifications/`
+  filtrent sur `recipient=request.user` ; la notification d'un autre compte
+  renvoie 404 (pas de fuite d'existence). Testé sur de vraies routes
+  (`tests/test_notifications.py`), y compris `tout-lire` qui ne touche que
+  les lignes du compte.
+- **Texte neutre** : aucun nom d'employé ni donnée personnelle stocké dans
+  `message` ; une notification n'octroie aucun accès (`link` = navigation, la
+  page cible refait ses contrôles de scoping).
+- **Scoping à la diffusion** : `notify_role(..., employee=...)` ne notifie un
+  CONSULTANT/GESTIONNAIRE que si `can_access_employee()` est vrai.
+- **Robustesse** : création après commit (pas de notification fantôme) et
+  exceptions avalées (une panne de notification ne casse jamais une action
+  métier).
+- **Rétention minimale** : `purge_notifications` supprime les notifications
+  lues de plus de 30 jours (option `--dry-run`), jamais les non lues.
+- **Sources branchées (même jour)** : alerte de verrouillage de compte
+  (`critical`) soumise à la règle de visibilité de l'audit — un ADMIN
+  ordinaire n'est jamais alerté du verrouillage d'un autre ADMIN ni d'un
+  SUPERADMIN ; notifications d'employé (archivage/transfert) diffusées avec
+  `can_access_employee()` ; aucun nom d'employé dans les messages (matricule
+  ou référence uniquement). Voir le tableau des sources dans
+  `docs/fonctionnel/notifications.md`.
 
 ---
 

@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from audit.models import AuditLog
 from .models import DemandeAttestation, AttestationTemplateConfig
 from .pdf import build_attestation_pdf, LOGO_PAR_DEFAUT
+from .notifications import notifier_nouvelle_demande, notifier_changement_statut
 from .permissions import CanAccessAttestations, CanRequestAttestation, IsAttestationManager
 from .serializers import (
     DemandeAttestationSerializer, DemandeAttestationCreateSerializer,
@@ -105,6 +106,7 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
             self.request, AuditLog.Action.CREATE_ATTESTATION, target=demande,
             details={'employee': str(demande.employee), 'motif': demande.motif.nom},
         )
+        notifier_nouvelle_demande(demande)
 
 
 class DemandeAttestationDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIView):
@@ -167,6 +169,7 @@ class DemandeAttestationStatutView(ReferenceLookupMixin, generics.UpdateAPIView)
                 'motif_rejet': demande.motif_rejet or None,
             },
         )
+        notifier_changement_statut(demande, request.user)
         return Response(DemandeAttestationSerializer(demande).data)
 
 
@@ -209,6 +212,7 @@ class DemandeAttestationBulkStatutView(APIView):
                 request, AuditLog.Action.STATUT_ATTESTATION, target=demande,
                 details={'de': ancien_statut, 'vers': demande.statut},
             )
+            notifier_changement_statut(demande, request.user)
             updated.append(demande.reference)
 
         return Response({'updated': updated, 'errors': errors})
