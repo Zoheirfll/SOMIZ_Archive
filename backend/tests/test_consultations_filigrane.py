@@ -50,6 +50,17 @@ def test_image_png_est_modifiee_et_reste_un_png():
     assert image.getcolors(maxcolors=100000) != [(400 * 300, (255, 255, 255))]  # plus unie
 
 
+def test_grande_image_est_filigranee_sur_toute_sa_surface():
+    """Le motif est collé à répétition sur toute l'image (pas seulement au
+    centre) : on vérifie les quatre coins d'une image plus grande que le motif."""
+    sortie, _ = appliquer_filigrane(_png_blanc((2400, 1800)), 'image/png', TEXTE)
+    image = Image.open(BytesIO(sortie)).convert('RGB')
+    assert image.size == (2400, 1800)
+    for boite in ((0, 0, 600, 450), (1800, 0, 2400, 450), (0, 1350, 600, 1800), (1800, 1350, 2400, 1800)):
+        zone = image.crop(boite)
+        assert zone.getcolors(maxcolors=1_000_000) != [(zone.width * zone.height, (255, 255, 255))]
+
+
 def test_image_jpeg_reste_un_jpeg():
     buf = BytesIO()
     Image.new('RGB', (300, 200), 'white').save(buf, format='JPEG')

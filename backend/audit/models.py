@@ -42,6 +42,7 @@ class AuditLog(models.Model):
         DELETE_CONSULTATION = 'DELETE_CONSULTATION', 'Annulation demande consultation'
         VIEW_CONSULTATION = 'VIEW_CONSULTATION', 'Consultation fichier livré'
         DL_CONSULTATION = 'DL_CONSULTATION', 'Téléchargement fichier livré'
+        PRINT_CONSULTATION = 'PRINT_CONSULTATION', 'Impression fichier livré'
         PROLONG_CONSULTATION = 'PROLONG_CONSULTATION', 'Prolongation consultation'
         PURGE_CONSULTATION = 'PURGE_CONSULTATION', 'Purge fichier livré'
         CREATE_REF = 'CREATE_REF', 'Création référentiel'

@@ -37,7 +37,9 @@ const BASE = {
   description: "Contrat de 2019", employee: null, employee_nom: null,
   demandeur_nom: "Ali Ben", traite_par_nom: null, motif_rejet: "",
   created_at: "2026-10-08T09:00:00Z", date_validation: null, date_echeance: null,
-  nb_prolongations: 0, telechargement_autorise: false, fichiers: [],
+  nb_prolongations: 0, telechargement_autorise: false, impression_autorisee: false, fichiers: [],
+  duree_souhaitee_heures: 24, telechargement_souhaite: false, impression_souhaitee: false,
+  duree_accordee_heures: null,
   statut: "en_cours", statut_effectif: "en_cours",
 };
 const VALIDEE = {
@@ -47,7 +49,8 @@ const VALIDEE = {
 };
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  // resetAllMocks : vide aussi les réponses « une fois » non consommées.
+  jest.resetAllMocks();
   global.URL.createObjectURL = jest.fn(() => "blob:test");
   global.URL.revokeObjectURL = jest.fn();
 });
@@ -80,6 +83,68 @@ describe("ConsultationDetail", () => {
     render();
     await screen.findByTestId("viewer");
     expect(screen.getByRole("button", { name: /Télécharger/i })).toBeInTheDocument();
+  });
+
+  test("bouton Imprimer seulement si l'impression est accordée ; il prévient le serveur", async () => {
+    connecte({ role: "GESTIONNAIRE", id: "u1" }, VALIDEE);
+    const { unmount } = render();
+    await screen.findByTestId("viewer");
+    expect(screen.queryByRole("button", { name: /Imprimer/i })).not.toBeInTheDocument();
+    unmount();
+
+    connecte({ role: "GESTIONNAIRE", id: "u1" }, { ...VALIDEE, impression_autorisee: true });
+    api.post.mockResolvedValueOnce({ status: 204 });
+    render();
+    await userEvent.click(await screen.findByRole("button", { name: /Imprimer/i }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      "/consultations/demandes/C-00001-26/fichiers/f1/imprimer/",
+    ));
+  });
+
+  test("impression refusée par le serveur : message affiché", async () => {
+    connecte({ role: "GESTIONNAIRE", id: "u1" }, { ...VALIDEE, impression_autorisee: true });
+    api.post.mockRejectedValueOnce({ response: { data: { detail: "L'impression n'est pas autorisée." } } });
+    render();
+    await userEvent.click(await screen.findByRole("button", { name: /Imprimer/i }));
+    expect(await screen.findByText(/impression n'est pas autorisée/i)).toBeInTheDocument();
+  });
+
+  test("souhaits du demandeur et droits accordés sont affichés côte à côte", async () => {
+    connecte({ role: "GESTIONNAIRE", id: "u1" }, {
+      ...VALIDEE, duree_souhaitee_heures: 72, duree_accordee_heures: 24,
+      telechargement_souhaite: true, telechargement_autorise: false,
+      impression_souhaitee: false, impression_autorisee: false,
+    });
+    render();
+    await screen.findByTestId("viewer");
+    expect(screen.getByText("3 jours")).toBeInTheDocument();            // durée souhaitée
+    expect(screen.getByText("Modifiée par le traiteur")).toBeInTheDocument();
+    expect(screen.getByText(/Souhaité : oui — modifié par le traiteur/)).toBeInTheDocument();
+  });
+
+  test("traiteur : les souhaits préremplissent le panneau, les modifications sont signalées et envoyées", async () => {
+    connecte({ role: "ADMIN", id: "u2", can_manage_consultations: true }, {
+      ...BASE, duree_souhaitee_heures: 48, telechargement_souhaite: true, impression_souhaitee: true,
+    });
+    api.post.mockResolvedValueOnce({ data: BASE });
+    render();
+    expect(await screen.findByText(/Souhaits du demandeur/)).toBeInTheDocument();
+    const impression = screen.getByLabelText(/Autoriser l'impression/);
+    expect(impression).toBeChecked();                                   // souhait préaccordé
+    expect(screen.getByLabelText(/Autoriser le téléchargement/)).toBeChecked();
+    await userEvent.click(impression);                                  // le traiteur refuse l'impression
+    expect(screen.getByText("(modifié)")).toBeInTheDocument();
+    await userEvent.upload(
+      screen.getByLabelText("Choisir des fichiers"),
+      new File([new ArrayBuffer(10)], "scan.pdf", { type: "application/pdf" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Valider et envoyer/i }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    const [url, form] = api.post.mock.calls[0];
+    expect(url).toBe("/consultations/demandes/C-00001-26/valider/");
+    expect(form.get("duree_heures")).toBe("48");
+    expect(form.get("telechargement_autorise")).toBe("true");
+    expect(form.get("impression_autorisee")).toBe("false");
   });
 
   test("consultation expirée : message à la place du viewer", async () => {

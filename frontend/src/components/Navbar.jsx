@@ -136,16 +136,19 @@ const Navbar = () => {
     // sinon puisque Navbar ne se démonte pas entre deux pages de l'app.
   }, [user?.role, location.pathname]);
 
+  // Entrée unique « Demandes » : regroupe les attestations de travail et les
+  // consultations d'archives (sélecteur d'onglets en haut de chaque liste,
+  // voir DemandesTabs). Mène à la première section accessible ; le badge
+  // additionne les deux compteurs « à traiter ».
+  const demandesPath = canSeeAttestations ? "/attestations" : "/consultations";
   const navLinks = [
     { path: "/employees", label: "Personnel" },
     { path: "/organigramme", label: "Organigramme" },
     {
-      path: "/attestations", label: "Attestations",
-      show: canSeeAttestations,
-    },
-    {
-      path: "/consultations", label: "Consultations",
-      show: canSeeConsultations,
+      path: demandesPath, label: "Demandes",
+      show: canSeeAttestations || canSeeConsultations,
+      match: (p) => p.startsWith("/attestations") || p.startsWith("/consultations"),
+      badge: pendingAttestations + pendingConsultations,
     },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
@@ -214,7 +217,7 @@ const Navbar = () => {
       {!isMobile && (
         <div style={{ display: "flex", gap: 2 }}>
           {navLinks.map((item) => {
-            const isActive = location.pathname === item.path;
+            const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
             return (
               <button
                 key={item.path}
@@ -246,22 +249,13 @@ const Navbar = () => {
                 }}
               >
                 {item.label}
-                {item.path === "/attestations" && pendingAttestations > 0 && (
+                {item.badge > 0 && (
                   <span style={{
                     marginLeft: 6, background: theme.danger, color: "#fff",
                     borderRadius: 999, fontSize: 10, fontWeight: 700,
                     padding: "1px 6px", display: "inline-block",
                   }}>
-                    {pendingAttestations}
-                  </span>
-                )}
-                {item.path === "/consultations" && pendingConsultations > 0 && (
-                  <span style={{
-                    marginLeft: 6, background: theme.danger, color: "#fff",
-                    borderRadius: 999, fontSize: 10, fontWeight: 700,
-                    padding: "1px 6px", display: "inline-block",
-                  }}>
-                    {pendingConsultations}
+                    {item.badge}
                   </span>
                 )}
               </button>
@@ -672,7 +666,7 @@ const Navbar = () => {
             </div>
 
             {[...navLinks, ...(isAdmin ? adminMenuLinks : [])].map((item) => {
-              const isActive = location.pathname === item.path;
+              const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
               return (
                 <button
                   key={item.path}
@@ -691,22 +685,13 @@ const Navbar = () => {
                   }}
                 >
                   {item.label}
-                  {item.path === "/attestations" && pendingAttestations > 0 && (
+                  {item.badge > 0 && (
                     <span style={{
                       marginLeft: 6, background: theme.danger, color: "#fff",
                       borderRadius: 999, fontSize: 10, fontWeight: 700,
                       padding: "1px 6px", display: "inline-block",
                     }}>
-                      {pendingAttestations}
-                    </span>
-                  )}
-                  {item.path === "/consultations" && pendingConsultations > 0 && (
-                    <span style={{
-                      marginLeft: 6, background: theme.danger, color: "#fff",
-                      borderRadius: 999, fontSize: 10, fontWeight: 700,
-                      padding: "1px 6px", display: "inline-block",
-                    }}>
-                      {pendingConsultations}
+                      {item.badge}
                     </span>
                   )}
                 </button>

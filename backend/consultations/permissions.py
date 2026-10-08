@@ -33,10 +33,12 @@ class IsConsultationManager(BasePermission):
 
 
 class CanRequestConsultation(BasePermission):
-    """Création/annulation : GESTIONNAIRE et CONSULTANT uniquement. Un
-    traiteur ne crée pas de demande (séparation demandeur/validateur)."""
-    message = "Seuls les comptes Gestionnaire et Consultant peuvent demander une consultation."
+    """Création/annulation : GESTIONNAIRE, CONSULTANT et SUPERADMIN (comme
+    pour les attestations, voir CanRequestAttestation). Un ADMIN ordinaire,
+    même chargé des consultations, reste uniquement traiteur : séparation
+    demandeur/validateur."""
+    message = "Seuls les comptes Gestionnaire, Consultant et Super-administrateur peuvent demander une consultation."
 
     def has_permission(self, request, view):
         user = request.user
-        return _compte_valide(user) and user.role in ('GESTIONNAIRE', 'CONSULTANT')
+        return _compte_valide(user) and user.role in ('GESTIONNAIRE', 'CONSULTANT', 'SUPERADMIN')

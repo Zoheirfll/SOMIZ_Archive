@@ -79,9 +79,10 @@ def test_prolongation_refusee_si_revoquee_ou_en_cours(traiteur, demande_validee,
     assert resp.status_code == 400
 
 
-def test_prolongation_duree_hors_presets(traiteur, demande_validee):
-    resp = _client(traiteur).post(URL, {'duree_heures': 7}, format='json')
-    assert resp.status_code == 400
+def test_prolongation_duree_libre_et_bornes(traiteur, demande_validee):
+    assert _client(traiteur).post(URL, {'duree_heures': 7}, format='json').status_code == 200
+    for duree in (0, -1, 'abc'):
+        assert _client(traiteur).post(URL, {'duree_heures': duree}, format='json').status_code == 400
 
 
 def test_prolongation_par_non_traiteur_refusee(gestionnaire_user, admin_user, demande_validee):

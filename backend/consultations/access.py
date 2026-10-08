@@ -39,5 +39,10 @@ def controler_acces(user, demande, fichier, now=None):
         if not demande.est_active(now):
             quand = timezone.localtime(demande.date_echeance).strftime('%d/%m/%Y à %H:%M')
             raise PermissionDenied(f"Consultation expirée le {quand}.")
+        # Le périmètre est revérifié à chaque lecture : un demandeur dont le
+        # périmètre a été réduit depuis la création de la demande ne garde pas
+        # l'accès aux données de l'employé jusqu'à l'échéance.
+        if demande.employee_id and not user.can_access_employee(demande.employee):
+            raise PermissionDenied("Cet employé n'est plus dans votre périmètre.")
     if fichier.supprime_le is not None:
         raise Gone()

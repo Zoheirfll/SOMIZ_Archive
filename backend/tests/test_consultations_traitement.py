@@ -51,6 +51,55 @@ def test_validation_avec_telechargement_autorise(traiteur, demande_en_cours, pdf
     assert demande_en_cours.telechargement_autorise is True
 
 
+def _demande_avec_souhaits(gestionnaire_user, reference='C-00030/26', duree=48, telechargement=True, impression=True):
+    return DemandeConsultation.objects.create(
+        reference=reference, type_demande='document', description='x', demandeur=gestionnaire_user,
+        duree_souhaitee_heures=duree, telechargement_souhaite=telechargement, impression_souhaitee=impression,
+    )
+
+
+def test_souhaits_du_demandeur_accordes_tels_quels(traiteur, gestionnaire_user, pdf_bytes):
+    """Sans précision du traiteur, la durée et les droits demandés s'appliquent."""
+    demande = _demande_avec_souhaits(gestionnaire_user)
+    avant = timezone.now()
+    resp = _client(traiteur).post('/api/consultations/demandes/C-00030-26/valider/', {
+        'fichiers': [_pdf(pdf_bytes)],
+    }, format='multipart')
+    assert resp.status_code == 200, resp.data
+    demande.refresh_from_db()
+    assert timedelta(0) <= demande.date_echeance - (avant + timedelta(hours=48)) < timedelta(seconds=10)
+    assert demande.telechargement_autorise is True
+    assert demande.impression_autorisee is True
+    assert resp.data['duree_souhaitee_heures'] == 48
+    assert resp.data['duree_accordee_heures'] == 48
+
+
+def test_traiteur_peut_modifier_les_souhaits(traiteur, gestionnaire_user, pdf_bytes):
+    """Le traiteur accorde ou change : ce qu'il précise remplace le souhait."""
+    demande = _demande_avec_souhaits(gestionnaire_user, reference='C-00031/26')
+    resp = _client(traiteur).post('/api/consultations/demandes/C-00031-26/valider/', {
+        'duree_heures': 2, 'telechargement_autorise': 'false', 'impression_autorisee': 'false',
+        'fichiers': [_pdf(pdf_bytes)],
+    }, format='multipart')
+    assert resp.status_code == 200, resp.data
+    demande.refresh_from_db()
+    assert demande.telechargement_autorise is False
+    assert demande.impression_autorisee is False
+    assert resp.data['duree_accordee_heures'] == 2
+    assert resp.data['duree_souhaitee_heures'] == 48        # le souhait reste visible
+
+
+def test_modification_partielle_garde_le_reste_du_souhait(traiteur, gestionnaire_user, pdf_bytes):
+    demande = _demande_avec_souhaits(gestionnaire_user, reference='C-00032/26')
+    _client(traiteur).post('/api/consultations/demandes/C-00032-26/valider/', {
+        'impression_autorisee': 'false', 'fichiers': [_pdf(pdf_bytes)],
+    }, format='multipart')
+    demande.refresh_from_db()
+    assert demande.impression_autorisee is False
+    assert demande.telechargement_autorise is True          # souhait conservé
+    assert demande.date_echeance_initiale - demande.date_validation == timedelta(hours=48)
+
+
 def test_validation_sans_fichier_refusee(traiteur, demande_en_cours):
     resp = _client(traiteur).post(URL_VALIDER, {'duree_heures': 24}, format='multipart')
     assert resp.status_code == 400
@@ -58,12 +107,48 @@ def test_validation_sans_fichier_refusee(traiteur, demande_en_cours):
     assert demande_en_cours.statut == DemandeConsultation.Statut.EN_COURS
 
 
-def test_duree_hors_presets_refusee(traiteur, demande_en_cours, pdf_bytes):
+def test_duree_libre_acceptee_dans_les_bornes(traiteur, demande_en_cours, pdf_bytes):
+    """La durée est personnalisable (les paliers ne sont que des raccourcis)."""
+    avant = timezone.now()
     resp = _client(traiteur).post(URL_VALIDER, {
         'duree_heures': 5, 'fichiers': [_pdf(pdf_bytes)],
     }, format='multipart')
+    assert resp.status_code == 200, resp.data
+    demande_en_cours.refresh_from_db()
+    ecart = demande_en_cours.date_echeance - (avant + timedelta(hours=5))
+    assert timedelta(0) <= ecart < timedelta(seconds=10)
+
+
+def test_duree_hors_bornes_refusee(traiteur, demande_en_cours, pdf_bytes, settings):
+    settings.CONSULTATION_MAX_DUREE_TOTALE_HEURES = 100
+    for duree in ('0', '-3', '101', 'abc', ''):
+        resp = _client(traiteur).post(URL_VALIDER, {
+            'duree_heures': duree, 'fichiers': [_pdf(pdf_bytes)],
+        }, format='multipart')
+        assert resp.status_code == 400, duree
+        assert 'duree_heures' in resp.data
+    demande_en_cours.refresh_from_db()
+    assert demande_en_cours.statut == DemandeConsultation.Statut.EN_COURS
+
+
+def test_fichier_trop_volumineux_refuse(traiteur, demande_en_cours, pdf_bytes, settings):
+    settings.CONSULTATION_MAX_FICHIER_MB = 1
+    gros = SimpleUploadedFile('gros.pdf', pdf_bytes + b'0' * (2 * 1024 * 1024), content_type='application/pdf')
+    resp = _client(traiteur).post(URL_VALIDER, {'duree_heures': 24, 'fichiers': [gros]}, format='multipart')
     assert resp.status_code == 400
-    assert 'duree_heures' in resp.data
+    assert 'dépasse 1 Mo' in str(resp.data)
+
+
+def test_taille_cumulee_limitee(traiteur, demande_en_cours, pdf_bytes, settings):
+    settings.CONSULTATION_MAX_TOTAL_MB = 1
+    fichiers = [
+        SimpleUploadedFile(f'{i}.pdf', pdf_bytes + b'0' * (600 * 1024), content_type='application/pdf')
+        for i in range(2)
+    ]
+    resp = _client(traiteur).post(URL_VALIDER, {'duree_heures': 24, 'fichiers': fichiers}, format='multipart')
+    assert resp.status_code == 400
+    assert 'au total' in str(resp.data)
+    assert not ConsultationFichier.objects.exists()
 
 
 def test_type_mime_interdit_refuse(traiteur, demande_en_cours):
@@ -95,8 +180,12 @@ def test_double_validation_refusee(traiteur, demande_en_cours, pdf_bytes):
 
 
 def test_validation_par_copie_dun_document_archive(
-    traiteur, gestionnaire_user, employee, direction, employee_document_file,
+    traiteur, gestionnaire_user, employee, direction, employee_document_file, pdf_bytes,
 ):
+    # La fixture écrit un faux PDF ; la livraison contrôle désormais le nombre
+    # de pages (limite de coût du filigrane) : on lui substitue un vrai PDF.
+    with open(employee_document_file.file.path, 'wb') as fh:
+        fh.write(pdf_bytes)
     demande = DemandeConsultation.objects.create(
         reference='C-00005/26', type_demande='document', description='CV',
         demandeur=gestionnaire_user, employee=employee,
@@ -153,6 +242,73 @@ def test_validation_trace_audit_et_notifie(
     notif = Notification.objects.get(recipient=gestionnaire_user)
     assert notif.type == Notification.Type.CONSULTATION_VALIDEE
     assert demande_en_cours.reference in notif.message
+
+
+def test_superadmin_peut_traiter_sa_propre_demande(superadmin_user, pdf_bytes):
+    """Comme pour les attestations : un SUPERADMIN peut tout faire, y compris
+    valider sa propre demande (les deux rôles restent tracés dans l'audit)."""
+    demande = DemandeConsultation.objects.create(
+        reference='C-00020/26', type_demande='document', description='x', demandeur=superadmin_user,
+    )
+    resp = _client(superadmin_user).post('/api/consultations/demandes/C-00020-26/valider/', {
+        'duree_heures': 24, 'fichiers': [_pdf(pdf_bytes)],
+    }, format='multipart')
+    assert resp.status_code == 200, resp.data
+    demande.refresh_from_db()
+    assert demande.statut == DemandeConsultation.Statut.VALIDEE
+
+
+# ─── Limites de coût (revue de sécurité du 2026-10-08) ──────────────────────
+
+def test_identifiant_de_copie_invalide_donne_400_pas_500(traiteur, gestionnaire_user, employee):
+    DemandeConsultation.objects.create(
+        reference='C-00021/26', type_demande='document', description='x',
+        demandeur=gestionnaire_user, employee=employee,
+    )
+    resp = _client(traiteur).post('/api/consultations/demandes/C-00021-26/valider/', {
+        'duree_heures': 24, 'copier_fichiers': ['pas-un-uuid'],
+    }, format='multipart')
+    assert resp.status_code == 400
+    assert 'copier_fichiers' in resp.data
+
+
+def test_trop_de_fichiers_refuse(traiteur, demande_en_cours, pdf_bytes, settings):
+    settings.CONSULTATION_MAX_FICHIERS = 2
+    resp = _client(traiteur).post(URL_VALIDER, {
+        'duree_heures': 24, 'fichiers': [_pdf(pdf_bytes, f'{i}.pdf') for i in range(3)],
+    }, format='multipart')
+    assert resp.status_code == 400
+    assert not ConsultationFichier.objects.exists()
+
+
+def test_image_geante_refusee(traiteur, demande_en_cours, settings):
+    """Une image d'un nombre de pixels démesuré (même légère en octets)
+    saturerait la mémoire à chaque lecture via le filigrane."""
+    from io import BytesIO
+    from PIL import Image
+    settings.CONSULTATION_MAX_PIXELS = 1_000_000
+    buf = BytesIO()
+    Image.new('1', (2000, 2000)).save(buf, format='PNG')        # 4 Mpx, quelques Ko
+    geante = SimpleUploadedFile('geante.png', buf.getvalue(), content_type='image/png')
+    resp = _client(traiteur).post(URL_VALIDER, {'duree_heures': 24, 'fichiers': [geante]}, format='multipart')
+    assert resp.status_code == 400
+    assert 'trop grande' in str(resp.data)
+    assert not ConsultationFichier.objects.exists()
+
+
+def test_pdf_avec_trop_de_pages_refuse(traiteur, demande_en_cours, settings):
+    from io import BytesIO
+    from reportlab.pdfgen import canvas
+    settings.MAX_UPLOAD_PAGES = 2
+    buf = BytesIO()
+    c = canvas.Canvas(buf)
+    for _ in range(3):
+        c.showPage()
+    c.save()
+    gros = SimpleUploadedFile('gros.pdf', buf.getvalue(), content_type='application/pdf')
+    resp = _client(traiteur).post(URL_VALIDER, {'duree_heures': 24, 'fichiers': [gros]}, format='multipart')
+    assert resp.status_code == 400
+    assert 'pages' in str(resp.data)
 
 
 # ─── Rejet ──────────────────────────────────────────────────────────────────

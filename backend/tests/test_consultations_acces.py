@@ -152,6 +152,28 @@ def test_echec_du_filigrane_ne_sert_rien(gestionnaire_user, livree, pdf_bytes):
     assert b'corrompu' not in resp.content
 
 
+def test_perimetre_reduit_coupe_laccès_a_lemploye(
+    gestionnaire_user, traiteur, employee, direction, pdf_bytes,
+):
+    """Le périmètre est revérifié à chaque lecture (revue de sécurité du
+    2026-10-08) : retirer la direction au demandeur coupe l'accès avant l'échéance."""
+    gestionnaire_user.scope_directions.add(direction)
+    demande = DemandeConsultation.objects.create(
+        reference='C-00031/26', type_demande='dossier', description='x',
+        demandeur=gestionnaire_user, employee=employee,
+    )
+    services.valider(
+        demande, traiteur, duree_heures=24, telechargement_autorise=False,
+        uploads=[SimpleUploadedFile('s.pdf', pdf_bytes, content_type='application/pdf')], ids_copies=[],
+    )
+    fichier = demande.fichiers.get()
+    assert _client(gestionnaire_user).get(_url(demande, fichier)).status_code == 200
+    gestionnaire_user.scope_directions.clear()
+    resp = _client(gestionnaire_user).get(_url(demande, fichier))
+    assert resp.status_code == 403
+    assert 'périmètre' in resp.data['detail']
+
+
 # ─── Téléchargement ─────────────────────────────────────────────────────────
 
 def test_telechargement_refuse_si_non_autorise(gestionnaire_user, livree):
@@ -178,6 +200,46 @@ def test_telechargement_expire_refuse_meme_si_autorise(gestionnaire_user, livree
         telechargement_autorise=True, date_echeance=timezone.now() - timedelta(minutes=1),
     )
     assert _client(gestionnaire_user).get(_url(demande, fichier, 'telecharger')).status_code == 403
+
+
+# ─── Impression ─────────────────────────────────────────────────────────────
+
+def test_impression_refusee_si_non_accordee(gestionnaire_user, livree):
+    demande, fichier = livree
+    resp = _client(gestionnaire_user).post(_url(demande, fichier, 'imprimer'))
+    assert resp.status_code == 403
+    assert not AuditLog.objects.filter(action='PRINT_CONSULTATION').exists()
+
+
+def test_impression_accordee_donne_le_feu_vert_et_trace(gestionnaire_user, livree):
+    demande, fichier = livree
+    DemandeConsultation.objects.filter(pk=demande.pk).update(impression_autorisee=True)
+    resp = _client(gestionnaire_user).post(_url(demande, fichier, 'imprimer'))
+    assert resp.status_code == 204
+    log = AuditLog.objects.get(action='PRINT_CONSULTATION')
+    assert log.user_id == gestionnaire_user.id
+    assert log.details['reference'] == demande.reference
+
+
+def test_impression_refusee_apres_expiration_meme_si_accordee(gestionnaire_user, livree):
+    demande, fichier = livree
+    DemandeConsultation.objects.filter(pk=demande.pk).update(
+        impression_autorisee=True, date_echeance=timezone.now() - timedelta(minutes=1),
+    )
+    assert _client(gestionnaire_user).post(_url(demande, fichier, 'imprimer')).status_code == 403
+    assert not AuditLog.objects.filter(action='PRINT_CONSULTATION').exists()
+
+
+def test_impression_tiers_404_et_get_non_supporte(other_gestionnaire, gestionnaire_user, livree):
+    demande, fichier = livree
+    DemandeConsultation.objects.filter(pk=demande.pk).update(impression_autorisee=True)
+    assert _client(other_gestionnaire).post(_url(demande, fichier, 'imprimer')).status_code == 404
+    assert _client(gestionnaire_user).get(_url(demande, fichier, 'imprimer')).status_code == 405
+
+
+def test_traiteur_peut_toujours_imprimer(traiteur, livree):
+    demande, fichier = livree
+    assert _client(traiteur).post(_url(demande, fichier, 'imprimer')).status_code == 204
 
 
 # ─── Métadonnées du détail ──────────────────────────────────────────────────

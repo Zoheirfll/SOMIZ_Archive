@@ -2,9 +2,13 @@
 restent minces : toute validation et tout changement d'état passent ici,
 et chaque refus est une ValidationError DRF (400)."""
 import os
+import uuid
 from datetime import timedelta
+from io import BytesIO
 
 import magic
+from PIL import Image
+from pypdf import PdfReader
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -23,33 +27,61 @@ def _verrouiller(demande):
 
 
 def _verifier_traiteur_distinct(demande, manager):
-    """Séparation demandeur/validateur : jamais le même compte."""
-    if demande.demandeur_id == manager.id:
+    """Séparation demandeur/validateur : jamais le même compte, sauf pour un
+    SUPERADMIN (qui peut tout faire, comme pour les attestations ; les deux
+    rôles restent tracés dans l'audit)."""
+    if demande.demandeur_id == manager.id and not manager.is_superadmin:
         raise ValidationError("Le traiteur ne peut pas traiter sa propre demande.")
 
 
 def _valider_duree(duree_heures):
+    """Durée libre en heures entières, entre CONSULTATION_DUREE_MIN_HEURES et
+    le plafond CONSULTATION_MAX_DUREE_TOTALE_HEURES (les paliers de
+    CONSULTATION_DUREES_HEURES ne sont que des raccourcis d'interface)."""
     try:
         duree = int(duree_heures)
     except (TypeError, ValueError):
         raise ValidationError({'duree_heures': "Durée invalide."})
-    if duree not in settings.CONSULTATION_DUREES_HEURES:
-        raise ValidationError({
-            'duree_heures': f"Durée non autorisée (choix : {settings.CONSULTATION_DUREES_HEURES}).",
-        })
+    mini = settings.CONSULTATION_DUREE_MIN_HEURES
+    maxi = settings.CONSULTATION_MAX_DUREE_TOTALE_HEURES
+    if not mini <= duree <= maxi:
+        raise ValidationError({'duree_heures': f"La durée doit être comprise entre {mini} h et {maxi} h."})
     return duree
 
 
 def _lire_upload(fichier):
     """Contrôle taille + MIME réel (python-magic, pas l'extension ni le
     content-type déclaré) et renvoie (contenu, mime)."""
-    if fichier.size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        raise ValidationError({'fichiers': f"« {fichier.name} » dépasse {settings.MAX_UPLOAD_SIZE_MB} Mo."})
+    if fichier.size > settings.CONSULTATION_MAX_FICHIER_MB * 1024 * 1024:
+        raise ValidationError({'fichiers': f"« {fichier.name} » dépasse {settings.CONSULTATION_MAX_FICHIER_MB} Mo."})
     contenu = fichier.read()
     mime = magic.from_buffer(contenu[:2048], mime=True)
     if mime not in settings.ALLOWED_MIME_TYPES:
         raise ValidationError({'fichiers': f"Type de fichier non autorisé : {mime}."})
+    _verifier_complexite(contenu, mime, fichier.name, 'fichiers')
     return contenu, mime
+
+
+def _verifier_complexite(contenu, mime, nom, champ):
+    """Borne le coût du filigrane, recalculé à CHAQUE lecture : un PDF est
+    limité en pages (MAX_UPLOAD_PAGES) et une image en pixels
+    (CONSULTATION_MAX_PIXELS). Sans cela, un fichier de 20 Mo pouvant
+    contenir des milliers de pages ou une image de plusieurs milliards de
+    pixels saturerait CPU et mémoire du serveur à chaque lecture."""
+    try:
+        if mime == 'application/pdf':
+            pages = len(PdfReader(BytesIO(contenu)).pages)
+            if pages > settings.MAX_UPLOAD_PAGES:
+                raise ValidationError({champ: f"« {nom} » dépasse {settings.MAX_UPLOAD_PAGES} pages."})
+        else:
+            with Image.open(BytesIO(contenu)) as image:
+                largeur, hauteur = image.size
+            if largeur * hauteur > settings.CONSULTATION_MAX_PIXELS:
+                raise ValidationError({champ: f"« {nom} » est trop grande ({largeur}×{hauteur} pixels)."})
+    except ValidationError:
+        raise
+    except Exception:
+        raise ValidationError({champ: f"« {nom} » est illisible ou corrompu."})
 
 
 def _creer_fichier(demande, manager, *, contenu, mime, nom, origine, source=None):
@@ -70,7 +102,10 @@ def _charger_copies(demande, ids_copies):
         return []
     if demande.employee_id is None:
         raise ValidationError({'copier_fichiers': "Aucun employé n'est associé à cette demande."})
-    ids = set(map(str, ids_copies))
+    try:
+        ids = {str(uuid.UUID(str(i))) for i in ids_copies}
+    except ValueError:
+        raise ValidationError({'copier_fichiers': "Identifiant de fichier invalide."})
     sources = list(
         EmployeeDocumentFile.objects.filter(
             pk__in=ids, is_active=True, document__employee_id=demande.employee_id,
@@ -83,20 +118,38 @@ def _charger_copies(demande, ids_copies):
         if not source.file or not os.path.exists(source.file.path):
             raise ValidationError({'copier_fichiers': f"Fichier source introuvable : {source.file_name}."})
         with open(source.file.path, 'rb') as fh:
-            copies.append((fh.read(), source.mime_type or 'application/pdf', source.file_name or 'document', source))
+            contenu = fh.read()
+        mime = source.mime_type or 'application/pdf'
+        _verifier_complexite(contenu, mime, source.file_name or 'document', 'copier_fichiers')
+        copies.append((contenu, mime, source.file_name or 'document', source))
     return copies
 
 
 @transaction.atomic
-def valider(demande, manager, *, duree_heures, telechargement_autorise, uploads, ids_copies, now=None):
-    """Livre les fichiers et ouvre la consultation pour `duree_heures`."""
+def valider(demande, manager, *, duree_heures=None, telechargement_autorise=None,
+            impression_autorisee=None, uploads, ids_copies, now=None):
+    """Livre les fichiers et ouvre la consultation.
+
+    Durée et droits d'usage sont ceux que le demandeur a SOUHAITÉS tant que le
+    traiteur ne les précise pas (None = accorder tel que demandé) ; s'il en
+    fournit, ce qu'il accorde remplace le souhait."""
     demande = _verrouiller(demande)
     if demande.statut != Statut.EN_COURS:
         raise ValidationError("Seule une demande « En cours de validation » peut être validée.")
     _verifier_traiteur_distinct(demande, manager)
+    if duree_heures is None:
+        duree_heures = demande.duree_souhaitee_heures
+    if telechargement_autorise is None:
+        telechargement_autorise = demande.telechargement_souhaite
+    if impression_autorisee is None:
+        impression_autorisee = demande.impression_souhaitee
     duree = _valider_duree(duree_heures)
     if not uploads and not ids_copies:
         raise ValidationError({'fichiers': "Joignez au moins un fichier."})
+    if len(uploads) + len(ids_copies) > settings.CONSULTATION_MAX_FICHIERS:
+        raise ValidationError({'fichiers': f"Maximum {settings.CONSULTATION_MAX_FICHIERS} fichiers par livraison."})
+    if sum(u.size for u in uploads) > settings.CONSULTATION_MAX_TOTAL_MB * 1024 * 1024:
+        raise ValidationError({'fichiers': f"La livraison dépasse {settings.CONSULTATION_MAX_TOTAL_MB} Mo au total."})
 
     prepares = [(*_lire_upload(u), u.name) for u in uploads]
     copies = _charger_copies(demande, ids_copies)
@@ -121,6 +174,7 @@ def valider(demande, manager, *, duree_heures, telechargement_autorise, uploads,
     demande.date_echeance = echeance
     demande.date_echeance_initiale = echeance
     demande.telechargement_autorise = bool(telechargement_autorise)
+    demande.impression_autorisee = bool(impression_autorisee)
     demande.save()
     demande._fichiers_livres = cree  # pour l'audit côté vue
     return demande

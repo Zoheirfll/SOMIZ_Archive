@@ -235,9 +235,14 @@ MAX_SCAN_IMPORT_SIZE_MB = 20  # 20 Mo max par fichier source (Scanner un dossier
 MAX_UPLOAD_PAGES = 50  # 50 pages max dans le PDF fusionné (upload classique document/contrat)
 
 # Demandes de consultation (app `consultations`)
-CONSULTATION_DUREES_HEURES = [1, 24, 72, 168]       # presets proposés au traiteur
+CONSULTATION_DUREES_HEURES = [1, 24, 72, 168]       # raccourcis proposés au traiteur (durée libre possible)
+CONSULTATION_DUREE_MIN_HEURES = 1                   # durée libre : minimum
+CONSULTATION_MAX_FICHIER_MB = 50                    # taille max d'un fichier livré (relevée de 20 à 50 Mo)
+CONSULTATION_MAX_TOTAL_MB = 200                     # taille cumulée max d'une livraison
 CONSULTATION_MAX_DUREE_TOTALE_HEURES = 720          # plafond cumulé validation + prolongations (30 j)
 CONSULTATION_DELAI_GRACE_PROLONGATION_HEURES = 24   # prolongation possible jusqu'à 24 h après l'échéance
+CONSULTATION_MAX_PIXELS = 40_000_000                # image livrée : ~A4 à 600 dpi ; borne le coût du filigrane
+CONSULTATION_MAX_FICHIERS = 20                      # fichiers par livraison
 ALLOWED_MIME_TYPES = [
     'application/pdf',
     'image/jpeg',

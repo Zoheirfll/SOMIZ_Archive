@@ -1,13 +1,17 @@
 import logging
 import os
+import uuid
+from datetime import datetime, time
 
-from django.db.models import Q
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Q
+from django.db.models.functions import TruncMonth
 from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.encoding import smart_str
+from django.utils.http import content_disposition_header
 from rest_framework import generics
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -40,7 +44,9 @@ def slug_depuis_reference(reference):
 def queryset_pour(user):
     """Un traiteur voit tout ; tout autre compte ne voit que SES demandes."""
     qs = DemandeConsultation.objects.select_related(
-        'employee', 'demandeur', 'traite_par',
+        'employee', 'employee__direction', 'employee__departement', 'employee__service',
+        'employee__poste', 'employee__type_contrat', 'employee__categorie',
+        'demandeur', 'traite_par',
     ).prefetch_related('fichiers')
     return qs if user.can_manage_consultations else qs.filter(demandeur=user)
 
@@ -78,6 +84,8 @@ class DemandeConsultationListCreateView(generics.ListCreateAPIView):
         if q:
             qs = qs.filter(
                 Q(reference__icontains=q) | Q(description__icontains=q)
+                | Q(employee__nom__icontains=q) | Q(employee__prenom__icontains=q)
+                | Q(employee__matricule__icontains=q)
                 | Q(demandeur__nom__icontains=q) | Q(demandeur__prenom__icontains=q)
             )
         type_demande = params.get('type_demande')
@@ -148,6 +156,12 @@ def _vrai(valeur):
     return str(valeur).strip().lower() in ('1', 'true', 'on', 'oui')
 
 
+def _vrai_ou_none(data, cle):
+    """None si le champ est absent (→ le souhait du demandeur s'applique),
+    sinon sa valeur booléenne."""
+    return _vrai(data.get(cle)) if cle in data else None
+
+
 class _TraitementView(ReferenceLookupMixin, APIView):
     permission_classes = [IsConsultationManager]
 
@@ -166,7 +180,8 @@ class DemandeConsultationValiderView(_TraitementView):
         demande = services.valider(
             demande, request.user,
             duree_heures=request.data.get('duree_heures'),
-            telechargement_autorise=_vrai(request.data.get('telechargement_autorise', False)),
+            telechargement_autorise=_vrai_ou_none(request.data, 'telechargement_autorise'),
+            impression_autorisee=_vrai_ou_none(request.data, 'impression_autorisee'),
             uploads=request.FILES.getlist('fichiers'),
             ids_copies=_liste_form(request, 'copier_fichiers'),
         )
@@ -181,6 +196,13 @@ class DemandeConsultationValiderView(_TraitementView):
                 'de': ancien, 'vers': demande.statut,
                 'echeance': demande.date_echeance.isoformat(),
                 'telechargement_autorise': demande.telechargement_autorise,
+                'impression_autorisee': demande.impression_autorisee,
+                # Souhaits du demandeur, pour voir ce que le traiteur a modifié.
+                'souhaits': {
+                    'duree_heures': demande.duree_souhaitee_heures,
+                    'telechargement': demande.telechargement_souhaite,
+                    'impression': demande.impression_souhaitee,
+                },
             },
         )
         notifier_validee(demande, request.user)
@@ -213,6 +235,87 @@ class DemandeConsultationRevoquerView(_TraitementView):
         return self._reponse(demande)
 
 
+class ConsultationStatsView(APIView):
+    """GET /api/consultations/stats/?date_debut=&date_fin= — traiteurs
+    uniquement. Même forme que /api/attestations/stats/ pour que le frontend
+    réutilise les mêmes graphiques ; le délai est en HEURES (une consultation
+    se valide en heures, pas en jours)."""
+    permission_classes = [IsConsultationManager]
+
+    def get(self, request):
+        qs = DemandeConsultation.objects.all()
+        try:
+            date_debut = request.query_params.get('date_debut')
+            date_fin = request.query_params.get('date_fin')
+            if date_debut:
+                d = datetime.strptime(date_debut, '%Y-%m-%d').date()
+                qs = qs.filter(created_at__gte=timezone.make_aware(datetime.combine(d, time.min)))
+            if date_fin:
+                d = datetime.strptime(date_fin, '%Y-%m-%d').date()
+                qs = qs.filter(created_at__lte=timezone.make_aware(datetime.combine(d, time.max)))
+        except ValueError:
+            return Response({'error': "Dates invalides (format AAAA-MM-JJ)."}, status=400)
+
+        par_demandeur = list(
+            qs.values('demandeur_id', 'demandeur__nom', 'demandeur__prenom')
+              .annotate(count=Count('id')).order_by('-count')
+        )
+        for row in par_demandeur:
+            row['id'] = row.pop('demandeur_id')
+            row['nom'] = f"{row.pop('demandeur__prenom')} {row.pop('demandeur__nom')}"
+
+        par_employe = list(
+            qs.exclude(employee__isnull=True)
+              .values('employee_id', 'employee__nom', 'employee__prenom')
+              .annotate(count=Count('id')).order_by('-count')
+        )
+        for row in par_employe:
+            row['id'] = row.pop('employee_id')
+            row['nom'] = f"{row.pop('employee__prenom')} {row.pop('employee__nom')}"
+
+        # « Expirée » n'est pas stockée : on la sépare de « Validée » par la date.
+        maintenant = timezone.now()
+        Statut = DemandeConsultation.Statut
+        comptes = {
+            Statut.EN_COURS: qs.filter(statut=Statut.EN_COURS).count(),
+            Statut.VALIDEE: qs.filter(statut=Statut.VALIDEE, date_echeance__gt=maintenant).count(),
+            DemandeConsultation.EXPIREE: qs.filter(statut=Statut.VALIDEE, date_echeance__lte=maintenant).count(),
+            Statut.REJETEE: qs.filter(statut=Statut.REJETEE).count(),
+            Statut.REVOQUEE: qs.filter(statut=Statut.REVOQUEE).count(),
+        }
+        libelles = {
+            Statut.EN_COURS: 'En cours de validation', Statut.VALIDEE: 'Validée',
+            DemandeConsultation.EXPIREE: 'Expirée', Statut.REJETEE: 'Rejetée', Statut.REVOQUEE: 'Révoquée',
+        }
+        par_statut = [{'id': code, 'nom': libelles[code], 'count': n} for code, n in comptes.items() if n > 0]
+
+        delai = qs.exclude(date_validation__isnull=True).annotate(
+            duree=ExpressionWrapper(F('date_validation') - F('created_at'), output_field=DurationField()),
+        ).aggregate(moyenne=Avg('duree'))['moyenne']
+
+        demandees = {
+            r['mois'].strftime('%Y-%m'): r['count']
+            for r in qs.annotate(mois=TruncMonth('created_at')).values('mois').annotate(count=Count('id'))
+        }
+        validees = {
+            r['mois'].strftime('%Y-%m'): r['count']
+            for r in qs.exclude(date_validation__isnull=True)
+                       .annotate(mois=TruncMonth('date_validation')).values('mois').annotate(count=Count('id'))
+        }
+        evolution = [
+            {'mois': m, 'demandees': demandees.get(m, 0), 'validees': validees.get(m, 0)}
+            for m in sorted(set(demandees) | set(validees))
+        ]
+        return Response({
+            'total': qs.count(),
+            'par_statut': par_statut,
+            'par_demandeur': par_demandeur,
+            'par_employe': par_employe,
+            'evolution_mensuelle': evolution,
+            'delai_moyen_heures': round(delai.total_seconds() / 3600, 1) if delai else None,
+        })
+
+
 class DemandeConsultationProlongerView(_TraitementView):
     def post(self, request, ref):
         demande = self.get_object()
@@ -230,6 +333,65 @@ class DemandeConsultationProlongerView(_TraitementView):
         return self._reponse(demande)
 
 
+def _texte_erreur(exc):
+    """Message lisible d'une ValidationError DRF (dict, liste ou texte)."""
+    detail = exc.detail
+    if isinstance(detail, dict):
+        detail = [m for v in detail.values() for m in (v if isinstance(v, list) else [v])]
+    elif not isinstance(detail, list):
+        detail = [detail]
+    return ' '.join(str(m) for m in detail)
+
+
+class DemandeConsultationBulkView(APIView):
+    """POST /api/consultations/demandes/bulk/ — traiteurs uniquement.
+    Body : {"ids": [...], "action": "rejeter" | "revoquer", "motif_rejet": "..."}.
+
+    Même principe que le changement de statut en masse des attestations :
+    chaque demande est traitée indépendamment par `services` (mêmes règles que
+    l'action unitaire), une demande en erreur ne bloque pas le reste du lot.
+    La VALIDATION n'est pas groupable : chaque demande exige son propre scan."""
+    permission_classes = [IsConsultationManager]
+    MAX_IDS = 100
+
+    def post(self, request):
+        ids = request.data.get('ids') or []
+        action = request.data.get('action')
+        if not isinstance(ids, list) or not ids:
+            return Response({'error': "Aucune demande sélectionnée."}, status=400)
+        if len(ids) > self.MAX_IDS:
+            return Response({'error': f"Maximum {self.MAX_IDS} demandes par action."}, status=400)
+        if action not in ('rejeter', 'revoquer'):
+            return Response({'error': "Action invalide pour un traitement en masse."}, status=400)
+        try:
+            ids = [str(uuid.UUID(str(i))) for i in ids]
+        except ValueError:
+            return Response({'error': "Identifiant de demande invalide."}, status=400)
+
+        updated, errors = [], []
+        for demande in DemandeConsultation.objects.filter(id__in=ids):
+            ancien = demande.statut
+            try:
+                if action == 'rejeter':
+                    demande = services.rejeter(demande, request.user, request.data.get('motif_rejet'))
+                else:
+                    demande = services.revoquer(demande, request.user)
+            except ValidationError as exc:
+                errors.append({'reference': demande.reference, 'error': _texte_erreur(exc)})
+                continue
+            AuditLog.log(
+                request, AuditLog.Action.STATUT_CONSULTATION, target=demande,
+                details={'de': ancien, 'vers': demande.statut, 'groupe': True,
+                         'motif_rejet': demande.motif_rejet or None},
+            )
+            if action == 'rejeter':
+                notifier_rejetee(demande, request.user)
+            else:
+                notifier_revoquee(demande, request.user)
+            updated.append(demande.reference)
+        return Response({'updated': updated, 'errors': errors})
+
+
 class _FichierLivreView(APIView):
     """Base commune de `voir` et `telecharger`. Throttle `consultation`
     (30/min), flux authentifié, jamais de lien vers media/."""
@@ -239,7 +401,7 @@ class _FichierLivreView(APIView):
     action_audit = AuditLog.Action.VIEW_CONSULTATION
 
     def _charger(self, request, ref, fichier_id):
-        demande = DemandeConsultation.objects.select_related('demandeur').filter(
+        demande = DemandeConsultation.objects.select_related('demandeur', 'employee').filter(
             reference=reference_depuis_slug(ref),
         ).first()
         if demande is None:
@@ -288,8 +450,9 @@ class _FichierLivreView(APIView):
                 nom = os.path.splitext(nom)[0] + '.png'
             reponse = HttpResponse(contenu, content_type=mime)
 
-        nom_sur = smart_str(nom).replace('"', '')
-        reponse['Content-Disposition'] = f'{self.disposition}; filename="{nom_sur}"'
+        reponse['Content-Disposition'] = content_disposition_header(
+            self.disposition == 'attachment', smart_str(nom),
+        )
         reponse['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
         reponse['Pragma'] = 'no-cache'
         reponse['X-Frame-Options'] = 'SAMEORIGIN'
@@ -307,6 +470,29 @@ class _FichierLivreView(APIView):
 
 class ConsultationFichierVoirView(_FichierLivreView):
     pass
+
+
+class ConsultationFichierImprimerView(_FichierLivreView):
+    """POST .../fichiers/<id>/imprimer/ — appelé par le navigateur AVANT
+    d'ouvrir la boîte d'impression. Le serveur ne peut pas empêcher une
+    impression une fois le document affiché ; il refuse en revanche d'en
+    donner le feu vert (droit non accordé, consultation expirée...) et trace
+    chaque impression dans l'audit — l'impression reste ainsi attribuable."""
+    http_method_names = ['post', 'options']
+    action_audit = AuditLog.Action.PRINT_CONSULTATION
+
+    def post(self, request, ref, fichier_id):
+        demande, fichier = self._charger(request, ref, fichier_id)
+        if not request.user.can_manage_consultations and not demande.impression_autorisee:
+            raise PermissionDenied("L'impression n'est pas autorisée pour cette consultation.")
+        AuditLog.log(
+            request, self.action_audit, target=demande,
+            details={
+                'reference': demande.reference, 'fichier': fichier.file_name,
+                'traiteur': bool(request.user.can_manage_consultations),
+            },
+        )
+        return Response(status=204)
 
 
 class ConsultationFichierTelechargerView(_FichierLivreView):

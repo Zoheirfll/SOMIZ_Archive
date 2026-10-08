@@ -7,148 +7,503 @@ import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
+import DemandesTabs from "../components/DemandesTabs";
+import ImportanceBadge from "../components/attestations/ImportanceBadge";
 import StatutConsultationBadge from "../components/consultations/StatutConsultationBadge";
-import { formatDateFR } from "../utils/formatDate";
-import { TYPES_DEMANDE, slugDepuisReference, tempsRestant } from "../utils/consultations";
+import { ClipboardIcon, FileTextIcon } from "../components/icons";
+import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import StatDonutChart from "../components/charts/StatDonutChart";
+import StatAreaChart from "../components/charts/StatAreaChart";
+import { slugDepuisReference, tempsRestant } from "../utils/consultations";
+
+// Mêmes préréglages de période que /attestations et /statistiques.
+const presetToRange = (preset) => {
+  const fin = new Date();
+  const debut = new Date();
+  if (preset === "30j") debut.setDate(fin.getDate() - 30);
+  else if (preset === "3m") debut.setMonth(fin.getMonth() - 3);
+  else if (preset === "12m") debut.setFullYear(fin.getFullYear() - 1);
+  else if (preset === "annee") { debut.setMonth(0); debut.setDate(1); }
+  else if (preset === "tout") return null;
+  const toIso = (d) => d.toISOString().slice(0, 10);
+  return { date_debut: toIso(debut), date_fin: toIso(fin) };
+};
 
 const STATUTS = [
-  { value: "", label: "Tous les statuts" },
-  { value: "en_cours", label: "En cours de validation" },
+  { value: "", label: "Tous" },
+  { value: "en_cours", label: "En cours" },
   { value: "validee", label: "Validée" },
   { value: "expiree", label: "Expirée" },
   { value: "rejetee", label: "Rejetée" },
   { value: "revoquee", label: "Révoquée" },
 ];
 
+// Même code couleur que StatutConsultationBadge.
+const STATUT_DOT_COLORS = {
+  en_cours: (theme) => theme.accent,
+  validee: (theme) => theme.primary,
+  expiree: (theme) => theme.textMuted,
+  rejetee: (theme) => theme.danger,
+  revoquee: (theme) => theme.danger,
+};
+
+const SectionHeader = ({ children, theme }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+    <div style={{ width: 4, height: 16, borderRadius: 2, background: theme.primary }} />
+    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: theme.textSecondary }}>
+      {children}
+    </span>
+  </div>
+);
+
 export default function Consultations() {
   const { user } = useAuth();
   const theme = useTheme();
   const isMobile = useIsMobile();
-  const estTraiteur = !!user?.can_manage_consultations;
-  const peutDemander = ["GESTIONNAIRE", "CONSULTANT"].includes(user?.role);
+  // SUPERADMIN toujours, ADMIN seulement si chargé des consultations.
+  const isAdmin = !!user?.can_manage_consultations;
+  // Le SUPERADMIN peut aussi demander (comme pour les attestations).
+  const peutDemander = ["GESTIONNAIRE", "CONSULTANT", "SUPERADMIN"].includes(user?.role);
   const [demandes, setDemandes] = useState([]);
-  const [statut, setStatut] = useState("");
-  const [type, setType] = useState("");
-  const [saisie, setSaisie] = useState("");
-  const [recherche, setRecherche] = useState("");
+  const [statutFiltre, setStatutFiltre] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sousOnglet, setSousOnglet] = useState("liste");
+  const [stats, setStats] = useState(null);
+  const [statsFilters, setStatsFilters] = useState({ preset: "12m", dateDebut: "", dateFin: "" });
+  const [selected, setSelected] = useState(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
+  const { prompt, PromptDialog } = usePrompt();
 
-  const charger = useCallback(async (silent = false) => {
+  const fetchDemandes = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const params = {};
-      if (statut) params.statut = statut;
-      if (type) params.type_demande = type;
-      if (recherche) params.q = recherche;
+      if (statutFiltre) params.statut = statutFiltre;
+      if (search) params.q = search;
       const res = await api.get("/consultations/demandes/", { params });
-      setDemandes(res.data.results || res.data);
+      setDemandes(res.data?.results || res.data || []);
       setError("");
     } catch (err) {
       setError(err.response?.data?.detail || "Impossible de charger les demandes.");
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [statut, type, recherche]);
+  }, [statutFiltre, search]);
 
-  useEffect(() => { charger(); }, [charger]);
+  useEffect(() => { fetchDemandes(); }, [fetchDemandes]);
 
-  const champ = {
-    padding: "9px 12px", borderRadius: 8, border: `1px solid ${theme.border}`,
-    background: theme.surface, color: theme.text, fontSize: 13, fontFamily: theme.fontFamily,
+  // La sélection perd son sens si la liste change sous ses pieds (filtre,
+  // recherche, refresh après action) : on repart de zéro plutôt que de garder
+  // des ids qui ne correspondent plus aux lignes affichées.
+  useEffect(() => { setSelected(new Set()); }, [demandes]);
+
+  const toggleSelected = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
+
+  const selectedDemandes = demandes.filter((d) => selected.has(d.id));
+  const canBulkRejeter = selectedDemandes.length > 0 && selectedDemandes.every((d) => d.statut === "en_cours");
+  const canBulkRevoquer = selectedDemandes.length > 0 && selectedDemandes.every((d) => d.statut_effectif === "validee");
+
+  const lancerGroupe = async (action, corps) => {
+    setBulkLoading(true);
+    setBulkMessage("");
+    try {
+      const res = await api.post("/consultations/demandes/bulk/", {
+        ids: selectedDemandes.map((d) => d.id), action, ...corps,
+      });
+      if (res.data?.errors?.length) {
+        setBulkMessage(res.data.errors.map((e) => `${e.reference} : ${e.error}`).join(" — "));
+      }
+      setSelected(new Set());
+      await fetchDemandes(true);
+    } catch (err) {
+      setBulkMessage(err.response?.data?.error || "Action groupée impossible.");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkRejeter = async () => {
+    const motif = await prompt(`Motif du rejet de ${selectedDemandes.length} demande(s) :`, "");
+    if (motif === null) return;
+    if (!motif.trim()) { setBulkMessage("Le motif du rejet est obligatoire."); return; }
+    await lancerGroupe("rejeter", { motif_rejet: motif.trim() });
+  };
+
+  const handleBulkRevoquer = async () => {
+    if (!(await confirm(
+      `Révoquer ${selectedDemandes.length} consultation(s) ? L'accès des demandeurs sera coupé immédiatement.`,
+    ))) return;
+    await lancerGroupe("revoquer", {});
+  };
+
+  const fetchStats = (range) => {
+    api.get("/consultations/stats/", { params: range || {} }).then((res) => setStats(res.data));
+  };
+
+  useEffect(() => {
+    if (sousOnglet === "stats" && isAdmin && !stats) fetchStats(presetToRange(statsFilters.preset));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sousOnglet, isAdmin, stats]);
+
+  const handleStatsPresetClick = (preset) => {
+    setStatsFilters({ preset, dateDebut: "", dateFin: "" });
+    fetchStats(presetToRange(preset));
+  };
+
+  const handleStatsDateChange = (field, value) => {
+    const next = { ...statsFilters, preset: null, [field]: value };
+    setStatsFilters(next);
+    if (next.dateDebut && next.dateFin) fetchStats({ date_debut: next.dateDebut, date_fin: next.dateFin });
+  };
+
+  const cardStyle = {
+    background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, boxShadow: theme.shadowMd,
+  };
+
+  if (loading) return (
+    <PageBackground style={{ fontFamily: theme.fontFamily }}>
+      <Navbar />
+      <div style={{ textAlign: "center", padding: 60, color: theme.textSecondary }}>Chargement...</div>
+    </PageBackground>
+  );
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
       <div style={{ background: theme.directionGrad, padding: heroPadding(isMobile) }}>
-        <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <h1 style={{ color: "#fff", fontSize: 24, margin: 0, fontWeight: 800 }}>Consultations d'archives</h1>
-            <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13, marginTop: 4 }}>
-              {estTraiteur ? "Demandes à traiter et consultations en cours" : "Suivi de vos demandes de consultation"}
+            <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>
+              Dossier RH
             </div>
+            <h1 style={{ color: "#fff", fontSize: 24, margin: 0, fontWeight: 800 }}>Demandes de consultation d'archives</h1>
+            <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 13, margin: "6px 0 0" }}>
+              {isAdmin ? "Suivi et traitement des demandes de consultation" : "Vos demandes en cours et leur avancement"}
+            </p>
           </div>
           {peutDemander && (
-            <Link
-              to="/consultations/nouvelle"
-              style={{ background: theme.surface, color: theme.primary, borderRadius: 9, padding: "10px 18px", fontWeight: 700, fontSize: 13, textDecoration: "none" }}
-            >
-              + Nouvelle demande
+            <Link to="/consultations/nouvelle" className="btn-lift" style={{
+              display: "flex", alignItems: "center", gap: 8, background: theme.surface, color: theme.primary,
+              borderRadius: 10, padding: "11px 20px", fontWeight: 700, fontSize: 13, textDecoration: "none",
+              boxShadow: theme.shadowMd,
+            }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Nouvelle demande
             </Link>
           )}
         </div>
       </div>
 
-      <div style={{ padding: contentPadding(isMobile), maxWidth: 1000, margin: "0 auto" }}>
-        <form
-          onSubmit={(e) => { e.preventDefault(); setRecherche(saisie.trim()); }}
-          style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}
-        >
-          <input
-            aria-label="Rechercher"
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value)}
-            placeholder="Référence, description…"
-            style={{ ...champ, flex: "1 1 200px" }}
-          />
-          <select aria-label="Statut" value={statut} onChange={(e) => setStatut(e.target.value)} style={champ}>
-            {STATUTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <select aria-label="Type" value={type} onChange={(e) => setType(e.target.value)} style={champ}>
-            <option value="">Tous les types</option>
-            {TYPES_DEMANDE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-        </form>
+      <div style={{ padding: contentPadding(isMobile), maxWidth: 1200, margin: "0 auto" }}>
+        <DemandesTabs />
+        {isAdmin && (
+          <div style={{ display: "flex", gap: 4, marginBottom: 20, background: theme.bg, borderRadius: 10, padding: 4, width: "fit-content" }}>
+            {[{ key: "liste", label: "Liste" }, { key: "stats", label: "Statistiques" }].map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setSousOnglet(t.key)}
+                style={{
+                  padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer",
+                  fontWeight: 700, fontSize: 12, transition: "all 0.15s",
+                  background: sousOnglet === t.key ? theme.surface : "transparent",
+                  color: sousOnglet === t.key ? theme.primary : theme.textSecondary,
+                  boxShadow: sousOnglet === t.key ? theme.shadow : "none",
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {error && (
-          <div style={{ color: theme.danger, background: theme.dangerBg, border: `1px solid ${theme.dangerBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>
+          <div style={{ color: theme.danger, background: theme.dangerBg, border: `1px solid ${theme.dangerBorder}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>
             {error}
           </div>
         )}
-        {loading && <div style={{ color: theme.textSecondary, fontSize: 13 }}>Chargement…</div>}
-        {!loading && !error && demandes.length === 0 && (
-          <div style={{ color: theme.textSecondary, fontSize: 13 }}>Aucune demande.</div>
-        )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {demandes.map((d) => (
-            <Link
-              key={d.id}
-              to={`/consultations/${slugDepuisReference(d.reference)}`}
-              style={{
-                display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center",
-                gap: 12, background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 12,
-                padding: "14px 18px", textDecoration: "none", color: theme.text, boxShadow: theme.shadow,
-              }}
-            >
-              <div style={{ minWidth: 110 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: theme.primary }}>{d.reference}</div>
-                <div style={{ fontSize: 11, color: theme.textSecondary }}>{formatDateFR(d.created_at)}</div>
+        {sousOnglet === "stats" && isAdmin ? (
+          <div>
+            <div style={{ ...cardStyle, padding: "10px 12px", marginBottom: 20, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+              {[
+                { key: "30j", label: "30 jours" },
+                { key: "3m", label: "3 mois" },
+                { key: "12m", label: "12 mois" },
+                { key: "annee", label: "Année en cours" },
+                { key: "tout", label: "Tout" },
+              ].map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => handleStatsPresetClick(p.key)}
+                  style={{
+                    background: statsFilters.preset === p.key ? theme.primaryBg : "transparent",
+                    border: `1px solid ${statsFilters.preset === p.key ? theme.primaryBorder : theme.border}`,
+                    color: statsFilters.preset === p.key ? theme.primary : theme.textSecondary,
+                    borderRadius: 20, padding: "6px 14px", fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", fontFamily: theme.fontFamily,
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: isMobile ? 0 : "auto" }}>
+                <label htmlFor="cons-stats-debut" style={{ fontSize: 12, color: theme.textSecondary }}>Date début</label>
+                <input
+                  id="cons-stats-debut" type="date" value={statsFilters.dateDebut}
+                  onChange={(e) => handleStatsDateChange("dateDebut", e.target.value)}
+                  style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
+                />
+                <label htmlFor="cons-stats-fin" style={{ fontSize: 12, color: theme.textSecondary }}>Date fin</label>
+                <input
+                  id="cons-stats-fin" type="date" value={statsFilters.dateFin}
+                  onChange={(e) => handleStatsDateChange("dateFin", e.target.value)}
+                  style={{ border: `1px solid ${theme.border}`, borderRadius: 8, padding: "5px 8px", fontSize: 12, fontFamily: theme.fontFamily }}
+                />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: theme.textSecondary }}>
-                  {d.type_demande_label}
+            </div>
+
+            {!stats ? (
+              <div style={{ ...cardStyle, padding: 40, textAlign: "center", color: theme.textSecondary }}>Chargement...</div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16, marginBottom: 20 }}>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Total demandes</div>
+                    <div style={{ color: theme.text, fontSize: 26, fontWeight: 800, marginTop: 4 }}>{stats.total ?? 0}</div>
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>En attente de validation</div>
+                    <div style={{ color: theme.text, fontSize: 26, fontWeight: 800, marginTop: 4 }}>
+                      {stats.par_statut?.find((s) => s.id === "en_cours")?.count ?? 0}
+                    </div>
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <div style={{ color: theme.textSecondary, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>Délai moyen de validation</div>
+                    <div style={{ color: theme.primary, fontSize: 26, fontWeight: 800, marginTop: 4 }}>
+                      {stats.delai_moyen_heures != null ? `${stats.delai_moyen_heures} h` : "—"}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {d.description}
+
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <SectionHeader theme={theme}>Par statut</SectionHeader>
+                    <StatDonutChart data={stats.par_statut} height={200} />
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <SectionHeader theme={theme}>Par demandeur</SectionHeader>
+                    <StatDonutChart data={stats.par_demandeur} height={200} />
+                  </div>
+                  <div style={{ ...cardStyle, padding: 20 }}>
+                    <SectionHeader theme={theme}>Par employé</SectionHeader>
+                    <StatDonutChart data={stats.par_employe} height={200} />
+                  </div>
                 </div>
-                {estTraiteur && (
-                  <div style={{ fontSize: 12, color: theme.textSecondary }}>Demandeur : {d.demandeur_nom}</div>
+
+                <div style={{ ...cardStyle, padding: 24 }}>
+                  <SectionHeader theme={theme}>Évolution mensuelle — demandées vs validées</SectionHeader>
+                  <StatAreaChart
+                    data={stats.evolution_mensuelle}
+                    xKey="mois"
+                    series={[
+                      { key: "demandees", label: "Demandées", color: theme.primary },
+                      { key: "validees", label: "Validées", color: theme.departementColor },
+                    ]}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            {isAdmin && (
+              <form
+                onSubmit={(e) => { e.preventDefault(); setSearch(searchInput.trim()); }}
+                style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}
+              >
+                <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+                  <div style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: theme.textMuted, display: "flex", pointerEvents: "none" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text" aria-label="Rechercher" value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="Rechercher par référence, employé, demandeur..."
+                    className="input-focus"
+                    style={{
+                      width: "100%", boxSizing: "border-box", border: `1.5px solid ${theme.border}`,
+                      borderRadius: 10, padding: "10px 14px 10px 40px", color: theme.text,
+                      fontSize: 14, outline: "none", background: theme.bg, fontFamily: theme.fontFamily,
+                    }}
+                  />
+                </div>
+                <button
+                  type="submit" className="btn-lift"
+                  style={{ background: theme.primary, border: "none", borderRadius: 10, padding: "10px 20px", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: theme.fontFamily, whiteSpace: "nowrap" }}
+                >
+                  Rechercher
+                </button>
+                {search && (
+                  <button
+                    type="button" onClick={() => { setSearchInput(""); setSearch(""); }}
+                    style={{ border: `1.5px solid ${theme.border}`, borderRadius: 10, padding: "10px 16px", color: theme.textSecondary, fontSize: 13, fontWeight: 600, background: theme.surface, cursor: "pointer", fontFamily: theme.fontFamily }}
+                  >
+                    Effacer
+                  </button>
                 )}
+              </form>
+            )}
+
+            {isAdmin && (
+              <div style={{ ...cardStyle, padding: "10px 12px", marginBottom: 20, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: theme.textMuted, padding: "0 4px 0 2px", flexShrink: 0 }}>
+                  Statut
+                </span>
+                {STATUTS.map((s) => {
+                  const actif = statutFiltre === s.value;
+                  return (
+                    <button
+                      key={s.value}
+                      onClick={() => setStatutFiltre(s.value)}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        padding: "6px 13px", borderRadius: 999, fontSize: 12, fontWeight: 700, border: "none",
+                        background: actif ? theme.primary : "transparent",
+                        color: actif ? "#fff" : theme.textSecondary,
+                        cursor: "pointer", transition: "background 0.15s, color 0.15s",
+                      }}
+                      onMouseEnter={(e) => { if (!actif) e.currentTarget.style.background = theme.bg; }}
+                      onMouseLeave={(e) => { if (!actif) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {s.value && (
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: actif ? "#fff" : STATUT_DOT_COLORS[s.value](theme) }} />
+                      )}
+                      {s.label}
+                    </button>
+                  );
+                })}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: isMobile ? "flex-start" : "flex-end", gap: 4 }}>
-                <StatutConsultationBadge statut={d.statut_effectif} />
-                {d.statut_effectif === "validee" && (
-                  <span style={{ fontSize: 11, color: theme.textSecondary }}>
-                    Expire dans {tempsRestant(d.date_echeance)}
+            )}
+
+            {isAdmin && demandes.length > 0 && (
+              <div style={{ ...cardStyle, padding: "10px 12px", marginBottom: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 700, color: theme.textSecondary, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={selected.size > 0 && selected.size === demandes.length}
+                    onChange={(e) => setSelected(e.target.checked ? new Set(demandes.map((d) => d.id)) : new Set())}
+                  />
+                  {selected.size > 0 ? `${selected.size} sélectionnée(s)` : "Tout sélectionner"}
+                </label>
+                <div style={{ flex: 1 }} />
+                <button
+                  disabled={!canBulkRejeter || bulkLoading}
+                  onClick={handleBulkRejeter}
+                  style={{
+                    border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700,
+                    background: canBulkRejeter ? theme.danger : theme.bg,
+                    color: canBulkRejeter ? "#fff" : theme.textMuted,
+                    cursor: canBulkRejeter && !bulkLoading ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Rejeter {selected.size > 0 ? `(${selected.size})` : ""}
+                </button>
+                <button
+                  disabled={!canBulkRevoquer || bulkLoading}
+                  onClick={handleBulkRevoquer}
+                  style={{
+                    border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700,
+                    background: canBulkRevoquer ? theme.danger : theme.bg,
+                    color: canBulkRevoquer ? "#fff" : theme.textMuted,
+                    cursor: canBulkRevoquer && !bulkLoading ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Révoquer {selected.size > 0 ? `(${selected.size})` : ""}
+                </button>
+                {selected.size > 0 && !canBulkRejeter && !canBulkRevoquer && (
+                  <span style={{ fontSize: 11, color: theme.textMuted, width: "100%" }}>
+                    Sélection mixte — regroupez des demandes de même statut ("En cours" pour rejeter, "Validée" pour révoquer).
+                    La validation se fait demande par demande (chacune exige son scan).
                   </span>
                 )}
+                {bulkMessage && (
+                  <span style={{ fontSize: 12, color: theme.danger, width: "100%" }}>{bulkMessage}</span>
+                )}
               </div>
-            </Link>
-          ))}
-        </div>
+            )}
+
+            {demandes.length === 0 && !error ? (
+              <div style={{ ...cardStyle, padding: "56px 24px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+                <div style={{ color: theme.textMuted, marginBottom: 14 }}><ClipboardIcon size={40} /></div>
+                <div style={{ color: theme.text, fontSize: 15, fontWeight: 700, marginBottom: 4 }}>
+                  Aucune demande {search ? "pour cette recherche" : statutFiltre ? "pour ce statut" : ""}
+                </div>
+                <div style={{ color: theme.textMuted, fontSize: 13, maxWidth: 340 }}>
+                  {search
+                    ? "Essayez un autre nom, matricule ou référence."
+                    : isAdmin
+                      ? "Les demandes de consultation apparaîtront ici."
+                      : "Créez une demande pour consulter un dossier, un document ou une information archivés."}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {demandes.map((d) => (
+                  <Link
+                    key={d.id}
+                    to={`/consultations/${slugDepuisReference(d.reference)}`}
+                    className="card-lift"
+                    style={{ ...cardStyle, padding: "14px 18px", textDecoration: "none", display: "flex", alignItems: "center", gap: 14, flexWrap: isMobile ? "wrap" : "nowrap" }}
+                  >
+                    {isAdmin && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Sélectionner ${d.reference}`}
+                        checked={selected.has(d.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); toggleSelected(d.id); }}
+                        style={{ flexShrink: 0, cursor: "pointer" }}
+                      />
+                    )}
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: theme.primaryBg, color: theme.primary, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <FileTextIcon size={17} />
+                    </div>
+                    <div style={{ flex: isMobile ? "1 1 100%" : "0 0 110px", fontWeight: 700, color: theme.primary, fontSize: 13 }}>
+                      {d.reference}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 140 }}>
+                      <div style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>
+                        {d.employee_nom || d.description}
+                      </div>
+                      <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
+                        {d.type_demande_label} · Demandé par {d.demandeur_nom}
+                        {d.statut_effectif === "validee" && ` · expire dans ${tempsRestant(d.date_echeance)}`}
+                      </div>
+                    </div>
+                    <ImportanceBadge importance={d.importance} />
+                    <StatutConsultationBadge statut={d.statut_effectif} />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
+      {ConfirmDialog}
+      {PromptDialog}
     </PageBackground>
   );
 }

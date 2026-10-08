@@ -64,30 +64,47 @@ def _filigrane_image(contenu, mime, texte):
     largeur, hauteur = image.size
     taille = max(12, min(largeur, hauteur) // 28)
     police = _police(taille)
-    calque = Image.new('RGBA', (largeur, hauteur), (0, 0, 0, 0))
-    dessin = ImageDraw.Draw(calque)
-    boite = dessin.textbbox((0, 0), texte, font=police)
-    pas_x = (boite[2] - boite[0]) + taille * 3
-    pas_y = taille * 6
-    diag = int(math.hypot(largeur, hauteur))
-    grand = Image.new('RGBA', (diag * 2, diag * 2), (0, 0, 0, 0))
-    dessin_grand = ImageDraw.Draw(grand)
-    ligne = 0
-    for y in range(0, diag * 2, pas_y):
-        decalage = pas_x // 2 if ligne % 2 else 0
-        for x in range(-pas_x, diag * 2, pas_x):
-            dessin_grand.text((x + decalage, y), texte, font=police, fill=(40, 40, 40, ALPHA_IMAGE))
-        ligne += 1
-    grand = grand.rotate(ANGLE_DEGRES, resample=Image.BICUBIC)
-    gauche = (grand.width - largeur) // 2
-    haut = (grand.height - hauteur) // 2
-    calque.alpha_composite(grand.crop((gauche, haut, gauche + largeur, haut + hauteur)))
-    resultat = Image.alpha_composite(image, calque)
+
+    # Un seul petit « motif » (le texte, déjà pivoté), collé à répétition
+    # directement sur l'image : la mémoire reste ~1 tampon de l'image, au lieu
+    # d'un calque géant de (2·diagonale)² pixels (bombe de décompression).
+    boite = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texte, font=police)
+    largeur_texte, hauteur_texte = boite[2] - boite[0], boite[3] - boite[1]
+    marge = taille
+    motif = Image.new('RGBA', (largeur_texte + 2 * marge, hauteur_texte + 2 * marge), (0, 0, 0, 0))
+    ImageDraw.Draw(motif).text(
+        (marge - boite[0], marge - boite[1]), texte, font=police, fill=(40, 40, 40, ALPHA_IMAGE),
+    )
+    motif = motif.rotate(ANGLE_DEGRES, resample=Image.BICUBIC, expand=True)
+    mw, mh = motif.size
+
+    pas_u = largeur_texte + taille * 3     # pas le long du texte
+    pas_v = taille * 6                     # pas entre deux lignes
+    cos_a = math.cos(math.radians(ANGLE_DEGRES))
+    sin_a = math.sin(math.radians(ANGLE_DEGRES))
+    centre_x, centre_y = largeur / 2, hauteur / 2
+    diag = math.hypot(largeur, hauteur)
+    n_u, n_v = int(diag // pas_u) + 2, int(diag // pas_v) + 2
+    for j in range(-n_v, n_v + 1):
+        decalage = pas_u / 2 if j % 2 else 0
+        for i in range(-n_u, n_u + 1):
+            u, v = i * pas_u + decalage, j * pas_v
+            # Repère pivoté : u suit la direction du texte, v lui est perpendiculaire.
+            x0 = int(centre_x + u * cos_a + v * sin_a - mw / 2)
+            y0 = int(centre_y - u * sin_a + v * cos_a - mh / 2)
+            gauche, haut = max(x0, 0), max(y0, 0)
+            droite, bas = min(x0 + mw, largeur), min(y0 + mh, hauteur)
+            if droite <= gauche or bas <= haut:
+                continue  # motif entièrement hors de l'image
+            image.alpha_composite(
+                motif.crop((gauche - x0, haut - y0, droite - x0, bas - y0)), dest=(gauche, haut),
+            )
+
     sortie = BytesIO()
     if mime == 'image/jpeg':
-        resultat.convert('RGB').save(sortie, format='JPEG', quality=88)
+        image.convert('RGB').save(sortie, format='JPEG', quality=88)
         return sortie.getvalue(), 'image/jpeg'
-    resultat.save(sortie, format='PNG')
+    image.save(sortie, format='PNG')
     return sortie.getvalue(), 'image/png'
 
 

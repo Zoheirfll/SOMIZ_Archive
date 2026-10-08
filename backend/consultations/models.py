@@ -34,6 +34,11 @@ class DemandeConsultation(models.Model):
         REJETEE = 'rejetee', 'Rejetée'
         REVOQUEE = 'revoquee', 'Révoquée'
 
+    class Importance(models.TextChoices):
+        HAUTE = 'haute', 'Haute'
+        MOYENNE = 'moyenne', 'Moyenne'
+        FAIBLE = 'faible', 'Faible'
+
     # Statut DÉRIVÉ (jamais stocké) : une demande validée dont l'échéance est
     # passée. Aucune tâche planifiée n'est nécessaire pour couper l'accès.
     EXPIREE = 'expiree'
@@ -41,6 +46,12 @@ class DemandeConsultation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=20, unique=True, editable=False)
     type_demande = models.CharField(max_length=20, choices=Type.choices)
+    # Urgence indiquée par le demandeur — aide le traiteur à prioriser, sans
+    # effet sur le workflow ni les permissions (même principe que
+    # DemandeAttestation.importance).
+    importance = models.CharField(
+        max_length=10, choices=Importance.choices, default=Importance.MOYENNE,
+    )
     description = models.TextField()
     employee = models.ForeignKey(
         'employees.Employee', null=True, blank=True, on_delete=models.PROTECT,
@@ -61,7 +72,16 @@ class DemandeConsultation(models.Model):
     date_echeance_initiale = models.DateTimeField(null=True, blank=True)
     date_revocation = models.DateTimeField(null=True, blank=True)
     nb_prolongations = models.PositiveSmallIntegerField(default=0)
+    # Droits ACCORDÉS par le traiteur à la validation (il peut accorder les
+    # souhaits du demandeur ci-dessous tels quels, ou les modifier).
     telechargement_autorise = models.BooleanField(default=False)
+    impression_autorisee = models.BooleanField(default=False)
+    # Souhaits exprimés par le DEMANDEUR à la création : durée de consultation
+    # voulue (heures) et droits d'usage voulus. Informatifs : seul ce que le
+    # traiteur accorde fait foi (échéance, telechargement_autorise, ...).
+    duree_souhaitee_heures = models.PositiveIntegerField(default=24)
+    telechargement_souhaite = models.BooleanField(default=False)
+    impression_souhaitee = models.BooleanField(default=False)
     # Rappels d'échéance déjà envoyés (réinitialisés par une prolongation).
     rappel_24h_envoye = models.BooleanField(default=False)
     rappel_1h_envoye = models.BooleanField(default=False)

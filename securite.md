@@ -1378,13 +1378,38 @@ un scan **via l'application uniquement**, pour une durée limitée. Détail dans
   (`test_admin_ordinaire_ne_peut_pas_se_donner_lacces`).
 - **Audit** : création, changement de statut, livraison de chaque fichier,
   **chaque lecture**, chaque téléchargement, prolongation, purge
-  (8 valeurs d'`AuditLog.Action`). Throttle `consultation` (30/min) sur la lecture.
+  (9 valeurs d'`AuditLog.Action`, dont `PRINT_CONSULTATION`). Throttle `consultation` (30/min) sur la lecture.
 - **Purge manuelle uniquement** (`manage.py purger_consultations`), avec les
   garde-fous de l'incident du 2026-07-22 : liste par défaut, `--confirmer`
   requis, chemin normalisé sous `MEDIA_ROOT/consultations/`, sauvegarde vérifiée
   avant toute suppression, trace d'audit par fichier. Seuls les scans *externes*
   sont concernés.
-- **Tests d'intégration sur de vraies routes** (92 tests `test_consultations_*`
+- **Revue de sécurité du 2026-10-08** (agent `security-reviewer`, lecture du code, aucun test exécuté ;
+  **aucun point critique**). Constats et suites :
+  - **Haute — bombe de décompression dans le filigrane d'image** : une image de plusieurs dizaines de
+    millions de pixels, légère en octets, faisait allouer plusieurs Go à *chaque lecture* (DoS du worker).
+    ✅ Corrigé : image plafonnée à `CONSULTATION_MAX_PIXELS` (40 Mpx) à la livraison, et filigrane réécrit
+    (motif collé directement sur l'image : ~1 tampon mémoire au lieu d'un calque de (2·diagonale)²).
+  - **Moyenne — PDF sans limite de pages** : ✅ plafonné à `MAX_UPLOAD_PAGES` (50), y compris pour les copies
+    de documents archivés.
+  - **Moyenne — périmètre vérifié seulement à la création** : un demandeur dont le périmètre est réduit
+    gardait l'accès aux scans de l'employé jusqu'à l'échéance. ✅ `can_access_employee()` est revérifié à
+    chaque lecture.
+  - **Basse** : identifiant de copie non-UUID → 500 (✅ 400) ; nombre de fichiers illimité (✅ 20 max, 200 Mo
+    cumulés) ; en-tête `Content-Disposition` construit à la main (✅ `content_disposition_header`).
+  - **Moyenne — NON corrigée, décision à prendre** : la purge copie les scans vers `backups/` **sans durée de
+    rétention** ni contrôle d'accès, ce qui annule l'effet « droit à l'effacement » (Loi 18-07/RGPD) pour ces
+    fichiers. À trancher : durée de conservation des sauvegardes et droits sur ce dossier (ou une commande de
+    purge des sauvegardes de plus de N jours).
+  - **Basse — tests non écrits** : throttle `consultation` (429), concurrence valider/rejeter (le
+    `select_for_update` existe, non testé), compte dont le rôle change après coup.
+- **SUPERADMIN = demandeur et traiteur** (décision du propriétaire, comme pour les attestations) : la
+  séparation demandeur/validateur n'est donc **pas** imposée au SUPERADMIN, qui peut valider sa propre demande.
+  Un ADMIN traiteur reste soumis à la séparation. Affaiblissement assumé, tracé dans l'audit.
+- **Impression** : le serveur ne peut pas empêcher d'imprimer un document affiché. `…/imprimer/` refuse si le
+  droit n'est pas accordé / la consultation expirée, et **trace** (`PRINT_CONSULTATION`) ; la copie est
+  filigranée. Un demandeur ne peut pas s'accorder lui-même téléchargement/impression (champs en lecture seule).
+- **Tests d'intégration sur de vraies routes** (129 tests `test_consultations_*`
   côté backend) : 404/403/410, échéance à la seconde près, fichier d'une autre
   demande, échec du filigrane, téléchargement non autorisé.
 - **Dette à solder** : (1) créer en production la tâche planifiée

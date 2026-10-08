@@ -9,29 +9,14 @@ import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
 import Breadcrumb from "../components/employees/Breadcrumb";
 import SecureDocViewer from "../components/SecureDocViewer";
+import ImportanceBadge from "../components/attestations/ImportanceBadge";
 import StatutConsultationBadge from "../components/consultations/StatutConsultationBadge";
 import TraiterPanel from "../components/consultations/TraiterPanel";
-import { usePrompt } from "../components/ConfirmDialog";
-import { DUREES, formatDateHeure, tempsRestant } from "../utils/consultations";
-
-const Ligne = ({ label, children, theme }) => (
-  <div style={{ display: "flex", gap: 12, padding: "6px 0", fontSize: 13 }}>
-    <div style={{ width: 150, flexShrink: 0, color: theme.textSecondary, fontWeight: 600 }}>{label}</div>
-    <div style={{ color: theme.text, minWidth: 0, overflowWrap: "anywhere" }}>{children || "—"}</div>
-  </div>
-);
-
-const Etape = ({ titre, date, atteinte, theme }) => (
-  <div style={{ flex: 1, textAlign: "center" }}>
-    <div style={{
-      width: 26, height: 26, margin: "0 auto 6px", borderRadius: "50%",
-      background: atteinte ? theme.primary : theme.surface,
-      border: `2px solid ${atteinte ? theme.primary : theme.border}`,
-    }} />
-    <div style={{ fontSize: 11, fontWeight: 700, color: atteinte ? theme.text : theme.textMuted }}>{titre}</div>
-    <div style={{ fontSize: 11, color: theme.textSecondary }}>{date ? formatDateHeure(date) : "—"}</div>
-  </div>
-);
+import { Field, InfoCard, ConsultationStepper } from "../components/consultations/DetailParts";
+import { useConfirm, usePrompt } from "../components/ConfirmDialog";
+import { formatDateFR } from "../utils/formatDate";
+import DureeSelect from "../components/consultations/DureeSelect";
+import { formatDateHeure, formatDuree, tempsRestant } from "../utils/consultations";
 
 export default function ConsultationDetail() {
   const { ref } = useParams();
@@ -39,11 +24,14 @@ export default function ConsultationDetail() {
   const { user } = useAuth();
   const theme = useTheme();
   const isMobile = useIsMobile();
+  const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
-  const estTraiteur = !!user?.can_manage_consultations;
+  // SUPERADMIN toujours, ADMIN seulement si chargé des consultations — voir
+  // User.can_manage_consultations et ProtectedRoute (App.js).
+  const isAdmin = !!user?.can_manage_consultations;
   const [demande, setDemande] = useState(null);
   const [error, setError] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [message, setMessage] = useState("");
   const [fichierId, setFichierId] = useState(null);
   const [vue, setVue] = useState(null); // { url, mime, nom }
   const [dureeProlongation, setDureeProlongation] = useState(24);
@@ -63,19 +51,20 @@ export default function ConsultationDetail() {
 
   const consultable = demande?.statut_effectif === "validee" && (demande.fichiers || []).length > 0;
 
-  // Sélectionne le premier fichier dès que la consultation est ouverte.
-  useEffect(() => {
-    if (consultable && !fichierId) setFichierId(demande.fichiers[0].id);
-    if (!consultable) setFichierId(null);
-  }, [consultable, demande, fichierId]);
+  // Fichier affiché : celui choisi, sinon le premier — calculé au rendu (et non
+  // par un effet) pour qu'aucun bouton ne puisse agir sur un fichier « null »
+  // pendant l'instant qui suit l'affichage de la page.
+  const fichierActifId = consultable
+    ? (demande.fichiers.some((f) => f.id === fichierId) ? fichierId : demande.fichiers[0].id)
+    : null;
 
   // Charge le fichier sélectionné en blob authentifié (jamais de lien direct).
   useEffect(() => {
-    if (!consultable || !fichierId) { setVue(null); return undefined; }
-    const fichier = demande.fichiers.find((f) => f.id === fichierId);
+    if (!consultable || !fichierActifId) { setVue(null); return undefined; }
+    const fichier = demande.fichiers.find((f) => f.id === fichierActifId);
     if (!fichier) return undefined;
     let annule = false;
-    api.get(`/consultations/demandes/${ref}/fichiers/${fichierId}/voir/`, { responseType: "blob" })
+    api.get(`/consultations/demandes/${ref}/fichiers/${fichierActifId}/voir/`, { responseType: "blob" })
       .then((res) => {
         if (annule) return;
         const url = URL.createObjectURL(res.data);
@@ -85,14 +74,14 @@ export default function ConsultationDetail() {
       })
       .catch(() => { if (!annule) { setVue(null); charger(); } }); // 403 : probablement expirée entre-temps
     return () => { annule = true; };
-  }, [consultable, fichierId, ref]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [consultable, fichierActifId, ref]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => () => { if (urlCourante.current) URL.revokeObjectURL(urlCourante.current); }, []);
 
   const telecharger = async () => {
-    setActionError("");
+    setMessage("");
     try {
-      const res = await api.get(`/consultations/demandes/${ref}/fichiers/${fichierId}/telecharger/`, { responseType: "blob" });
+      const res = await api.get(`/consultations/demandes/${ref}/fichiers/${fichierActifId}/telecharger/`, { responseType: "blob" });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement("a");
       a.href = url;
@@ -100,19 +89,46 @@ export default function ConsultationDetail() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      setActionError("Téléchargement impossible : la consultation a peut-être expiré.");
+      setMessage("Téléchargement impossible : la consultation a peut-être expiré.");
       charger();
     }
   };
 
+  // Le serveur donne le feu vert (droit accordé, consultation ouverte) et
+  // trace l'impression AVANT l'ouverture de la boîte d'impression. La copie
+  // imprimée est celle déjà chargée : filigranée pour un demandeur.
+  const imprimer = async () => {
+    setMessage("");
+    try {
+      await api.post(`/consultations/demandes/${ref}/fichiers/${fichierActifId}/imprimer/`);
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Impression refusée.");
+      charger();
+      return;
+    }
+    if (!vue?.url) return;
+    const cadre = document.createElement("iframe");
+    cadre.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+    cadre.src = vue.url;
+    cadre.onload = () => {
+      try {
+        cadre.contentWindow.focus();
+        cadre.contentWindow.print();
+      } finally {
+        setTimeout(() => cadre.remove(), 60000);
+      }
+    };
+    document.body.appendChild(cadre);
+  };
+
   const agir = async (action, corps = {}) => {
-    setActionError("");
+    setMessage("");
     try {
       await api.post(`/consultations/demandes/${ref}/${action}/`, corps);
       await charger(); // rafraîchissement silencieux : la page ne se démonte pas
     } catch (err) {
       const data = err.response?.data;
-      setActionError(
+      setMessage(
         data?.detail || data?.error || [].concat(data?.duree_heures || data?.non_field_errors || [])[0] ||
         (Array.isArray(data) ? data[0] : null) || "Action impossible.",
       );
@@ -125,19 +141,20 @@ export default function ConsultationDetail() {
     );
     if (saisie === null) return;
     if (saisie.trim() !== demande.reference) {
-      setActionError("La référence saisie ne correspond pas : révocation annulée.");
+      setMessage("La référence saisie ne correspond pas : révocation annulée.");
       return;
     }
     await agir("revoquer");
   };
 
   const annuler = async () => {
-    setActionError("");
+    if (!(await confirm("Annuler cette demande ?"))) return;
+    setMessage("");
     try {
       await api.delete(`/consultations/demandes/${ref}/`);
       navigate("/consultations");
     } catch (err) {
-      setActionError(err.response?.data?.detail || "Impossible d'annuler la demande.");
+      setMessage(err.response?.data?.detail || "Impossible d'annuler la demande.");
     }
   };
 
@@ -153,20 +170,34 @@ export default function ConsultationDetail() {
     return (
       <PageBackground style={{ fontFamily: theme.fontFamily }}>
         <Navbar />
-        <div style={{ padding: contentPadding(isMobile), color: theme.textSecondary }}>Chargement…</div>
+        <div style={{ textAlign: "center", padding: 60, color: theme.textSecondary }}>Chargement...</div>
       </PageBackground>
     );
   }
 
-  const peutAnnuler = !estTraiteur && demande.statut === "en_cours";
-  const carte = { background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 20, boxShadow: theme.shadow, marginBottom: 16 };
+  const peutAnnuler = demande.demandeur === user?.id && demande.statut === "en_cours";
+  // Avant validation : ce que le demandeur SOUHAITE ; après : ce qui est ACCORDÉ
+  // (avec la mention d'une éventuelle modification par le traiteur).
+  const droit = (accorde, souhaite) => {
+    if (!demande.date_validation) return { value: souhaite ? "Souhaité" : "Non souhaité" };
+    return {
+      value: accorde ? "Autorisé" : "Non autorisé",
+      sub: accorde !== souhaite ? `Souhaité : ${souhaite ? "oui" : "non"} — modifié par le traiteur` : undefined,
+    };
+  };
+  const cardStyle = {
+    background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, boxShadow: theme.shadowMd,
+  };
+  const btnBase = {
+    display: "inline-flex", alignItems: "center", gap: 7, borderRadius: 9, padding: "9px 16px",
+    fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: theme.fontFamily,
+  };
 
   return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
       <Navbar />
-      {PromptDialog}
       <div style={{ background: theme.directionGrad, padding: heroPadding(isMobile) }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto" }}>
           <Breadcrumb
             variant="hero"
             items={[{ label: "Consultations", onClick: () => navigate("/consultations") }, { label: demande.reference }]}
@@ -178,97 +209,175 @@ export default function ConsultationDetail() {
         </div>
       </div>
 
-      <div style={{ padding: contentPadding(isMobile), maxWidth: 900, margin: "0 auto" }}>
-        <div style={carte}>
-          <div style={{ display: "flex" }}>
-            <Etape titre="Demande" date={demande.created_at} atteinte theme={theme} />
-            <Etape titre="Validation" date={demande.date_validation} atteinte={!!demande.date_validation} theme={theme} />
-            <Etape titre="Échéance" date={demande.date_echeance} atteinte={demande.statut_effectif === "expiree"} theme={theme} />
-          </div>
+      <div style={{ padding: contentPadding(isMobile), maxWidth: 800, margin: "0 auto" }}>
+        <div style={{ ...cardStyle, padding: isMobile ? "20px 16px 28px" : "24px 32px 32px", marginBottom: 20 }}>
+          <ConsultationStepper demande={demande} theme={theme} isMobile={isMobile} />
           {demande.statut_effectif === "validee" && (
-            <div style={{ textAlign: "center", marginTop: 12, fontSize: 13, color: theme.primary, fontWeight: 700 }}>
+            <div style={{ textAlign: "center", marginTop: 26, fontSize: 13, color: theme.primary, fontWeight: 700 }}>
               Expire dans {tempsRestant(demande.date_echeance)}
             </div>
           )}
-          {demande.statut === "rejetee" && (
-            <div style={{ marginTop: 12, color: theme.danger, background: theme.dangerBg, borderRadius: 8, padding: "9px 12px", fontSize: 13 }}>
-              Demande rejetée{demande.motif_rejet ? ` : ${demande.motif_rejet}` : "."}
-            </div>
-          )}
-          {demande.statut === "revoquee" && (
-            <div style={{ marginTop: 12, color: theme.danger, background: theme.dangerBg, borderRadius: 8, padding: "9px 12px", fontSize: 13 }}>
-              Consultation révoquée.
-            </div>
-          )}
         </div>
 
-        <div style={carte}>
-          <Ligne label="Type" theme={theme}>{demande.type_demande_label}</Ligne>
-          <Ligne label="Description" theme={theme}>{demande.description}</Ligne>
-          {demande.employee_nom && <Ligne label="Employé" theme={theme}>{demande.employee_nom} ({demande.employee_matricule})</Ligne>}
-          <Ligne label="Demandeur" theme={theme}>{demande.demandeur_nom}</Ligne>
-          <Ligne label="Traitée par" theme={theme}>{demande.traite_par_nom}</Ligne>
-          <Ligne label="Date de validation" theme={theme}>{demande.date_validation && formatDateHeure(demande.date_validation)}</Ligne>
-          <Ligne label="Échéance" theme={theme}>
-            {demande.date_echeance && formatDateHeure(demande.date_echeance)}
-            {demande.nb_prolongations > 0 && ` (prolongée ${demande.nb_prolongations} fois)`}
-          </Ligne>
-        </div>
-
-        {actionError && (
-          <div style={{ color: theme.danger, background: theme.dangerBg, borderRadius: 8, padding: "9px 12px", fontSize: 13, marginBottom: 14 }}>
-            {actionError}
+        {demande.employee && (
+          <div style={{ marginBottom: 16 }}>
+            <InfoCard title={`Informations de l'employé — ${demande.employee_nom}`} theme={theme}>
+              <Field label="Matricule" value={demande.employee_matricule} theme={theme} />
+              <Field label="Date de naissance" value={formatDateFR(demande.employee_date_naissance)} theme={theme} />
+              <Field label="Date de recrutement" value={formatDateFR(demande.employee_date_embauche)} theme={theme} />
+              <Field label="Type de contrat" value={demande.employee_type_contrat_nom} theme={theme} />
+              <Field label="Catégorie" value={demande.employee_categorie_nom} theme={theme} />
+              <Field label="Fonction" value={demande.employee_poste_nom} theme={theme} />
+              <Field label="Direction" value={demande.employee_direction_nom} theme={theme} />
+              <Field label="Département" value={demande.employee_departement_nom} theme={theme} />
+              <Field label="Service" value={demande.employee_service_nom} theme={theme} />
+            </InfoCard>
           </div>
         )}
 
-        {peutAnnuler && (
-          <button type="button" onClick={annuler} style={{ background: theme.surface, color: theme.danger, border: `1px solid ${theme.dangerBorder}`, borderRadius: 9, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 16 }}>
-            Annuler ma demande
-          </button>
-        )}
-
-        {estTraiteur && demande.statut === "en_cours" && <TraiterPanel demande={demande} onDone={charger} />}
-
-        {demande.statut === "validee" && estTraiteur && (
-          <div style={{ ...carte, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <select aria-label="Durée de prolongation" value={dureeProlongation} onChange={(e) => setDureeProlongation(Number(e.target.value))} style={{ padding: "9px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.bg, color: theme.text, fontSize: 13 }}>
-              {DUREES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-            </select>
-            <button type="button" onClick={() => agir("prolonger", { duree_heures: dureeProlongation })} style={{ background: theme.primaryBg, color: theme.primary, border: `1px solid ${theme.primaryBorder}`, borderRadius: 9, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-              Prolonger
-            </button>
-            {demande.statut_effectif === "validee" && (
-              <button type="button" onClick={revoquer} style={{ background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}`, borderRadius: 9, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                Révoquer
-              </button>
+        <div style={{
+          display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 16,
+        }}>
+          <InfoCard title="Détails de la demande" theme={theme}>
+            <Field label="Type" value={demande.type_demande_label} theme={theme} />
+            <Field label="Importance" value={<ImportanceBadge importance={demande.importance} />} theme={theme} />
+            <Field label="Durée souhaitée" value={formatDuree(demande.duree_souhaitee_heures)} theme={theme} />
+            {demande.duree_accordee_heures != null && (
+              <Field
+                label="Durée accordée"
+                value={formatDuree(demande.duree_accordee_heures)}
+                sub={demande.duree_accordee_heures !== demande.duree_souhaitee_heures ? "Modifiée par le traiteur" : undefined}
+                theme={theme}
+              />
             )}
+            <Field
+              label="Téléchargement"
+              value={droit(demande.telechargement_autorise, demande.telechargement_souhaite).value}
+              sub={droit(demande.telechargement_autorise, demande.telechargement_souhaite).sub}
+              theme={theme}
+            />
+            <Field
+              label="Impression"
+              value={droit(demande.impression_autorisee, demande.impression_souhaitee).value}
+              sub={droit(demande.impression_autorisee, demande.impression_souhaitee).sub}
+              theme={theme}
+            />
+          </InfoCard>
+
+          <InfoCard title="Suivi de la demande" theme={theme}>
+            <Field
+              label="Demandeur"
+              value={demande.demandeur_nom}
+              sub={demande.demandeur_role === "GESTIONNAIRE" && demande.demandeur_libelle_role
+                ? demande.demandeur_libelle_role
+                : demande.demandeur_role}
+              theme={theme}
+            />
+            {demande.traite_par_nom && <Field label="Traité par" value={demande.traite_par_nom} theme={theme} />}
+            {demande.date_validation && (
+              <Field label="Validée le" value={formatDateHeure(demande.date_validation)} theme={theme} />
+            )}
+            {demande.date_echeance && (
+              <Field
+                label="Échéance"
+                value={formatDateHeure(demande.date_echeance)}
+                sub={demande.nb_prolongations > 0 ? `Prolongée ${demande.nb_prolongations} fois` : undefined}
+                theme={theme}
+              />
+            )}
+          </InfoCard>
+        </div>
+
+        <div style={{ ...cardStyle, padding: 22, marginBottom: 16 }}>
+          <Field label="Description" value={demande.description} theme={theme} />
+          {demande.motif_rejet && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${theme.border}` }}>
+              <Field label="Motif de rejet" value={demande.motif_rejet} theme={theme} danger />
+            </div>
+          )}
+        </div>
+
+        {message && (
+          <div style={{
+            color: theme.danger, background: theme.dangerBg, borderRadius: 10, padding: "10px 14px",
+            fontSize: 13, marginBottom: 16,
+          }}>
+            {message}
           </div>
         )}
 
-        {demande.statut_effectif === "expiree" && !estTraiteur && (
-          <div style={{ ...carte, color: theme.textSecondary, textAlign: "center" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24, alignItems: "center" }}>
+          {isAdmin && demande.statut === "validee" && (
+            <>
+              <DureeSelect
+                ariaLabel="Durée de prolongation"
+                value={dureeProlongation}
+                onChange={setDureeProlongation}
+              />
+              <button
+                type="button" onClick={() => agir("prolonger", { duree_heures: dureeProlongation })}
+                className="btn-lift"
+                style={{ ...btnBase, background: theme.surface, color: theme.primary, border: `1px solid ${theme.primaryBorder}` }}
+              >
+                Prolonger
+              </button>
+              {demande.statut_effectif === "validee" && (
+                <button
+                  type="button" onClick={revoquer} className="btn-lift"
+                  style={{ ...btnBase, background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}` }}
+                >
+                  Révoquer
+                </button>
+              )}
+            </>
+          )}
+          {peutAnnuler && (
+            <button
+              type="button" onClick={annuler} className="btn-lift"
+              style={{ ...btnBase, background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}` }}
+            >
+              Annuler la demande
+            </button>
+          )}
+        </div>
+
+        {isAdmin && demande.statut === "en_cours" && (
+          <div style={{ marginBottom: 24 }}>
+            <TraiterPanel demande={demande} onDone={charger} />
+          </div>
+        )}
+
+        {demande.statut_effectif === "expiree" && !isAdmin && (
+          <div style={{ ...cardStyle, padding: 22, marginBottom: 24, color: theme.textSecondary, textAlign: "center" }}>
             Consultation expirée le {formatDateHeure(demande.date_echeance)}. Le document n'est plus consultable.
           </div>
         )}
 
         {consultable && (
-          <div style={{ ...carte, padding: 0, overflow: "hidden" }}>
+          <div style={{ ...cardStyle, padding: 0, overflow: "hidden", marginBottom: 24 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "10px 16px", borderBottom: `1px solid ${theme.border}` }}>
               {demande.fichiers.map((f) => (
                 <button
                   key={f.id} type="button" onClick={() => setFichierId(f.id)}
-                  style={{ background: f.id === fichierId ? theme.primaryBg : theme.surface, color: f.id === fichierId ? theme.primary : theme.textSecondary, border: `1px solid ${f.id === fichierId ? theme.primaryBorder : theme.border}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  style={{ background: f.id === fichierActifId ? theme.primaryBg : theme.surface, color: f.id === fichierActifId ? theme.primary : theme.textSecondary, border: `1px solid ${f.id === fichierActifId ? theme.primaryBorder : theme.border}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
                 >
                   {f.file_name}
                 </button>
               ))}
-              {(demande.telechargement_autorise || estTraiteur) && (
-                <button type="button" onClick={telecharger} style={{ marginLeft: "auto", background: theme.primary, color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                  Télécharger
-                </button>
-              )}
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                {(demande.impression_autorisee || isAdmin) && (
+                  <button type="button" onClick={imprimer} style={{ background: theme.surface, color: theme.primary, border: `1px solid ${theme.primaryBorder}`, borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    Imprimer
+                  </button>
+                )}
+                {(demande.telechargement_autorise || isAdmin) && (
+                  <button type="button" onClick={telecharger} style={{ background: theme.primary, color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    Télécharger
+                  </button>
+                )}
+              </div>
             </div>
-            <div style={{ height: isMobile ? 480 : 640, display: "flex" }}>
+            <div style={{ height: isMobile ? 480 : 720, display: "flex" }}>
               {vue ? (
                 <SecureDocViewer url={vue.url} mimeType={vue.mime} fileName={vue.nom} />
               ) : (
@@ -278,6 +387,8 @@ export default function ConsultationDetail() {
           </div>
         )}
       </div>
+      {ConfirmDialog}
+      {PromptDialog}
     </PageBackground>
   );
 }

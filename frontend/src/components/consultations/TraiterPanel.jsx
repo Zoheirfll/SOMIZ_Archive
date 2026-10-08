@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { usePrompt } from "../ConfirmDialog";
-import { DUREES, slugDepuisReference } from "../../utils/consultations";
+import { TAILLE_MAX_FICHIER_MO, formatDuree, slugDepuisReference } from "../../utils/consultations";
+import DureeSelect from "./DureeSelect";
+import FileDropZone from "./FileDropZone";
 
 const messageErreur = (err, defaut) => {
   const data = err.response?.data;
@@ -19,8 +21,12 @@ export default function TraiterPanel({ demande, onDone }) {
   const theme = useTheme();
   const { prompt, PromptDialog } = usePrompt();
   const slug = slugDepuisReference(demande.reference);
-  const [duree, setDuree] = useState(24);
-  const [telechargement, setTelechargement] = useState(false);
+  // Préremplis avec les SOUHAITS du demandeur : le traiteur les accorde tels
+  // quels (il ne touche à rien) ou les modifie avant de valider.
+  const dureeSouhaitee = demande.duree_souhaitee_heures || 24;
+  const [duree, setDuree] = useState(dureeSouhaitee);
+  const [telechargement, setTelechargement] = useState(!!demande.telechargement_souhaite);
+  const [impression, setImpression] = useState(!!demande.impression_souhaitee);
   const [fichiers, setFichiers] = useState([]);
   const [archives, setArchives] = useState([]);
   const [copies, setCopies] = useState([]);
@@ -57,6 +63,7 @@ export default function TraiterPanel({ demande, onDone }) {
       const form = new FormData();
       form.append("duree_heures", String(duree));
       form.append("telechargement_autorise", telechargement ? "true" : "false");
+      form.append("impression_autorisee", impression ? "true" : "false");
       fichiers.forEach((f) => form.append("fichiers", f));
       copies.forEach((id) => form.append("copier_fichiers", id));
       await api.post(`/consultations/demandes/${slug}/valider/`, form, {
@@ -98,14 +105,15 @@ export default function TraiterPanel({ demande, onDone }) {
         Traiter la demande
       </div>
 
-      <label htmlFor="fichiers-scan" style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>
-        Scan à envoyer (PDF, JPEG, PNG, TIFF — 20 Mo max)
-      </label>
-      <input
-        id="fichiers-scan" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff"
-        onChange={(e) => setFichiers(Array.from(e.target.files || []))}
-        style={{ ...champ, display: "block", width: "100%", boxSizing: "border-box", margin: "4px 0 14px" }}
-      />
+      <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, marginBottom: 6 }}>Scan à envoyer</div>
+      <div style={{ marginBottom: 14 }}>
+        <FileDropZone
+          files={fichiers}
+          onChange={setFichiers}
+          accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff"
+          maxMo={TAILLE_MAX_FICHIER_MO}
+        />
+      </div>
 
       {demande.employee && archives.length > 0 && (
         <div style={{ marginBottom: 14 }}>
@@ -121,21 +129,46 @@ export default function TraiterPanel({ demande, onDone }) {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
-        <label style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>
-          Durée de la consultation{" "}
-          <select aria-label="Durée de la consultation" value={duree} onChange={(e) => setDuree(Number(e.target.value))} style={{ ...champ, marginLeft: 6 }}>
-            {DUREES.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-          </select>
-        </label>
+      <div style={{
+        background: theme.primaryBg, border: `1px solid ${theme.primaryBorder}`, borderRadius: 10,
+        padding: "10px 14px", marginBottom: 12, fontSize: 13, color: theme.text,
+      }}>
+        <strong>Souhaits du demandeur :</strong>{" "}
+        {formatDuree(dureeSouhaitee)} · téléchargement {demande.telechargement_souhaite ? "souhaité" : "non souhaité"}
+        {" · "}impression {demande.impression_souhaitee ? "souhaitée" : "non souhaitée"}.
+        <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+          Les champs ci-dessous sont préremplis : validez tel quel pour tout accorder, ou modifiez ce que vous accordez.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: theme.text, paddingTop: 10 }}>Durée accordée</span>
+          <DureeSelect value={duree} onChange={setDuree} />
+          {duree !== dureeSouhaitee && (
+            <span style={{ fontSize: 11, color: theme.warning, paddingTop: 11 }}>modifiée (souhaitée : {formatDuree(dureeSouhaitee)})</span>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
           <input type="checkbox" checked={telechargement} onChange={(e) => setTelechargement(e.target.checked)} />
           Autoriser le téléchargement
+          {telechargement !== !!demande.telechargement_souhaite && (
+            <span style={{ fontSize: 11, color: theme.warning }}>(modifié)</span>
+          )}
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: theme.text, cursor: "pointer" }}>
+          <input type="checkbox" checked={impression} onChange={(e) => setImpression(e.target.checked)} />
+          Autoriser l'impression
+          {impression !== !!demande.impression_souhaitee && (
+            <span style={{ fontSize: 11, color: theme.warning }}>(modifié)</span>
+          )}
         </label>
       </div>
-      {telechargement && (
+      {(telechargement || impression) && (
         <div style={{ color: theme.warning, fontSize: 12, marginBottom: 12 }}>
-          Une copie téléchargée sort de l'application : seul le filigrane (nom, référence, date) permettra d'en identifier l'origine.
+          Une copie téléchargée ou imprimée sort de l'application : seul le filigrane (nom, référence, date) permettra d'en identifier l'origine.
         </div>
       )}
 
