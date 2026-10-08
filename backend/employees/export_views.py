@@ -41,11 +41,12 @@ def _types_documents_actifs():
 
 def _employee_row_headers(champs, types_docs):
     return [
-        'Matricule', 'Nom', 'Prénom', 'N° Contrat actif',
+        'Matricule', 'N° Contrat actif', 'Nom', 'Prénom', 'Fonction',
+        'Date de naissance', 'Date de recrutement',
         'Date début contrat', 'Date fin contrat', 'Statut du contrat',
-        'Date de naissance', 'Date de recrutement', 'Statut',
+        'Type de contrat', 'Catégorie', 'Statut',
         'Direction', 'Département', 'Service', 'Cellule', 'Section',
-        'Fonction', 'Type de contrat', 'Catégorie',
+        'NIN', 'N° Sécurité sociale', 'RIP/RIB', 'Groupe sanguin', "Motif d'archivage",
         *[c.nom for c in champs],
         *[f'Scan : {t.nom}' for t in types_docs],
     ]
@@ -79,21 +80,22 @@ def _employee_row_values(employee, champs, types_docs, contrat=None, valeurs_par
             employee.documents.filter(is_active=True).values_list('type_doc_id', flat=True)
         )
     return [
-        employee.matricule, employee.nom, employee.prenom,
-        contrat.get('numero_contrat') or '',
-        _iso(contrat.get('date_debut')), _iso(contrat.get('date_fin')),
+        employee.matricule, contrat.get('numero_contrat') or '', employee.nom, employee.prenom,
+        employee.poste.nom if employee.poste_id else '',
+        _iso(employee.date_naissance), _iso(employee.date_embauche),
+        _iso(contrat.get('date_debut')),
+        _iso(contrat.get('date_fin')),
         statuts_contrat.get(contrat.get('statut'), contrat.get('statut') or ''),
-        employee.date_naissance.isoformat() if employee.date_naissance else '',
-        employee.date_embauche.isoformat() if employee.date_embauche else '',
+        employee.type_contrat.nom if employee.type_contrat_id else '',
+        employee.categorie.nom if employee.categorie_id else '',
         employee.get_statut_display() if hasattr(employee, 'get_statut_display') else employee.statut,
         employee.direction.nom if employee.direction_id else '',
         employee.departement.nom if employee.departement_id else '',
         employee.service.nom if employee.service_id else '',
         employee.cellule.nom if employee.cellule_id else '',
         employee.section.nom if employee.section_id else '',
-        employee.poste.nom if employee.poste_id else '',
-        employee.type_contrat.nom if employee.type_contrat_id else '',
-        employee.categorie.nom if employee.categorie_id else '',
+        employee.nin, employee.numero_secu_sociale, employee.rib, employee.groupe_sanguin,
+        employee.motif_archivage.nom if employee.motif_archivage_id else '',
         *[valeurs_par_champ.get(c.id, '') for c in champs],
         *['Oui' if t.id in types_presents else 'Non' for t in types_docs],
     ]
@@ -187,7 +189,7 @@ class EmployeeExportAllView(APIView):
 
         qs = Employee.objects.select_related(
             'direction', 'departement', 'service', 'cellule', 'section',
-            'poste', 'type_contrat', 'categorie',
+            'poste', 'type_contrat', 'categorie', 'motif_archivage',
         ).prefetch_related('valeurs_personnalisees__champ').annotate(
             numero_contrat_actif=Subquery(latest_contrat.values('numero_contrat')[:1]),
             contrat_date_debut=Subquery(latest_contrat.values('date_debut')[:1]),

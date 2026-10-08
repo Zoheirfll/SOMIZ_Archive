@@ -41,9 +41,13 @@ def test_colonnes_demandees_et_colonnes_du_contrat(admin_user, employee, type_co
         'Statut du contrat', 'Date de naissance', 'Date de recrutement', 'Fonction',
     ):
         assert colonne in entetes
-    # Les colonnes du contrat suivent immédiatement le n° de contrat.
-    i = entetes.index('N° Contrat actif')
-    assert entetes[i:i + 4] == ['N° Contrat actif', 'Date début contrat', 'Date fin contrat', 'Statut du contrat']
+    # Ordre demandé par l'utilisateur pour le début du fichier.
+    assert entetes[:7] == [
+        'Matricule', 'N° Contrat actif', 'Nom', 'Prénom', 'Fonction',
+        'Date de naissance', 'Date de recrutement',
+    ]
+    for colonne in ('NIN', 'N° Sécurité sociale', 'RIP/RIB', 'Groupe sanguin', "Motif d'archivage"):
+        assert colonne in entetes
     ligne = lignes[0]
     assert ligne['Matricule'] == employee.matricule
     assert ligne['Fonction'] == employee.poste.nom
