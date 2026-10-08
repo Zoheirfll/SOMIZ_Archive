@@ -40,3 +40,6 @@ ngrok.exe
 # ─── Déploiement ─────────────────────────────────────────────────────────────
 deploy/.env
 deploy/backups/
+
+# ─── Couverture de tests ─────────────────────────────────────────────────────
+backend/.coverage

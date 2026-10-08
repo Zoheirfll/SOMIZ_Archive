@@ -1,5 +1,7 @@
 # OCR des documents employés — Plan d'implémentation
 
+> ⚠️ Partiellement obsolète depuis le 2026-10-08 : les suggestions de champs (extracteurs, `ocr_pattern`, appliquer/ignorer) ont été supprimées. Seuls l’OCR du texte et la recherche plein texte subsistent — voir `docs/fonctionnel/documents.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ajouter un pipeline OCR local (Tesseract), déclenché automatiquement à l'upload, qui alimente une recherche plein texte des documents et propose des suggestions de remplissage de champs employé (validées manuellement par un ADMIN).

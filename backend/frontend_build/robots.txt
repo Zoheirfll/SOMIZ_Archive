@@ -1,4 +1,0 @@
-# SOMIZ est un intranet RH privé — ne doit jamais être indexé, même en
-# cas d'exposition accidentelle sur un domaine public.
-User-agent: *
-Disallow: /

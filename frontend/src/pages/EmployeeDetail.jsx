@@ -19,7 +19,6 @@ import DossierTab from "../components/employeeDetail/DossierTab";
 import EmployeeForm from "./EmployeeForm";
 import DocumentPagesModal from "../components/employeeDetail/DocumentPagesModal";
 import UploadChoiceModal from "../components/employeeDetail/UploadChoiceModal";
-import OcrSuggestionsPanel from "../components/OcrSuggestionsPanel";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
@@ -1611,10 +1610,6 @@ const EmployeeDetail = () => {
           user={user}
           busyIds={busyIds}
         />
-
-        {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-          <OcrSuggestionsPanel employeeId={employee.id} />
-        )}
       </div>
       {editingDoc && (
         <DocumentPagesModal

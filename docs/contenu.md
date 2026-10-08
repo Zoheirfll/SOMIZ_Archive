@@ -56,8 +56,8 @@ SOMIZ/
 ├── .gitignore            ← Unique, couvre backend + frontend
 ├── install.bat           ← Installation automatique Windows
 ├── install.sh            ← Installation automatique Linux/macOS
-├── contenu.md            ← Documentation complète
-├── requirements.md       ← Dépendances pour le chef de département
+├── docs/contenu.md          ← Documentation complète
+├── docs/requirements.md     ← Dépendances pour le chef de département
 │
 ├── backend/              ← API Django REST
 │   ├── pytest.ini        ← Config pytest (lancé depuis backend/)
@@ -779,8 +779,8 @@ SOMIZ/
 ├── .gitignore                          ← Couvre backend + frontend
 ├── install.bat                         ← Installation Windows (double-clic)
 ├── install.sh                          ← Installation Linux/macOS
-├── contenu.md                          ← CE FICHIER
-├── requirements.md                     ← Dépendances pour le chef de département
+├── docs/contenu.md                        ← CE FICHIER
+├── docs/requirements.md                   ← Dépendances pour le chef de département
 │
 ├── backend/
 │   ├── manage.py

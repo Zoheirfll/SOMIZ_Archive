@@ -1,9 +1,9 @@
 # Démo via tunnel Cloudflare — rapide : build de production servi par Django (un seul port, même origine).
-# Usage : .\scripts\demo-tunnel.ps1 [-SkipBuild]
+# Usage : .\deploy\demo\demo-tunnel.ps1 [-SkipBuild]
 # DEV/DÉMO UNIQUEMENT, jamais avec de vraies données RH (voir CLAUDE.md, section tunnel).
 param([switch]$SkipBuild)
 
-$root = Split-Path -Parent $PSScriptRoot
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 if (-not $SkipBuild) {
     Push-Location "$root\frontend"

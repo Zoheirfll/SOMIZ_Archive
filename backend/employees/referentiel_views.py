@@ -782,7 +782,7 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
         model = ChampPersonnalise
         fields = [
             'id', 'nom', 'code', 'type_champ', 'ordre', 'is_active',
-            'is_systeme', 'categorie', 'ocr_pattern', 'options',
+            'is_systeme', 'categorie', 'options',
             'condition_champ', 'condition_valeur',
         ]
         read_only_fields = ['is_systeme']
@@ -798,16 +798,15 @@ class ChampPersonnaliseSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         # Un champ système (is_systeme=True) n'est jamais créable via ce
         # serializer (is_systeme est read_only) — ici on protège l'édition :
-        # seules `categorie` et `ocr_pattern` peuvent changer sur une
-        # instance existante is_systeme (le motif OCR reste configurable
-        # même pour un champ système, ex. date_naissance).
+        # seule `categorie` peut changer sur une instance existante
+        # is_systeme.
         instance = getattr(self, 'instance', None)
         if instance is not None and instance.is_systeme:
-            mutable = set(attrs.keys()) - {'categorie', 'ocr_pattern'}
+            mutable = set(attrs.keys()) - {'categorie'}
             if mutable:
                 raise serializers.ValidationError(
-                    "Un champ système ne peut avoir que sa catégorie et son motif "
-                    "OCR modifiés (nom, code, type, ordre et statut restent figés)."
+                    "Un champ système ne peut avoir que sa catégorie modifiée "
+                    "(nom, code, type, ordre et statut restent figés)."
                 )
 
         condition_champ = attrs.get(

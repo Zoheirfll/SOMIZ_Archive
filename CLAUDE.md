@@ -29,13 +29,13 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 
 ## Toujours consulter avant de coder
 
-1. **`contenu.md`** (racine) — documentation fonctionnelle complète du projet (1 000+ lignes)
+1. **`docs/contenu.md`** — documentation fonctionnelle complète du projet (1 000+ lignes)
 2. **`frontend/src/styles/theme.js`** — tous les tokens de couleur, ombre, police. **Ne jamais hardcoder un hex dans un composant.**
 3. **`frontend/src/styles/animations.css`** — classes d'animation disponibles
 4. **`frontend/src/App.js`** — routes et structure de navigation
 5. **`backend/employees/models.py`** — modèles de données (Direction, Departement, Service, Employé, Contrat, Document)
 6. **`securite.md`** (racine) — journal des correctifs de sécurité, à jour à chaque changement touchant l'auth, les permissions ou la suppression de données
-7. **`GRH_INTEGRATION.md`** (racine) — intégration entrante GRH → SOMIZ (synchronisation employés via webhook signé HMAC), voir aussi `docs/GRH_INTEGRATION_SPEC.md` (spec à transmettre à l'équipe GRH). **Non branché en production** : le code existe (`backend/employees/grh_integration.py`, route `/api/employees/grh-sync/`, tests), mais rien n'a encore été validé/activé côté GRH — ne pas considérer cette intégration comme active tant que `GRH_INTEGRATION.md` (section "Ce qui reste à faire") n'est pas soldée
+7. **`docs/GRH_INTEGRATION.md`** — intégration entrante GRH → SOMIZ (synchronisation employés via webhook signé HMAC), voir aussi `docs/GRH_INTEGRATION_SPEC.md` (spec à transmettre à l'équipe GRH). **Non branché en production** : le code existe (`backend/employees/grh_integration.py`, route `/api/employees/grh-sync/`, tests), mais rien n'a encore été validé/activé côté GRH — ne pas considérer cette intégration comme active tant que `docs/GRH_INTEGRATION.md` (section "Ce qui reste à faire") n'est pas soldée
 
 ---
 

@@ -1,5 +1,7 @@
 # OCR des documents employés — design
 
+> ⚠️ Partiellement obsolète depuis le 2026-10-08 : les suggestions de champs (extracteurs, `ocr_pattern`, appliquer/ignorer) ont été supprimées. Seuls l’OCR du texte et la recherche plein texte subsistent — voir `docs/fonctionnel/documents.md`.
+
 Date : 2026-09-06
 
 ## Objectif

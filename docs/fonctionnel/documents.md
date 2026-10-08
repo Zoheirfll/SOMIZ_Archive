@@ -281,3 +281,19 @@ complète : `docs/superpowers/specs/2026-09-06-ocr-documents-design.md`.
   (`celery -A config worker -l info`) à superviser en plus de
   Django/Postgres/Redis — `CELERY_TASK_ALWAYS_EAGER=True` en `.env`
   permet un traitement synchrone en dev sans worker séparé.
+
+### ⚠️ Simplification du 2026-10-08 — l'OCR ne sert plus qu'à la recherche
+
+Les **suggestions de champs OCR sont supprimées** (jugées dispensables) : plus
+d'extracteurs (`ocr/extractors.py`), plus de `ChampPersonnalise.ocr_pattern`,
+plus de `OcrResult.extracted_fields`, plus d'endpoints
+`/api/ocr/employees/<id>/suggestions/` et `/api/ocr/suggestions/...`, plus de
+panneau `OcrSuggestionsPanel` sur la fiche employé ni de colonne « Motif OCR »
+dans `/parametres`. Migrations `employees 0039` et `ocr 0003`.
+
+**Conservé** : l'analyse Tesseract en tâche de fond (`ocr/tasks.py`, `raw_text`
+et `page_texts`), la page de recherche `/api/ocr/search/` (ADMIN), le filtre
+`?q_contenu=` et le badge de statut OCR. Les paragraphes « Extraction de
+champs » et « Suggestions » ci-dessus décrivent l'ancien comportement.
+`TypeDocument.champ_source` reste, mais ne sert plus qu'aux champs cliquables.
+Les anciens spec/plan OCR (`docs/superpowers/`) sont partiellement obsolètes.

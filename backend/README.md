@@ -59,8 +59,8 @@ python -m pytest tests/ -v
 ```
 SOMIZ/
 ├── install.bat / install.sh     ← Scripts d'installation automatique
-├── contenu.md                   ← Documentation complète du projet
-├── requirements.md              ← Dépendances pour le chef de département
+├── docs/contenu.md                 ← Documentation complète du projet
+├── docs/requirements.md            ← Dépendances pour le chef de département
 │
 ├── backend/
 │   ├── manage.py

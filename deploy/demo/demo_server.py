@@ -4,7 +4,7 @@ Pourquoi : via un tunnel HTTP/2 (cloudflared), les uploads arrivent en
 `Transfer-Encoding: chunked`, que `runserver` (HTTP/1.0) ne sait pas lire —
 le POST échoue et le terminateur "0" est pris pour une requête invalide.
 waitress gère le chunked. StaticFilesHandler sert /static comme runserver.
-Usage (depuis backend/) : python ../scripts/demo_server.py
+Usage (depuis backend/) : python ../deploy/demo/demo_server.py
 """
 import os
 import sys

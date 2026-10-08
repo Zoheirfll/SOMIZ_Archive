@@ -469,14 +469,10 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
   };
 
   // "Lieu de naissance" s'affiche dans la section Identité plutôt que dans
-  // "Informations complémentaires" — identifié via ocr_pattern quand il est
-  // configuré (stable, contrairement à nom/code qui restent modifiables par
-  // l'admin), avec repli sur le nom exact si l'OCR n'a pas été configuré
-  // pour ce champ (ocr_pattern vide dans ce cas).
+  // "Informations complémentaires" — identifié par nom, même limite que
+  // les champs ci-dessous (pas de code stable garanti).
   const champLieuNaissance = champsDefinitions.find(
-    (c) =>
-      c.ocr_pattern === "LIEU_NAISSANCE" ||
-      c.nom?.trim().toLowerCase() === "lieu de naissance",
+    (c) => c.nom?.trim().toLowerCase() === "lieu de naissance",
   );
   // "Situation familiale" et "Salaire unique" s'affichent dans la section
   // Identité (comme Lieu de naissance ci-dessus) plutôt que dans

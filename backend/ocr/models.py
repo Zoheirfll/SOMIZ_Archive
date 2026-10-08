@@ -1,8 +1,8 @@
 """
 ocr/models.py
-Résultat d'analyse OCR d'un fichier employé — jamais d'écriture directe
-sur Employee/EmployeeChampValeur, uniquement des suggestions à valider
-(voir docs/superpowers/specs/2026-09-06-ocr-documents-design.md).
+Résultat d'analyse OCR d'un fichier employé — texte brut indexé pour la
+recherche plein texte uniquement (plus d'extraction de champs depuis le
+2026-10-08, voir docs/fonctionnel/documents.md).
 """
 
 from django.db import models
@@ -32,10 +32,6 @@ class OcrResult(models.Model):
         ),
     )
     confidence = models.FloatField(null=True, blank=True, verbose_name="Confiance")
-    extracted_fields = models.JSONField(
-        default=list, blank=True, verbose_name="Champs détectés",
-        help_text="Liste de {champ_code, valeur, confiance, statut} — statut ∈ en_attente/appliquee/ignoree",
-    )
     processed_at = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True)
 
