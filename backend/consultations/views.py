@@ -1,17 +1,27 @@
+import logging
+import os
+
 from django.db.models import Q
+from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.encoding import smart_str
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from audit.models import AuditLog
 from . import services
+from .access import controler_acces
+from .filigrane import appliquer_filigrane
 from .models import DemandeConsultation
 from .notifications import notifier_nouvelle_demande, notifier_rejetee, notifier_revoquee, notifier_validee
 from .permissions import CanAccessConsultations, CanRequestConsultation, IsConsultationManager
 from .serializers import DemandeConsultationCreateSerializer, DemandeConsultationSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def reference_depuis_slug(slug):
@@ -199,3 +209,91 @@ class DemandeConsultationRevoquerView(_TraitementView):
         )
         notifier_revoquee(demande, request.user)
         return self._reponse(demande)
+
+
+class _FichierLivreView(APIView):
+    """Base commune de `voir` et `telecharger`. Throttle `consultation`
+    (30/min), flux authentifié, jamais de lien vers media/."""
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'consultation'
+    disposition = 'inline'
+    action_audit = AuditLog.Action.VIEW_CONSULTATION
+
+    def _charger(self, request, ref, fichier_id):
+        demande = DemandeConsultation.objects.select_related('demandeur').filter(
+            reference=reference_depuis_slug(ref),
+        ).first()
+        if demande is None:
+            raise Http404
+        fichier = demande.fichiers.filter(pk=fichier_id).first()
+        if fichier is None:
+            raise Http404
+        controler_acces(request.user, demande, fichier)
+        return demande, fichier
+
+    def _autoriser_action(self, request, demande):
+        """Surcharge dans `telecharger`."""
+
+    def get(self, request, ref, fichier_id):
+        demande, fichier = self._charger(request, ref, fichier_id)
+        self._autoriser_action(request, demande)
+        if not fichier.file or not os.path.exists(fichier.file.path):
+            return Response({'error': 'Fichier introuvable.'}, status=404)
+
+        nom = fichier.file_name
+        if request.user.can_manage_consultations:
+            # Le traiteur contrôle l'original qu'il a envoyé.
+            def flux(chemin, taille_bloc=8192):
+                with open(chemin, 'rb') as fh:
+                    while bloc := fh.read(taille_bloc):
+                        yield bloc
+
+            reponse = StreamingHttpResponse(flux(fichier.file.path), content_type=fichier.mime_type)
+            reponse['Content-Length'] = os.path.getsize(fichier.file.path)
+        else:
+            texte = (
+                f"{request.user.full_name} — {demande.reference} — "
+                f"{timezone.localtime():%d/%m/%Y %H:%M}"
+            )
+            try:
+                with open(fichier.file.path, 'rb') as fh:
+                    contenu, mime = appliquer_filigrane(fh.read(), fichier.mime_type, texte)
+            except Exception:
+                # Échec fermé : on ne sert JAMAIS l'original non filigrané.
+                logger.exception("Filigrane impossible (fichier %s)", fichier.id)
+                return Response(
+                    {'error': "Le fichier livré est illisible. Contactez le traiteur de votre demande."},
+                    status=422,
+                )
+            if mime != fichier.mime_type:
+                nom = os.path.splitext(nom)[0] + '.png'
+            reponse = HttpResponse(contenu, content_type=mime)
+
+        nom_sur = smart_str(nom).replace('"', '')
+        reponse['Content-Disposition'] = f'{self.disposition}; filename="{nom_sur}"'
+        reponse['Cache-Control'] = 'no-store, no-cache, must-revalidate, private'
+        reponse['Pragma'] = 'no-cache'
+        reponse['X-Frame-Options'] = 'SAMEORIGIN'
+        reponse['X-Content-Type-Options'] = 'nosniff'
+        reponse['Content-Security-Policy'] = "default-src 'self'"
+        AuditLog.log(
+            request, self.action_audit, target=demande,
+            details={
+                'reference': demande.reference, 'fichier': fichier.file_name,
+                'traiteur': bool(request.user.can_manage_consultations),
+            },
+        )
+        return reponse
+
+
+class ConsultationFichierVoirView(_FichierLivreView):
+    pass
+
+
+class ConsultationFichierTelechargerView(_FichierLivreView):
+    disposition = 'attachment'
+    action_audit = AuditLog.Action.DL_CONSULTATION
+
+    def _autoriser_action(self, request, demande):
+        if not request.user.can_manage_consultations and not demande.telechargement_autorise:
+            raise PermissionDenied("Le téléchargement n'est pas autorisé pour cette consultation.")
