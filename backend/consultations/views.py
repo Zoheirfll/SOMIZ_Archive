@@ -3,11 +3,14 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from audit.models import AuditLog
+from . import services
 from .models import DemandeConsultation
-from .notifications import notifier_nouvelle_demande
-from .permissions import CanAccessConsultations, CanRequestConsultation
+from .notifications import notifier_nouvelle_demande, notifier_rejetee, notifier_revoquee, notifier_validee
+from .permissions import CanAccessConsultations, CanRequestConsultation, IsConsultationManager
 from .serializers import DemandeConsultationCreateSerializer, DemandeConsultationSerializer
 
 
@@ -117,3 +120,82 @@ class DemandeConsultationDetailView(ReferenceLookupMixin, generics.RetrieveDestr
             details={'type': instance.type_demande},
         )
         instance.delete()
+
+
+def _liste_form(request, cle):
+    """Valeurs multiples d'un champ de formulaire multipart (liste vide si
+    la requête est du JSON ou si le champ est absent)."""
+    data = request.data
+    if hasattr(data, 'getlist'):
+        return [v for v in data.getlist(cle) if v not in ('', None)]
+    valeur = data.get(cle) or []
+    return valeur if isinstance(valeur, list) else [valeur]
+
+
+def _vrai(valeur):
+    return str(valeur).strip().lower() in ('1', 'true', 'on', 'oui')
+
+
+class _TraitementView(ReferenceLookupMixin, APIView):
+    permission_classes = [IsConsultationManager]
+
+    def _reponse(self, demande):
+        demande = queryset_pour(self.request.user).get(pk=demande.pk)
+        return Response(DemandeConsultationSerializer(demande, context={'request': self.request}).data)
+
+
+class DemandeConsultationValiderView(_TraitementView):
+    """POST multipart : duree_heures, telechargement_autorise, fichiers[],
+    copier_fichiers[] (ids de EmployeeDocumentFile de l'employé)."""
+
+    def post(self, request, ref):
+        demande = self.get_object()
+        ancien = demande.statut
+        demande = services.valider(
+            demande, request.user,
+            duree_heures=request.data.get('duree_heures'),
+            telechargement_autorise=_vrai(request.data.get('telechargement_autorise', False)),
+            uploads=request.FILES.getlist('fichiers'),
+            ids_copies=_liste_form(request, 'copier_fichiers'),
+        )
+        for fichier in demande._fichiers_livres:
+            AuditLog.log(
+                request, AuditLog.Action.UPLOAD_CONSULTATION, target=demande,
+                details={'reference': demande.reference, 'fichier': fichier.file_name, 'origine': fichier.origine},
+            )
+        AuditLog.log(
+            request, AuditLog.Action.STATUT_CONSULTATION, target=demande,
+            details={
+                'de': ancien, 'vers': demande.statut,
+                'echeance': demande.date_echeance.isoformat(),
+                'telechargement_autorise': demande.telechargement_autorise,
+            },
+        )
+        notifier_validee(demande, request.user)
+        return self._reponse(demande)
+
+
+class DemandeConsultationRejeterView(_TraitementView):
+    def post(self, request, ref):
+        demande = self.get_object()
+        ancien = demande.statut
+        demande = services.rejeter(demande, request.user, request.data.get('motif_rejet'))
+        AuditLog.log(
+            request, AuditLog.Action.STATUT_CONSULTATION, target=demande,
+            details={'de': ancien, 'vers': demande.statut, 'motif_rejet': demande.motif_rejet},
+        )
+        notifier_rejetee(demande, request.user)
+        return self._reponse(demande)
+
+
+class DemandeConsultationRevoquerView(_TraitementView):
+    def post(self, request, ref):
+        demande = self.get_object()
+        ancien = demande.statut
+        demande = services.revoquer(demande, request.user)
+        AuditLog.log(
+            request, AuditLog.Action.STATUT_CONSULTATION, target=demande,
+            details={'de': ancien, 'vers': demande.statut},
+        )
+        notifier_revoquee(demande, request.user)
+        return self._reponse(demande)
