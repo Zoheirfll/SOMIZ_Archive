@@ -65,6 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation',
+            'charge_consultation',
             'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
             'scope_poles', 'scope_poles_nom',
@@ -123,15 +124,40 @@ class UserSerializer(serializers.ModelSerializer):
         role = attrs.get('role', self.instance.role if self.instance else None)
         if role != 'ADMIN':
             attrs['charge_attestation'] = False
+            attrs['charge_consultation'] = False
         return attrs
+
+    def validate_charge_consultation(self, value):
+        return _reserve_au_superadmin(self, value, self.instance.charge_consultation if self.instance else False)
+
+
+def _reserve_au_superadmin(serializer, value, valeur_actuelle):
+    """Donner l'accès aux consultations d'archives (documents confidentiels)
+    est réservé à un SUPERADMIN : sans ce garde-fou, un ADMIN ordinaire
+    pourrait se cocher lui-même le drapeau via l'API. Une valeur inchangée
+    reste acceptée (PATCH d'autres champs avec le formulaire complet)."""
+    request = serializer.context.get('request')
+    user = getattr(request, 'user', None)
+    if value != valeur_actuelle and not (user and user.is_superadmin):
+        raise serializers.ValidationError(
+            "Seul un Super-administrateur peut attribuer l'accès aux consultations d'archives."
+        )
+    return value
+
 
 class UserCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=10)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation', 'password']
+        fields = [
+            'id', 'username', 'nom', 'prenom', 'role', 'libelle_role',
+            'charge_attestation', 'charge_consultation', 'password',
+        ]
         read_only_fields = ['id']
+
+    def validate_charge_consultation(self, value):
+        return _reserve_au_superadmin(self, value, False)
 
     def validate_role(self, value):
         # SUPERADMIN ne peut jamais être créé/attribué via l'API — un
@@ -167,6 +193,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         # charge_attestation ne peut être coché qu'à la création d'un ADMIN.
         if attrs.get('role') != 'ADMIN':
             attrs['charge_attestation'] = False
+            attrs['charge_consultation'] = False
         return attrs
 
     def validate_password(self, value):

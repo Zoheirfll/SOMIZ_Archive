@@ -80,6 +80,16 @@ class User(AbstractBaseUser, PermissionsMixin):
                    "demandes d'attestation de travail (/attestations). Un "
                    "Super-administrateur y a toujours accès, quel que soit ce champ.",
     )
+    # Même principe que charge_attestation, pour les demandes de consultation
+    # de documents archivés (app `consultations`) : un ADMIN n'y a accès que
+    # s'il est explicitement coché ; un SUPERADMIN y a toujours accès. Seul un
+    # SUPERADMIN peut modifier ce champ (voir admin_views.py).
+    charge_consultation = models.BooleanField(
+        default=False, verbose_name="Chargé des consultations d'archives",
+        help_text="Réservé aux comptes Administrateur : reçoit et traite les "
+                   "demandes de consultation de documents archivés. Un "
+                   "Super-administrateur y a toujours accès, quel que soit ce champ.",
+    )
 
     # Sécurité : blocage après N tentatives
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
@@ -213,6 +223,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         (qui demande — GESTIONNAIRE/SUPERADMIN), c'est le pendant côté
         traiteur."""
         return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_attestation)
+
+    @property
+    def can_manage_consultations(self):
+        """True si ce compte traite les demandes de consultation d'archives
+        (valide, livre, prolonge, révoque) — SUPERADMIN toujours, ADMIN
+        seulement si charge_consultation est coché. Pendant côté traiteur de
+        la création de demande, réservée à GESTIONNAIRE/CONSULTANT."""
+        return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_consultation)
 
     def _scope_ids(self):
         """(direction_ids, pole_ids, departement_ids, service_ids,
