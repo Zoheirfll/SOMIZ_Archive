@@ -2,13 +2,12 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Q
 from rest_framework import generics, serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, visible_accounts
 from audit.models import AuditLog
 from employees.models import ChampPersonnalise, Employee, EmployeeAccessGrant, TypeDocument
 
@@ -199,13 +198,8 @@ class UserListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = User.objects.all().order_by('nom')
-        # Un ADMIN ordinaire ne voit ni les autres ADMIN ni les SUPERADMIN
-        # — seulement lui-même et les CONSULTANT qu'il administre. Seul un
-        # SUPERADMIN voit et gère tous les comptes (ADMIN et CONSULTANT).
-        if not self.request.user.is_superadmin:
-            qs = qs.exclude(role='SUPERADMIN').exclude(
-                Q(role='ADMIN') & ~Q(pk=self.request.user.pk)
-            )
+        # Périmètre de visibilité des comptes : voir visible_accounts.
+        qs = visible_accounts(qs, self.request.user)
         return qs
 
     def get_serializer_class(self):
@@ -226,15 +220,8 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         qs = User.objects.all()
-        # Un ADMIN ordinaire ne peut ni voir ni modifier/supprimer un
-        # compte SUPERADMIN, ni un autre compte ADMIN (404, pas 403 — pour
-        # ne même pas révéler leur existence) — même garde-fou que
-        # UserListCreateView. Il garde l'accès à SA PROPRE fiche (ex. reset
-        # de son propre mot de passe via ce même endpoint).
-        if not self.request.user.is_superadmin:
-            qs = qs.exclude(role='SUPERADMIN').exclude(
-                Q(role='ADMIN') & ~Q(pk=self.request.user.pk)
-            )
+        # Périmètre de visibilité des comptes : voir visible_accounts.
+        qs = visible_accounts(qs, self.request.user)
         return qs
 
     def perform_update(self, serializer):

@@ -3,6 +3,7 @@ apps/accounts/permissions.py
 Permissions DRF basées sur les rôles SOMIZ
 """
 
+from django.db.models import Q
 from rest_framework.permissions import BasePermission
 
 
@@ -52,3 +53,19 @@ class HasConsented(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return bool(user and user.is_authenticated and user.consent_loi1807_accepted_at)
+
+
+def visible_accounts(queryset, requester):
+    """
+    Restreint un queryset de comptes à ceux que `requester` a le droit de
+    voir/gérer : un ADMIN ordinaire ne voit ni les SUPERADMIN ni les autres
+    ADMIN (hors lui-même) — ils sont absents du queryset, donc 404 et non 403
+    pour ne pas révéler leur existence. Un SUPERADMIN voit tout.
+    Point d'entrée UNIQUE de ce filtre : toute vue qui liste ou retrouve des
+    comptes (liste, modification, reset de mot de passe...) doit l'utiliser.
+    """
+    if requester.is_superadmin:
+        return queryset
+    return queryset.exclude(role='SUPERADMIN').exclude(
+        Q(role='ADMIN') & ~Q(pk=requester.pk)
+    )

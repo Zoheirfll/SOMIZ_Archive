@@ -526,7 +526,7 @@ Les migrations en production seraient alors lancées avec un compte séparé (ou
 
 ## 28. Audit du chantier GRH sync, "Scanner un dossier", transferts d'employé, et re-vérification des fichiers frontend non commités (2026-08-28) — ⚠️ Failles trouvées, non corrigées (en attente de validation)
 
-**Périmètre vérifié** : `backend/employees/grh_integration.py` (nouveau, jamais audité), `backend/employees/urls.py` (route `grh-sync/`), `backend/tests/test_grh_integration.py`, `GRH_INTEGRATION.md`/`docs/GRH_INTEGRATION_SPEC.md` ; `ScanImportView`/`_scan_import_file_name()` (`employees/views.py`), `employees/pdf_utils.py`, sérializers scan-import (`employees/serializers.py`) ; `EmployeeDetailView.perform_update`/`TRANSFER_FIELDS` (`employees/views.py`) ; `git diff HEAD` complet sur `ContratDetail.jsx`, `Dashboard.jsx`, `EmployeeDetail.jsx`, `Employees.jsx`, `Organigramme.jsx`, `Parametres.jsx`, `Users.jsx`.
+**Périmètre vérifié** : `backend/employees/grh_integration.py` (nouveau, jamais audité), `backend/employees/urls.py` (route `grh-sync/`), `backend/tests/test_grh_integration.py`, `docs/GRH_INTEGRATION.md`/`docs/GRH_INTEGRATION_SPEC.md` ; `ScanImportView`/`_scan_import_file_name()` (`employees/views.py`), `employees/pdf_utils.py`, sérializers scan-import (`employees/serializers.py`) ; `EmployeeDetailView.perform_update`/`TRANSFER_FIELDS` (`employees/views.py`) ; `git diff HEAD` complet sur `ContratDetail.jsx`, `Dashboard.jsx`, `EmployeeDetail.jsx`, `Employees.jsx`, `Organigramme.jsx`, `Parametres.jsx`, `Users.jsx`.
 
 ### 1. Intégration GRH (`grh_integration.py`) — sain sur l'essentiel, 3 failles + 1 point Info
 
@@ -538,7 +538,7 @@ Les migrations en production seraient alors lancées avec un compte séparé (ou
 
 **⚠️ Faille 3 (Faible) — Endpoint entièrement non throttlé (`throttle_classes = []`).** Justifié par un usage serveur-à-serveur en rafale, mais l'endpoint est `AllowAny` et donc accessible réseau — impact DoS réel très faible (HMAC bloque toute écriture), mais rupture non documentée avec la politique globale (tout le reste de l'API a au moins le throttle `anon` 10/min). *Correctif proposé* : scope `ScopedRateThrottle` dédié généreux (ex. `grh_sync: 120/min`) plutôt qu'une désactivation totale.
 
-**Point Info, non bloquant** : `GRH_WEBHOOK_SECRET` a un défaut faible codé en dur (`dev-only-change-me`), contrairement à `SECRET_KEY`/`DB_PASSWORD` qui n'ont aucun défaut (point 3). Risque mitigé tant que l'intégration reste non branchée en production (voir `GRH_INTEGRATION.md`), mais à traiter avant activation réelle (retirer le défaut, ou lever `ImproperlyConfigured` si `DEBUG=False` et secret encore par défaut).
+**Point Info, non bloquant** : `GRH_WEBHOOK_SECRET` a un défaut faible codé en dur (`dev-only-change-me`), contrairement à `SECRET_KEY`/`DB_PASSWORD` qui n'ont aucun défaut (point 3). Risque mitigé tant que l'intégration reste non branchée en production (voir `docs/GRH_INTEGRATION.md`), mais à traiter avant activation réelle (retirer le défaut, ou lever `ImproperlyConfigured` si `DEBUG=False` et secret encore par défaut).
 
 ### 2. Scan-import — sain
 
@@ -919,7 +919,7 @@ tel quel à quiconque connaît l'URL.
 - Piège découvert : via un tunnel HTTP/2, les uploads arrivent en
   `Transfer-Encoding: chunked`, que `runserver` (HTTP/1.0) ne sait pas lire
   (`Bad request syntax ('0')`, POST jamais traité). Parade de démo :
-  `scripts/demo_server.py` (waitress + `StaticFilesHandler`), non ajouté à
+  `deploy/demo/demo_server.py` (waitress + `StaticFilesHandler`), non ajouté à
   `requirements.txt` (outil de démo, pas de prod).
 - Piège 2 : la route fourre-tout de `config/urls.py` renvoie `index.html`
   pour les fichiers de `frontend/public/` copiés à la racine du build
@@ -935,7 +935,7 @@ tel quel à quiconque connaît l'URL.
   décidé). Le contournement temporaire de `demo_server.py` a été retiré.
 - Après chaque nouveau tunnel : mettre l'URL dans `CLOUDFLARE_URL`
   (`backend/.env`) et redémarrer Django (sinon CSRF refuse POST/PATCH/DELETE).
-- Script : `scripts/demo-tunnel.ps1`.
+- Script : `deploy/demo/demo-tunnel.ps1`.
 
 ---
 
@@ -1244,6 +1244,53 @@ tests d'authentification/permissions/notifications après installation.
   viennent de `react-scripts` (CRA, abandonné) et ne concernent que
   l'outillage de développement, pas le bundle de production. Le correctif
   réel est une migration vers Vite ; `npm audit fix --force` casserait le build.
+
+---
+
+## 43. Réinitialisation de mot de passe — périmètre de visibilité des comptes (2026-10-07) — ⚠️ Faille trouvée et corrigée
+
+**Faille** : `AdminResetPasswordView` (`POST /api/admin-users/<id>/reset-password/`,
+`accounts/views.py`) retrouvait le compte cible par `User.objects.get(pk=pk)`,
+sans appliquer le filtre de visibilité que `UserListCreateView` et
+`UserUpdateView.get_queryset` (`accounts/admin_views.py`) appliquent depuis le
+point 31 : un ADMIN ordinaire ne voit ni les SUPERADMIN ni les autres ADMIN
+(404). Conséquence : un ADMIN ordinaire connaissant l'UUID d'un SUPERADMIN ou
+d'un autre ADMIN pouvait réinitialiser son mot de passe et **prendre le
+contrôle du compte** (élévation de privilèges). L'UUID n'est pas secret
+(visible dans les journaux d'audit, les réponses d'API des comptes visibles,
+les liens `/audit`) mais n'est pas devinable : l'exploitation supposait de
+l'avoir obtenu, ce qui réduit la probabilité sans supprimer le risque.
+
+**Détection** : lecture de code pendant une session d'apprentissage, confirmée
+avant correction par un test d'intégration sur la vraie route
+(`backend/tests/test_accounts_reset_password_scope.py`) : 2 tests en échec
+(mot de passe d'un SUPERADMIN et d'un autre ADMIN effectivement modifié), 2
+tests de comportement normal passants. Les 6 tests existants de
+`TestAdminResetPasswordView` ne couvraient aucun cas de ce type : ils
+vérifiaient seulement « ADMIN → CONSULTANT » et « CONSULTANT → refusé ».
+
+**Correctif** : `AdminResetPasswordView.post` applique le même filtre que
+`UserUpdateView.get_queryset` (exclusion des SUPERADMIN et des autres ADMIN
+pour un non-SUPERADMIN, accès conservé à sa propre fiche) ; compte hors
+périmètre = **404**, pas 403, pour ne pas révéler son existence.
+
+**Dette soldée (2026-10-08)** : le filtre, dupliqué dans trois endroits
+(`UserListCreateView`, `UserUpdateView`, `AdminResetPasswordView`), est factorisé
+dans un helper unique `visible_accounts(queryset, requester)`
+(`accounts/permissions.py`). Toute nouvelle vue qui liste ou retrouve des comptes
+doit l'utiliser. Comportement inchangé (404 hors périmètre).
+⚠️ Refactoring **non encore validé par la suite de tests** (lancement reporté à
+la demande de l'utilisateur) : lancer `pytest tests/test_accounts_reset_password_scope.py`
+et les tests `/admin-users/` avant de commit.
+
+---
+
+## Réduction de surface — suppression des suggestions OCR (2026-10-08)
+
+Suppression des endpoints d'écriture indirecte `suggestions/.../appliquer`
+(qui modifiaient `Employee`/`EmployeeChampValeur` depuis du texte OCR non
+fiable) et de `ocr_pattern`. Reste seulement la recherche plein texte ADMIN,
+déjà tracée dans l'audit. Moins de code qui écrit sur des données RH.
 
 ---
 

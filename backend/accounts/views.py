@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.http import Http404
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, visible_accounts
 from audit.models import AuditLog
 
 
@@ -271,8 +271,12 @@ class AdminResetPasswordView(APIView):
     permission_classes = [IsAdmin]
 
     def post(self, request, pk):
+        # Périmètre de visibilité des comptes (404 hors périmètre) : voir
+        # visible_accounts — sans lui, un ADMIN pouvait prendre le contrôle
+        # d'un compte plus privilégié (securite.md point 43).
+        qs = visible_accounts(User.objects.all(), request.user)
         try:
-            user = User.objects.get(pk=pk)
+            user = qs.get(pk=pk)
         except User.DoesNotExist:
             raise Http404
 
