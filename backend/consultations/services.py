@@ -8,6 +8,7 @@ import magic
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -153,3 +154,52 @@ def revoquer(demande, manager, now=None):
     demande.date_revocation = now
     demande.save()
     return demande
+
+
+@transaction.atomic
+def prolonger(demande, manager, duree_heures, now=None):
+    """Prolonge une consultation validée. Autorisée jusqu'à
+    CONSULTATION_DELAI_GRACE_PROLONGATION_HEURES après l'échéance, plafonnée
+    par CONSULTATION_MAX_DUREE_TOTALE_HEURES depuis la validation. Au-delà du
+    délai de grâce, le demandeur doit refaire une demande."""
+    demande = _verrouiller(demande)
+    now = now or timezone.now()
+    if demande.statut != Statut.VALIDEE:
+        raise ValidationError("Seule une consultation validée peut être prolongée.")
+    _verifier_traiteur_distinct(demande, manager)
+    duree = _valider_duree(duree_heures)
+
+    grace = timedelta(hours=settings.CONSULTATION_DELAI_GRACE_PROLONGATION_HEURES)
+    if now > demande.date_echeance + grace:
+        raise ValidationError("Le délai de prolongation est dépassé : le demandeur doit refaire une demande.")
+
+    ancienne = demande.date_echeance
+    nouvelle = max(now, ancienne) + timedelta(hours=duree)
+    plafond = timedelta(hours=settings.CONSULTATION_MAX_DUREE_TOTALE_HEURES)
+    if nouvelle - demande.date_validation > plafond:
+        raise ValidationError({
+            'duree_heures': f"Le plafond de {settings.CONSULTATION_MAX_DUREE_TOTALE_HEURES} h de consultation cumulée serait dépassé.",
+        })
+
+    demande.date_echeance = nouvelle
+    demande.nb_prolongations += 1
+    demande.rappel_24h_envoye = False
+    demande.rappel_1h_envoye = False
+    demande.save()
+    demande._ancienne_echeance = ancienne
+    return demande
+
+
+def fichiers_purgeables(jours, now=None):
+    """Scans externes dont la consultation est close depuis plus de `jours`
+    jours (expirée ou révoquée), pas encore purgés. Les copies d'archivés
+    ne sont jamais concernées : l'original reste dans le dossier de
+    l'employé, et une copie n'a pas de valeur propre à détruire."""
+    now = now or timezone.now()
+    limite = now - timedelta(days=jours)
+    return ConsultationFichier.objects.filter(
+        origine=ConsultationFichier.Origine.SCAN_EXTERNE, supprime_le__isnull=True,
+    ).filter(
+        Q(demande__statut=Statut.VALIDEE, demande__date_echeance__lt=limite)
+        | Q(demande__statut=Statut.REVOQUEE, demande__date_revocation__lt=limite)
+    ).select_related('demande')

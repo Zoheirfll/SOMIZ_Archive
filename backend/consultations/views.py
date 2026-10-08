@@ -17,7 +17,9 @@ from . import services
 from .access import controler_acces
 from .filigrane import appliquer_filigrane
 from .models import DemandeConsultation
-from .notifications import notifier_nouvelle_demande, notifier_rejetee, notifier_revoquee, notifier_validee
+from .notifications import (
+    notifier_nouvelle_demande, notifier_prolongee, notifier_rejetee, notifier_revoquee, notifier_validee,
+)
 from .permissions import CanAccessConsultations, CanRequestConsultation, IsConsultationManager
 from .serializers import DemandeConsultationCreateSerializer, DemandeConsultationSerializer
 
@@ -208,6 +210,23 @@ class DemandeConsultationRevoquerView(_TraitementView):
             details={'de': ancien, 'vers': demande.statut},
         )
         notifier_revoquee(demande, request.user)
+        return self._reponse(demande)
+
+
+class DemandeConsultationProlongerView(_TraitementView):
+    def post(self, request, ref):
+        demande = self.get_object()
+        demande = services.prolonger(demande, request.user, request.data.get('duree_heures'))
+        AuditLog.log(
+            request, AuditLog.Action.PROLONG_CONSULTATION, target=demande,
+            details={
+                'reference': demande.reference,
+                'ancienne_echeance': demande._ancienne_echeance.isoformat(),
+                'nouvelle_echeance': demande.date_echeance.isoformat(),
+                'nb_prolongations': demande.nb_prolongations,
+            },
+        )
+        notifier_prolongee(demande, request.user)
         return self._reponse(demande)
 
 
