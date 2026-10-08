@@ -14,6 +14,7 @@ urlpatterns = [
         path('ref/import/<str:model>/template/', __import__('employees.import_views', fromlist=['ReferentielImportTemplateView']).ReferentielImportTemplateView.as_view()),
         path('ocr/', include('ocr.urls')),
         path('attestations/', include('attestations.urls')),
+        path('consultations/', include('consultations.urls')),
         path('notifications/', include('notifications.urls')),
     ])),
     # React — doit être en dernier

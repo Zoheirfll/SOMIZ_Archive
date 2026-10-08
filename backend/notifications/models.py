@@ -22,6 +22,12 @@ class Notification(models.Model):
         IMPORT_TERMINE = 'IMPORT_TERMINE', "Import terminé"
         CONTRAT_ECHEANCE = 'CONTRAT_ECHEANCE', "Contrat proche de l'échéance"
         CONSENTEMENT_EN_ATTENTE = 'CONSENTEMENT_EN_ATTENTE', "Consentement en attente"
+        CONSULTATION_NOUVELLE = 'CONSULTATION_NOUVELLE', "Nouvelle demande de consultation"
+        CONSULTATION_VALIDEE = 'CONSULTATION_VALIDEE', "Consultation validée"
+        CONSULTATION_REJETEE = 'CONSULTATION_REJETEE', "Consultation rejetée"
+        CONSULTATION_REVOQUEE = 'CONSULTATION_REVOQUEE', "Consultation révoquée"
+        CONSULTATION_PROLONGEE = 'CONSULTATION_PROLONGEE', "Consultation prolongée"
+        CONSULTATION_ECHEANCE = 'CONSULTATION_ECHEANCE', "Consultation bientôt expirée"
         GENERIQUE = 'GENERIQUE', "Générique"
 
     class Severity(models.TextChoices):

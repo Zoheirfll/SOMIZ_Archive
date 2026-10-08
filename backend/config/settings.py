@@ -61,6 +61,7 @@ LOCAL_APPS = [
     'audit',
     'ocr',
     'attestations',
+    'consultations',
     'notifications',
 ]
 
@@ -232,6 +233,11 @@ DOCUMENT_UPLOAD_PATH = 'employees/{employee_id}/{doc_type}/'
 MAX_UPLOAD_SIZE_MB = 20  # 20 Mo max par fichier (upload classique document/contrat)
 MAX_SCAN_IMPORT_SIZE_MB = 20  # 20 Mo max par fichier source (Scanner un dossier)
 MAX_UPLOAD_PAGES = 50  # 50 pages max dans le PDF fusionné (upload classique document/contrat)
+
+# Demandes de consultation (app `consultations`)
+CONSULTATION_DUREES_HEURES = [1, 24, 72, 168]       # presets proposés au traiteur
+CONSULTATION_MAX_DUREE_TOTALE_HEURES = 720          # plafond cumulé validation + prolongations (30 j)
+CONSULTATION_DELAI_GRACE_PROLONGATION_HEURES = 24   # prolongation possible jusqu'à 24 h après l'échéance
 ALLOWED_MIME_TYPES = [
     'application/pdf',
     'image/jpeg',

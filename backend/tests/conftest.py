@@ -211,3 +211,69 @@ def contrat(db, employee, type_contrat, admin_user):
         statut="actif",
         created_by=admin_user,
     )
+
+
+# ─── Consultations ──────────────────────────────────────────────────────────
+
+@pytest.fixture
+def media_tmp(settings, tmp_path):
+    """Redirige MEDIA_ROOT vers un dossier temporaire : les tests de
+    consultations écrivent de vrais fichiers et ne doivent jamais polluer
+    backend/media/."""
+    settings.MEDIA_ROOT = tmp_path
+    return tmp_path
+
+
+@pytest.fixture
+def traiteur(db):
+    """ADMIN chargé des consultations."""
+    return User.objects.create_user(
+        username="traiteur_conso", password="TraitPass123!",
+        nom="Traiteur", prenom="Conso", role="ADMIN", charge_consultation=True,
+        consent_loi1807_accepted_at=timezone.now(),
+    )
+
+
+@pytest.fixture
+def superadmin_user(db):
+    return User.objects.create_user(
+        username="superadmin_conso", password="SuperPass123!",
+        nom="Super", prenom="Admin", role="SUPERADMIN",
+        consent_loi1807_accepted_at=timezone.now(),
+    )
+
+
+@pytest.fixture
+def pdf_bytes():
+    from io import BytesIO
+    from reportlab.pdfgen import canvas
+    buf = BytesIO()
+    c = canvas.Canvas(buf)
+    c.drawString(100, 750, "Contenu confidentiel")
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+@pytest.fixture
+def demande_en_cours(db, gestionnaire_user):
+    from consultations.models import DemandeConsultation
+    return DemandeConsultation.objects.create(
+        reference='C-00001/26', type_demande='document',
+        description='Contrat de 2019', demandeur=gestionnaire_user,
+    )
+
+
+@pytest.fixture
+def demande_validee(db, gestionnaire_user, traiteur):
+    from datetime import timedelta
+    from consultations.models import DemandeConsultation
+    maintenant = timezone.now()
+    return DemandeConsultation.objects.create(
+        reference='C-00002/26', type_demande='document',
+        description='Contrat de 2019', demandeur=gestionnaire_user,
+        statut=DemandeConsultation.Statut.VALIDEE, traite_par=traiteur,
+        date_validation=maintenant,
+        date_echeance=maintenant + timedelta(hours=24),
+        date_echeance_initiale=maintenant + timedelta(hours=24),
+    )
