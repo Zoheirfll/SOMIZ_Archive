@@ -42,6 +42,7 @@ def _types_documents_actifs():
 def _employee_row_headers(champs, types_docs):
     return [
         'Matricule', 'Nom', 'Prénom', 'N° Contrat actif',
+        'Date début contrat', 'Date fin contrat', 'Statut du contrat',
         'Date de naissance', 'Date de recrutement', 'Statut',
         'Direction', 'Département', 'Service', 'Cellule', 'Section',
         'Fonction', 'Type de contrat', 'Catégorie',
@@ -50,7 +51,26 @@ def _employee_row_headers(champs, types_docs):
     ]
 
 
-def _employee_row_values(employee, champs, types_docs, numero_contrat_actif=None, valeurs_par_champ=None, types_presents=None):
+def _iso(valeur):
+    return valeur.isoformat() if valeur else ''
+
+
+def _contrat_dict(contrat):
+    """Champs du contrat de référence (le plus récent par date de début)
+    utilisés par l'export — depuis une instance Contrat ou None."""
+    if contrat is None:
+        return {}
+    return {
+        'numero_contrat': contrat.numero_contrat, 'date_debut': contrat.date_debut,
+        'date_fin': contrat.date_fin, 'statut': contrat.statut,
+    }
+
+
+def _employee_row_values(employee, champs, types_docs, contrat=None, valeurs_par_champ=None, types_presents=None):
+    """`contrat` : dict {numero_contrat, date_debut, date_fin, statut} du
+    contrat de référence de l'employé (vide si aucun)."""
+    contrat = contrat or {}
+    statuts_contrat = dict(Contrat.Statut.choices)
     valeurs_par_champ = valeurs_par_champ or {
         v.champ_id: v.valeur for v in employee.valeurs_personnalisees.all()
     }
@@ -60,7 +80,9 @@ def _employee_row_values(employee, champs, types_docs, numero_contrat_actif=None
         )
     return [
         employee.matricule, employee.nom, employee.prenom,
-        numero_contrat_actif or '',
+        contrat.get('numero_contrat') or '',
+        _iso(contrat.get('date_debut')), _iso(contrat.get('date_fin')),
+        statuts_contrat.get(contrat.get('statut'), contrat.get('statut') or ''),
         employee.date_naissance.isoformat() if employee.date_naissance else '',
         employee.date_embauche.isoformat() if employee.date_embauche else '',
         employee.get_statut_display() if hasattr(employee, 'get_statut_display') else employee.statut,
@@ -112,7 +134,7 @@ class EmployeeExportView(APIView):
         ws_info.append(headers)
         ws_info.append(_employee_row_values(
             employee, champs, types_docs,
-            numero_contrat_actif=latest_contrat.numero_contrat if latest_contrat else None,
+            contrat=_contrat_dict(latest_contrat),
         ))
         _bold_header(ws_info, len(headers))
         _autosize(ws_info, headers)
@@ -168,6 +190,9 @@ class EmployeeExportAllView(APIView):
             'poste', 'type_contrat', 'categorie',
         ).prefetch_related('valeurs_personnalisees__champ').annotate(
             numero_contrat_actif=Subquery(latest_contrat.values('numero_contrat')[:1]),
+            contrat_date_debut=Subquery(latest_contrat.values('date_debut')[:1]),
+            contrat_date_fin=Subquery(latest_contrat.values('date_fin')[:1]),
+            contrat_statut=Subquery(latest_contrat.values('statut')[:1]),
         )
 
         q = request.query_params.get('q')
@@ -221,7 +246,12 @@ class EmployeeExportAllView(APIView):
             types_presents = {d.type_doc_id for d in employee.documents.all() if d.is_active}
             ws.append(_employee_row_values(
                 employee, champs, types_docs,
-                numero_contrat_actif=employee.numero_contrat_actif,
+                contrat={
+                    'numero_contrat': employee.numero_contrat_actif,
+                    'date_debut': employee.contrat_date_debut,
+                    'date_fin': employee.contrat_date_fin,
+                    'statut': employee.contrat_statut,
+                },
                 valeurs_par_champ=valeurs,
                 types_presents=types_presents,
             ))
