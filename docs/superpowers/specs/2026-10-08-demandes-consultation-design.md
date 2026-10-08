@@ -141,13 +141,14 @@ l'utilisateur. Elles sont livrées dans le même chantier, en dernier lot.
    lecture, borné par le throttle et la limite de 20 Mo ; à mesurer sur un PDF
    de 50 pages avant de valider la performance.
 4. **Purge des scans livrés** : commande `manage.py purger_consultations
-   [--jours N] [--dry-run]`, **jamais automatique** et jamais lancée sans étape
-   de validation. Concerne uniquement les fichiers de demandes expirées/
+   [--jours N] [--confirmer]`, **jamais automatique** et jamais lancée sans
+   étape de validation. Concerne uniquement les fichiers de demandes expirées/
    révoquées depuis plus de N jours (défaut 90) et provenant d'un **scan
    externe** (les copies d'archivés ne sont pas concernées, l'original reste
-   dans le dossier). Garde-fous (incident du 2026-07-22) : (1) le mode
-   `--dry-run` liste précisément chaque fichier concerné, la purge réelle exige
-   `--confirmer` après validation de la liste ; (2) normalisation et contrôle
+   dans le dossier). Garde-fous (incident du 2026-07-22) : (1) sans
+   `--confirmer`, la commande ne fait que **lister** précisément chaque
+   fichier concerné (c'est le mode « dry-run » par défaut) ; la purge réelle
+   exige `--confirmer` après validation de la liste ; (2) normalisation et contrôle
    que chaque chemin est sous `MEDIA_ROOT/consultations/` avant tout
    `os.remove()` ; (3) sauvegarde du dossier avant purge ; (4) chaque
    suppression tracée dans l'audit (snapshot texte : référence, nom, taille).
