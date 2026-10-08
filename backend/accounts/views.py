@@ -17,6 +17,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.http import Http404
+from accounts.cookie_auth import is_token_revoked
 from accounts.permissions import IsAdmin, visible_accounts
 from audit.models import AuditLog
 
@@ -278,6 +279,16 @@ class AdminResetPasswordView(APIView):
         try:
             user = qs.get(pk=pk)
         except User.DoesNotExist:
+            # Tentative sur un compte existant mais hors périmètre (ex. ADMIN
+            # visant un SUPERADMIN) : signal de sécurité à tracer. MODIFY_USER
+            # et non MODIFY_EMP, pour ne pas fausser la stat « comptes_mdp »
+            # (audit/stats.py), qui ne compte que les resets réussis.
+            if User.objects.filter(pk=pk).exists():
+                AuditLog.log(request, AuditLog.Action.MODIFY_USER, details={
+                    'action': 'admin_reset_password_denied',
+                    'target_user_id': str(pk),
+                    'actor_role': request.user.role,
+                })
             raise Http404
 
         nouveau = request.data.get('nouveau_mot_de_passe')
@@ -303,11 +314,20 @@ class AdminResetPasswordView(APIView):
         user.set_password(nouveau)
         user.failed_login_attempts = 0
         user.locked_until = None
-        user.save()
+        # Révoque les sessions JWT déjà émises (access 2 h / refresh 10 h) :
+        # le reset sert aussi à reprendre la main sur un compte compromis.
+        user.password_changed_at = timezone.now()
+        user.save(update_fields=['password', 'failed_login_attempts', 'locked_until',
+                                 'password_changed_at'])
 
         AuditLog.log(request, AuditLog.Action.MODIFY_EMP,
             target=user,
-            details={'action': 'admin_reset_password', 'target_user': user.username}
+            details={
+                'action': 'admin_reset_password',
+                'target_user': user.username,
+                'target_role': user.role,
+                'actor_role': request.user.role,
+            }
         )
 
         return Response({'message': f'Mot de passe de {user.username} réinitialisé.'})
@@ -326,6 +346,9 @@ class CookieTokenRefreshView(APIView):
             return Response({'error': 'Session expirée.'}, status=status.HTTP_401_UNAUTHORIZED)
         try:
             token = RefreshToken(refresh_token)
+            user = User.objects.filter(pk=token.get('user_id'), is_active=True).first()
+            if user is None or is_token_revoked(user, token):
+                raise TokenError('Session révoquée.')
             response = Response({'detail': 'Token renouvelé.'})
             _set_auth_cookies(request, response, token.access_token, token)
             return response

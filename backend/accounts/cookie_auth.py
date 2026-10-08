@@ -7,7 +7,27 @@ from rest_framework import exceptions
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
+def is_token_revoked(user, token):
+    """
+    Vrai si le JWT (access ou refresh) a été émis avant le dernier changement
+    de mot de passe imposé au compte. `iat` est en secondes entières : on compare
+    à la seconde tronquée pour ne pas rejeter un jeton émis juste après le
+    changement.
+    """
+    changed_at = getattr(user, 'password_changed_at', None)
+    if changed_at is None:
+        return False
+    iat = token.get('iat')
+    return iat is None or iat < int(changed_at.timestamp())
+
+
 class JWTCookieAuthentication(JWTAuthentication):
+    def get_user(self, validated_token):
+        user = super().get_user(validated_token)
+        if is_token_revoked(user, validated_token):
+            raise exceptions.AuthenticationFailed('Session révoquée.', code='token_revoked')
+        return user
+
     def authenticate(self, request):
         # Essayer d'abord le cookie httpOnly
         raw_token = request.COOKIES.get("access_token")

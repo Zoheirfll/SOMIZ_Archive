@@ -84,6 +84,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Sécurité : blocage après N tentatives
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
+    # Révocation de session : tout JWT émis avant cet instant est refusé
+    # (cookie_auth.is_token_revoked). Renseigné lors d'un reset admin du mot
+    # de passe — voir securite.md point 43.
+    password_changed_at = models.DateTimeField(null=True, blank=True)
 
     # Traçabilité
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)

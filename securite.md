@@ -1279,9 +1279,35 @@ périmètre = **404**, pas 403, pour ne pas révéler son existence.
 dans un helper unique `visible_accounts(queryset, requester)`
 (`accounts/permissions.py`). Toute nouvelle vue qui liste ou retrouve des comptes
 doit l'utiliser. Comportement inchangé (404 hors périmètre).
-⚠️ Refactoring **non encore validé par la suite de tests** (lancement reporté à
-la demande de l'utilisateur) : lancer `pytest tests/test_accounts_reset_password_scope.py`
-et les tests `/admin-users/` avant de commit.
+Validé par 13 tests ciblés (`test_accounts_reset_password_scope.py` : 4,
+`test_admin_users_visibility.py` : 9) ; suite complète (`cd backend && pytest`) à
+lancer avant commit.
+
+**Durcissement complémentaire (2026-10-08, revue ECC `django-reviewer`)** :
+- Audit enrichi : `details.target_role` et `details.actor_role` sur les resets
+  réussis (action restée `MODIFY_EMP` : `audit/stats.py` s'en sert pour la stat
+  `comptes_mdp` — passer à `MODIFY_USER` aurait cassé les statistiques).
+- Tentative refusée (compte existant mais hors périmètre, ex. ADMIN → SUPERADMIN)
+  désormais tracée : `MODIFY_USER`, `details.action = admin_reset_password_denied`
+  (volontairement hors stat `comptes_mdp`). Le 404 renvoyé reste identique.
+- `user.save(update_fields=[...])` : n'écrase plus les autres colonnes en cas
+  d'écriture concurrente.
+- Tests ajoutés : 403 CONSULTANT/GESTIONNAIRE, non authentifié, pk inconnu, reset
+  de son propre compte, contenu des entrées d'audit (10 tests au total dans
+  `test_accounts_reset_password_scope.py`).
+- **Révocation de session (soldé)** : un reset admin renseigne
+  `User.password_changed_at` (migration `0016`). `JWTCookieAuthentication.get_user`
+  et `CookieTokenRefreshView` refusent tout JWT dont l'`iat` est antérieur
+  (`accounts/cookie_auth.is_token_revoked`) → l'access token de 2 h est coupé
+  immédiatement, pas seulement le refresh. Choisi plutôt que la blacklist
+  simplejwt (qui laisse l'access valide jusqu'à 2 h). `iat` étant en secondes
+  entières, la comparaison se fait à la seconde tronquée. Le refresh vérifie
+  aussi que le compte existe et est actif (ce n'était pas le cas avant).
+  3 tests dédiés (13 au total dans `test_accounts_reset_password_scope.py`).
+- **Limite connue** : le changement de mot de passe *par l'utilisateur lui-même*
+  (`ChangePasswordView`) ne révoque pas ses autres sessions — le faire
+  déconnecterait aussi la session courante, donc à traiter à part (réémission
+  des cookies).
 
 ---
 

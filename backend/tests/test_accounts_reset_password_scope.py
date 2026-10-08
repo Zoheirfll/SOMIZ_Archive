@@ -71,3 +71,83 @@ class TestAdminResetPasswordScope:
         assert resp.status_code == 200
         admin_user.refresh_from_db()
         assert admin_user.check_password(PAYLOAD["nouveau_mot_de_passe"])
+
+
+class TestAdminResetPasswordCas:
+    def test_consultant_and_gestionnaire_forbidden(self, consultant_user, gestionnaire_user):
+        cible = _make("cible_test", "CONSULTANT")
+        for acteur in (consultant_user, gestionnaire_user):
+            resp = _client(acteur).post(_url(cible.pk), PAYLOAD)
+            assert resp.status_code == 403
+        cible.refresh_from_db()
+        assert cible.check_password(OLD_PASSWORD)
+
+    def test_unauthenticated_rejected(self):
+        cible = _make("cible_test", "CONSULTANT")
+        resp = APIClient().post(_url(cible.pk), PAYLOAD)
+        assert resp.status_code in (401, 403)
+        cible.refresh_from_db()
+        assert cible.check_password(OLD_PASSWORD)
+
+    def test_unknown_pk_returns_404(self, admin_user):
+        import uuid
+        resp = _client(admin_user).post(_url(uuid.uuid4()), PAYLOAD)
+        assert resp.status_code == 404
+
+    def test_admin_can_reset_own_password(self, admin_user):
+        resp = _client(admin_user).post(_url(admin_user.pk), PAYLOAD)
+        assert resp.status_code == 200
+        admin_user.refresh_from_db()
+        assert admin_user.check_password(PAYLOAD["nouveau_mot_de_passe"])
+
+
+class TestAdminResetPasswordAudit:
+    def test_success_is_logged_with_roles(self, admin_user, consultant_user):
+        from audit.models import AuditLog
+        _client(admin_user).post(_url(consultant_user.pk), PAYLOAD)
+        log = AuditLog.objects.get(details__action="admin_reset_password")
+        assert log.action == AuditLog.Action.MODIFY_EMP
+        assert log.details["target_role"] == "CONSULTANT"
+        assert log.details["actor_role"] == "ADMIN"
+
+    def test_denied_attempt_is_logged_but_not_counted_as_reset(self, admin_user):
+        from audit.models import AuditLog
+        superadmin = _make("super_test", "SUPERADMIN")
+        resp = _client(admin_user).post(_url(superadmin.pk), PAYLOAD)
+        assert resp.status_code == 404
+        log = AuditLog.objects.get(details__action="admin_reset_password_denied")
+        assert log.action == AuditLog.Action.MODIFY_USER
+        assert log.details["actor_role"] == "ADMIN"
+        assert not AuditLog.objects.filter(details__action="admin_reset_password").exists()
+
+
+class TestAdminResetPasswordRevokesSessions:
+    """Un reset admin invalide les JWT déjà émis pour le compte ciblé."""
+
+    def test_old_access_token_rejected_after_reset(self, admin_user):
+        import time
+        cible = _make("cible_test", "CONSULTANT")
+        old = _client(cible)
+        assert old.get("/api/auth/me/").status_code == 200  # session valide avant
+        time.sleep(1.1)  # iat est en secondes entières
+        assert _client(admin_user).post(_url(cible.pk), PAYLOAD).status_code == 200
+        assert old.get("/api/auth/me/").status_code == 401
+
+    def test_old_refresh_token_rejected_after_reset(self, admin_user):
+        import time
+        cible = _make("cible_test", "CONSULTANT")
+        refresh = str(RefreshToken.for_user(cible))
+        time.sleep(1.1)
+        _client(admin_user).post(_url(cible.pk), PAYLOAD)
+        client = APIClient()
+        client.cookies["refresh_token"] = refresh
+        assert client.post("/api/auth/refresh/").status_code == 401
+
+    def test_token_issued_after_reset_still_valid(self, admin_user):
+        import time
+        cible = _make("cible_test", "CONSULTANT")
+        time.sleep(1.1)
+        _client(admin_user).post(_url(cible.pk), PAYLOAD)
+        cible.refresh_from_db()
+        new = _client(cible)
+        assert new.get("/api/auth/me/").status_code == 200
