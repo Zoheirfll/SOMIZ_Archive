@@ -1389,9 +1389,14 @@ un scan **via l'application uniquement**, pour une durée limitée. Détail dans
   demande, échec du filigrane, téléchargement non autorisé.
 - **Dette à solder** : (1) créer en production la tâche planifiée
   `manage.py notifier_echeances_consultation` (toutes les 15 min) — sans elle, les
-  rappels ne partent pas, mais l'accès est coupé quand même ; (2) **le même défaut
-  existe pour `charge_attestation`** : l'API `/admin-users/` laisse un ADMIN
-  ordinaire se l'attribuer à lui-même (non corrigé ici, hors périmètre — à traiter).
+  rappels ne partent pas, mais l'accès est coupé quand même . (2) ✅ **Même faille corrigée pour
+  `charge_attestation`** (2026-10-08) : l'API `/admin-users/` laissait un ADMIN
+  ordinaire se l'attribuer à lui-même (ou l'attribuer à un nouveau compte) et ainsi
+  accéder à toutes les demandes d'attestation. `_reserve_au_superadmin` couvre
+  désormais les deux drapeaux, à la création comme à la modification ; une valeur
+  inchangée reste acceptée. 3 tests dédiés. **À vérifier côté exploitation** : si un
+  ADMIN a déjà pu se cocher ce drapeau, la valeur reste en base — contrôler
+  `/users` (bouton « Attestations ✓ ») et, au besoin, le journal d'audit `MODIFY_USER`.
 
 ---
 

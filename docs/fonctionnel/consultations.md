@@ -147,4 +147,7 @@ pas dans `backend/media/`.
 
 - Créer la tâche planifiée `notifier_echeances_consultation` en production.
 - Vérification manuelle dans un navigateur du parcours complet (voir le compte rendu de livraison).
-- `charge_attestation` reste modifiable par un ADMIN ordinaire via l'API (voir `securite.md` point 44).
+- `charge_attestation` avait le même défaut d'auto-attribution : corrigé le 2026-10-08 avec le même
+  garde-fou (`securite.md` point 44). Contrôler en base qu'aucun ADMIN ne l'a obtenu abusivement.
+- Après un `git pull` de cette branche, lancer `python manage.py migrate` (nouvelle colonne
+  `auth_users.charge_consultation` et tables `consultation_*`) : sans cela, **la connexion renvoie une 500**.

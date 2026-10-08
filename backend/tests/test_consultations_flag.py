@@ -75,6 +75,42 @@ def test_admin_ordinaire_ne_peut_pas_se_donner_lacces():
     assert admin.charge_consultation is False
 
 
+def test_admin_ordinaire_ne_peut_pas_se_donner_charge_attestation():
+    """Même garde-fou pour les attestations de travail (faille identique
+    corrigée le 2026-10-08)."""
+    admin = _user("ad7", "ADMIN")
+    client = APIClient()
+    client.force_authenticate(admin)
+    resp = client.patch(f'/api/admin-users/{admin.id}/', {'charge_attestation': True}, format='json')
+    assert resp.status_code == 400
+    assert 'charge_attestation' in resp.data
+    admin.refresh_from_db()
+    assert admin.charge_attestation is False
+
+
+def test_superadmin_peut_attribuer_charge_attestation():
+    acteur = _user("sa4", "SUPERADMIN")
+    cible = _user("ad8", "ADMIN")
+    client = APIClient()
+    client.force_authenticate(acteur)
+    resp = client.patch(f'/api/admin-users/{cible.id}/', {'charge_attestation': True}, format='json')
+    assert resp.status_code == 200, resp.data
+    cible.refresh_from_db()
+    assert cible.charge_attestation is True
+
+
+def test_admin_ordinaire_ne_peut_pas_creer_un_compte_avec_charge_attestation():
+    admin = _user("ad9", "ADMIN")
+    client = APIClient()
+    client.force_authenticate(admin)
+    resp = client.post('/api/admin-users/', {
+        'username': 'nouveau_c', 'nom': 'N', 'prenom': 'P', 'role': 'CONSULTANT',
+        'charge_attestation': True, 'password': 'Passw0rd!Long1',
+    }, format='json')
+    assert resp.status_code == 400
+    assert 'charge_attestation' in resp.data
+
+
 def test_valeur_inchangee_reste_acceptee_pour_un_admin():
     admin = _user("ad6", "ADMIN")
     cible = _user("co2", "CONSULTANT")

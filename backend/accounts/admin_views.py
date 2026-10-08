@@ -130,17 +130,23 @@ class UserSerializer(serializers.ModelSerializer):
     def validate_charge_consultation(self, value):
         return _reserve_au_superadmin(self, value, self.instance.charge_consultation if self.instance else False)
 
+    def validate_charge_attestation(self, value):
+        return _reserve_au_superadmin(
+            self, value, self.instance.charge_attestation if self.instance else False, "aux attestations de travail",
+        )
 
-def _reserve_au_superadmin(serializer, value, valeur_actuelle):
-    """Donner l'accès aux consultations d'archives (documents confidentiels)
-    est réservé à un SUPERADMIN : sans ce garde-fou, un ADMIN ordinaire
-    pourrait se cocher lui-même le drapeau via l'API. Une valeur inchangée
-    reste acceptée (PATCH d'autres champs avec le formulaire complet)."""
+
+def _reserve_au_superadmin(serializer, value, valeur_actuelle, objet="aux consultations d'archives"):
+    """Donner un accès traiteur (consultations d'archives, attestations de
+    travail : données confidentielles) est réservé à un SUPERADMIN : sans ce
+    garde-fou, un ADMIN ordinaire pourrait se cocher lui-même le drapeau via
+    l'API. Une valeur inchangée reste acceptée (PATCH d'autres champs avec le
+    formulaire complet)."""
     request = serializer.context.get('request')
     user = getattr(request, 'user', None)
     if value != valeur_actuelle and not (user and user.is_superadmin):
         raise serializers.ValidationError(
-            "Seul un Super-administrateur peut attribuer l'accès aux consultations d'archives."
+            f"Seul un Super-administrateur peut attribuer l'accès {objet}."
         )
     return value
 
@@ -158,6 +164,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def validate_charge_consultation(self, value):
         return _reserve_au_superadmin(self, value, False)
+
+    def validate_charge_attestation(self, value):
+        return _reserve_au_superadmin(self, value, False, "aux attestations de travail")
 
     def validate_role(self, value):
         # SUPERADMIN ne peut jamais être créé/attribué via l'API — un
