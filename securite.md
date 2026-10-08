@@ -1339,6 +1339,62 @@ courants, mots de passe uniquement numériques.
 
 ---
 
+## 44. Consultations d'archives — livraison de documents confidentiels par l'application (2026-10-08) — ✅ Implémenté
+
+Nouvelle app `consultations` : un GESTIONNAIRE/CONSULTANT demande à consulter un
+dossier, un document ou une information archivés ; un traiteur valide et livre
+un scan **via l'application uniquement**, pour une durée limitée. Détail dans
+`docs/fonctionnel/consultations.md`.
+
+- **Expiration appliquée par le serveur, jamais par l'interface.**
+  `controler_acces()` (`consultations/access.py`) est appelé à **chaque** lecture
+  et téléchargement : demandeur de *cette* demande, statut `Validée`, échéance
+  non atteinte (`now < date_echeance`). « Expirée » n'est pas un statut stocké
+  (dérivé de la date) : aucune tâche planifiée ne peut rater une coupure.
+- **Pas de fuite d'existence.** Un tiers (autre demandeur, ADMIN sans le drapeau)
+  reçoit **404** sur une demande ou un fichier ; seul le demandeur légitime hors
+  validité reçoit un **403** explicite. Fichier purgé : **410**. Un fichier ne
+  peut pas être lu via l'URL d'une autre demande (404).
+- **Filigrane incrusté, échec fermé.** Le demandeur reçoit toujours une copie
+  filigranée à la volée (nom, référence, date/heure) ; l'original n'est jamais
+  servi. Si le filigrane échoue (fichier illisible), réponse **422** et rien
+  n'est servi. *Limite assumée* : une capture ou photo d'écran reste possible ;
+  le filigrane rend la fuite attribuable, il ne l'empêche pas.
+- **Téléchargement décidé demande par demande** par le traiteur
+  (`telechargement_autorise`, `False` par défaut), soumis aux mêmes contrôles,
+  et lui aussi filigrané.
+- **Fichiers livrés isolés.** Stockés sous `media/consultations/<id>/<uuid>`,
+  jamais comme `EmployeeDocument` (complétude, OCR et recherche plein texte ne
+  les voient pas). MIME réel contrôlé (python-magic), 20 Mo max, nom régénéré.
+  Une copie d'un document archivé est une vraie copie : l'original n'est jamais
+  exposé et le fichier source doit appartenir à l'employé de la demande.
+- **Séparation des rôles.** Seuls GESTIONNAIRE/CONSULTANT créent une demande ;
+  seuls SUPERADMIN ou un ADMIN portant `charge_consultation` la traitent ; un
+  traiteur ne traite jamais sa propre demande.
+- **⚠️ Faille évitée à l'attribution du drapeau.** `charge_consultation` ne peut
+  être modifié que par un **SUPERADMIN** (`_reserve_au_superadmin`,
+  `accounts/admin_views.py`) : sans cela, un ADMIN ordinaire aurait pu se cocher
+  lui-même l'accès aux archives via `PATCH /api/admin-users/<id>/`. Testé
+  (`test_admin_ordinaire_ne_peut_pas_se_donner_lacces`).
+- **Audit** : création, changement de statut, livraison de chaque fichier,
+  **chaque lecture**, chaque téléchargement, prolongation, purge
+  (8 valeurs d'`AuditLog.Action`). Throttle `consultation` (30/min) sur la lecture.
+- **Purge manuelle uniquement** (`manage.py purger_consultations`), avec les
+  garde-fous de l'incident du 2026-07-22 : liste par défaut, `--confirmer`
+  requis, chemin normalisé sous `MEDIA_ROOT/consultations/`, sauvegarde vérifiée
+  avant toute suppression, trace d'audit par fichier. Seuls les scans *externes*
+  sont concernés.
+- **Tests d'intégration sur de vraies routes** (92 tests `test_consultations_*`
+  côté backend) : 404/403/410, échéance à la seconde près, fichier d'une autre
+  demande, échec du filigrane, téléchargement non autorisé.
+- **Dette à solder** : (1) créer en production la tâche planifiée
+  `manage.py notifier_echeances_consultation` (toutes les 15 min) — sans elle, les
+  rappels ne partent pas, mais l'accès est coupé quand même ; (2) **le même défaut
+  existe pour `charge_attestation`** : l'API `/admin-users/` laisse un ADMIN
+  ordinaire se l'attribuer à lui-même (non corrigé ici, hors périmètre — à traiter).
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

@@ -10,6 +10,7 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 - `ADMIN` — droits complets (lecture, écriture, suppression, import, configuration), toujours accès organisation-wide
 - `CONSULTANT` — lecture seule (pas de boutons d'action visibles), peut être restreint à un **périmètre organisationnel** (voir section Scoping ci-dessous) ou laissé sans restriction (comportement historique)
 - `GESTIONNAIRE` — lecture seule type CONSULTANT sur son périmètre organisationnel (même mécanisme de scoping exactement), plus le droit de créer des demandes d'attestation de travail pour les employés de ce périmètre (voir section "Demandes d'attestation de travail"). `User.libelle_role` (ex. "Secrétaire", "Superviseur") est un simple libellé d'affichage par compte — aucune permission n'en dépend.
+- **Consultations d'archives** (app `consultations`) — `CONSULTANT` et `GESTIONNAIRE` peuvent demander à consulter un dossier/document/information archivé ; seul un `SUPERADMIN`, ou un `ADMIN` portant `User.charge_consultation`, les traite (valide, livre un scan, prolonge, révoque). Le drapeau `charge_consultation` n'est attribuable que par un SUPERADMIN. Voir `docs/fonctionnel/consultations.md`.
 
 ### Journal d'audit — visibilité par rôle (2026-08-30)
 
@@ -50,6 +51,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - [`docs/fonctionnel/statistiques-audit.md`](docs/fonctionnel/statistiques-audit.md) — À lire avant de toucher à /statistiques, à audit/stats.py ou aux liens de preuve vers /audit.
 - [`docs/fonctionnel/comptes-conformite.md`](docs/fonctionnel/comptes-conformite.md) — À lire avant de toucher à la suppression de compte, aux permissions IsAdmin/IsAdminOrConsultant ou au flux de consentement.
 - [`docs/fonctionnel/attestations.md`](docs/fonctionnel/attestations.md) — À lire avant de toucher à l'app attestations (workflow de statuts, PDF ReportLab, configuration du modèle, mode test, statistiques).
+- [`docs/fonctionnel/consultations.md`](docs/fonctionnel/consultations.md) — À lire avant de toucher à l'app consultations (demandes de consultation d'archives : workflow, livraison de fichiers par l'application, filigrane, expiration serveur, prolongation, rappels, purge manuelle).
 - [`docs/fonctionnel/notifications.md`](docs/fonctionnel/notifications.md) — À lire avant de toucher aux notifications in-app (cloche, `notifications/service.py`, purge) ou d'ajouter une source d'événement qui notifie des utilisateurs.
 - [`docs/fonctionnel/ui-conventions.md`](docs/fonctionnel/ui-conventions.md) — À lire avant d'écrire ou de modifier une page/un composant React : design system, dates, modales de confirmation, refresh silencieux, responsive.
 
@@ -59,6 +61,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - Un rafraîchissement après action mutante passe `fetch*(true)` (silencieux), jamais un `setLoading(true)` qui démonte la page — voir `ui-conventions.md`.
 - Suppression de documents = hard delete tracé dans l'audit ; jamais de script de purge en masse sans liste validée, normalisation de chemin et sauvegarde — voir `documents.md`.
 - Une permission « transversale » se vérifie par un test d'intégration sur une vraie route métier — voir `comptes-conformite.md`.
+- Un fichier livré par `consultations` ne se sert jamais sans `controler_acces()` (expiration vérifiée côté serveur à chaque lecture) et jamais non filigrané à un demandeur — voir `consultations.md`.
 
 ---
 
@@ -134,6 +137,9 @@ Direction
 | `/attestations` | Demandes d'attestation de travail (liste ADMIN, "mes demandes" GESTIONNAIRE, reporting) | ADMIN, GESTIONNAIRE |
 | `/attestations/nouvelle` | Nouvelle demande d'attestation | ADMIN, GESTIONNAIRE |
 | `/attestations/:ref` | Détail, traitement (statuts, aperçu, scan) | ADMIN (lecture pour le demandeur) |
+| `/consultations` | Demandes de consultation d'archives (« mes demandes » ou vue traiteur) | CONSULTANT, GESTIONNAIRE, SUPERADMIN, ADMIN `charge_consultation` |
+| `/consultations/nouvelle` | Nouvelle demande de consultation | CONSULTANT, GESTIONNAIRE |
+| `/consultations/:ref` | Détail, viewer sécurisé (filigrané, limité dans le temps), traitement | Demandeur (ses demandes) ; traiteur (toutes) |
 | `/users` | Gestion utilisateurs | ADMIN |
 | `/audit` | Logs d'audit | ADMIN |
 | `/parametres` | CRUD référentiels (Directions, Depts, Services, Postes...) | ADMIN |

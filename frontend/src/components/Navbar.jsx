@@ -90,6 +90,27 @@ const Navbar = () => {
   // plus aucun accès à /attestations, ni lien navbar ni badge.
   const canSeeAttestations = user?.role === "GESTIONNAIRE" || !!user?.can_manage_attestations;
 
+  const [pendingConsultations, setPendingConsultations] = useState(0);
+  // Demandeurs (GESTIONNAIRE/CONSULTANT) et traiteurs uniquement — un ADMIN
+  // non chargé des consultations n'a ni lien ni badge.
+  const canSeeConsultations =
+    ["GESTIONNAIRE", "CONSULTANT"].includes(user?.role) || !!user?.can_manage_consultations;
+
+  useEffect(() => {
+    // Badge « N à traiter » : traiteurs uniquement (pour un demandeur, le
+    // paramètre `pending` n'a pas de sens côté serveur).
+    if (!user?.can_manage_consultations) { setPendingConsultations(0); return undefined; }
+    let cancelled = false;
+    api.get("/consultations/demandes/", { params: { pending: 1 } })
+      .then((res) => {
+        if (cancelled) return;
+        setPendingConsultations(res.data?.count ?? (res.data?.results || res.data || []).length);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // Recharge à chaque navigation, comme le badge des attestations.
+  }, [user?.can_manage_consultations, location.pathname]);
+
   useEffect(() => {
     // Traiteurs (SUPERADMIN/ADMIN chargé) : comptent les demandes Reçues à
     // traiter. GESTIONNAIRE (et SUPERADMIN en tant que demandeur) : compte
@@ -121,6 +142,10 @@ const Navbar = () => {
     {
       path: "/attestations", label: "Attestations",
       show: canSeeAttestations,
+    },
+    {
+      path: "/consultations", label: "Consultations",
+      show: canSeeConsultations,
     },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
@@ -228,6 +253,15 @@ const Navbar = () => {
                     padding: "1px 6px", display: "inline-block",
                   }}>
                     {pendingAttestations}
+                  </span>
+                )}
+                {item.path === "/consultations" && pendingConsultations > 0 && (
+                  <span style={{
+                    marginLeft: 6, background: theme.danger, color: "#fff",
+                    borderRadius: 999, fontSize: 10, fontWeight: 700,
+                    padding: "1px 6px", display: "inline-block",
+                  }}>
+                    {pendingConsultations}
                   </span>
                 )}
               </button>
@@ -664,6 +698,15 @@ const Navbar = () => {
                       padding: "1px 6px", display: "inline-block",
                     }}>
                       {pendingAttestations}
+                    </span>
+                  )}
+                  {item.path === "/consultations" && pendingConsultations > 0 && (
+                    <span style={{
+                      marginLeft: 6, background: theme.danger, color: "#fff",
+                      borderRadius: 999, fontSize: 10, fontWeight: 700,
+                      padding: "1px 6px", display: "inline-block",
+                    }}>
+                      {pendingConsultations}
                     </span>
                   )}
                 </button>

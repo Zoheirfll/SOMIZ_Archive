@@ -31,6 +31,9 @@ const RechercheDocuments = lazy(() => import("./pages/RechercheDocuments"));
 const Attestations = lazy(() => import("./pages/Attestations"));
 const AttestationNouvelle = lazy(() => import("./pages/AttestationNouvelle"));
 const AttestationDetail = lazy(() => import("./pages/AttestationDetail"));
+const Consultations = lazy(() => import("./pages/Consultations"));
+const ConsultationNouvelle = lazy(() => import("./pages/ConsultationNouvelle"));
+const ConsultationDetail = lazy(() => import("./pages/ConsultationDetail"));
 
 // Route racine "/" — jamais un vrai écran, juste un aiguillage vers la
 // connexion ou l'accueil selon l'état de session.
@@ -141,6 +144,36 @@ function App() {
                 requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_attestations}
               >
                 <AttestationDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/consultations"
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_consultations}
+              >
+                <Consultations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/consultations/nouvelle"
+            element={
+              <ProtectedRoute allowedRoles={["GESTIONNAIRE", "CONSULTANT"]}>
+                <ConsultationNouvelle />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/consultations/:ref"
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_consultations}
+              >
+                <ConsultationDetail />
               </ProtectedRoute>
             }
           />

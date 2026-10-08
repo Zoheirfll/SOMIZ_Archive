@@ -59,6 +59,7 @@ const Users = () => {
     prenom: "",
     role: "CONSULTANT",
     charge_attestation: false,
+    charge_consultation: false,
     password: "",
     password2: "",
   });
@@ -159,6 +160,7 @@ const Users = () => {
         role: form.role,
         libelle_role: form.role === "GESTIONNAIRE" ? (form.libelle_role || "") : "",
         charge_attestation: form.role === "ADMIN" ? !!form.charge_attestation : false,
+        charge_consultation: form.role === "ADMIN" ? !!form.charge_consultation : false,
         password: form.password,
       });
       const hasScope =
@@ -183,7 +185,7 @@ const Users = () => {
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
-      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, password: "", password2: "" });
+      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
@@ -208,6 +210,15 @@ const Users = () => {
   const toggleChargeAttestation = async (targetUser) => {
     try {
       await api.patch(`/admin-users/${targetUser.id}/`, { charge_attestation: !targetUser.charge_attestation });
+      fetchUsers(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleChargeConsultation = async (targetUser) => {
+    try {
+      await api.patch(`/admin-users/${targetUser.id}/`, { charge_consultation: !targetUser.charge_consultation });
       fetchUsers(true);
     } catch (err) {
       console.error(err);
@@ -420,6 +431,23 @@ const Users = () => {
                     </label>
                     <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
                       Reçoit et traite les demandes d'attestation (/attestations). Un Super-administrateur y a toujours accès, quel que soit ce réglage.
+                    </div>
+                  </div>
+                )}
+
+                {form.role === "ADMIN" && (
+                  <div>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        name="charge_consultation"
+                        checked={!!form.charge_consultation}
+                        onChange={handleChange}
+                      />
+                      Chargé des consultations d'archives
+                    </label>
+                    <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
+                      Reçoit, valide et livre les demandes de consultation de documents archivés (/consultations). Un Super-administrateur y a toujours accès, quel que soit ce réglage.
                     </div>
                   </div>
                 )}
@@ -763,6 +791,25 @@ const Users = () => {
                               }}
                             >
                               {u.charge_attestation ? "Attestations ✓" : "Attestations ✗"}
+                            </button>
+                          )}
+                          {u.role === "ADMIN" && user?.role === "SUPERADMIN" && (
+                            <button
+                              onClick={() => toggleChargeConsultation(u)}
+                              title="Reçoit, valide et livre les demandes de consultation d'archives (/consultations)"
+                              style={{
+                                background: u.charge_consultation ? theme.primaryBg : theme.bg,
+                                border: `1px solid ${u.charge_consultation ? theme.primaryBorder : theme.border}`,
+                                color: u.charge_consultation ? theme.primary : theme.textSecondary,
+                                borderRadius: 8,
+                                padding: "5px 12px",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {u.charge_consultation ? "Consultations ✓" : "Consultations ✗"}
                             </button>
                           )}
                           {["CONSULTANT", "GESTIONNAIRE"].includes(u.role) && (

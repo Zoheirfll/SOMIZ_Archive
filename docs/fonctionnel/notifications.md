@@ -70,8 +70,14 @@ utiliser la fixture `django_capture_on_commit_callbacks(execute=True)` (voir
 | Conformité | Compte actif sans consentement Loi 18-07 depuis > 7 jours | SUPERADMIN ; ADMIN seulement pour les comptes qu'il administre. Une seule alerte par compte, jamais renouvelée | `notifier_consentements_en_attente`, lancée par la même commande quotidienne |
 | Contrats | Échéance dans ≤ 30 jours | ADMIN/SUPERADMIN, `warning` si ≤ 7 jours. Idempotent (une fois par contrat et par fenêtre) | `manage.py notifier_echeances_contrat` |
 
+| Consultations | Nouvelle demande | Traiteurs (SUPERADMIN + ADMIN `charge_consultation`), hors auteur | `consultations/notifications.py`, appelé par `DemandeConsultationListCreateView.perform_create` |
+| Consultations | Validée / Rejetée / Révoquée / Prolongée | Le demandeur (pas l'auteur du changement) | vues de traitement de `consultations/views.py` |
+| Consultations | Échéance dans moins de 24 h / 1 h | Demandeur + traiteur de la demande. Idempotent (drapeaux `rappel_24h_envoye` / `rappel_1h_envoye`, réinitialisés par une prolongation) | `manage.py notifier_echeances_consultation` |
+
 **Tâches planifiées à créer en production** (rien ne les lance automatiquement) :
-`notifier_echeances_contrat` (quotidienne) et `purge_notifications` (quotidienne ou hebdomadaire).
+`notifier_echeances_contrat` (quotidienne), `purge_notifications` (quotidienne ou hebdomadaire) et
+`notifier_echeances_consultation` (toutes les 15 minutes — sans elle, les rappels ne partent pas,
+mais l'accès aux documents est coupé à l'échéance par le serveur).
 
 Les messages restent neutres : référence d'attestation, matricule ou numéro de
 contrat, jamais le nom de l'employé. Le « compte verrouillé » cite le
