@@ -1320,6 +1320,25 @@ déjà tracée dans l'audit. Moins de code qui écrit sur des données RH.
 
 ---
 
+## Politique de mot de passe — retrait du validateur de similarité (2026-10-08)
+
+`UserAttributeSimilarityValidator` retiré de `AUTH_PASSWORD_VALIDATORS`
+(`config/settings.py`) **à la demande du propriétaire** : il refusait en 400
+des mots de passe proches du login (ex. `lahcen2026` pour le compte `Lahcen`)
+lors d'un reset admin. Restent actifs : longueur minimale 10, mots de passe
+courants, mots de passe uniquement numériques.
+
+- **Risque accepté** : un mot de passe dérivé du login/nom/prénom est désormais
+  accepté, y compris à la création de compte et au changement de mot de passe
+  (le validateur est global). Un ADMIN peut donc attribuer un mot de passe
+  facilement devinable ; l'anti-brute-force (5 tentatives → 30 min) en limite
+  l'exploitation mais ne la supprime pas.
+- **Correctif UX associé** : la modale de reset (`Users.jsx`) affiche
+  désormais l'erreur serveur *dans* la modale. Avant, le message allait dans le
+  bandeau de la page, masqué par l'overlay : l'admin voyait un 400 sans raison.
+
+---
+
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_

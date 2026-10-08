@@ -142,7 +142,8 @@ AUTH_USER_MODEL = 'accounts.User'
 AUTHENTICATION_BACKENDS = ['accounts.backends.LockoutModelBackend']
 
 AUTH_PASSWORD_VALIDATORS = [
-    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    # UserAttributeSimilarityValidator retiré le 2026-10-08 (choix du propriétaire) :
+    # il refusait des mots de passe proches du login (ex. "lahcen2026" pour "Lahcen").
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
      'OPTIONS': {'min_length': 10}},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},

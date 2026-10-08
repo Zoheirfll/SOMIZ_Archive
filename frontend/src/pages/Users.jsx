@@ -71,6 +71,7 @@ const Users = () => {
     confirmation: "",
   });
   const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState(null);
   const [showResetMdp, setShowResetMdp] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -233,12 +234,15 @@ const Users = () => {
   };
 
   const handleResetPassword = async () => {
+    // Les erreurs s'affichent dans la modale : le bandeau de la page est masqué
+    // par son overlay (zIndex 1000).
+    setResetError(null);
     if (resetForm.nouveau_mot_de_passe !== resetForm.confirmation) {
-      setMessage({ type: "error", text: "Les mots de passe ne correspondent pas." });
+      setResetError("Les mots de passe ne correspondent pas.");
       return;
     }
     if (resetForm.nouveau_mot_de_passe.length < 10) {
-      setMessage({ type: "error", text: "Minimum 10 caractères." });
+      setResetError("Minimum 10 caractères.");
       return;
     }
     setResetting(true);
@@ -248,7 +252,7 @@ const Users = () => {
       setResetModal(null);
       setResetForm({ nouveau_mot_de_passe: "", confirmation: "" });
     } catch (err) {
-      setMessage({ type: "error", text: err.response?.data?.error || "Erreur." });
+      setResetError(err.response?.data?.error || "Erreur lors de la réinitialisation.");
     } finally {
       setResetting(false);
       setTimeout(() => setMessage(null), 4000);
@@ -720,6 +724,7 @@ const Users = () => {
                           <button
                             onClick={() => {
                               setResetModal(u);
+                              setResetError(null);
                               setResetForm({ nouveau_mot_de_passe: "", confirmation: "" });
                               setShowResetMdp(false);
                               setShowResetConfirm(false);
@@ -933,6 +938,24 @@ const Users = () => {
             <div style={{ color: theme.textMuted, fontSize: 12, marginBottom: 24 }}>
               Minimum 10 caractères. Le compte sera déverrouillé automatiquement.
             </div>
+
+            {resetError && (
+              <div
+                role="alert"
+                style={{
+                  background: theme.dangerBg,
+                  border: `1px solid ${theme.dangerBorder}`,
+                  color: theme.danger,
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginBottom: 20,
+                }}
+              >
+                {resetError}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
