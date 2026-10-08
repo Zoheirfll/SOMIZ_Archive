@@ -451,3 +451,25 @@ Suite complète : 635 tests OK.
 **À retenir** : toute nouvelle écriture directe sur `Employee.date_fin_contrat`
 (import, script) doit aussi passer par le dernier contrat, sinon l'écart
 réapparaît.
+
+---
+
+## Export Excel des employés — colonnes du contrat (2026-10-08)
+
+`GET /api/employees/export/` (liste, mêmes filtres que `/employees`) et
+`GET /api/employees/<id>/export/` (un employé, feuille « Informations ») partagent
+`_employee_row_headers` / `_employee_row_values` (`employees/export_views.py`). Ordre des colonnes :
+Matricule, Nom, Prénom, **N° Contrat actif, Date début contrat, Date fin contrat, Statut du contrat**,
+Date de naissance, Date de recrutement, Statut, Direction, Département, Service, Cellule, Section,
+Fonction, Type de contrat, Catégorie, champs personnalisés, « Scan : … » (Oui/Non par type de document).
+
+- Les 4 colonnes du contrat viennent toutes du **même contrat de référence : le plus récent par date de
+  début** (`-date_debut, -id`), quel que soit son statut. Le libellé « N° Contrat actif » est historique :
+  si le dernier contrat est archivé ou démobilisé, c'est bien lui qui est exporté, et « Statut du contrat »
+  le dit.
+- Un employé sans contrat, ou avec des valeurs vides, **reste dans l'export** (cellules vides) : aucune ligne
+  n'est écartée parce qu'une donnée manque.
+- Par défaut seuls les employés au statut `actif` sont exportés (comme la liste) ; `?vue=archives` ou
+  `?statut=` change ce périmètre. Les colonnes ont été insérées *au milieu* du fichier : tout traitement
+  externe qui lit ces exports par position (et non par nom de colonne) doit être revu.
+- Tests : `backend/tests/test_employee_export.py` (aucun test n'existait pour cet export avant cette date).
