@@ -459,9 +459,14 @@ réapparaît.
 `GET /api/employees/export/` (liste, mêmes filtres que `/employees`) et
 `GET /api/employees/<id>/export/` (un employé, feuille « Informations ») partagent
 `_employee_row_headers` / `_employee_row_values` (`employees/export_views.py`). Ordre des colonnes :
-Matricule, Nom, Prénom, **N° Contrat actif, Date début contrat, Date fin contrat, Statut du contrat**,
-Date de naissance, Date de recrutement, Statut, Direction, Département, Service, Cellule, Section,
-Fonction, Type de contrat, Catégorie, champs personnalisés, « Scan : … » (Oui/Non par type de document).
+Matricule, N° Contrat actif, Nom, Prénom, Fonction, Date de naissance, Date de recrutement (ordre demandé
+par l'utilisateur), puis **Date début contrat, Date fin contrat, Statut du contrat**, Type de contrat,
+Catégorie, Statut, Direction, Département, Service, Cellule, Section, **NIN, N° Sécurité sociale, RIP/RIB,
+Groupe sanguin, Motif d'archivage**, champs personnalisés, « Scan : … » (Oui/Non par type de document).
+Les NIN/sécu/RIB sont des données sensibles : export réservé aux ADMIN et tracé dans l'audit, mais le
+fichier circule ensuite hors de l'application (voir `securite.md` point 45).
+`Employee.date_fin_contrat` est recopiée depuis le dernier contrat (`models.py`) : une date de fin vide
+signifie que le contrat n'en a pas (CDI, ou date non saisie sur le contrat).
 
 - Les 4 colonnes du contrat viennent toutes du **même contrat de référence : le plus récent par date de
   début** (`-date_debut, -id`), quel que soit son statut. Le libellé « N° Contrat actif » est historique :

@@ -1428,3 +1428,13 @@ un scan **via l'application uniquement**, pour une durée limitée. Détail dans
 ## À vérifier (en attente)
 
 _(les points suivants seront ajoutés au fur et à mesure des demandes)_
+
+---
+
+## 45. Export Excel des employés — colonnes sensibles (2026-10-08) — ⚠️ Risque accepté, à valider
+
+L'export `GET /api/employees/export/` (et `<id>/export/`) contient désormais **NIN, n° de sécurité sociale,
+RIP/RIB et groupe sanguin** (demande explicite de l'utilisateur). Contrôles existants : `IsAdmin`
+(ADMIN/SUPERADMIN seulement), action `EXPORT` tracée dans le journal d'audit. Risque résiduel : le fichier
+`.xlsx` n'est pas chiffré et sort de l'application (Loi 18-07 / RGPD : minimisation, confidentialité).
+À décider : retirer ces colonnes de l'export de masse ou les réserver au SUPERADMIN.
