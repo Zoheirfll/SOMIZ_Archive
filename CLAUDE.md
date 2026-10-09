@@ -47,7 +47,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - [`docs/fonctionnel/scoping.md`](docs/fonctionnel/scoping.md) — À lire avant de toucher à une vue/serializer qui liste ou retrouve des employés, documents, contrats ou champs personnels, ou au modal « Périmètre » de /users.
 - [`docs/fonctionnel/referentiels.md`](docs/fonctionnel/referentiels.md) — À lire avant de toucher aux référentiels organisationnels (Direction/Pôle/Département/Service/Cellule/Section), aux slugs d'URL, aux imports CSV/xlsx, aux types de contrat ou aux motifs.
 - [`docs/fonctionnel/documents.md`](docs/fonctionnel/documents.md) — À lire avant de toucher aux documents (upload, suppression, renommage, rotation, scan-import), aux types de documents, à la photo de profil ou à l'OCR. Contient l'incident de purge du 2026-07-22.
-- [`docs/fonctionnel/employes.md`](docs/fonctionnel/employes.md) — À lire avant de toucher à la fiche/au formulaire/à la liste des employés, aux champs personnalisés, à l'historique de carrière, aux transferts ou à l'archivage.
+- [`docs/fonctionnel/employes.md`](docs/fonctionnel/employes.md) — À lire avant de toucher à la fiche/au formulaire/à la liste des employés, aux champs personnalisés, à l'historique de carrière, aux transferts, à l'archivage ou à l'export Excel (ordre des colonnes, colonnes du contrat, colonnes sensibles NIN/sécu/RIB — `securite.md` point 45).
 - [`docs/fonctionnel/statistiques-audit.md`](docs/fonctionnel/statistiques-audit.md) — À lire avant de toucher à /statistiques, à audit/stats.py ou aux liens de preuve vers /audit.
 - [`docs/fonctionnel/comptes-conformite.md`](docs/fonctionnel/comptes-conformite.md) — À lire avant de toucher à la suppression de compte, aux permissions IsAdmin/IsAdminOrConsultant ou au flux de consentement.
 - [`docs/fonctionnel/attestations.md`](docs/fonctionnel/attestations.md) — À lire avant de toucher à l'app attestations (workflow de statuts, PDF ReportLab, configuration du modèle, mode test, statistiques).
@@ -61,6 +61,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - Un rafraîchissement après action mutante passe `fetch*(true)` (silencieux), jamais un `setLoading(true)` qui démonte la page — voir `ui-conventions.md`.
 - Suppression de documents = hard delete tracé dans l'audit ; jamais de script de purge en masse sans liste validée, normalisation de chemin et sauvegarde — voir `documents.md`.
 - Une permission « transversale » se vérifie par un test d'intégration sur une vraie route métier — voir `comptes-conformite.md`.
+- L'export Excel des employés (`employees/export_views.py`) reste réservé aux ADMIN et tracé dans l'audit ; il contient des données sensibles (NIN, sécu, RIB) — toute nouvelle colonne sensible se documente dans `securite.md`.
 - Un fichier livré par `consultations` ne se sert jamais sans `controler_acces()` (expiration vérifiée côté serveur à chaque lecture) et jamais non filigrané à un demandeur — voir `consultations.md`.
 
 ---
