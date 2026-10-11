@@ -1,0 +1,7 @@
+from django.apps import AppConfig
+
+
+class RegistresConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'registres'
+    verbose_name = "Registres d'archives"

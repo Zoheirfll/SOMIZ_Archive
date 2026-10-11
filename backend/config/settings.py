@@ -62,6 +62,7 @@ LOCAL_APPS = [
     'ocr',
     'attestations',
     'consultations',
+    'registres',
     'notifications',
 ]
 
