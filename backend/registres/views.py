@@ -2,17 +2,19 @@ import dataclasses
 
 from django.db import transaction
 from django.db.models import Q
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from audit.models import AuditLog
 from consultations.views import reference_depuis_slug
 
-from . import services
+from . import exports, services
 from .models import MouvementArchive, ReceptionDocument
 from .permissions import CanManageRegistres
 from .reference import generate_reference
@@ -253,3 +255,92 @@ class ReceptionAnnulerView(RegistreObjetMixin, APIView):
         reception = self.get_object()
         annuler_ligne(request, reception, AuditLog.Action.CANCEL_RECEPTION)
         return Response(ReceptionDocumentSerializer(reception, context={'request': request}).data)
+
+
+ENTETES_MOUVEMENTS = [
+    'Référence', 'Origine', 'Date de départ', 'Bénéficiaire', 'Employé concerné', 'Matricule',
+    'Fonction', 'Service', 'N° contrat', 'Type de documents', 'Nombre de documents',
+    'Date de retour', 'Observation',
+]
+ENTETES_RECEPTIONS = [
+    'Référence', 'Type de document', 'Nombre', 'Expéditeur', 'Date de réception',
+    'Date de classement', 'Observation',
+]
+COLONNES_DATE_MOUVEMENTS = (2, 11)
+COLONNES_DATE_RECEPTIONS = (4, 5)
+FORMATS_EXPORT = {
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'pdf': 'application/pdf',
+}
+
+
+def _reference_export(reference, annulee):
+    return f"{reference} (annulée)" if annulee else reference
+
+
+def _lignes_export_mouvements(request, annee):
+    lignes = services.registre_mouvements(
+        request.user, annee, q=request.query_params.get('q', '').strip(),
+        statut=request.query_params.get('statut', ''),
+    )
+    return [[
+        _reference_export(l.reference, l.annulee), l.origine, l.date_depart, l.beneficiaire,
+        l.employe, l.matricule, l.fonction, l.service, l.numero_contrat, l.type_documents,
+        l.nombre_documents, l.date_retour, l.observation,
+    ] for l in lignes]
+
+
+def _lignes_export_receptions(request, annee):
+    return [[
+        _reference_export(r.reference, not r.is_active), r.type_document, r.nombre,
+        r.expediteur, r.date_reception, r.date_classement, r.observation,
+    ] for r in receptions_filtrees(request, annee)]
+
+
+REGISTRES_EXPORTABLES = {
+    'mouvements': (
+        "Registre de mouvement des dossiers", ENTETES_MOUVEMENTS,
+        _lignes_export_mouvements, COLONNES_DATE_MOUVEMENTS,
+    ),
+    'receptions': (
+        "Registre de réception et de classement", ENTETES_RECEPTIONS,
+        _lignes_export_receptions, COLONNES_DATE_RECEPTIONS,
+    ),
+}
+
+
+class RegistreExportView(APIView):
+    """GET /api/registres/<registre>/export/?format=xlsx|pdf — réservé aux
+    gestionnaires des registres ; chaque export/impression est tracé."""
+    permission_classes = [CanManageRegistres]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'registre_export'
+
+    def get(self, request, registre):
+        if registre not in REGISTRES_EXPORTABLES:
+            raise Http404
+        # `fmt` et non `format` : DRF réserve ?format= à la négociation de
+        # contenu (URL_FORMAT_OVERRIDE) et répond 404 avant d'atteindre la vue
+        # pour tout format sans moteur de rendu associé.
+        format_demande = request.query_params.get('fmt', '')
+        if format_demande not in FORMATS_EXPORT:
+            raise ValidationError({'fmt': "Format invalide (xlsx ou pdf)."})
+        annee = annee_depuis(request)
+        titre, entetes, fabrique, colonnes_date = REGISTRES_EXPORTABLES[registre]
+        rows = fabrique(request, annee)
+        titre_annee = f"{titre} — {annee}"
+        if format_demande == 'xlsx':
+            contenu = exports.construire_xlsx(titre_annee, entetes, rows, colonnes_date=colonnes_date)
+            action = AuditLog.Action.EXPORT_REGISTRE
+        else:
+            contenu = exports.construire_pdf(titre_annee, entetes, rows)
+            action = AuditLog.Action.PRINT_REGISTRE
+        AuditLog.log(request, action, details={
+            'registre': registre, 'annee': annee, 'format': format_demande,
+            'filtres': dict(request.query_params), 'nb_lignes': len(rows),
+        })
+        reponse = HttpResponse(contenu, content_type=FORMATS_EXPORT[format_demande])
+        reponse['Content-Disposition'] = f'attachment; filename="registre-{registre}-{annee}.{format_demande}"'
+        reponse['Cache-Control'] = 'no-store'
+        reponse['X-Content-Type-Options'] = 'nosniff'
+        return reponse
