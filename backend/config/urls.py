@@ -15,6 +15,7 @@ urlpatterns = [
         path('ocr/', include('ocr.urls')),
         path('attestations/', include('attestations.urls')),
         path('consultations/', include('consultations.urls')),
+        path('registres/', include('registres.urls')),
         path('notifications/', include('notifications.urls')),
     ])),
     # React — doit être en dernier
