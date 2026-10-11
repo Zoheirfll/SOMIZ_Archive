@@ -44,6 +44,38 @@ def annee_depuis(request):
     return annee
 
 
+PAGE_SIZE_DEFAUT, PAGE_SIZE_MAX = 50, 200
+
+
+def _entier_positif(request, nom, defaut, maximum=None):
+    brut = request.query_params.get(nom)
+    if brut in (None, ''):
+        return defaut
+    try:
+        valeur = int(brut)
+    except ValueError:
+        raise ValidationError({nom: "Valeur invalide."})
+    if valeur < 1:
+        raise ValidationError({nom: "Valeur invalide."})
+    return min(valeur, maximum) if maximum else valeur
+
+
+def paginer(elements, request):
+    """Découpe une séquence déjà filtrée et triée (liste ou queryset) selon
+    `page` et `page_size` (50 par défaut, 200 au maximum). Une page hors
+    plage renvoie une liste vide plutôt qu'une erreur. L'export, lui, ne
+    pagine jamais : un registre imprimé doit contenir toutes les lignes."""
+    page_size = _entier_positif(request, 'page_size', PAGE_SIZE_DEFAUT, PAGE_SIZE_MAX)
+    page = _entier_positif(request, 'page', 1)
+    count = len(elements) if isinstance(elements, list) else elements.count()
+    debut = (page - 1) * page_size
+    return {
+        'count': count, 'page': page, 'page_size': page_size,
+        'num_pages': max(1, -(-count // page_size)),
+        'items': elements[debut:debut + page_size],
+    }
+
+
 def _jsonable(valeur):
     if hasattr(valeur, 'isoformat'):
         return valeur.isoformat()
@@ -92,7 +124,9 @@ class MouvementsView(APIView):
             q=request.query_params.get('q', '').strip(),
             statut=request.query_params.get('statut', ''),
         )
-        return Response({'annee': annee, 'results': [dataclasses.asdict(ligne) for ligne in lignes]})
+        bloc = paginer(lignes, request)
+        items = bloc.pop('items')
+        return Response({'annee': annee, **bloc, 'results': [dataclasses.asdict(ligne) for ligne in items]})
 
     @transaction.atomic
     def post(self, request):
@@ -186,10 +220,10 @@ class ReceptionsView(APIView):
 
     def get(self, request):
         annee = annee_depuis(request)
-        data = ReceptionDocumentSerializer(
-            receptions_filtrees(request, annee), many=True, context={'request': request},
-        ).data
-        return Response({'annee': annee, 'results': data})
+        bloc = paginer(receptions_filtrees(request, annee), request)
+        items = bloc.pop('items')
+        data = ReceptionDocumentSerializer(items, many=True, context={'request': request}).data
+        return Response({'annee': annee, **bloc, 'results': data})
 
     @transaction.atomic
     def post(self, request):
@@ -258,7 +292,8 @@ class ReceptionAnnulerView(RegistreObjetMixin, APIView):
 
 
 ENTETES_MOUVEMENTS = [
-    'Référence', 'Origine', 'Date de départ', 'Bénéficiaire', 'Employé concerné', 'Matricule',
+    'Référence', 'Origine', 'Date de départ', 'Bénéficiaire (qui emporte le dossier)',
+    'Employé concerné (dossier)', 'Matricule',
     'Fonction', 'Service', 'N° contrat', 'Type de documents', 'Nombre de documents',
     'Date de retour', 'Observation',
 ]

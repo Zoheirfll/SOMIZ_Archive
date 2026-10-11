@@ -74,6 +74,34 @@ def test_liste_filtre_annee_a_classer_et_recherche(traiteur, superadmin_user):
     assert [r['reference'] for r in cherche.data['results']] == ['R-00002/26']
 
 
+def test_liste_paginee_avec_compteurs(traiteur):
+    for i in range(1, 6):
+        ReceptionDocument.objects.create(
+            reference=f"R-{i:05d}/26", type_document='Courrier', nombre=1, expediteur='DRH',
+            date_reception=date(2026, 1, i),
+        )
+    page2 = _client(traiteur).get(URL, {'annee': 2026, 'page_size': 2, 'page': 2})
+    assert page2.status_code == 200
+    assert page2.data['count'] == 5 and page2.data['num_pages'] == 3 and page2.data['page'] == 2
+    assert [r['reference'] for r in page2.data['results']] == ['R-00003/26', 'R-00004/26']
+    assert _client(traiteur).get(URL, {'page': 'x'}).status_code == 400
+
+
+def test_export_ignore_la_pagination_et_contient_toutes_les_lignes(traiteur):
+    from io import BytesIO
+    import openpyxl
+    for i in range(1, 6):
+        ReceptionDocument.objects.create(
+            reference=f"R-{i:05d}/26", type_document='Courrier', nombre=1, expediteur='DRH',
+            date_reception=date(2026, 1, i),
+        )
+    reponse = _client(traiteur).get(
+        '/api/registres/receptions/export/', {'annee': 2026, 'fmt': 'xlsx', 'page_size': 2},
+    )
+    ws = openpyxl.load_workbook(BytesIO(reponse.content)).active
+    assert ws.max_row == 6  # entête + 5 lignes
+
+
 def test_classer_en_un_clic(traiteur):
     _client(traiteur).post(URL, _payload(date_reception='2026-01-01'), format='json')
     r = ReceptionDocument.objects.get()

@@ -116,6 +116,39 @@ def test_liste_renvoie_annee_et_lignes(traiteur):
     assert reponse.data['results'][0]['origine'] == 'manuel'
 
 
+def _creer_mouvements(n):
+    for i in range(1, n + 1):
+        MouvementArchive.objects.create(
+            reference=f"M-{i:05d}/26", nom_libre=f"Agent {i}", type_documents='Dossier',
+            date_depart=date(2026, 1, i),
+        )
+
+
+def test_liste_paginee_par_defaut_avec_compteurs(traiteur):
+    _creer_mouvements(5)
+    reponse = _client(traiteur).get(URL, {'annee': 2026, 'page_size': 2})
+    assert reponse.status_code == 200
+    assert reponse.data['count'] == 5
+    assert reponse.data['page'] == 1 and reponse.data['num_pages'] == 3
+    assert [r['reference'] for r in reponse.data['results']] == ['M-00001/26', 'M-00002/26']
+
+
+def test_liste_page_suivante_et_hors_plage(traiteur):
+    _creer_mouvements(5)
+    page3 = _client(traiteur).get(URL, {'annee': 2026, 'page_size': 2, 'page': 3})
+    assert [r['reference'] for r in page3.data['results']] == ['M-00005/26']
+    hors = _client(traiteur).get(URL, {'annee': 2026, 'page_size': 2, 'page': 9})
+    assert hors.status_code == 200 and hors.data['results'] == [] and hors.data['count'] == 5
+
+
+def test_pagination_parametres_invalides_ou_trop_grands(traiteur):
+    assert _client(traiteur).get(URL, {'page': 'x'}).status_code == 400
+    assert _client(traiteur).get(URL, {'page': 0}).status_code == 400
+    assert _client(traiteur).get(URL, {'page_size': -1}).status_code == 400
+    plafonne = _client(traiteur).get(URL, {'annee': 2026, 'page_size': 100000})
+    assert plafonne.data['page_size'] == 200
+
+
 def test_liste_annee_invalide_refusee(traiteur):
     assert _client(traiteur).get(URL, {'annee': 'abc'}).status_code == 400
     assert _client(traiteur).get(URL, {'annee': 1800}).status_code == 400
