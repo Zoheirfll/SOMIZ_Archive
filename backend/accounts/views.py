@@ -154,6 +154,7 @@ class LoginView(APIView):
                 'needs_consent': not bool(user.consent_loi1807_accepted_at),
                 'can_manage_attestations': user.can_manage_attestations,
                 'can_manage_consultations': user.can_manage_consultations,
+                'can_manage_registres': user.can_manage_registres,
             }
         })
         _set_auth_cookies(request, response, refresh.access_token, refresh)
@@ -199,6 +200,7 @@ class UserMeView(APIView):
             'is_admin': user.is_admin,
             'can_manage_attestations': user.can_manage_attestations,
             'can_manage_consultations': user.can_manage_consultations,
+            'can_manage_registres': user.can_manage_registres,
             'needs_consent': not bool(user.consent_loi1807_accepted_at),
         })
 

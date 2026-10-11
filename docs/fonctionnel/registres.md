@@ -11,8 +11,9 @@
 
 Tenir les deux registres d'un service d'archives, à partir de la note manuscrite du propriétaire :
 
-- **Registre 01 — mouvement** : sortie et retour des dossiers/documents (consultations numériques **et** dossiers
-  papier saisis à la main).
+- **Registre 01 — mouvement** : sortie et retour des dossiers/documents **physiques** (papier), saisis à la main.
+  Les consultations numériques n'y figurent **pas** (décision du propriétaire, 2026-10-11 : ce ne sont pas des
+  mouvements physiques ; elles se suivent dans `/consultations`).
 - **Registre 02 — enregistrement et classement** : documents reçus (type, nombre, expéditeur, réception, classement).
 
 Chaque registre s'imprime (PDF) et s'exporte (Excel). Pas d'envoi par e-mail (décision : ne pas faire sortir de
@@ -32,10 +33,9 @@ modification, retour, classement, annulation et export ; **404** seulement pour 
   (null = non rendu), `observation`, `is_active` + `motif_annulation`, `saisi_par`.
 - `ReceptionDocument` — `reference` `R-NNNNN/AA`, `type_document`, `nombre`, `expediteur`, `date_reception`,
   `date_classement` (null = non classé), `observation`, `is_active` + `motif_annulation`, `saisi_par`.
-- **Vue du registre 01** (`registres/services.py`, `registre_mouvements`) : lignes manuelles + `DemandeConsultation`
-  validées ou révoquées de l'année. Les consultations ne sont **jamais copiées** : départ = `date_validation` ; retour
-  = date de révocation, sinon échéance si dépassée, sinon « En cours » ; nombre de documents = nombre de
-  `ConsultationFichier`. Une consultation garde sa référence `C-NNNNN/AA`.
+- **Registre 01** (`registres/services.py`, `registre_mouvements`) : les `MouvementArchive` de l'année, triés par
+  date de départ, avec recherche et filtre « non rendus ». Aucune dépendance à l'app `consultations`.
+  (`user` reste dans la signature de `registre_mouvements` pour qu'un éventuel scoping ne change pas les appelants.)
 - **« Nom prénom » de la note manuscrite** (décision du propriétaire, 2026-10-11) : les **deux** sont affichés côte à
   côte, avec le même poids, sous des libellés explicites dans l'écran, le PDF et l'Excel — **Bénéficiaire (qui
   emporte le dossier)** (le demandeur pour une consultation) et **Employé concerné (dossier)**. Fonction, service et
@@ -65,8 +65,6 @@ toutes les lignes de l'année filtrée (testé).
 
 - **Aucun DELETE** (405) : pièce probante. Annulation = soft-delete avec motif ; la ligne reste visible, barrée, et
   n'est plus modifiable. Chaque modification trace l'ancienne valeur (`details['changes']`).
-- **Piège `Q(a) | Q()`** : combiner le périmètre d'employés avec un `Q()` vide revient à `Q(a)` et exclurait à tort les
-  consultations sans employé. `_lignes_consultations` ne combine que si le périmètre est non vide.
 - **Piège `?format=`** : DRF réserve ce paramètre à la négociation de contenu (`URL_FORMAT_OVERRIDE`) et répond 404
   avant d'atteindre la vue pour `xlsx`/`pdf` (un seul moteur de rendu JSON). Le paramètre s'appelle donc **`fmt`**
   (backend `RegistreExportView` et frontend `telechargerRegistre`).
@@ -76,8 +74,6 @@ toutes les lignes de l'année filtrée (testé).
   des champs libres sont échappés (ReportLab interprète du balisage).
 - **Export sans colonnes sensibles** (NIN, sécu, RIB) ; throttle `registre_export` 10/min ; `Cache-Control: no-store`.
 - Le throttle vit dans le cache partagé : `test_registres_export.py` le vide avant chaque test.
-- Les lignes issues d'une consultation n'ont **aucune action** dans le registre (ni retour, ni annulation) : elles se
-  gèrent dans `/consultations`.
 
 ## Interface (`/registres`)
 
@@ -103,8 +99,10 @@ Précédent / Suivant). Tout changement de filtre (année, recherche, statut) **
 
 ## Approches écartées
 
-- **Copier chaque consultation validée dans `MouvementArchive`** : n° d'ordre stable, mais synchronisation à chaque
-  prolongation, révocation ou purge ; un oubli rend le registre faux.
+- **Fusionner les consultations validées dans le registre 01** (choix initial, **abandonné le 2026-10-11**) : une
+  consultation est une livraison numérique, pas un mouvement physique ; la fusion (vue calculée, scoping des
+  consultations, colonne « Origine », retour dérivé de l'échéance) a été retirée. Elle avait aussi écarté l'idée de
+  **copier** chaque consultation dans `MouvementArchive` (synchronisation à chaque prolongation, révocation ou purge).
 - **Étendre l'app `consultations`** : mélange deux métiers, déjà écarté pour les attestations.
 - **Nouveau drapeau « archiviste »** : rôle supplémentaire à gérer pour un gain faible.
 - **« Envoyer » par e-mail** : SMTP à configurer et données personnelles hors de SOMIZ.

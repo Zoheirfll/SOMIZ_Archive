@@ -65,7 +65,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation',
-            'charge_consultation',
+            'charge_consultation', 'charge_registre',
             'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
             'scope_poles', 'scope_poles_nom',
@@ -125,10 +125,16 @@ class UserSerializer(serializers.ModelSerializer):
         if role != 'ADMIN':
             attrs['charge_attestation'] = False
             attrs['charge_consultation'] = False
+            attrs['charge_registre'] = False
         return attrs
 
     def validate_charge_consultation(self, value):
         return _reserve_au_superadmin(self, value, self.instance.charge_consultation if self.instance else False)
+
+    def validate_charge_registre(self, value):
+        return _reserve_au_superadmin(
+            self, value, self.instance.charge_registre if self.instance else False, "aux registres d'archives",
+        )
 
     def validate_charge_attestation(self, value):
         return _reserve_au_superadmin(
@@ -158,12 +164,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role',
-            'charge_attestation', 'charge_consultation', 'password',
+            'charge_attestation', 'charge_consultation', 'charge_registre', 'password',
         ]
         read_only_fields = ['id']
 
     def validate_charge_consultation(self, value):
         return _reserve_au_superadmin(self, value, False)
+
+    def validate_charge_registre(self, value):
+        return _reserve_au_superadmin(self, value, False, "aux registres d'archives")
 
     def validate_charge_attestation(self, value):
         return _reserve_au_superadmin(self, value, False, "aux attestations de travail")
@@ -203,6 +212,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if attrs.get('role') != 'ADMIN':
             attrs['charge_attestation'] = False
             attrs['charge_consultation'] = False
+            attrs['charge_registre'] = False
         return attrs
 
     def validate_password(self, value):
@@ -247,7 +257,12 @@ class UserListCreateView(generics.ListCreateAPIView):
         user = serializer.save()
         AuditLog.log(
             self.request, AuditLog.Action.CREATE_USER, target=user,
-            details={'username': user.username, 'role': user.role},
+            details={
+                'username': user.username, 'role': user.role,
+                'charge_attestation': user.charge_attestation,
+                'charge_consultation': user.charge_consultation,
+                'charge_registre': user.charge_registre,
+            },
         )
 
 class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
@@ -276,6 +291,12 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
         def _scope_snapshot(u):
             return {
                 'role': u.role, 'is_active': u.is_active,
+                # Droits « chargé de… » : attribuer ou retirer un accès à des
+                # données confidentielles doit laisser une trace (trou corrigé
+                # le 2026-10-11 : seuls rôle, activation et périmètres l'étaient).
+                'charge_attestation': u.charge_attestation,
+                'charge_consultation': u.charge_consultation,
+                'charge_registre': u.charge_registre,
                 'scope_directions': sorted(str(i) for i in u.scope_directions.values_list('id', flat=True)),
                 'scope_poles': sorted(str(i) for i in u.scope_poles.values_list('id', flat=True)),
                 'scope_departements': sorted(str(i) for i in u.scope_departements.values_list('id', flat=True)),

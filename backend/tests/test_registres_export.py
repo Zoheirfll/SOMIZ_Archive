@@ -50,12 +50,12 @@ def test_construire_pdf_est_un_pdf_et_echappe_le_balisage():
     assert contenu.startswith(b'%PDF')
 
 
-def test_export_mouvements_xlsx_trace_et_sans_colonne_sensible(traiteur):
+def test_export_mouvements_xlsx_trace_et_sans_colonne_sensible(registre_admin):
     MouvementArchive.objects.create(
         reference='M-00001/26', nom_libre='Ali Ben', type_documents='Dossier',
         nombre_documents=2, date_depart=date(2026, 3, 1),
     )
-    reponse = _client(traiteur).get('/api/registres/mouvements/export/', {'annee': 2026, 'fmt': 'xlsx'})
+    reponse = _client(registre_admin).get('/api/registres/mouvements/export/', {'annee': 2026, 'fmt': 'xlsx'})
     assert reponse.status_code == 200
     assert 'spreadsheetml' in reponse['Content-Type']
     assert reponse['Cache-Control'] == 'no-store'
@@ -68,12 +68,12 @@ def test_export_mouvements_xlsx_trace_et_sans_colonne_sensible(traiteur):
     assert log.details['registre'] == 'mouvements' and log.details['nb_lignes'] == 1
 
 
-def test_export_pdf_trace_comme_impression(traiteur):
+def test_export_pdf_trace_comme_impression(registre_admin):
     ReceptionDocument.objects.create(
         reference='R-00001/26', type_document='Courrier', nombre=1, expediteur='DRH',
         date_reception=date(2026, 3, 1),
     )
-    reponse = _client(traiteur).get('/api/registres/receptions/export/', {'annee': 2026, 'fmt': 'pdf'})
+    reponse = _client(registre_admin).get('/api/registres/receptions/export/', {'annee': 2026, 'fmt': 'pdf'})
     assert reponse.status_code == 200 and reponse.content.startswith(b'%PDF')
     assert AuditLog.objects.filter(action='PRINT_REGISTRE').exists()
 
@@ -85,6 +85,6 @@ def test_export_refuse_aux_comptes_non_autorises(admin_user, consultant_user):
     assert not AuditLog.objects.filter(action__in=['EXPORT_REGISTRE', 'PRINT_REGISTRE']).exists()
 
 
-def test_export_format_ou_registre_invalide(traiteur):
-    assert _client(traiteur).get('/api/registres/mouvements/export/', {'fmt': 'exe'}).status_code == 400
-    assert _client(traiteur).get('/api/registres/inconnu/export/', {'fmt': 'xlsx'}).status_code == 404
+def test_export_format_ou_registre_invalide(registre_admin):
+    assert _client(registre_admin).get('/api/registres/mouvements/export/', {'fmt': 'exe'}).status_code == 400
+    assert _client(registre_admin).get('/api/registres/inconnu/export/', {'fmt': 'xlsx'}).status_code == 404

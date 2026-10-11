@@ -277,3 +277,16 @@ def demande_validee(db, gestionnaire_user, traiteur):
         date_echeance=maintenant + timedelta(hours=24),
         date_echeance_initiale=maintenant + timedelta(hours=24),
     )
+
+
+# ─── Registres d'archives ───────────────────────────────────────────────────
+
+@pytest.fixture
+def registre_admin(db):
+    """ADMIN chargé des registres (charge_registre) — sans charge_consultation :
+    les deux accès sont indépendants."""
+    return User.objects.create_user(
+        username="registre_admin", password="RegPass123!!",
+        nom="Registre", prenom="Admin", role="ADMIN", charge_registre=True,
+        consent_loi1807_accepted_at=timezone.now(),
+    )

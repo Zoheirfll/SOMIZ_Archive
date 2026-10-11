@@ -113,8 +113,8 @@ def annuler_ligne(request, obj, action):
 
 
 class MouvementsView(APIView):
-    """GET : registre 01 d'une année (lignes manuelles + consultations).
-    POST : nouvelle ligne manuelle."""
+    """GET : registre 01 d'une année (mouvements physiques de dossiers).
+    POST : nouveau mouvement."""
     permission_classes = [CanManageRegistres]
 
     def get(self, request):
@@ -292,16 +292,16 @@ class ReceptionAnnulerView(RegistreObjetMixin, APIView):
 
 
 ENTETES_MOUVEMENTS = [
-    'Référence', 'Origine', 'Date de départ', 'Bénéficiaire (qui emporte le dossier)',
+    'Référence', 'Date de départ', 'Bénéficiaire (qui emporte le dossier)',
     'Employé concerné (dossier)', 'Matricule',
     'Fonction', 'Service', 'N° contrat', 'Type de documents', 'Nombre de documents',
-    'Date de retour', 'Observation',
+    'Date de retour', 'Observation', 'Saisi par',
 ]
 ENTETES_RECEPTIONS = [
     'Référence', 'Type de document', 'Nombre', 'Expéditeur', 'Date de réception',
-    'Date de classement', 'Observation',
+    'Date de classement', 'Observation', 'Saisi par',
 ]
-COLONNES_DATE_MOUVEMENTS = (2, 11)
+COLONNES_DATE_MOUVEMENTS = (1, 10)
 COLONNES_DATE_RECEPTIONS = (4, 5)
 FORMATS_EXPORT = {
     'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -319,9 +319,9 @@ def _lignes_export_mouvements(request, annee):
         statut=request.query_params.get('statut', ''),
     )
     return [[
-        _reference_export(l.reference, l.annulee), l.origine, l.date_depart, l.beneficiaire,
+        _reference_export(l.reference, l.annulee), l.date_depart, l.beneficiaire,
         l.employe, l.matricule, l.fonction, l.service, l.numero_contrat, l.type_documents,
-        l.nombre_documents, l.date_retour, l.observation,
+        l.nombre_documents, l.date_retour, l.observation, l.saisi_par,
     ] for l in lignes]
 
 
@@ -329,6 +329,7 @@ def _lignes_export_receptions(request, annee):
     return [[
         _reference_export(r.reference, not r.is_active), r.type_document, r.nombre,
         r.expediteur, r.date_reception, r.date_classement, r.observation,
+        f"{r.saisi_par.nom} {r.saisi_par.prenom}".strip() if r.saisi_par_id else '',
     ] for r in receptions_filtrees(request, annee)]
 
 

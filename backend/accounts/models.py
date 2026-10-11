@@ -90,6 +90,17 @@ class User(AbstractBaseUser, PermissionsMixin):
                    "demandes de consultation de documents archivés. Un "
                    "Super-administrateur y a toujours accès, quel que soit ce champ.",
     )
+    # Accès aux registres d'archives (app `registres` : mouvement des dossiers
+    # physiques, réception/classement). Même principe : un ADMIN n'y a accès
+    # que s'il est coché, un SUPERADMIN y a toujours accès, et seul un
+    # SUPERADMIN peut modifier ce champ (voir admin_views.py). Le registre est
+    # COMMUN à tous les comptes cochés (chacun voit toutes les lignes).
+    charge_registre = models.BooleanField(
+        default=False, verbose_name="Chargé des registres d'archives",
+        help_text="Réservé aux comptes Administrateur : tient les registres de "
+                   "mouvement et de réception des archives. Un Super-administrateur "
+                   "y a toujours accès, quel que soit ce champ.",
+    )
 
     # Sécurité : blocage après N tentatives
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
@@ -231,6 +242,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         seulement si charge_consultation est coché. Pendant côté traiteur de
         la création de demande, réservée à GESTIONNAIRE/CONSULTANT."""
         return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_consultation)
+
+    @property
+    def can_manage_registres(self):
+        """True si ce compte tient les registres d'archives (mouvement et
+        réception) — SUPERADMIN toujours, ADMIN seulement si charge_registre
+        est coché. Indépendant de charge_consultation : un chargé des
+        consultations n'a pas accès aux registres sans être coché ici."""
+        return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_registre)
 
     def _scope_ids(self):
         """(direction_ids, pole_ids, departement_ids, service_ids,

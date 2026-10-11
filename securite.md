@@ -1453,8 +1453,9 @@ registre 02 (documents reçus, puis classés). Détail : `docs/fonctionnel/regis
 - **Audit** : 10 actions (`CREATE/MODIFY/CANCEL/RETOUR_MOUVEMENT`, `CREATE/MODIFY/CANCEL/CLASSER_RECEPTION`,
   `EXPORT_REGISTRE`, `PRINT_REGISTRE`), toutes ≤ 20 caractères. Export et impression tracent le registre, l'année,
   le format, les filtres et le nombre de lignes.
-- **Scoping** : une ligne liée à un employé applique `can_access_employee()` ; les consultations de la vue appliquent
-  `employee_scope_q('employee__')`. Piège évité : `Q(a) | Q()` vaut `Q(a)` — le périmètre n'est combiné que s'il est non vide.
+- **Scoping** : une ligne liée à un employé applique `can_access_employee()` (testé). Le registre 01 ne contient plus
+  les consultations (décision du 2026-10-11 : ce ne sont pas des mouvements physiques), donc plus de croisement avec
+  les données de l'app `consultations`.
 - **Export Excel/PDF** : mêmes rôles uniquement ; **aucune colonne sensible** (NIN, sécu, RIB, groupe sanguin —
   contrairement à l'export des employés, point 45). Throttle `registre_export` (10/min), `Cache-Control: no-store`,
   `X-Content-Type-Options: nosniff`.

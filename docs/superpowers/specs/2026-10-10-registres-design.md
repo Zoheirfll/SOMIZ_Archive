@@ -17,7 +17,7 @@ Chaque registre s'imprime (PDF) et s'exporte (Excel). Pas d'envoi par e-mail (d�
 | Sujet | Décision |
 |---|---|
 | Périmètre | Les deux registres dans le même chantier |
-| Nature d'un mouvement | Consultations validées (automatique) **+** lignes manuelles pour le papier |
+| Nature d'un mouvement | ~~Consultations validées + lignes manuelles~~ **Révisé le 2026-10-11** : mouvements physiques saisis à la main uniquement (une consultation est une livraison numérique, pas un mouvement physique) |
 | Architecture | Nouvelle app `registres` ; registre 01 = **vue calculée** (pas de copie des consultations) |
 | Accès | SUPERADMIN, ou ADMIN avec `charge_consultation`. Aucun nouveau drapeau. Autres : 403 (comme `CanAccessConsultations`) ; 404 seulement pour une référence introuvable |
 | Employé sur une ligne manuelle | Optionnel (FK), sinon nom libre |

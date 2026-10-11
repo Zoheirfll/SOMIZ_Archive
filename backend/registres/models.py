@@ -19,9 +19,9 @@ class RegistreReferenceCounter(models.Model):
 
 
 class MouvementArchive(models.Model):
-    """Ligne MANUELLE du registre 01 (dossier papier sorti/rendu). Les
-    consultations numériques n'y sont jamais copiées : elles sont fusionnées
-    à la lecture par services.registre_mouvements."""
+    """Ligne du registre 01 : sortie et retour d'un dossier PHYSIQUE (papier).
+    Les consultations numériques n'en font pas partie : elles se suivent dans
+    l'app `consultations`."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=20, unique=True, editable=False)
     employee = models.ForeignKey(

@@ -37,25 +37,25 @@ def test_comptes_non_autorises_refuses(request, fixture):
     assert client.post(URL, _payload(), format='json').status_code == 403
 
 
-def test_creation_reference_R_et_audit(traiteur):
-    reponse = _client(traiteur).post(URL, _payload(), format='json')
+def test_creation_reference_R_et_audit(registre_admin):
+    reponse = _client(registre_admin).post(URL, _payload(), format='json')
     assert reponse.status_code == 201
     annee = timezone.localdate().year % 100
     assert reponse.data['reference'] == f"R-00001/{annee:02d}"
     assert AuditLog.objects.filter(action='CREATE_RECEPTION').exists()
 
 
-def test_expediteur_et_type_obligatoires(traiteur):
-    assert _client(traiteur).post(URL, _payload(expediteur=''), format='json').status_code == 400
-    assert _client(traiteur).post(URL, _payload(type_document=''), format='json').status_code == 400
+def test_expediteur_et_type_obligatoires(registre_admin):
+    assert _client(registre_admin).post(URL, _payload(expediteur=''), format='json').status_code == 400
+    assert _client(registre_admin).post(URL, _payload(type_document=''), format='json').status_code == 400
 
 
-def test_classement_avant_reception_refuse(traiteur):
-    reponse = _client(traiteur).post(URL, _payload(date_classement='2026-02-01'), format='json')
+def test_classement_avant_reception_refuse(registre_admin):
+    reponse = _client(registre_admin).post(URL, _payload(date_classement='2026-02-01'), format='json')
     assert reponse.status_code == 400
 
 
-def test_liste_filtre_annee_a_classer_et_recherche(traiteur, superadmin_user):
+def test_liste_filtre_annee_a_classer_et_recherche(registre_admin, superadmin_user):
     ReceptionDocument.objects.create(
         reference='R-00001/26', type_document='A', nombre=1, expediteur='X',
         date_reception=date(2026, 1, 5), date_classement=date(2026, 1, 9),
@@ -68,26 +68,26 @@ def test_liste_filtre_annee_a_classer_et_recherche(traiteur, superadmin_user):
     )
     reponse = _client(superadmin_user).get(URL, {'annee': 2026})
     assert [r['reference'] for r in reponse.data['results']] == ['R-00001/26', 'R-00002/26']
-    a_classer = _client(traiteur).get(URL, {'annee': 2026, 'statut': 'a_classer'})
+    a_classer = _client(registre_admin).get(URL, {'annee': 2026, 'statut': 'a_classer'})
     assert [r['reference'] for r in a_classer.data['results']] == ['R-00002/26']
-    cherche = _client(traiteur).get(URL, {'annee': 2026, 'q': 'y'})
+    cherche = _client(registre_admin).get(URL, {'annee': 2026, 'q': 'y'})
     assert [r['reference'] for r in cherche.data['results']] == ['R-00002/26']
 
 
-def test_liste_paginee_avec_compteurs(traiteur):
+def test_liste_paginee_avec_compteurs(registre_admin):
     for i in range(1, 6):
         ReceptionDocument.objects.create(
             reference=f"R-{i:05d}/26", type_document='Courrier', nombre=1, expediteur='DRH',
             date_reception=date(2026, 1, i),
         )
-    page2 = _client(traiteur).get(URL, {'annee': 2026, 'page_size': 2, 'page': 2})
+    page2 = _client(registre_admin).get(URL, {'annee': 2026, 'page_size': 2, 'page': 2})
     assert page2.status_code == 200
     assert page2.data['count'] == 5 and page2.data['num_pages'] == 3 and page2.data['page'] == 2
     assert [r['reference'] for r in page2.data['results']] == ['R-00003/26', 'R-00004/26']
-    assert _client(traiteur).get(URL, {'page': 'x'}).status_code == 400
+    assert _client(registre_admin).get(URL, {'page': 'x'}).status_code == 400
 
 
-def test_export_ignore_la_pagination_et_contient_toutes_les_lignes(traiteur):
+def test_export_ignore_la_pagination_et_contient_toutes_les_lignes(registre_admin):
     from io import BytesIO
     import openpyxl
     for i in range(1, 6):
@@ -95,37 +95,37 @@ def test_export_ignore_la_pagination_et_contient_toutes_les_lignes(traiteur):
             reference=f"R-{i:05d}/26", type_document='Courrier', nombre=1, expediteur='DRH',
             date_reception=date(2026, 1, i),
         )
-    reponse = _client(traiteur).get(
+    reponse = _client(registre_admin).get(
         '/api/registres/receptions/export/', {'annee': 2026, 'fmt': 'xlsx', 'page_size': 2},
     )
     ws = openpyxl.load_workbook(BytesIO(reponse.content)).active
     assert ws.max_row == 6  # entête + 5 lignes
 
 
-def test_classer_en_un_clic(traiteur):
-    _client(traiteur).post(URL, _payload(date_reception='2026-01-01'), format='json')
+def test_classer_en_un_clic(registre_admin):
+    _client(registre_admin).post(URL, _payload(date_reception='2026-01-01'), format='json')
     r = ReceptionDocument.objects.get()
-    assert _client(traiteur).post(f"{URL}{_slug(r)}/classer/").status_code == 200
+    assert _client(registre_admin).post(f"{URL}{_slug(r)}/classer/").status_code == 200
     r.refresh_from_db()
     assert r.date_classement == timezone.localdate()
     assert AuditLog.objects.filter(action='CLASSER_RECEPTION').exists()
-    assert _client(traiteur).post(f"{URL}{_slug(r)}/classer/").status_code == 400  # déjà classé
+    assert _client(registre_admin).post(f"{URL}{_slug(r)}/classer/").status_code == 400  # déjà classé
 
 
-def test_modification_auditee(traiteur):
-    _client(traiteur).post(URL, _payload(), format='json')
+def test_modification_auditee(registre_admin):
+    _client(registre_admin).post(URL, _payload(), format='json')
     r = ReceptionDocument.objects.get()
-    assert _client(traiteur).patch(f"{URL}{_slug(r)}/", {'nombre': 7}, format='json').status_code == 200
+    assert _client(registre_admin).patch(f"{URL}{_slug(r)}/", {'nombre': 7}, format='json').status_code == 200
     log = AuditLog.objects.get(action='MODIFY_RECEPTION')
     assert log.details['changes']['nombre'] == {'avant': 2, 'apres': 7}
 
 
-def test_annulation_motif_obligatoire_sans_suppression_ni_delete(traiteur):
-    _client(traiteur).post(URL, _payload(), format='json')
+def test_annulation_motif_obligatoire_sans_suppression_ni_delete(registre_admin):
+    _client(registre_admin).post(URL, _payload(), format='json')
     r = ReceptionDocument.objects.get()
-    assert _client(traiteur).post(f"{URL}{_slug(r)}/annuler/", {}, format='json').status_code == 400
-    assert _client(traiteur).post(f"{URL}{_slug(r)}/annuler/", {'motif': 'Erreur'}, format='json').status_code == 200
+    assert _client(registre_admin).post(f"{URL}{_slug(r)}/annuler/", {}, format='json').status_code == 400
+    assert _client(registre_admin).post(f"{URL}{_slug(r)}/annuler/", {'motif': 'Erreur'}, format='json').status_code == 200
     r.refresh_from_db()
     assert r.is_active is False
-    assert _client(traiteur).delete(f"{URL}{_slug(r)}/").status_code == 405
+    assert _client(registre_admin).delete(f"{URL}{_slug(r)}/").status_code == 405
     assert AuditLog.objects.filter(action='CANCEL_RECEPTION').exists()

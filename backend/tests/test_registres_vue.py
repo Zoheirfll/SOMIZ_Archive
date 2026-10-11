@@ -1,9 +1,7 @@
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
-from django.utils import timezone
 
-from consultations.models import ConsultationFichier, DemandeConsultation
 from registres.models import MouvementArchive
 from registres.services import annuler, registre_mouvements
 
@@ -19,50 +17,28 @@ def _manuel(admin_user, **kw):
     return MouvementArchive.objects.create(**valeurs)
 
 
-def test_fusionne_lignes_manuelles_et_consultations_validees(
-    superadmin_user, admin_user, demande_validee, employee, contrat,
+def test_les_consultations_ne_sont_pas_des_mouvements_physiques(
+    superadmin_user, admin_user, demande_validee,
 ):
-    demande_validee.employee = employee
-    demande_validee.save()
-    for nom in ('a.pdf', 'b.pdf'):
-        ConsultationFichier.objects.create(
-            demande=demande_validee, file=nom, file_name=nom, mime_type='application/pdf',
-            file_size=1, origine='scan_externe',
-        )
-    _manuel(admin_user, date_depart=timezone.localdate())
-    lignes = registre_mouvements(superadmin_user, timezone.localdate().year)
-    assert {ligne.origine for ligne in lignes} == {'manuel', 'consultation'}
-    conso = next(ligne for ligne in lignes if ligne.origine == 'consultation')
-    assert conso.reference == 'C-00002/26'
-    assert conso.nombre_documents == 2
-    assert conso.numero_contrat == 'CTR-2024-001'
-    assert conso.matricule == 'EMP-001'
-    assert conso.fonction == 'Ingénieur'
-    assert conso.date_retour is None  # échéance dans 24 h : pas encore rendu
+    """Une consultation est une livraison numérique (suivie dans /consultations) :
+    elle n'entre jamais dans le registre des mouvements de dossiers."""
+    _manuel(admin_user, date_depart=demande_validee.date_validation.date())
+    lignes = registre_mouvements(superadmin_user, demande_validee.date_validation.year)
+    assert [ligne.reference for ligne in lignes] == ['M-00001/26']
 
 
-def test_consultation_revoquee_a_pour_retour_la_date_de_revocation(superadmin_user, demande_validee):
-    revocation = timezone.now()
-    demande_validee.statut = DemandeConsultation.Statut.REVOQUEE
-    demande_validee.date_revocation = revocation
-    demande_validee.save()
-    ligne = registre_mouvements(superadmin_user, revocation.year)[0]
-    assert ligne.date_retour == timezone.localtime(revocation).date()
-    assert ligne.observation == 'Révoquée'
+def test_ligne_expose_employe_matricule_et_beneficiaire(superadmin_user, admin_user, employee):
+    _manuel(admin_user, employee=employee, nom_libre='', beneficiaire='M. Directeur')
+    ligne = registre_mouvements(superadmin_user, 2026)[0]
+    assert ligne.employe == 'Dupont Jean'
+    assert ligne.matricule == 'EMP-001'
+    assert ligne.beneficiaire == 'M. Directeur'
 
 
-def test_consultation_expiree_a_pour_retour_lecheance(superadmin_user, demande_validee):
-    passe = timezone.now() - timedelta(days=2)
-    demande_validee.date_validation = passe - timedelta(hours=24)
-    demande_validee.date_echeance = passe
-    demande_validee.save()
-    ligne = registre_mouvements(superadmin_user, demande_validee.date_validation.year)[0]
-    assert ligne.date_retour == timezone.localtime(passe).date()
-    assert ligne.observation == 'Expirée'
-
-
-def test_consultation_non_validee_exclue(superadmin_user, demande_en_cours):
-    assert registre_mouvements(superadmin_user, timezone.localdate().year) == []
+def test_nom_libre_sans_employe(superadmin_user, admin_user):
+    _manuel(admin_user)
+    ligne = registre_mouvements(superadmin_user, 2026)[0]
+    assert ligne.employe == 'Ali Ben' and ligne.matricule == ''
 
 
 def test_filtre_annee_en_cours_et_recherche(superadmin_user, admin_user):
