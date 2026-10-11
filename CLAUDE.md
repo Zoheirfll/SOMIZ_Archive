@@ -52,6 +52,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - [`docs/fonctionnel/comptes-conformite.md`](docs/fonctionnel/comptes-conformite.md) — À lire avant de toucher à la suppression de compte, aux permissions IsAdmin/IsAdminOrConsultant ou au flux de consentement.
 - [`docs/fonctionnel/attestations.md`](docs/fonctionnel/attestations.md) — À lire avant de toucher à l'app attestations (workflow de statuts, PDF ReportLab, configuration du modèle, mode test, statistiques).
 - [`docs/fonctionnel/consultations.md`](docs/fonctionnel/consultations.md) — À lire avant de toucher à l'app consultations (demandes de consultation d'archives : workflow, livraison de fichiers par l'application, filigrane, expiration serveur, prolongation, rappels, purge manuelle).
+- [`docs/fonctionnel/registres.md`](docs/fonctionnel/registres.md) — À lire avant de toucher à l'app registres (registre de mouvement des dossiers, registre de réception/classement, export Excel/PDF).
 - [`docs/fonctionnel/notifications.md`](docs/fonctionnel/notifications.md) — À lire avant de toucher aux notifications in-app (cloche, `notifications/service.py`, purge) ou d'ajouter une source d'événement qui notifie des utilisateurs.
 - [`docs/fonctionnel/ui-conventions.md`](docs/fonctionnel/ui-conventions.md) — À lire avant d'écrire ou de modifier une page/un composant React : design system, dates, modales de confirmation, refresh silencieux, responsive.
 
@@ -63,6 +64,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - Une permission « transversale » se vérifie par un test d'intégration sur une vraie route métier — voir `comptes-conformite.md`.
 - L'export Excel des employés (`employees/export_views.py`) reste réservé aux ADMIN et tracé dans l'audit ; il contient des données sensibles (NIN, sécu, RIB) — toute nouvelle colonne sensible se documente dans `securite.md`.
 - Un fichier livré par `consultations` ne se sert jamais sans `controler_acces()` (expiration vérifiée côté serveur à chaque lecture) et jamais non filigrané à un demandeur — voir `consultations.md`.
+- Les registres (`registres`) n'ont jamais de DELETE ; toute modification est tracée avec l'ancienne valeur ; export et impression sont tracés, sans colonnes sensibles, et le paramètre d'export s'appelle `fmt` (jamais `format`, réservé par DRF) — voir `registres.md`.
 
 ---
 
@@ -141,6 +143,7 @@ Direction
 | `/consultations` | Demandes de consultation d'archives (« mes demandes » ou vue traiteur) | CONSULTANT, GESTIONNAIRE, SUPERADMIN, ADMIN `charge_consultation` |
 | `/consultations/nouvelle` | Nouvelle demande de consultation | CONSULTANT, GESTIONNAIRE |
 | `/consultations/:ref` | Détail, viewer sécurisé (filigrané, limité dans le temps), traitement | Demandeur (ses demandes) ; traiteur (toutes) |
+| `/registres` | Registres d'archives : mouvement des dossiers + réception/classement des documents (impression PDF, export Excel) | SUPERADMIN, ADMIN `charge_consultation` |
 | `/users` | Gestion utilisateurs | ADMIN |
 | `/audit` | Logs d'audit | ADMIN |
 | `/parametres` | CRUD référentiels (Directions, Depts, Services, Postes...) | ADMIN |

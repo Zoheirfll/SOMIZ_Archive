@@ -1438,3 +1438,28 @@ RIP/RIB et groupe sanguin** (demande explicite de l'utilisateur). Contrôles exi
 (ADMIN/SUPERADMIN seulement), action `EXPORT` tracée dans le journal d'audit. Risque résiduel : le fichier
 `.xlsx` n'est pas chiffré et sort de l'application (Loi 18-07 / RGPD : minimisation, confidentialité).
 À décider : retirer ces colonnes de l'export de masse ou les réserver au SUPERADMIN.
+
+## 46. Registres de mouvement et de réception (2026-10-11) — ✅ Implémenté
+
+Nouvelle app `registres` : registre 01 (sortie/retour des dossiers, lignes manuelles + consultations validées) et
+registre 02 (documents reçus, puis classés). Détail : `docs/fonctionnel/registres.md`.
+
+- **Accès** : SUPERADMIN, ou ADMIN portant `charge_consultation` (`CanManageRegistres`). Un ADMIN sans le drapeau, un
+  CONSULTANT et un GESTIONNAIRE reçoivent **403** — vérifié par des tests d'intégration sur les vraies routes
+  (liste, création, détail, retour, annulation, export), pas seulement sur le défaut DRF.
+- **Pas de suppression** : aucun `DELETE` (405). Un registre est une pièce probante ; une erreur se corrige par
+  modification (ancienne valeur tracée dans `AuditLog.details['changes']`) et une ligne se retire par **annulation
+  avec motif obligatoire** (`is_active=False`, la ligne reste visible et barrée). Une ligne annulée n'est plus modifiable.
+- **Audit** : 10 actions (`CREATE/MODIFY/CANCEL/RETOUR_MOUVEMENT`, `CREATE/MODIFY/CANCEL/CLASSER_RECEPTION`,
+  `EXPORT_REGISTRE`, `PRINT_REGISTRE`), toutes ≤ 20 caractères. Export et impression tracent le registre, l'année,
+  le format, les filtres et le nombre de lignes.
+- **Scoping** : une ligne liée à un employé applique `can_access_employee()` ; les consultations de la vue appliquent
+  `employee_scope_q('employee__')`. Piège évité : `Q(a) | Q()` vaut `Q(a)` — le périmètre n'est combiné que s'il est non vide.
+- **Export Excel/PDF** : mêmes rôles uniquement ; **aucune colonne sensible** (NIN, sécu, RIB, groupe sanguin —
+  contrairement à l'export des employés, point 45). Throttle `registre_export` (10/min), `Cache-Control: no-store`,
+  `X-Content-Type-Options: nosniff`.
+- **Injection de formule Excel** : les champs libres (observation, nom, expéditeur) viennent d'utilisateurs ; toute
+  cellule commençant par `=`, `+`, `-` ou `@` est préfixée d'une apostrophe (`exports.neutraliser`). Dans le PDF, le
+  balisage ReportLab (`<b>`, `&`) est échappé.
+- **Piège technique** : le paramètre d'export s'appelle `fmt`, pas `format` — DRF réserve `?format=` à la négociation de
+  contenu (`URL_FORMAT_OVERRIDE`) et répond 404 avant d'atteindre la vue pour tout format sans moteur de rendu.

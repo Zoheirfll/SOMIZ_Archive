@@ -19,7 +19,7 @@ Chaque registre s'imprime (PDF) et s'exporte (Excel). Pas d'envoi par e-mail (d�
 | Périmètre | Les deux registres dans le même chantier |
 | Nature d'un mouvement | Consultations validées (automatique) **+** lignes manuelles pour le papier |
 | Architecture | Nouvelle app `registres` ; registre 01 = **vue calculée** (pas de copie des consultations) |
-| Accès | SUPERADMIN, ou ADMIN avec `charge_consultation`. Aucun nouveau drapeau. Autres : 404 |
+| Accès | SUPERADMIN, ou ADMIN avec `charge_consultation`. Aucun nouveau drapeau. Autres : 403 (comme `CanAccessConsultations`) ; 404 seulement pour une référence introuvable |
 | Employé sur une ligne manuelle | Optionnel (FK), sinon nom libre |
 | Numérotation | Compteur annuel à vie : `M-NNNNN/AA` (mouvement manuel), `R-NNNNN/AA` (réception). Une ligne issue d'une consultation garde `C-NNNNN/AA` |
 | « Envoyer » | Supprimé : Imprimer (PDF) + Télécharger (Excel) seulement |
@@ -72,7 +72,7 @@ Aucune colonne ajoutée à `consultations` : pas de synchronisation à maintenir
 
 ## Tests prévus
 
-Backend (`backend/tests/test_registres_*.py`) : permissions sur vraie route (SUPERADMIN, ADMIN traiteur, ADMIN sans drapeau, CONSULTANT/GESTIONNAIRE → 404), scoping, compteur annuel (unicité, pas de réutilisation), vue unifiée (retour dérivé d'une consultation révoquée/expirée), annulation, audit d'impression/export. Frontend Jest : listes, saisie, retour en un clic, absence de `window.confirm`.
+Backend (`backend/tests/test_registres_*.py`) : permissions sur vraie route (SUPERADMIN, ADMIN traiteur, ADMIN sans drapeau, CONSULTANT/GESTIONNAIRE/ADMIN sans drapeau → 403), scoping, compteur annuel (unicité, pas de réutilisation), vue unifiée (retour dérivé d'une consultation révoquée/expirée), annulation, audit d'impression/export. Frontend Jest : listes, saisie, retour en un clic, absence de `window.confirm`.
 
 ## Reste à faire avant le code
 
