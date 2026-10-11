@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
+import EmployeeSearchField from "./EmployeeSearchField";
 
 // Modale de saisie générique des deux registres. La validation de présence
 // côté client n'est là que pour l'ergonomie : le serveur reste la référence.
+// Types de champ : text, number, date, textarea, employee (autocomplétion ;
+// la valeur est l'objet employé choisi).
 export default function RegistreModal({ titre, champs, valeursInitiales, onSubmit, onClose, erreur, enCours }) {
   const theme = useTheme();
   const [valeurs, setValeurs] = useState(valeursInitiales || {});
@@ -37,10 +40,17 @@ export default function RegistreModal({ titre, champs, valeursInitiales, onSubmi
         <h2 style={{ margin: "0 0 16px", fontSize: 17, color: theme.text }}>{titre}</h2>
         {champs.map((c) => (
           <div key={c.name} style={{ marginBottom: 12 }}>
-            <label htmlFor={`reg-${c.name}`} style={{ display: "block", fontSize: 12, fontWeight: 700, color: theme.textSecondary, marginBottom: 4 }}>
-              {c.label}{c.required ? " *" : ""}
-            </label>
-            {c.type === "textarea" ? (
+            {c.type === "employee" ? (
+              <EmployeeSearchField
+                id={`reg-${c.name}`} label={c.label}
+                value={valeurs[c.name] || null} onChange={(employe) => maj(c.name, employe)}
+              />
+            ) : (
+              <label htmlFor={`reg-${c.name}`} style={{ display: "block", fontSize: 12, fontWeight: 700, color: theme.textSecondary, marginBottom: 4 }}>
+                {c.label}{c.required ? " *" : ""}
+              </label>
+            )}
+            {c.type === "employee" ? null : c.type === "textarea" ? (
               <textarea id={`reg-${c.name}`} rows={3} style={styleChamp} value={valeurs[c.name] ?? ""} onChange={(e) => maj(c.name, e.target.value)} />
             ) : (
               <input

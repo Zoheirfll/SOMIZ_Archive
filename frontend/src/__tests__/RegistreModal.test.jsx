@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "../context/ThemeContext";
 import RegistreModal from "../components/registres/RegistreModal";
 import { anneesDisponibles } from "../utils/registres";
+import api from "../services/api";
 
 jest.mock("../services/api", () => ({ __esModule: true, default: { get: jest.fn() } }));
 
@@ -42,6 +43,38 @@ describe("RegistreModal", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Indiquez un employé ou un nom.");
     await userEvent.click(screen.getByRole("button", { name: "Annuler" }));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("RegistreModal — champ employé", () => {
+  const EMPLOYE = { id: "e1", prenom: "Jean", nom: "Dupont", matricule: "EMP-001", poste_nom: "Ingénieur" };
+  const CHAMPS_EMPLOYE = [
+    { name: "employee", label: "Employé concerné", type: "employee" },
+    { name: "type_documents", label: "Type de documents", type: "text", required: true },
+  ];
+
+  beforeEach(() => {
+    api.get.mockReset();
+    api.get.mockResolvedValue({ data: [EMPLOYE] });
+  });
+
+  test("cherche, sélectionne un employé et le transmet à onSubmit", async () => {
+    const onSubmit = jest.fn();
+    render(<RegistreModal titre="Nouveau" champs={CHAMPS_EMPLOYE} valeursInitiales={{}} onSubmit={onSubmit} onClose={() => {}} />);
+    await userEvent.type(screen.getByLabelText("Employé concerné"), "dup");
+    await userEvent.click(await screen.findByRole("option", { name: /Jean Dupont/ }));
+    expect(api.get).toHaveBeenCalledWith("/employees/search/", { params: { q: "dup" } });
+    expect(screen.getByText("Jean Dupont")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/Type de documents/), "Dossier");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ employee: EMPLOYE, type_documents: "Dossier" }));
+  });
+
+  test("ne cherche pas avant 2 caractères et permet de changer d'employé", async () => {
+    render(<RegistreModal titre="Nouveau" champs={CHAMPS_EMPLOYE} valeursInitiales={{ employee: EMPLOYE }} onSubmit={() => {}} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Changer l'employé" }));
+    await userEvent.type(screen.getByLabelText("Employé concerné"), "d");
+    expect(api.get).not.toHaveBeenCalled();
   });
 });
 

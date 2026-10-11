@@ -1461,5 +1461,7 @@ registre 02 (documents reçus, puis classés). Détail : `docs/fonctionnel/regis
 - **Injection de formule Excel** : les champs libres (observation, nom, expéditeur) viennent d'utilisateurs ; toute
   cellule commençant par `=`, `+`, `-` ou `@` est préfixée d'une apostrophe (`exports.neutraliser`). Dans le PDF, le
   balisage ReportLab (`<b>`, `&`) est échappé.
+- **Pagination bornée** : `page_size` plafonné à 200 (défaut 50), valeurs invalides refusées (400) — une requête ne
+  peut pas réclamer tout le registre d'un coup en dehors de l'export (lui-même réservé, tracé et limité à 10/min).
 - **Piège technique** : le paramètre d'export s'appelle `fmt`, pas `format` — DRF réserve `?format=` à la négociation de
   contenu (`URL_FORMAT_OVERRIDE`) et répond 404 avant d'atteindre la vue pour tout format sans moteur de rendu.

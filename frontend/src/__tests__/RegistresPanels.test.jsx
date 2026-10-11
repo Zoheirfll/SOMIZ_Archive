@@ -86,6 +86,63 @@ describe("MouvementsPanel", () => {
   });
 });
 
+describe("MouvementsPanel — pagination et employé", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    telechargerRegistre.mockResolvedValue(undefined);
+  });
+
+  const page = (numero) => ({ data: { annee: 2026, count: 120, page: numero, num_pages: 3, results: [MANUEL] } });
+
+  test("Suivant demande la page 2 ; un changement de filtre revient à la page 1", async () => {
+    api.get.mockResolvedValue(page(1));
+    render(<MouvementsPanel />);
+    expect(await screen.findByText("120 lignes")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 sur 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Précédent" })).toBeDisabled();
+
+    api.get.mockResolvedValue(page(2));
+    await userEvent.click(screen.getByRole("button", { name: "Suivant" }));
+    await waitFor(() => expect(api.get).toHaveBeenLastCalledWith(
+      "/registres/mouvements/", { params: expect.objectContaining({ page: 2 }) },
+    ));
+
+    api.get.mockResolvedValue(page(1));
+    await userEvent.selectOptions(screen.getByLabelText("Filtre"), "en_cours");
+    await waitFor(() => expect(api.get).toHaveBeenLastCalledWith(
+      "/registres/mouvements/", { params: expect.objectContaining({ page: 1, statut: "en_cours" }) },
+    ));
+  });
+
+  test("pas de boutons de navigation quand il n'y a qu'une page", async () => {
+    api.get.mockResolvedValue({ data: { annee: 2026, count: 1, page: 1, num_pages: 1, results: [MANUEL] } });
+    render(<MouvementsPanel />);
+    expect(await screen.findByText("1 ligne")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suivant" })).not.toBeInTheDocument();
+  });
+
+  test("la création envoie l'identifiant de l'employé choisi", async () => {
+    const employe = { id: "e1", prenom: "Jean", nom: "Dupont", matricule: "EMP-001" };
+    api.get.mockImplementation((url) => (
+      url === "/employees/search/" ? Promise.resolve({ data: [employe] }) : Promise.resolve(page(1))
+    ));
+    api.post.mockResolvedValue({ data: {} });
+    render(<MouvementsPanel />);
+    await userEvent.click(await screen.findByRole("button", { name: "Nouveau mouvement" }));
+    await userEvent.type(screen.getByLabelText("Employé concerné (dossier)"), "dup");
+    await userEvent.click(await screen.findByRole("option", { name: /Jean Dupont/ }));
+    await userEvent.type(screen.getByLabelText(/Type de documents/), "Dossier");
+    await userEvent.type(screen.getByLabelText(/Date de départ/), "2026-03-01");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      "/registres/mouvements/",
+      expect.objectContaining({ employee: "e1", type_documents: "Dossier", date_depart: "2026-03-01" }),
+    ));
+    const corps = api.post.mock.calls[0][1];
+    expect(corps).not.toHaveProperty("nom_libre");
+  });
+});
+
 describe("ReceptionsPanel", () => {
   beforeEach(() => jest.resetAllMocks());
 

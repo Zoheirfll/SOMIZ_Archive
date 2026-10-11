@@ -4,6 +4,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { usePrompt } from "../ConfirmDialog";
 import { formatDateFR } from "../../utils/formatDate";
 import { anneesDisponibles, telechargerRegistre } from "../../utils/registres";
+import Pagination from "./Pagination";
 import RegistreModal from "./RegistreModal";
 
 const CHAMPS = [
@@ -21,6 +22,8 @@ export default function ReceptionsPanel() {
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [q, setQ] = useState("");
   const [statut, setStatut] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ count: 0, num_pages: 1 });
   const [lignes, setLignes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -30,15 +33,19 @@ export default function ReceptionsPanel() {
   const fetchLignes = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await api.get("/registres/receptions/", { params: { annee, q, statut } });
+      const res = await api.get("/registres/receptions/", { params: { annee, q, statut, page } });
       setLignes(res.data?.results || []);
+      setMeta({ count: res.data?.count ?? 0, num_pages: res.data?.num_pages ?? 1 });
       setError("");
     } catch (err) {
       setError(err.response?.data?.detail || "Impossible de charger le registre.");
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [annee, q, statut]);
+  }, [annee, q, statut, page]);
+
+  // Tout changement de filtre repart de la première page.
+  const changerFiltre = (setter) => (valeur) => { setter(valeur); setPage(1); };
 
   useEffect(() => { fetchLignes(); }, [fetchLignes]);
 
@@ -82,11 +89,11 @@ export default function ReceptionsPanel() {
     <div>
       {PromptDialog}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12, alignItems: "center" }}>
-        <select aria-label="Année" value={annee} onChange={(e) => setAnnee(Number(e.target.value))} style={bouton}>
+        <select aria-label="Année" value={annee} onChange={(e) => changerFiltre(setAnnee)(Number(e.target.value))} style={bouton}>
           {anneesDisponibles().map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-        <input aria-label="Rechercher" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} style={{ ...bouton, fontWeight: 400, minWidth: 180 }} />
-        <select aria-label="Filtre" value={statut} onChange={(e) => setStatut(e.target.value)} style={bouton}>
+        <input aria-label="Rechercher" placeholder="Rechercher…" value={q} onChange={(e) => changerFiltre(setQ)(e.target.value)} style={{ ...bouton, fontWeight: 400, minWidth: 180 }} />
+        <select aria-label="Filtre" value={statut} onChange={(e) => changerFiltre(setStatut)(e.target.value)} style={bouton}>
           <option value="">Tous</option>
           <option value="a_classer">À classer</option>
         </select>
@@ -135,6 +142,7 @@ export default function ReceptionsPanel() {
           </table>
         </div>
       )}
+      {!loading && <Pagination page={page} numPages={meta.num_pages} count={meta.count} onChange={setPage} />}
       {modale && (
         <RegistreModal
           titre="Nouvelle réception" champs={CHAMPS}

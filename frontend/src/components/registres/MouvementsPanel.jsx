@@ -4,10 +4,12 @@ import { useTheme } from "../../context/ThemeContext";
 import { usePrompt } from "../ConfirmDialog";
 import { formatDateFR } from "../../utils/formatDate";
 import { anneesDisponibles, telechargerRegistre } from "../../utils/registres";
+import Pagination from "./Pagination";
 import RegistreModal from "./RegistreModal";
 
 const CHAMPS = [
-  { name: "nom_libre", label: "Nom et prénom (si pas d'employé)", type: "text" },
+  { name: "employee", label: "Employé concerné (dossier)", type: "employee" },
+  { name: "nom_libre", label: "Nom et prénom (si pas d'employé dans SOMIZ)", type: "text" },
   { name: "beneficiaire", label: "Bénéficiaire (qui prend le dossier)", type: "text" },
   { name: "fonction", label: "Fonction", type: "text" },
   { name: "service", label: "Service / Département", type: "text" },
@@ -27,6 +29,8 @@ export default function MouvementsPanel() {
   const [annee, setAnnee] = useState(new Date().getFullYear());
   const [q, setQ] = useState("");
   const [statut, setStatut] = useState("");
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ count: 0, num_pages: 1 });
   const [lignes, setLignes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -36,15 +40,19 @@ export default function MouvementsPanel() {
   const fetchLignes = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await api.get("/registres/mouvements/", { params: { annee, q, statut } });
+      const res = await api.get("/registres/mouvements/", { params: { annee, q, statut, page } });
       setLignes(res.data?.results || []);
+      setMeta({ count: res.data?.count ?? 0, num_pages: res.data?.num_pages ?? 1 });
       setError("");
     } catch (err) {
       setError(err.response?.data?.detail || "Impossible de charger le registre.");
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [annee, q, statut]);
+  }, [annee, q, statut, page]);
+
+  // Tout changement de filtre repart de la première page.
+  const changerFiltre = (setter) => (valeur) => { setter(valeur); setPage(1); };
 
   useEffect(() => { fetchLignes(); }, [fetchLignes]);
 
@@ -65,7 +73,9 @@ export default function MouvementsPanel() {
   };
 
   const creer = async (valeurs) => {
-    const corps = Object.fromEntries(Object.entries(valeurs).filter(([, v]) => v !== "" && v !== undefined));
+    const { employee, ...autres } = valeurs;
+    const corps = Object.fromEntries(Object.entries(autres).filter(([, v]) => v !== "" && v !== undefined));
+    if (employee) corps.employee = employee.id;
     try {
       await api.post("/registres/mouvements/", corps);
       setModale(false);
@@ -73,7 +83,9 @@ export default function MouvementsPanel() {
       await fetchLignes(true);
     } catch (err) {
       const data = err.response?.data;
-      setErreurModale(data?.non_field_errors?.[0] || data?.detail || "Enregistrement impossible.");
+      setErreurModale(
+        data?.non_field_errors?.[0] || data?.employee?.[0] || data?.detail || "Enregistrement impossible.",
+      );
     }
   };
 
@@ -88,11 +100,11 @@ export default function MouvementsPanel() {
     <div>
       {PromptDialog}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12, alignItems: "center" }}>
-        <select aria-label="Année" value={annee} onChange={(e) => setAnnee(Number(e.target.value))} style={bouton}>
+        <select aria-label="Année" value={annee} onChange={(e) => changerFiltre(setAnnee)(Number(e.target.value))} style={bouton}>
           {anneesDisponibles().map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-        <input aria-label="Rechercher" placeholder="Rechercher…" value={q} onChange={(e) => setQ(e.target.value)} style={{ ...bouton, fontWeight: 400, minWidth: 180 }} />
-        <select aria-label="Filtre" value={statut} onChange={(e) => setStatut(e.target.value)} style={bouton}>
+        <input aria-label="Rechercher" placeholder="Rechercher…" value={q} onChange={(e) => changerFiltre(setQ)(e.target.value)} style={{ ...bouton, fontWeight: 400, minWidth: 180 }} />
+        <select aria-label="Filtre" value={statut} onChange={(e) => changerFiltre(setStatut)(e.target.value)} style={bouton}>
           <option value="">Tous</option>
           <option value="en_cours">Non rendus</option>
         </select>
@@ -107,7 +119,7 @@ export default function MouvementsPanel() {
           <table style={{ width: "100%", borderCollapse: "collapse", background: theme.surface }}>
             <thead>
               <tr>
-                {["Réf.", "Origine", "Départ", "Bénéficiaire", "Employé", "Fonction / Service", "N° contrat", "Documents", "Retour", "Observation", ""].map((h, i) => <th key={i} style={entete}>{h}</th>)}
+                {["Réf.", "Origine", "Départ", "Bénéficiaire (emporte le dossier)", "Employé concerné", "Fonction / Service", "N° contrat", "Documents", "Retour", "Observation", ""].map((h, i) => <th key={i} style={entete}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -144,6 +156,7 @@ export default function MouvementsPanel() {
           </table>
         </div>
       )}
+      {!loading && <Pagination page={page} numPages={meta.num_pages} count={meta.count} onChange={setPage} />}
       {modale && (
         <RegistreModal
           titre="Nouveau mouvement" champs={CHAMPS}

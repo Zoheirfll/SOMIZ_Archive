@@ -36,22 +36,30 @@ modification, retour, classement, annulation et export ; **404** seulement pour 
   validées ou révoquées de l'année. Les consultations ne sont **jamais copiées** : départ = `date_validation` ; retour
   = date de révocation, sinon échéance si dépassée, sinon « En cours » ; nombre de documents = nombre de
   `ConsultationFichier`. Une consultation garde sa référence `C-NNNNN/AA`.
-- « Nom prénom » de la note manuscrite = **bénéficiaire** (qui prend le dossier ; le demandeur pour une consultation) ;
-  fonction, service et n° de contrat = ceux de l'**employé concerné**. Colonnes distinctes.
+- **« Nom prénom » de la note manuscrite** (décision du propriétaire, 2026-10-11) : les **deux** sont affichés côte à
+  côte, avec le même poids, sous des libellés explicites dans l'écran, le PDF et l'Excel — **Bénéficiaire (qui
+  emporte le dossier)** (le demandeur pour une consultation) et **Employé concerné (dossier)**. Fonction, service et
+  n° de contrat sont ceux de l'employé concerné.
 
 ## API (`/api/registres/`)
 
 | Route | Rôle |
 |---|---|
-| `GET/POST mouvements/` | Registre 01 d'une année (`annee`, `q`, `statut=en_cours`) / nouvelle ligne manuelle |
+| `GET/POST mouvements/` | Registre 01 d'une année (`annee`, `q`, `statut=en_cours`, `page`, `page_size`) / nouvelle ligne manuelle |
 | `GET/PATCH mouvements/<slug>/` | Détail / modification (diff tracé dans l'audit) |
 | `POST mouvements/<slug>/retour/` | Enregistre le retour (date du jour, ou `date_retour` fournie) |
 | `POST mouvements/<slug>/annuler/` | Annulation avec `motif` obligatoire |
-| `GET/POST receptions/` | Registre 02 d'une année (`annee`, `q`, `statut=a_classer`) / nouvelle réception |
+| `GET/POST receptions/` | Registre 02 d'une année (`annee`, `q`, `statut=a_classer`, `page`, `page_size`) / nouvelle réception |
 | `GET/PATCH receptions/<slug>/`, `POST …/classer/`, `POST …/annuler/` | Symétrique |
 | `GET <registre>/export/?fmt=xlsx\|pdf` | Export Excel / impression PDF, tracés |
 
 Slug d'URL : `/` → `-` (`M-00001/26` → `M-00001-26`).
+
+**Pagination (2026-10-11)** : les deux listes renvoient `{annee, count, page, page_size, num_pages, results}`.
+`page_size` vaut 50 par défaut et 200 au maximum (une valeur plus grande est plafonnée, une valeur non numérique
+ou < 1 donne 400) ; une page hors plage renvoie `results: []` avec le bon `count`. La pagination s'applique
+**après** filtrage et tri (`views.paginer`). L'**export ne pagine jamais** : un registre imprimé ou exporté contient
+toutes les lignes de l'année filtrée (testé).
 
 ## Règles et pièges
 
@@ -77,7 +85,15 @@ Page à deux onglets **Mouvements | Réceptions** (`pages/Registres.jsx`), entr�
 `user.can_manage_consultations`. Chaque panneau : sélecteur d'année (6 ans), recherche, filtre « Non rendus » /
 « À classer », tableau calqué sur la note, pastille Manuel/Consultation, « Enregistrer le retour » / « Classer » en un
 clic (refresh **silencieux**, `fetchLignes(true)`), « Annuler » avec motif (modale `usePrompt`, jamais
-`window.prompt`), « Imprimer » (PDF) et « Télécharger » (Excel). Saisie dans `RegistreModal` (formulaire générique).
+`window.prompt`), « Imprimer » (PDF) et « Télécharger » (Excel), et un pied de tableau `Pagination` (total de lignes,
+Précédent / Suivant). Tout changement de filtre (année, recherche, statut) **revient à la page 1**. Saisie dans
+`RegistreModal` (formulaire générique).
+
+- **Employé concerné** (registre 01) : champ `EmployeeSearchField`, autocomplétion sur `/employees/search/` (même
+  endpoint que `/consultations/nouvelle`, déjà borné au périmètre côté serveur ; 2 caractères minimum). Le panneau
+  envoie `employee: <id>` ; si fonction, service ou n° de contrat sont laissés vides, **le serveur les reprend de
+  l'employé** (contrat le plus récent). Sans employé, le « Nom et prénom » libre est obligatoire (erreur serveur
+  « Indiquez un employé ou un nom »).
 
 - `usePrompt(message, defaut, { confirmLabel })` : libellé du bouton de validation paramétrable (« Renommer » par
   défaut, pour ne pas changer les usages existants).
@@ -96,18 +112,19 @@ clic (refresh **silencieux**, `fetchLignes(true)`), « Annuler » avec motif (mo
 
 ## Tests
 
-Backend (`backend/tests/test_registres_*.py`, 57 tests) : modèles et compteur, actions d'audit, vue unifiée,
+Backend (`backend/tests/test_registres_*.py`, 62 tests ; suite complète : 847 passés avant l'ajout de la pagination, puis les tests registres relancés seuls) : modèles et compteur, actions d'audit, vue unifiée,
 API mouvements (permissions sur vraies routes, création, modification, retour, annulation, pas de DELETE), API
 réceptions, scoping, export (neutralisation des formules, audit, throttle isolé). Frontend
-(`frontend/src/__tests__/Registre*.test.jsx`, 11 tests) : modale, panneaux (retour/classement/annulation sans
-`window.prompt`/`window.confirm`, refresh silencieux), page à onglets.
+(`frontend/src/__tests__/Registre*.test.jsx`, 16 tests ; suite complète : 488) : modale (dont champ employé), panneaux
+(retour/classement/annulation sans `window.prompt`/`window.confirm`, refresh silencieux, pagination, retour à la
+page 1 au changement de filtre, envoi de l'identifiant d'employé), page à onglets.
 
 ## Reste à faire / limites
 
 - Vérification manuelle dans un navigateur du parcours complet (création, retour, annulation, impression, export).
-- Pas de pagination : un registre annuel est chargé en une fois (suffisant pour un service d'archives ; à revoir
-  au-delà de quelques milliers de lignes par an).
-- Pas de recherche d'employé dans la modale de saisie manuelle : le champ `employee` existe côté API, l'interface
-  saisit pour l'instant un nom libre.
+- Le registre 01 est calculé en mémoire (lignes manuelles + consultations de l'année) puis paginé : correct jusqu'à
+  quelques milliers de lignes par an. Au-delà, il faudrait paginer en base (union SQL) ; non nécessaire aujourd'hui.
+- La modale de saisie n'a pas de modification d'une ligne existante (l'API `PATCH` existe) : seules la création, le
+  retour, le classement et l'annulation sont exposés dans l'interface.
 - Après un `git pull` de cette branche : `python manage.py migrate` (tables `registre_*` et actions d'audit).
   Aucune tâche planifiée à créer.
