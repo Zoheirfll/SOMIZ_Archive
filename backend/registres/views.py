@@ -1,6 +1,7 @@
 import dataclasses
 
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics
@@ -12,10 +13,10 @@ from audit.models import AuditLog
 from consultations.views import reference_depuis_slug
 
 from . import services
-from .models import MouvementArchive
+from .models import MouvementArchive, ReceptionDocument
 from .permissions import CanManageRegistres
 from .reference import generate_reference
-from .serializers import MouvementArchiveSerializer
+from .serializers import MouvementArchiveSerializer, ReceptionDocumentSerializer
 
 ANNEE_MIN, ANNEE_MAX = 2000, 2100
 MSG_LIGNE_ANNULEE = "Une ligne annulée n'est plus modifiable."
@@ -155,3 +156,100 @@ class MouvementAnnulerView(RegistreObjetMixin, APIView):
         mouvement = self.get_object()
         annuler_ligne(request, mouvement, AuditLog.Action.CANCEL_MOUVEMENT)
         return Response(MouvementArchiveSerializer(mouvement, context={'request': request}).data)
+
+
+CHAMPS_RECEPTION = [
+    'type_document', 'nombre', 'expediteur', 'date_reception', 'date_classement', 'observation',
+]
+
+
+def receptions_filtrees(request, annee):
+    """Registre 02 d'une année, avec les filtres `q` et `statut=a_classer`
+    de la query string (partagé par la liste et l'export)."""
+    qs = ReceptionDocument.objects.select_related('saisi_par').filter(date_reception__year=annee)
+    q = request.query_params.get('q', '').strip()
+    if q:
+        qs = qs.filter(
+            Q(reference__icontains=q) | Q(type_document__icontains=q)
+            | Q(expediteur__icontains=q) | Q(observation__icontains=q)
+        )
+    if request.query_params.get('statut') == 'a_classer':
+        qs = qs.filter(is_active=True, date_classement__isnull=True)
+    return qs
+
+
+class ReceptionsView(APIView):
+    """GET : registre 02 d'une année. POST : nouvelle réception."""
+    permission_classes = [CanManageRegistres]
+
+    def get(self, request):
+        annee = annee_depuis(request)
+        data = ReceptionDocumentSerializer(
+            receptions_filtrees(request, annee), many=True, context={'request': request},
+        ).data
+        return Response({'annee': annee, 'results': data})
+
+    @transaction.atomic
+    def post(self, request):
+        serializer = ReceptionDocumentSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        reception = serializer.save(reference=generate_reference('R'), saisi_par=request.user)
+        AuditLog.log(
+            request, AuditLog.Action.CREATE_RECEPTION, target=reception,
+            details={'expediteur': reception.expediteur, 'nombre': reception.nombre},
+        )
+        return Response(ReceptionDocumentSerializer(reception, context={'request': request}).data, status=201)
+
+
+class ReceptionDetailView(RegistreObjetMixin, generics.RetrieveUpdateAPIView):
+    modele = ReceptionDocument
+    serializer_class = ReceptionDocumentSerializer
+    http_method_names = ['get', 'patch', 'head', 'options']  # jamais de DELETE
+
+    def perform_update(self, serializer):
+        if not serializer.instance.is_active:
+            raise ValidationError(MSG_LIGNE_ANNULEE)
+        avant = instantane(serializer.instance, CHAMPS_RECEPTION)
+        reception = serializer.save()
+        AuditLog.log(
+            self.request, AuditLog.Action.MODIFY_RECEPTION, target=reception,
+            details={'changes': diff(avant, instantane(reception, CHAMPS_RECEPTION))},
+        )
+
+
+class ReceptionClasserView(RegistreObjetMixin, APIView):
+    modele = ReceptionDocument
+
+    def post(self, request, ref):
+        reception = self.get_object()
+        if not reception.is_active:
+            raise ValidationError(MSG_LIGNE_ANNULEE)
+        if reception.date_classement:
+            raise ValidationError("Le classement est déjà enregistré.")
+        brut = request.data.get('date_classement')
+        if brut:
+            serializer = ReceptionDocumentSerializer(
+                reception, data={'date_classement': brut}, partial=True, context={'request': request},
+            )
+            serializer.is_valid(raise_exception=True)
+            date_classement = serializer.validated_data['date_classement']
+        else:
+            date_classement = timezone.localdate()
+            if date_classement < reception.date_reception:
+                raise ValidationError("La date de classement ne peut pas précéder la date de réception.")
+        reception.date_classement = date_classement
+        reception.save(update_fields=['date_classement', 'updated_at'])
+        AuditLog.log(
+            request, AuditLog.Action.CLASSER_RECEPTION, target=reception,
+            details={'date_classement': date_classement.isoformat()},
+        )
+        return Response(ReceptionDocumentSerializer(reception, context={'request': request}).data)
+
+
+class ReceptionAnnulerView(RegistreObjetMixin, APIView):
+    modele = ReceptionDocument
+
+    def post(self, request, ref):
+        reception = self.get_object()
+        annuler_ligne(request, reception, AuditLog.Action.CANCEL_RECEPTION)
+        return Response(ReceptionDocumentSerializer(reception, context={'request': request}).data)
