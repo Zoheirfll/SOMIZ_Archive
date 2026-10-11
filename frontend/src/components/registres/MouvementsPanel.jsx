@@ -3,7 +3,7 @@ import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { usePrompt } from "../ConfirmDialog";
 import { formatDateFR } from "../../utils/formatDate";
-import { anneesDisponibles, telechargerRegistre } from "../../utils/registres";
+import { anneesDisponibles, messageErreur, telechargerRegistre } from "../../utils/registres";
 import Pagination from "./Pagination";
 import RegistreModal from "./RegistreModal";
 
@@ -45,7 +45,7 @@ export default function MouvementsPanel() {
       setMeta({ count: res.data?.count ?? 0, num_pages: res.data?.num_pages ?? 1 });
       setError("");
     } catch (err) {
-      setError(err.response?.data?.detail || "Impossible de charger le registre.");
+      setError(messageErreur(err, "Impossible de charger le registre."));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -62,7 +62,7 @@ export default function MouvementsPanel() {
       setError("");
       await fetchLignes(true);
     } catch (err) {
-      setError(err.response?.data?.detail || "Action impossible.");
+      setError(messageErreur(err, "Action impossible."));
     }
   };
 
@@ -70,6 +70,27 @@ export default function MouvementsPanel() {
     const motif = await prompt(`Motif de l'annulation de ${ligne.reference} :`, "", { confirmLabel: "Annuler la ligne" });
     if (motif === null) return;
     await action(`/registres/mouvements/${slugDe(ligne.reference)}/annuler/`, { motif });
+  };
+
+  // Suppression définitive : seulement sur une ligne déjà annulée, avec
+  // confirmation renforcée (saisie de la référence, pas un simple clic).
+  const supprimer = async (ligne) => {
+    const saisie = await prompt(
+      `Suppression DÉFINITIVE de ${ligne.reference} (tracée dans l'audit). Saisissez sa référence pour confirmer :`,
+      "", { confirmLabel: "Supprimer définitivement" },
+    );
+    if (saisie === null) return;
+    if (saisie !== ligne.reference) {
+      setError("La référence saisie ne correspond pas : la ligne n'a pas été supprimée.");
+      return;
+    }
+    try {
+      await api.delete(`/registres/mouvements/${slugDe(ligne.reference)}/`);
+      setError("");
+      await fetchLignes(true);
+    } catch (err) {
+      setError(messageErreur(err, "Suppression impossible."));
+    }
   };
 
   const creer = async (valeurs) => {
@@ -119,14 +140,13 @@ export default function MouvementsPanel() {
           <table style={{ width: "100%", borderCollapse: "collapse", background: theme.surface }}>
             <thead>
               <tr>
-                {["Réf.", "Origine", "Départ", "Bénéficiaire (emporte le dossier)", "Employé concerné", "Fonction / Service", "N° contrat", "Documents", "Retour", "Observation", ""].map((h, i) => <th key={i} style={entete}>{h}</th>)}
+                {["Réf.", "Départ", "Bénéficiaire (emporte le dossier)", "Employé concerné", "Fonction / Service", "N° contrat", "Documents", "Retour", "Observation", "Saisi par", ""].map((h, i) => <th key={i} style={entete}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {lignes.map((l) => (
                 <tr key={l.reference} style={{ opacity: l.annulee ? 0.55 : 1, textDecoration: l.annulee ? "line-through" : "none" }}>
                   <td style={cellule}>{l.reference}</td>
-                  <td style={cellule}>{l.origine === "consultation" ? "Consultation" : "Manuel"}</td>
                   <td style={cellule}>{formatDateFR(l.date_depart)}</td>
                   <td style={cellule}>{l.beneficiaire}</td>
                   <td style={cellule}>{l.employe}{l.matricule ? ` (${l.matricule})` : ""}</td>
@@ -135,8 +155,9 @@ export default function MouvementsPanel() {
                   <td style={cellule}>{l.type_documents} ({l.nombre_documents})</td>
                   <td style={cellule}>{l.date_retour ? formatDateFR(l.date_retour) : "En cours"}</td>
                   <td style={cellule}>{l.annulee ? `Annulée : ${l.motif_annulation}` : l.observation}</td>
+                  <td style={cellule}>{l.saisi_par}</td>
                   <td style={cellule}>
-                    {l.origine === "manuel" && !l.annulee && (
+                    {!l.annulee && (
                       <>
                         {!l.date_retour && (
                           <button type="button" style={bouton} onClick={() => action(`/registres/mouvements/${slugDe(l.reference)}/retour/`)}>
@@ -147,6 +168,11 @@ export default function MouvementsPanel() {
                           Annuler
                         </button>
                       </>
+                    )}
+                    {l.annulee && (
+                      <button type="button" style={{ ...bouton, color: theme.danger }} aria-label="Supprimer la ligne" onClick={() => supprimer(l)}>
+                        Supprimer
+                      </button>
                     )}
                   </td>
                 </tr>

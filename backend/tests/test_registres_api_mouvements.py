@@ -208,10 +208,46 @@ def test_ligne_annulee_non_modifiable(registre_admin):
     assert _client(registre_admin).patch(f"{URL}{_slug(m)}/", {'observation': 'x'}, format='json').status_code == 400
 
 
-def test_pas_de_delete(registre_admin):
+def test_suppression_refusee_tant_que_la_ligne_nest_pas_annulee(registre_admin):
     _client(registre_admin).post(URL, _payload(), format='json')
     m = MouvementArchive.objects.get()
-    assert _client(registre_admin).delete(f"{URL}{_slug(m)}/").status_code == 405
+    reponse = _client(registre_admin).delete(f"{URL}{_slug(m)}/")
+    assert reponse.status_code == 400
+    assert MouvementArchive.objects.count() == 1
+    assert not AuditLog.objects.filter(action='DELETE_MOUVEMENT').exists()
+
+
+def test_suppression_apres_annulation_est_auditee_avec_instantane(registre_admin):
+    _client(registre_admin).post(URL, _payload(observation='Dossier prêté'), format='json')
+    m = MouvementArchive.objects.get()
+    _client(registre_admin).post(f"{URL}{_slug(m)}/annuler/", {'motif': 'Doublon'}, format='json')
+    reponse = _client(registre_admin).delete(f"{URL}{_slug(m)}/")
+    assert reponse.status_code == 204
+    assert MouvementArchive.objects.count() == 0
+    log = AuditLog.objects.get(action='DELETE_MOUVEMENT')
+    assert log.target_label == m.reference and log.target_id == str(m.pk)
+    snap = log.details['snapshot']
+    assert snap['reference'] == m.reference and snap['nom_libre'] == 'Ali Ben'
+    assert snap['observation'] == 'Dossier prêté' and snap['motif_annulation'] == 'Doublon'
+    assert snap['nombre_documents'] == 3 and snap['saisi_par'] == registre_admin.username
+
+
+def test_reference_supprimee_nest_jamais_reutilisee(registre_admin):
+    _client(registre_admin).post(URL, _payload(), format='json')
+    premier = MouvementArchive.objects.get()
+    _client(registre_admin).post(f"{URL}{_slug(premier)}/annuler/", {'motif': 'Erreur'}, format='json')
+    _client(registre_admin).delete(f"{URL}{_slug(premier)}/")
+    reponse = _client(registre_admin).post(URL, _payload(), format='json')
+    assert reponse.data['reference'] != premier.reference
+    assert reponse.data['reference'].split('/')[0].endswith('00002')
+
+
+def test_suppression_refusee_aux_comptes_non_autorises(registre_admin, admin_user):
+    _client(registre_admin).post(URL, _payload(), format='json')
+    m = MouvementArchive.objects.get()
+    _client(registre_admin).post(f"{URL}{_slug(m)}/annuler/", {'motif': 'Erreur'}, format='json')
+    assert _client(admin_user).delete(f"{URL}{_slug(m)}/").status_code == 403
+    assert MouvementArchive.objects.count() == 1
 
 
 def test_reference_inconnue_404(registre_admin):

@@ -1,5 +1,20 @@
 import api from "../services/api";
 
+// Message lisible d'une erreur d'API. DRF renvoie `{detail: "…"}` pour une
+// permission refusée, mais une LISTE (`["…"]`) pour un `ValidationError("…")`
+// simple (ex. motif d'annulation manquant) et un dictionnaire par champ pour
+// les erreurs de formulaire : les trois formes sont lues, sinon `defaut`.
+export function messageErreur(err, defaut) {
+  const data = err?.response?.data;
+  if (Array.isArray(data) && typeof data[0] === "string") return data[0];
+  if (data && typeof data === "object") {
+    if (typeof data.detail === "string") return data.detail;
+    const premier = Object.values(data).find((v) => (Array.isArray(v) ? typeof v[0] === "string" : typeof v === "string"));
+    if (premier) return Array.isArray(premier) ? premier[0] : premier;
+  }
+  return defaut;
+}
+
 export const anneesDisponibles = (annee = new Date().getFullYear()) =>
   Array.from({ length: 6 }, (_, i) => annee - i);
 

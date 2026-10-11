@@ -60,6 +60,7 @@ const Users = () => {
     role: "CONSULTANT",
     charge_attestation: false,
     charge_consultation: false,
+    charge_registre: false,
     password: "",
     password2: "",
   });
@@ -161,6 +162,7 @@ const Users = () => {
         libelle_role: form.role === "GESTIONNAIRE" ? (form.libelle_role || "") : "",
         charge_attestation: form.role === "ADMIN" ? !!form.charge_attestation : false,
         charge_consultation: form.role === "ADMIN" ? !!form.charge_consultation : false,
+        charge_registre: form.role === "ADMIN" ? !!form.charge_registre : false,
         password: form.password,
       });
       const hasScope =
@@ -185,7 +187,7 @@ const Users = () => {
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
-      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, password: "", password2: "" });
+      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, charge_registre: false, password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
@@ -219,6 +221,15 @@ const Users = () => {
   const toggleChargeConsultation = async (targetUser) => {
     try {
       await api.patch(`/admin-users/${targetUser.id}/`, { charge_consultation: !targetUser.charge_consultation });
+      fetchUsers(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleChargeRegistre = async (targetUser) => {
+    try {
+      await api.patch(`/admin-users/${targetUser.id}/`, { charge_registre: !targetUser.charge_registre });
       fetchUsers(true);
     } catch (err) {
       console.error(err);
@@ -448,6 +459,23 @@ const Users = () => {
                     </label>
                     <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
                       Reçoit, valide et livre les demandes de consultation de documents archivés (/consultations). Un Super-administrateur y a toujours accès, quel que soit ce réglage.
+                    </div>
+                  </div>
+                )}
+
+                {form.role === "ADMIN" && (
+                  <div>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        name="charge_registre"
+                        checked={!!form.charge_registre}
+                        onChange={handleChange}
+                      />
+                      Chargé des registres d'archives
+                    </label>
+                    <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
+                      Tient les registres de mouvement et de réception des archives (/registres), partagés entre tous les comptes chargés. Un Super-administrateur y a toujours accès, quel que soit ce réglage.
                     </div>
                   </div>
                 )}
@@ -810,6 +838,25 @@ const Users = () => {
                               }}
                             >
                               {u.charge_consultation ? "Consultations ✓" : "Consultations ✗"}
+                            </button>
+                          )}
+                          {u.role === "ADMIN" && user?.role === "SUPERADMIN" && (
+                            <button
+                              onClick={() => toggleChargeRegistre(u)}
+                              title="Tient les registres de mouvement et de réception des archives (/registres)"
+                              style={{
+                                background: u.charge_registre ? theme.primaryBg : theme.bg,
+                                border: `1px solid ${u.charge_registre ? theme.primaryBorder : theme.border}`,
+                                color: u.charge_registre ? theme.primary : theme.textSecondary,
+                                borderRadius: 8,
+                                padding: "5px 12px",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {u.charge_registre ? "Registres ✓" : "Registres ✗"}
                             </button>
                           )}
                           {["CONSULTANT", "GESTIONNAIRE"].includes(u.role) && (

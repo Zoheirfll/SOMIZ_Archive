@@ -55,6 +55,8 @@ class AuditLog(models.Model):
         CLASSER_RECEPTION = 'CLASSER_RECEPTION', 'Classement réception registre'
         EXPORT_REGISTRE = 'EXPORT_REGISTRE', 'Export Excel du registre'
         PRINT_REGISTRE = 'PRINT_REGISTRE', 'Impression PDF du registre'
+        DELETE_MOUVEMENT = 'DELETE_MOUVEMENT', 'Suppression définitive mouvement registre'
+        DELETE_RECEPTION = 'DELETE_RECEPTION', 'Suppression définitive réception registre'
         CREATE_REF = 'CREATE_REF', 'Création référentiel'
         MODIFY_REF = 'MODIFY_REF', 'Modification référentiel'
         DELETE_REF = 'DELETE_REF', 'Suppression référentiel'

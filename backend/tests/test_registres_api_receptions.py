@@ -127,5 +127,26 @@ def test_annulation_motif_obligatoire_sans_suppression_ni_delete(registre_admin)
     assert _client(registre_admin).post(f"{URL}{_slug(r)}/annuler/", {'motif': 'Erreur'}, format='json').status_code == 200
     r.refresh_from_db()
     assert r.is_active is False
-    assert _client(registre_admin).delete(f"{URL}{_slug(r)}/").status_code == 405
+    assert ReceptionDocument.objects.count() == 1  # annuler ne supprime pas
     assert AuditLog.objects.filter(action='CANCEL_RECEPTION').exists()
+
+
+def test_suppression_refusee_tant_que_la_reception_nest_pas_annulee(registre_admin):
+    _client(registre_admin).post(URL, _payload(), format='json')
+    r = ReceptionDocument.objects.get()
+    assert _client(registre_admin).delete(f"{URL}{_slug(r)}/").status_code == 400
+    assert ReceptionDocument.objects.count() == 1
+
+
+def test_suppression_reception_annulee_auditee_avec_instantane(registre_admin):
+    _client(registre_admin).post(URL, _payload(observation='Reçu en main propre'), format='json')
+    r = ReceptionDocument.objects.get()
+    _client(registre_admin).post(f"{URL}{_slug(r)}/annuler/", {'motif': 'Doublon'}, format='json')
+    assert _client(registre_admin).delete(f"{URL}{_slug(r)}/").status_code == 204
+    assert ReceptionDocument.objects.count() == 0
+    log = AuditLog.objects.get(action='DELETE_RECEPTION')
+    snap = log.details['snapshot']
+    assert log.target_label == r.reference
+    assert snap['expediteur'] == 'DRH' and snap['nombre'] == 2
+    assert snap['observation'] == 'Reçu en main propre' and snap['motif_annulation'] == 'Doublon'
+    assert snap['saisi_par'] == registre_admin.username

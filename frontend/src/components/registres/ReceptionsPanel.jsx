@@ -3,7 +3,7 @@ import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { usePrompt } from "../ConfirmDialog";
 import { formatDateFR } from "../../utils/formatDate";
-import { anneesDisponibles, telechargerRegistre } from "../../utils/registres";
+import { anneesDisponibles, messageErreur, telechargerRegistre } from "../../utils/registres";
 import Pagination from "./Pagination";
 import RegistreModal from "./RegistreModal";
 
@@ -38,7 +38,7 @@ export default function ReceptionsPanel() {
       setMeta({ count: res.data?.count ?? 0, num_pages: res.data?.num_pages ?? 1 });
       setError("");
     } catch (err) {
-      setError(err.response?.data?.detail || "Impossible de charger le registre.");
+      setError(messageErreur(err, "Impossible de charger le registre."));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -55,7 +55,7 @@ export default function ReceptionsPanel() {
       setError("");
       await fetchLignes(true);
     } catch (err) {
-      setError(err.response?.data?.detail || "Action impossible.");
+      setError(messageErreur(err, "Action impossible."));
     }
   };
 
@@ -63,6 +63,27 @@ export default function ReceptionsPanel() {
     const motif = await prompt(`Motif de l'annulation de ${ligne.reference} :`, "", { confirmLabel: "Annuler la ligne" });
     if (motif === null) return;
     await action(`/registres/receptions/${ligne.slug}/annuler/`, { motif });
+  };
+
+  // Suppression définitive : seulement sur une ligne déjà annulée, avec
+  // confirmation renforcée (saisie de la référence, pas un simple clic).
+  const supprimer = async (ligne) => {
+    const saisie = await prompt(
+      `Suppression DÉFINITIVE de ${ligne.reference} (tracée dans l'audit). Saisissez sa référence pour confirmer :`,
+      "", { confirmLabel: "Supprimer définitivement" },
+    );
+    if (saisie === null) return;
+    if (saisie !== ligne.reference) {
+      setError("La référence saisie ne correspond pas : la ligne n'a pas été supprimée.");
+      return;
+    }
+    try {
+      await api.delete(`/registres/receptions/${ligne.slug}/`);
+      setError("");
+      await fetchLignes(true);
+    } catch (err) {
+      setError(messageErreur(err, "Suppression impossible."));
+    }
   };
 
   const creer = async (valeurs) => {
@@ -108,7 +129,7 @@ export default function ReceptionsPanel() {
           <table style={{ width: "100%", borderCollapse: "collapse", background: theme.surface }}>
             <thead>
               <tr>
-                {["Réf.", "Type", "Nombre", "Expéditeur", "Réception", "Classement", "Observation", ""].map((h, i) => <th key={i} style={entete}>{h}</th>)}
+                {["Réf.", "Type", "Nombre", "Expéditeur", "Réception", "Classement", "Observation", "Saisi par", ""].map((h, i) => <th key={i} style={entete}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -121,6 +142,7 @@ export default function ReceptionsPanel() {
                   <td style={cellule}>{formatDateFR(l.date_reception)}</td>
                   <td style={cellule}>{l.date_classement ? formatDateFR(l.date_classement) : "À classer"}</td>
                   <td style={cellule}>{l.is_active ? l.observation : `Annulée : ${l.motif_annulation}`}</td>
+                  <td style={cellule}>{l.saisi_par_nom}</td>
                   <td style={cellule}>
                     {l.is_active && (
                       <>
@@ -134,10 +156,15 @@ export default function ReceptionsPanel() {
                         </button>
                       </>
                     )}
+                    {!l.is_active && (
+                      <button type="button" style={{ ...bouton, color: theme.danger }} aria-label="Supprimer la ligne" onClick={() => supprimer(l)}>
+                        Supprimer
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
-              {lignes.length === 0 && <tr><td style={cellule} colSpan={8}>Aucune réception pour cette année.</td></tr>}
+              {lignes.length === 0 && <tr><td style={cellule} colSpan={9}>Aucune réception pour cette année.</td></tr>}
             </tbody>
           </table>
         </div>

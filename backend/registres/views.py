@@ -103,6 +103,29 @@ class RegistreObjetMixin:
         return get_object_or_404(self.modele.objects.select_related('saisi_par'), reference=reference)
 
 
+def supprimer_ligne(request, obj, action, champs):
+    """Suppression DÉFINITIVE d'une ligne de registre (demande du propriétaire,
+    2026-10-11). Garde-fous : (1) la ligne doit d'abord être annulée avec un
+    motif (état intermédiaire obligatoire) ; (2) un instantané complet de la
+    ligne est écrit dans l'audit AVANT l'effacement, dans la même transaction
+    (si l'audit échoue, rien n'est supprimé) ; (3) la référence n'est jamais
+    réattribuée (compteur à vie), le trou de numérotation reste donc explicable."""
+    if obj.is_active:
+        raise ValidationError(
+            "Annulez d'abord la ligne (avec un motif) avant de la supprimer définitivement."
+        )
+    snapshot = {
+        **instantane(obj, champs),
+        'reference': obj.reference,
+        'motif_annulation': obj.motif_annulation,
+        'saisi_par': obj.saisi_par.username if obj.saisi_par_id else '',
+        'created_at': obj.created_at.isoformat(),
+    }
+    with transaction.atomic():
+        AuditLog.log(request, action, target=obj, details={'snapshot': snapshot})
+        obj.delete()
+
+
 def annuler_ligne(request, obj, action):
     """Annulation commune aux deux registres : motif obligatoire, auditée."""
     try:
@@ -140,10 +163,13 @@ class MouvementsView(APIView):
         return Response(MouvementArchiveSerializer(mouvement, context={'request': request}).data, status=201)
 
 
-class MouvementDetailView(RegistreObjetMixin, generics.RetrieveUpdateAPIView):
+class MouvementDetailView(RegistreObjetMixin, generics.RetrieveUpdateDestroyAPIView):
     modele = MouvementArchive
     serializer_class = MouvementArchiveSerializer
-    http_method_names = ['get', 'patch', 'head', 'options']  # jamais de DELETE
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']  # pas de PUT
+
+    def perform_destroy(self, instance):
+        supprimer_ligne(self.request, instance, AuditLog.Action.DELETE_MOUVEMENT, CHAMPS_MOUVEMENT)
 
     def perform_update(self, serializer):
         if not serializer.instance.is_active:
@@ -237,10 +263,13 @@ class ReceptionsView(APIView):
         return Response(ReceptionDocumentSerializer(reception, context={'request': request}).data, status=201)
 
 
-class ReceptionDetailView(RegistreObjetMixin, generics.RetrieveUpdateAPIView):
+class ReceptionDetailView(RegistreObjetMixin, generics.RetrieveUpdateDestroyAPIView):
     modele = ReceptionDocument
     serializer_class = ReceptionDocumentSerializer
-    http_method_names = ['get', 'patch', 'head', 'options']  # jamais de DELETE
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']  # pas de PUT
+
+    def perform_destroy(self, instance):
+        supprimer_ligne(self.request, instance, AuditLog.Action.DELETE_RECEPTION, CHAMPS_RECEPTION)
 
     def perform_update(self, serializer):
         if not serializer.instance.is_active:

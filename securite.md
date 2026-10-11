@@ -1444,13 +1444,23 @@ RIP/RIB et groupe sanguin** (demande explicite de l'utilisateur). Contrôles exi
 Nouvelle app `registres` : registre 01 (sortie/retour des dossiers, lignes manuelles + consultations validées) et
 registre 02 (documents reçus, puis classés). Détail : `docs/fonctionnel/registres.md`.
 
-- **Accès** : SUPERADMIN, ou ADMIN portant `charge_consultation` (`CanManageRegistres`). Un ADMIN sans le drapeau, un
-  CONSULTANT et un GESTIONNAIRE reçoivent **403** — vérifié par des tests d'intégration sur les vraies routes
-  (liste, création, détail, retour, annulation, export), pas seulement sur le défaut DRF.
-- **Pas de suppression** : aucun `DELETE` (405). Un registre est une pièce probante ; une erreur se corrige par
-  modification (ancienne valeur tracée dans `AuditLog.details['changes']`) et une ligne se retire par **annulation
-  avec motif obligatoire** (`is_active=False`, la ligne reste visible et barrée). Une ligne annulée n'est plus modifiable.
-- **Audit** : 10 actions (`CREATE/MODIFY/CANCEL/RETOUR_MOUVEMENT`, `CREATE/MODIFY/CANCEL/CLASSER_RECEPTION`,
+- **Accès** : SUPERADMIN, ou ADMIN portant **`charge_registre`** (`CanManageRegistres`, `User.can_manage_registres`),
+  drapeau **attribuable par un SUPERADMIN uniquement** (même garde-fou que `charge_consultation`, point 44 : un ADMIN
+  ne peut pas se l'attribuer, 400). Indépendant de `charge_consultation`. Un ADMIN sans le drapeau (même chargé des
+  consultations), un CONSULTANT et un GESTIONNAIRE reçoivent **403** — vérifié par des tests d'intégration sur les
+  vraies routes (liste, création, détail, retour, annulation, export), pas seulement sur le défaut DRF.
+- **Trou d'audit corrigé (2026-10-11)** : attribuer ou retirer `charge_consultation` / `charge_attestation` n'était pas
+  tracé (l'audit de modification d'un compte ne contenait que rôle, activation et périmètres). Les trois drapeaux
+  « chargé de… » sont désormais dans `MODIFY_USER` (`before`/`after`) et `CREATE_USER` (testé).
+- **Auteur de la saisie** : `saisi_par` posé par le serveur depuis le compte connecté, jamais accepté du client (testé).
+- **Suppression définitive en deux temps, auditée** (demande du propriétaire, 2026-10-11 ; la première version
+  interdisait tout `DELETE`) : la ligne doit d'abord être **annulée avec motif** (état intermédiaire obligatoire,
+  `is_active=False`), sinon `DELETE` → 400. Le `DELETE` écrit un **instantané complet** de la ligne
+  (`DELETE_MOUVEMENT` / `DELETE_RECEPTION`, `details.snapshot`) **avant** l'effacement, dans la même transaction. La
+  référence n'est jamais réattribuée. Confirmation renforcée à l'écran (saisie de la référence). Testé : refus sur
+  ligne active, instantané complet, référence non réutilisée, refus à un compte non autorisé. Une erreur se corrige
+  aussi par modification (ancienne valeur dans `details['changes']`) ; une ligne annulée n'est plus modifiable.
+- **Audit** : 12 actions (`CREATE/MODIFY/CANCEL/RETOUR/DELETE_MOUVEMENT`, `CREATE/MODIFY/CANCEL/CLASSER/DELETE_RECEPTION`,
   `EXPORT_REGISTRE`, `PRINT_REGISTRE`), toutes ≤ 20 caractères. Export et impression tracent le registre, l'année,
   le format, les filtres et le nombre de lignes.
 - **Scoping** : une ligne liée à un employé applique `can_access_employee()` (testé). Le registre 01 ne contient plus

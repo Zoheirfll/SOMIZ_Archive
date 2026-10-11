@@ -152,7 +152,9 @@ const Navbar = () => {
     },
     {
       path: "/registres", label: "Registres",
-      show: !!user?.can_manage_consultations,
+      // Le SUPERADMIN a toujours accès (testé sur le rôle, pas seulement sur le
+      // drapeau : robuste à une session ouverte avant l'ajout du champ).
+      show: user?.role === "SUPERADMIN" || !!user?.can_manage_registres,
     },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },

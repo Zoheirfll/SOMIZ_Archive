@@ -19,7 +19,7 @@ Chaque registre s'imprime (PDF) et s'exporte (Excel). Pas d'envoi par e-mail (d�
 | Périmètre | Les deux registres dans le même chantier |
 | Nature d'un mouvement | ~~Consultations validées + lignes manuelles~~ **Révisé le 2026-10-11** : mouvements physiques saisis à la main uniquement (une consultation est une livraison numérique, pas un mouvement physique) |
 | Architecture | Nouvelle app `registres` ; registre 01 = **vue calculée** (pas de copie des consultations) |
-| Accès | SUPERADMIN, ou ADMIN avec `charge_consultation`. Aucun nouveau drapeau. Autres : 403 (comme `CanAccessConsultations`) ; 404 seulement pour une référence introuvable |
+| Accès | SUPERADMIN, ou ADMIN avec **`charge_registre`** (nouveau drapeau, attribuable par un SUPERADMIN uniquement — révisé le 2026-10-11 ; la première version réutilisait `charge_consultation`). Registre commun, colonne « Saisi par ». Autres : 403 (comme `CanAccessConsultations`) ; 404 seulement pour une référence introuvable |
 | Employé sur une ligne manuelle | Optionnel (FK), sinon nom libre |
 | Numérotation | Compteur annuel à vie : `M-NNNNN/AA` (mouvement manuel), `R-NNNNN/AA` (réception). Une ligne issue d'une consultation garde `C-NNNNN/AA` |
 | « Envoyer » | Supprimé : Imprimer (PDF) + Télécharger (Excel) seulement |

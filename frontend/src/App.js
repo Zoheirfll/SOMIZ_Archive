@@ -183,7 +183,7 @@ function App() {
             element={
               <ProtectedRoute
                 allowedRoles={["ADMIN", "SUPERADMIN"]}
-                requireFn={(u) => !!u?.can_manage_consultations}
+                requireFn={(u) => u?.role === "SUPERADMIN" || !!u?.can_manage_registres}
               >
                 <Registres />
               </ProtectedRoute>

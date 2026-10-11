@@ -3,7 +3,7 @@ import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "../context/ThemeContext";
 import RegistreModal from "../components/registres/RegistreModal";
-import { anneesDisponibles } from "../utils/registres";
+import { anneesDisponibles, messageErreur } from "../utils/registres";
 import api from "../services/api";
 
 jest.mock("../services/api", () => ({ __esModule: true, default: { get: jest.fn() } }));
@@ -75,6 +75,19 @@ describe("RegistreModal — champ employé", () => {
     await userEvent.click(screen.getByRole("button", { name: "Changer l'employé" }));
     await userEvent.type(screen.getByLabelText("Employé concerné"), "d");
     expect(api.get).not.toHaveBeenCalled();
+  });
+});
+
+describe("messageErreur", () => {
+  const erreur = (data) => ({ response: { data } });
+
+  test("lit une liste, un detail, un champ de formulaire, sinon le défaut", () => {
+    expect(messageErreur(erreur(["Motif obligatoire."]), "défaut")).toBe("Motif obligatoire.");
+    expect(messageErreur(erreur({ detail: "Accès refusé." }), "défaut")).toBe("Accès refusé.");
+    expect(messageErreur(erreur({ annee: ["Année invalide."] }), "défaut")).toBe("Année invalide.");
+    expect(messageErreur(erreur({}), "défaut")).toBe("défaut");
+    expect(messageErreur(erreur("<html>500</html>"), "défaut")).toBe("défaut");
+    expect(messageErreur(new Error("réseau"), "défaut")).toBe("défaut");
   });
 });
 

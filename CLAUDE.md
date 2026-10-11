@@ -64,7 +64,8 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - Une permission « transversale » se vérifie par un test d'intégration sur une vraie route métier — voir `comptes-conformite.md`.
 - L'export Excel des employés (`employees/export_views.py`) reste réservé aux ADMIN et tracé dans l'audit ; il contient des données sensibles (NIN, sécu, RIB) — toute nouvelle colonne sensible se documente dans `securite.md`.
 - Un fichier livré par `consultations` ne se sert jamais sans `controler_acces()` (expiration vérifiée côté serveur à chaque lecture) et jamais non filigrané à un demandeur — voir `consultations.md`.
-- Les registres (`registres`) n'ont jamais de DELETE ; toute modification est tracée avec l'ancienne valeur ; export et impression sont tracés, sans colonnes sensibles, et le paramètre d'export s'appelle `fmt` (jamais `format`, réservé par DRF) — voir `registres.md`.
+- L'accès aux registres passe par `User.charge_registre` (SUPERADMIN uniquement pour l'attribuer, jamais `charge_consultation`) ; l'attribution d'un drapeau « chargé de… » est tracée dans `MODIFY_USER`.
+- Une ligne de registre (`registres`) ne se supprime qu'**après annulation avec motif**, avec un instantané complet dans l'audit (hard delete tracé, confirmation par saisie de la référence) ; toute modification est tracée avec l'ancienne valeur ; export et impression sont tracés, sans colonnes sensibles, et le paramètre d'export s'appelle `fmt` (jamais `format`, réservé par DRF) — voir `registres.md`.
 
 ---
 
@@ -143,7 +144,7 @@ Direction
 | `/consultations` | Demandes de consultation d'archives (« mes demandes » ou vue traiteur) | CONSULTANT, GESTIONNAIRE, SUPERADMIN, ADMIN `charge_consultation` |
 | `/consultations/nouvelle` | Nouvelle demande de consultation | CONSULTANT, GESTIONNAIRE |
 | `/consultations/:ref` | Détail, viewer sécurisé (filigrané, limité dans le temps), traitement | Demandeur (ses demandes) ; traiteur (toutes) |
-| `/registres` | Registres d'archives : mouvement des dossiers + réception/classement des documents (impression PDF, export Excel) | SUPERADMIN, ADMIN `charge_consultation` |
+| `/registres` | Registres d'archives : mouvement des dossiers physiques + réception/classement des documents (impression PDF, export Excel) ; registre commun, colonne « Saisi par » | SUPERADMIN, ADMIN `charge_registre` (attribuable par un SUPERADMIN uniquement) |
 | `/users` | Gestion utilisateurs | ADMIN |
 | `/audit` | Logs d'audit | ADMIN |
 | `/parametres` | CRUD référentiels (Directions, Depts, Services, Postes...) | ADMIN |
