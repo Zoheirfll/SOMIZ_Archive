@@ -32,6 +32,7 @@ const Attestations = lazy(() => import("./pages/Attestations"));
 const AttestationNouvelle = lazy(() => import("./pages/AttestationNouvelle"));
 const AttestationDetail = lazy(() => import("./pages/AttestationDetail"));
 const Consultations = lazy(() => import("./pages/Consultations"));
+const Registres = lazy(() => import("./pages/Registres"));
 const ConsultationNouvelle = lazy(() => import("./pages/ConsultationNouvelle"));
 const ConsultationDetail = lazy(() => import("./pages/ConsultationDetail"));
 
@@ -174,6 +175,17 @@ function App() {
                 requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_consultations}
               >
                 <ConsultationDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/registres"
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN"]}
+                requireFn={(u) => !!u?.can_manage_consultations}
+              >
+                <Registres />
               </ProtectedRoute>
             }
           />

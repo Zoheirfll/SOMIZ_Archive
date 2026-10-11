@@ -17,9 +17,11 @@ export function usePrompt() {
   const theme = useTheme();
   const [state, setState] = useState(null); // { message, value, resolve }
 
-  const prompt = useCallback((message, defaultValue = "") => {
+  // options.confirmLabel : libellé du bouton de validation (« Renommer » par
+  // défaut, historique de l'usage « renommer un fichier »).
+  const prompt = useCallback((message, defaultValue = "", options = {}) => {
     return new Promise((resolve) => {
-      setState({ message, value: defaultValue, resolve });
+      setState({ message, value: defaultValue, resolve, confirmLabel: options.confirmLabel });
     });
   }, []);
 
@@ -116,7 +118,7 @@ export function usePrompt() {
               fontFamily: "inherit",
             }}
           >
-            Renommer
+            {state.confirmLabel || "Renommer"}
           </button>
         </div>
       </div>

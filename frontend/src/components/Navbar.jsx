@@ -150,6 +150,10 @@ const Navbar = () => {
       match: (p) => p.startsWith("/attestations") || p.startsWith("/consultations"),
       badge: pendingAttestations + pendingConsultations,
     },
+    {
+      path: "/registres", label: "Registres",
+      show: !!user?.can_manage_consultations,
+    },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
     { path: "/recherche-documents", label: "Recherche OCR", adminOnly: true },
