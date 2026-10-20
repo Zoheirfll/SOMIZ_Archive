@@ -188,3 +188,51 @@ pas utilisables directement pour les changements de layout structurels
 - `frontend/src/setupTests.js` fournit un polyfill `window.matchMedia`
   (absent de jsdom) qui retourne `matches: false` par défaut — les tests
   s'exécutent donc en layout desktop sauf override explicite.
+
+---
+
+## Navbar : menus déroulants, survol, visibilité des sections (2026-10-19)
+
+- **`components/NavDropdown.jsx`** — unique composant de menu déroulant de la navbar desktop
+  (« Demandes », « Administration »). Se ferme au clic extérieur, à Échap et à chaque navigation
+  (`location.pathname`). `aria-haspopup="menu"` / `aria-expanded` sur le bouton, `role="menu"` /
+  `menuitem` sur la liste. Un badge global s'affiche sur le bouton **tant que le menu est fermé**.
+  Un déroulant à un seul choix n'a pas de sens : si le compte n'a accès qu'à une section de
+  « Demandes », l'entrée reste un lien direct (voir `Navbar.jsx`, `demandesSections`). Dans le tiroir
+  mobile les sections sont dépliées (« Demandes · Attestations de travail »).
+- **Token `theme.navHover`** (clair `#D5E4DA`, sombre `#46594C`) pour le survol des boutons de navbar et
+  des entrées de menu. Avant : `theme.bg`, quasi identique au fond de la navbar (survol invisible).
+  Le test `theme.test.js` impose que les thèmes clair et sombre exposent les mêmes clés.
+- **`config/accesSections.js`** — source unique des règles de visibilité `canSeeAttestations`,
+  `canSeeConsultations`, `canSeeRegistres`, utilisée par la navbar, la palette Ctrl+K et son catalogue
+  d'actions (`commandPaletteActions.js`). Ne jamais redupliquer ces conditions : masquer un lien n'est
+  pas une protection, l'API reste le garde-fou.
+- **Approche abandonnée** : l'ancien sélecteur d'onglets `DemandesTabs` en haut des pages Attestations et
+  Consultations (supprimé) — voir `consultations.md`.
+- **Palette Ctrl+K** : cherche aussi les **consultations d'archives** (`/consultations/demandes/?q=`,
+  périmètre appliqué par le serveur) et propose les pages « Demandes d'attestation », « Consultations
+  d'archives », « Registres » et l'action « Nouvelle demande de consultation » selon les mêmes règles.
+
+## Liens vers une fiche employé = matricule, jamais l'uuid (2026-10-19)
+
+Toute navigation vers `/employees/:id` passe par `employeeSlug(source)` (`utils/employeeSlug.js` :
+`matricule` → `employee_matricule` → `id` → `employee_id`). Un payload API destiné à produire un tel
+lien doit donc **fournir `employee_matricule`**. Incident : l'encart « Contrats arrivant à échéance » du
+tableau de bord naviguait vers `/employees/<uuid>` parce que `_contrats_echeance` (`audit/stats.py`) ne
+renvoyait pas le matricule ; corrigé, avec un test qui verrouille le lien.
+
+## Accessibilité des modales — `useModalA11y` (2026-10-19)
+
+- **`hooks/useModalA11y.js`** : mémorise l'élément focalisé à l'ouverture et le **rend à la fermeture**,
+  ferme à Échap, **piège Tab / Shift+Tab** dans la modale, focus initial via le sélecteur `initialFocus`.
+  Appliqué à `useConfirm()` / `usePrompt()` (`ConfirmDialog.jsx`), donc à toutes les confirmations
+  destructives de l'app : `role="dialog"`, `aria-modal="true"`, `aria-labelledby` (le message).
+- **Action destructive : le focus initial est sur « Annuler »** (`data-modal-initial`), jamais sur
+  « Confirmer » — un Entrée réflexe ne doit pas détruire une donnée. Non destructive : sur « Confirmer ».
+- **Piège de test** : le champ de `usePrompt()` a maintenant un nom accessible (le message). Un test qui le
+  cherchait par `getByRole("textbox", { name: "" })` casse ; utiliser
+  `within(await screen.findByRole("dialog")).getByRole("textbox")` (corrigé dans `RegistresPanels.test.jsx`).
+- **Reste à faire** (audit du 2026-10-19) : `DocumentPagesModal`, `UploadChoiceModal`, `DocFilterPanel`,
+  `NotificationBell` déclarent `role="dialog"` mais ni `aria-modal` ni piège de focus ; `RegistreModal` a
+  `aria-modal` mais pas de piège de focus — à brancher sur `useModalA11y`. 5 `div` cliquables sans `role`
+  sont à convertir en `button`. Les contrastes de couleur n'ont pas été audités (outil absent).

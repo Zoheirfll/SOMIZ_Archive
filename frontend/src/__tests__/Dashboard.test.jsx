@@ -186,3 +186,40 @@ describe("Dashboard — navigation vers /employees (complétude cliquable)", () 
     expect(screen.queryByText(/incomplets/)).not.toBeInTheDocument();
   });
 });
+
+describe("Dashboard — encart « Contrats arrivant à échéance »", () => {
+  const contrats = [
+    { id: "c1", numero_contrat: "CTR-1", employee_id: "uuid-1", employee_matricule: "010451", employee_nom: "Jean Dupont", date_fin: "2026-10-22", jours_restants: 3 },
+    { id: "c2", numero_contrat: "CTR-2", employee_id: "uuid-2", employee_matricule: "020782", employee_nom: "Luc Martin", date_fin: "2026-11-10", jours_restants: 22 },
+  ];
+
+  test("affiche les contrats, la date au format DD/MM/YYYY et le délai restant", async () => {
+    api.get.mockResolvedValue({ data: { ...mockStats, contrats_echeance: contrats, contrats_echeance_total: 2 } });
+    renderPage("ADMIN");
+    expect(await screen.findByText("Jean Dupont")).toBeInTheDocument();
+    expect(screen.getByText(/fin le 22\/10\/2026/)).toBeInTheDocument();
+    expect(screen.getByText("Dans 3 j")).toBeInTheDocument();
+    expect(screen.getByText("Dans 22 j")).toBeInTheDocument();
+  });
+
+  test("clic sur un contrat ouvre la fiche de l'employé par son matricule, pas par l'uuid", async () => {
+    api.get.mockResolvedValue({ data: { ...mockStats, contrats_echeance: contrats, contrats_echeance_total: 2 } });
+    renderPage("ADMIN");
+    fireEvent.click(await screen.findByText("Luc Martin"));
+    expect(mockNavigate).toHaveBeenCalledWith("/employees/020782");
+  });
+
+  test("« Voir tout » n'apparaît que si le total dépasse la liste affichée", async () => {
+    api.get.mockResolvedValue({ data: { ...mockStats, contrats_echeance: contrats, contrats_echeance_total: 9 } });
+    renderPage("ADMIN");
+    fireEvent.click(await screen.findByText("Voir tout (9)"));
+    expect(mockNavigate).toHaveBeenCalledWith("/statistiques");
+  });
+
+  test("encart absent quand aucun contrat n'arrive à échéance", async () => {
+    api.get.mockResolvedValue({ data: { ...mockStats, contrats_echeance: [], contrats_echeance_total: 0 } });
+    renderPage("ADMIN");
+    await screen.findByText("Carte Nationale");
+    expect(screen.queryByText("Contrats arrivant à échéance")).not.toBeInTheDocument();
+  });
+});

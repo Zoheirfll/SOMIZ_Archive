@@ -37,7 +37,7 @@ describe("Attestations", () => {
   });
 
   test("un GESTIONNAIRE voit un bouton Nouvelle demande", async () => {
-    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", id: "u2", full_name: "Gest Test" } });
+    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true, id: "u2", full_name: "Gest Test" } });
     api.get.mockResolvedValueOnce({ data: { results: [] } });
     render(<Attestations />);
     await waitFor(() => expect(screen.getByRole("link", { name: /Nouvelle demande/i })).toBeInTheDocument());

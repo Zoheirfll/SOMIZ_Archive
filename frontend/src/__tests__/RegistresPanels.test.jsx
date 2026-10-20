@@ -1,5 +1,5 @@
 import React from "react";
-import { render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "../context/ThemeContext";
 
@@ -85,7 +85,7 @@ describe("MouvementsPanel", () => {
     api.post.mockResolvedValue({ data: {} });
     render(<MouvementsPanel />);
     await userEvent.click(await screen.findByRole("button", { name: "Annuler la ligne" }));
-    await userEvent.type(await screen.findByRole("textbox", { name: "" }), "Doublon{enter}");
+    await userEvent.type(within(await screen.findByRole("dialog")).getByRole("textbox"), "Doublon{enter}");
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       "/registres/mouvements/M-00001-26/annuler/", { motif: "Doublon" },
     ));
@@ -112,7 +112,7 @@ describe("MouvementsPanel — suppression définitive et messages d'erreur", () 
     api.get.mockResolvedValue({ data: { annee: 2026, results: [ANNULEE] } });
     render(<MouvementsPanel />);
     await userEvent.click(await screen.findByRole("button", { name: "Supprimer la ligne" }));
-    await userEvent.type(await screen.findByRole("textbox", { name: "" }), "M-99999/26{enter}");
+    await userEvent.type(within(await screen.findByRole("dialog")).getByRole("textbox"), "M-99999/26{enter}");
     expect(await screen.findByText(/ne correspond pas/)).toBeInTheDocument();
     expect(api.delete).not.toHaveBeenCalled();
   });
@@ -122,7 +122,7 @@ describe("MouvementsPanel — suppression définitive et messages d'erreur", () 
     api.delete.mockResolvedValue({ status: 204 });
     render(<MouvementsPanel />);
     await userEvent.click(await screen.findByRole("button", { name: "Supprimer la ligne" }));
-    await userEvent.type(await screen.findByRole("textbox", { name: "" }), "M-00003/26{enter}");
+    await userEvent.type(within(await screen.findByRole("dialog")).getByRole("textbox"), "M-00003/26{enter}");
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/registres/mouvements/M-00003-26/"));
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
     expect(screen.queryByText("Chargement…")).not.toBeInTheDocument();
@@ -133,7 +133,7 @@ describe("MouvementsPanel — suppression définitive et messages d'erreur", () 
     api.post.mockRejectedValue({ response: { data: ["Le motif d'annulation est obligatoire."] } });
     render(<MouvementsPanel />);
     await userEvent.click(await screen.findByRole("button", { name: "Annuler la ligne" }));
-    await userEvent.type(await screen.findByRole("textbox", { name: "" }), "x{enter}");
+    await userEvent.type(within(await screen.findByRole("dialog")).getByRole("textbox"), "x{enter}");
     expect(await screen.findByRole("alert")).toHaveTextContent("Le motif d'annulation est obligatoire.");
   });
 });
@@ -221,7 +221,7 @@ describe("ReceptionsPanel", () => {
     api.delete.mockResolvedValue({ status: 204 });
     render(<ReceptionsPanel />);
     await userEvent.click(await screen.findByRole("button", { name: "Supprimer la ligne" }));
-    await userEvent.type(await screen.findByRole("textbox", { name: "" }), "R-00005/26{enter}");
+    await userEvent.type(within(await screen.findByRole("dialog")).getByRole("textbox"), "R-00005/26{enter}");
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/registres/receptions/R-00005-26/"));
   });
 

@@ -25,6 +25,7 @@ import usePageTitle from "../hooks/usePageTitle";
 import { formatDateTime, stripExt } from "../utils/employeeDocsDisplay";
 import { formatDateFR } from "../utils/formatDate";
 import Breadcrumb from "../components/employees/Breadcrumb";
+import { canSeeAttestations } from "../config/accesSections";
 
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
@@ -33,6 +34,14 @@ import Breadcrumb from "../components/employees/Breadcrumb";
 // document affiché normalement dans la liste ; les versions antérieures
 // sont attachées en `__history` (triées décroissant) et affichées via un
 // lien "Historique" repliable sous la ligne principale.
+// Signature de la structure d'un fichier (ordre/identité des pages + taille) :
+// change quand le PDF lui-même est réécrit côté serveur, pas pour un
+// renommage de page ni une rotation.
+const fileStructureSignature = (file) =>
+  `${file?.file_size ?? ""}|${(file?.pages || [])
+    .map((p) => `${p.id}:${p.ordre}`)
+    .join(",")}`;
+
 const groupDocsByVersion = (docs) => {
   const groups = new Map();
   docs.forEach((d) => {
@@ -149,7 +158,7 @@ const EmployeeDetail = () => {
   // l'erreur/succès invisible sans scroll manuel — on le ramène dans le
   // champ de vision à chaque changement.
   useEffect(() => {
-    if (message) {
+    if (message && !message.noScroll) {
       messageRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
     }
   }, [message]);
@@ -524,6 +533,21 @@ const EmployeeDetail = () => {
     }
   };
 
+  // Recharge le blob du fichier sans vider le viewer (pas de flash
+  // "Chargement..."), pour refléter une réorganisation/ajout/remplacement de
+  // pages. Le viewer est remonté via sa `key` (voir DossierTab).
+  const reloadFileSilently = async (file) => {
+    try {
+      const response = await api.get(`/files/${file.id}/view/`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      setDocUrl(url + "#toolbar=0&navpanes=0&scrollbar=0");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleSelectDoc = (doc) => {
     setSelectedDoc(doc);
     setSelectedFile(null);
@@ -597,7 +621,17 @@ const EmployeeDetail = () => {
         const updatedFile = (stillThere.fichiers || []).find(
           (f) => f.id === prevFile.id,
         );
-        if (updatedFile) setSelectedFile(updatedFile);
+        if (updatedFile) {
+          setSelectedFile(updatedFile);
+          // Le PDF affiché est un blob chargé une seule fois : si l'ordre, le
+          // nombre ou le contenu des pages a changé (panneau "Modifier"), il
+          // faut le recharger, sinon le viewer montre l'ancien contenu avec
+          // les nouveaux noms de pages. Un simple renommage/rotation ne
+          // change pas cette signature → pas de rechargement.
+          if (fileStructureSignature(updatedFile) !== fileStructureSignature(prevFile)) {
+            reloadFileSilently(updatedFile);
+          }
+        }
       }
       return;
     }
@@ -842,7 +876,9 @@ const EmployeeDetail = () => {
       : `/files/${selectedFile.id}/`;
     try {
       await api.patch(url, { rotation });
-      setMessage({ type: "success", text: "Rotation enregistrée par défaut." });
+      // noScroll : le succès ne doit pas ramener en haut de page, l'utilisateur
+      // est en train de lire le document plus bas.
+      setMessage({ type: "success", text: "Rotation enregistrée par défaut.", noScroll: true });
       fetchEmployee(true);
     } catch (err) {
       setMessage({
@@ -1486,7 +1522,7 @@ const EmployeeDetail = () => {
             },
             { key: "contrats", label: `Contrats (${contrats.length})` },
             { key: "carriere", label: "Carrière" },
-            ...(user?.can_manage_attestations || user?.role === "GESTIONNAIRE"
+            ...(canSeeAttestations(user)
               ? [{ key: "attestations", label: "Attestations" }]
               : []),
           ].map((tab) => (

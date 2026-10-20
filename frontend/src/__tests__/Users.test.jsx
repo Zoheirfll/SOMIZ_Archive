@@ -309,3 +309,47 @@ describe("Users — modal reset mot de passe", () => {
     });
   });
 });
+
+describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () => {
+  test("un gestionnaire a les boutons Attestations/Consultations, un ADMIN ordinaire non", async () => {
+    api.get.mockResolvedValue({ data: { results: [
+      makeUser("g1", "gest", "GESTIONNAIRE"),
+      makeUser("a1", "adm", "ADMIN"),
+    ] } });
+    renderPage();
+    await screen.findByText("gest");
+    // Seul le gestionnaire expose les deux boutons (un ADMIN ne les voit que pour un SUPERADMIN connecté).
+    expect(screen.getAllByRole("button", { name: /^Attestations/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Consultations/ })).toHaveLength(1);
+  });
+
+  test("un consultant a lui aussi les deux boutons", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("c1", "cons", "CONSULTANT")] } });
+    renderPage();
+    await screen.findByText("cons");
+    expect(screen.getByRole("button", { name: "Attestations ✗" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Consultations ✗" })).toBeInTheDocument();
+  });
+
+  test("cliquer bascule peut_demander_attestation via PATCH", async () => {
+    api.get.mockResolvedValue({ data: { results: [
+      { ...makeUser("g1", "gest", "GESTIONNAIRE"), peut_demander_attestation: true, peut_demander_consultation: false },
+    ] } });
+    api.patch.mockResolvedValue({ data: {} });
+    renderPage();
+    userEvent.click(await screen.findByRole("button", { name: "Attestations ✓" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      "/admin-users/g1/", { peut_demander_attestation: false },
+    ));
+  });
+
+  test("cliquer bascule peut_demander_consultation via PATCH", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("g1", "gest", "GESTIONNAIRE")] } });
+    api.patch.mockResolvedValue({ data: {} });
+    renderPage();
+    userEvent.click(await screen.findByRole("button", { name: "Consultations ✗" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      "/admin-users/g1/", { peut_demander_consultation: true },
+    ));
+  });
+});

@@ -95,3 +95,35 @@ ce fichier), qui restent des mécanismes indépendants.
   les documents encore présents) — signalée par une info-bulle sur la
   tuile côté UI. Une catégorie inconnue est ignorée silencieusement,
   comme les autres paramètres invalides de cette vue.
+
+---
+
+## Tableau de bord : encart d'échéances + audit des requêtes (2026-10-19)
+
+- **Encart « Contrats arrivant à échéance »** (`components/dashboard/ContratsEcheanceCard.jsx`) :
+  `GET /api/reporting/stats/` (`AdminStatsView`) renvoie désormais `contrats_echeance` (les 5 plus
+  proches, fenêtre 30 jours = celle de la notification `notifier_echeances_contrat`) et
+  `contrats_echeance_total` (nombre exact, pour « Voir tout » → /statistiques). Réutilise
+  `audit/stats.py#_contrats_echeance`, qui expose `employee_matricule` (lien par matricule). Badge rouge à
+  ≤ 7 jours, ambre sinon. Vue ADMIN/SUPERADMIN, organisation-wide comme le reste du dashboard.
+- **Le cron `notifier_echeances_contrat` n'est toujours pas planifié** (voir `notifications.md`) : sans lui,
+  l'encart est à jour mais aucune notification ne part.
+- **N+1 corrigés** (tests : `test_admin_stats_view.py`, `test_stats_completude_groupes.py`,
+  `test_employee_list_dossier_complet.py` — chacun compte les requêtes ou les jointures et échoue si elles
+  croissent avec le nombre de types, de groupes ou de mois) :
+
+  | Où | Avant | Après |
+  |---|---|---|
+  | `AdminStatsView` (complétude par type) | 1 requête par type de document | 1 requête agrégée |
+  | `AdminStatsView`, `_dossiers_completes_par_mois_completion`, `_indicateurs` | 1 jointure `documents` par type obligatoire | `audit/stats.py#_employes_complets` (une annotation) |
+  | `_completude_par` (par direction / département) | 1 requête + 1 jointure par type, **par groupe** | 2 requêtes au total |
+  | `_evolution_mensuelle` | 2 requêtes par mois (≈ 50 pour 24 mois) | 2 requêtes agrégées (`TruncMonth`) |
+  | `EmployeeListCreateView` `?dossier_complet=` | 1 jointure `documents` par type (3 pour 2 types, 10 pour 9) | 1 annotation `nb_obligatoires_presents` |
+- **Règle conservée à l'identique** : sans aucun type obligatoire configuré, **tout dossier est complet**
+  (`Employee.dossier_complet`, `EmployeeListSerializer.get_dossier_complet`, `AdminStatsView`,
+  `?dossier_complet=true` → tous, `=false` → aucun). Un test le verrouille.
+- **Non traité** : `EmployeeListSerializer` recalcule `types_total` / `types_obligatoires_total` à chaque
+  requête de liste (2 `COUNT` triviaux) ; pas de cache. Les gains sont mesurés en **nombre de requêtes sur
+  la base de test**, pas en millisecondes sur la base de production : à mesurer.
+- **Chantier suivant** : complétude par type de contrat — spec à valider dans
+  `docs/superpowers/specs/2026-10-19-completude-par-type-contrat-design.md`.

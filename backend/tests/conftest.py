@@ -63,6 +63,7 @@ def consultant_user(db):
         nom="Consultant",
         prenom="Test",
         role="CONSULTANT",
+        peut_demander_consultation=True,
         consent_loi1807_accepted_at=timezone.now(),
     )
 
@@ -174,6 +175,7 @@ def gestionnaire_user(db):
         username="gest_fixture", password="GestPass123!",
         nom="Fixture", prenom="Gest",
         role=User.Role.GESTIONNAIRE,
+        peut_demander_attestation=True, peut_demander_consultation=True,
         consent_loi1807_accepted_at=timezone.now(),
     )
 
@@ -184,6 +186,7 @@ def other_gestionnaire(db):
         username="gest_fixture2", password="GestPass123!",
         nom="Fixture2", prenom="Gest",
         role=User.Role.GESTIONNAIRE,
+        peut_demander_attestation=True, peut_demander_consultation=True,
         consent_loi1807_accepted_at=timezone.now(),
     )
 

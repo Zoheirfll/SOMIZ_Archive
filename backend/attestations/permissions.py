@@ -15,7 +15,7 @@ class CanAccessAttestations(BasePermission):
         return bool(
             user and user.is_authenticated and user.is_active and
             user.consent_loi1807_accepted_at and
-            (user.can_manage_attestations or user.is_gestionnaire)
+            (user.can_manage_attestations or user.can_request_attestations)
         )
 
 
@@ -37,19 +37,20 @@ class IsAttestationManager(BasePermission):
 
 
 class CanRequestAttestation(BasePermission):
-    """GESTIONNAIRE et SUPERADMIN peuvent créer/annuler une demande
-    d'attestation — jamais CONSULTANT, ni un ADMIN ordinaire (qui reste
+    """SUPERADMIN, ou GESTIONNAIRE/CONSULTANT dont `peut_demander_attestation`
+    est coché (User.can_request_attestations), peuvent créer/annuler une
+    demande d'attestation — jamais un ADMIN ordinaire (qui reste
     uniquement traiteur : lui laisser créer ses propres demandes casserait
     la séparation demandeur/traiteur utile à l'audit — un ADMIN pourrait
     sinon être à la fois auteur et validateur de la même demande). Bloque
     aussi tout compte n'ayant pas consenti au traitement Loi 18-07, même
     règle que IsAdmin/IsAdminOrConsultant (accounts/permissions.py)."""
-    message = "Seuls les comptes Gestionnaire et Super-administrateur peuvent demander une attestation."
+    message = "Vous n'avez pas le droit de demander une attestation de travail."
 
     def has_permission(self, request, view):
         user = request.user
         return bool(
             user and user.is_authenticated and user.is_active and
             user.consent_loi1807_accepted_at and
-            user.role in ('GESTIONNAIRE', 'SUPERADMIN')
+            user.can_request_attestations
         )

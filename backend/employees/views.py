@@ -326,21 +326,34 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         else:
             qs = qs.filter(statut=Employee.Statut.ACTIF)
 
-        if complet is not None:
-            types_obligatoires = TypeDocument.objects.filter(
+        if complet is not None and complet.lower() in ('true', '1', 'false', '0'):
+            voulu_complet = complet.lower() in ('true', '1')
+            ids_obligatoires = list(TypeDocument.objects.filter(
                 obligatoire=True, is_active=True, sous_types__isnull=True
-            )
-            if complet.lower() in ('true', '1'):
-                for t in types_obligatoires:
-                    qs = qs.filter(documents__type_doc=t, documents__is_active=True)
-                qs = qs.distinct()
-            elif complet.lower() in ('false', '0'):
-                incomplete_ids = qs
-                for t in types_obligatoires:
-                    incomplete_ids = incomplete_ids.filter(
-                        documents__type_doc=t, documents__is_active=True
+            ).values_list('id', flat=True))
+            if not ids_obligatoires:
+                # Rien d'obligatoire configuré : tout dossier est complet (même
+                # règle que Employee.dossier_complet et le sérialiseur de liste).
+                if not voulu_complet:
+                    qs = qs.none()
+            else:
+                # Une seule annotation agrégée — l'ancienne version ajoutait une
+                # jointure sur `documents` PAR type obligatoire (10 types = 10
+                # jointures, lignes multipliées entre elles).
+                qs = qs.annotate(
+                    nb_obligatoires_presents=Count(
+                        'documents__type_doc',
+                        filter=Q(
+                            documents__is_active=True,
+                            documents__type_doc__in=ids_obligatoires,
+                        ),
+                        distinct=True,
                     )
-                qs = qs.exclude(pk__in=incomplete_ids.values('pk'))
+                )
+                if voulu_complet:
+                    qs = qs.filter(nb_obligatoires_presents__gte=len(ids_obligatoires))
+                else:
+                    qs = qs.filter(nb_obligatoires_presents__lt=len(ids_obligatoires))
 
         # Filtre multi-types (2026-09-14) — remplace l'ancien filtre
         # mono-type (?type_manquant=<code> unique). `type_manquant` accepte

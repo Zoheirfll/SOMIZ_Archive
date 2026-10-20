@@ -8,6 +8,7 @@ import "../styles/animations.css";
 import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
+import ContratsEcheanceCard from "../components/dashboard/ContratsEcheanceCard";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useCountUp from "../hooks/useCountUp";
@@ -250,6 +251,11 @@ const Dashboard = () => {
             />
           </div>
         </div>
+
+        <ContratsEcheanceCard
+          contrats={stats?.contrats_echeance}
+          total={stats?.contrats_echeance_total ?? 0}
+        />
 
         {total === 0 ? (
           <div style={{

@@ -1,6 +1,18 @@
 import { DEFAULT_SHORTCUTS } from "./keyboardShortcuts";
+import {
+  canRequestAttestations, canRequestConsultations,
+  canSeeAttestations, canSeeConsultations, canSeeRegistres,
+} from "./accesSections";
 
 const isAdmin = (role) => ["ADMIN", "SUPERADMIN"].includes(role);
+
+// Sections du menu « Demandes » et « Registres » (Navbar.jsx) — mêmes règles de
+// visibilité, via accesSections.js.
+const SECTION_PAGES = [
+  { id: "page-attestations", label: "Demandes d'attestation", path: "/attestations", isVisible: canSeeAttestations },
+  { id: "page-consultations", label: "Consultations d'archives", path: "/consultations", isVisible: canSeeConsultations },
+  { id: "page-registres", label: "Registres", path: "/registres", isVisible: canSeeRegistres },
+];
 
 // Pages du menu "Administration" (Navbar.jsx#adminMenuLinks) — dupliquées
 // ici plutôt qu'importées de Navbar.jsx pour ne pas coupler la palette de
@@ -27,7 +39,14 @@ const QUICK_ACTIONS = [
     id: "action-new-attestation",
     label: "Nouvelle demande d'attestation",
     path: "/attestations/nouvelle",
-    isVisible: (user) => ["SUPERADMIN", "GESTIONNAIRE"].includes(user?.role),
+    isVisible: canRequestAttestations,
+  },
+  {
+    id: "action-new-consultation",
+    label: "Nouvelle demande de consultation",
+    path: "/consultations/nouvelle",
+    // Même règle que la route /consultations/nouvelle (App.js).
+    isVisible: canRequestConsultations,
   },
 ];
 
@@ -60,9 +79,13 @@ export function getPageActions(user) {
     ? ADMIN_MENU_PAGES.map((p) => ({ id: p.id, label: p.label, path: p.path }))
     : [];
 
+  const sectionPages = SECTION_PAGES
+    .filter((p) => p.isVisible(user))
+    .map((p) => ({ id: p.id, label: p.label, path: p.path }));
+
   const actions = QUICK_ACTIONS
     .filter((a) => a.isVisible(user))
     .map((a) => ({ id: a.id, label: a.label, path: a.path }));
 
-  return [...quickPages, ...adminPages, ...actions];
+  return [...quickPages, ...sectionPages, ...adminPages, ...actions];
 }

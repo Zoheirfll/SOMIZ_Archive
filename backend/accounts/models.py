@@ -102,6 +102,21 @@ class User(AbstractBaseUser, PermissionsMixin):
                    "y a toujours accès, quel que soit ce champ.",
     )
 
+    # Pendant « demandeur » des drapeaux charge_* ci-dessus (2026-10-20) :
+    # un GESTIONNAIRE/CONSULTANT ne peut créer des demandes d'attestation /
+    # de consultation que si le drapeau correspondant est coché (permet par
+    # ex. de répartir : un gestionnaire pour les attestations, un autre pour
+    # les consultations). Sans effet pour ADMIN (traiteur, jamais demandeur)
+    # et SUPERADMIN (toujours autorisé). Attribuable par tout ADMIN.
+    peut_demander_attestation = models.BooleanField(
+        default=False, verbose_name="Peut demander des attestations de travail",
+        help_text="Gestionnaire/Consultant : autorisé à créer des demandes d'attestation de travail.",
+    )
+    peut_demander_consultation = models.BooleanField(
+        default=False, verbose_name="Peut demander des consultations d'archives",
+        help_text="Gestionnaire/Consultant : autorisé à créer des demandes de consultation d'archives.",
+    )
+
     # Sécurité : blocage après N tentatives
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
@@ -242,6 +257,22 @@ class User(AbstractBaseUser, PermissionsMixin):
         seulement si charge_consultation est coché. Pendant côté traiteur de
         la création de demande, réservée à GESTIONNAIRE/CONSULTANT."""
         return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_consultation)
+
+    @property
+    def can_request_attestations(self):
+        """Peut créer une demande d'attestation : SUPERADMIN toujours,
+        GESTIONNAIRE/CONSULTANT seulement si peut_demander_attestation."""
+        return self.is_superadmin or (
+            self.role in (self.Role.GESTIONNAIRE, self.Role.CONSULTANT) and self.peut_demander_attestation
+        )
+
+    @property
+    def can_request_consultations(self):
+        """Peut créer une demande de consultation : SUPERADMIN toujours,
+        GESTIONNAIRE/CONSULTANT seulement si peut_demander_consultation."""
+        return self.is_superadmin or (
+            self.role in (self.Role.GESTIONNAIRE, self.Role.CONSULTANT) and self.peut_demander_consultation
+        )
 
     @property
     def can_manage_registres(self):

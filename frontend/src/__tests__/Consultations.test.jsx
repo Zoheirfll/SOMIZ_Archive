@@ -25,7 +25,7 @@ describe("Consultations", () => {
   beforeEach(() => jest.resetAllMocks());
 
   test("un GESTIONNAIRE voit ses demandes et le bouton Nouvelle demande", async () => {
-    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", id: "u1" } });
+    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true, id: "u1" } });
     api.get.mockResolvedValueOnce({ data: { results: [DEMANDE] } });
     render(<Consultations />);
     await waitFor(() => expect(screen.getByText("C-00001/26")).toBeInTheDocument());
@@ -64,7 +64,7 @@ describe("Consultations", () => {
   });
 
   test("un demandeur n'a ni cases à cocher ni actions groupées", async () => {
-    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", id: "u1" } });
+    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true, id: "u1" } });
     api.get.mockResolvedValue({ data: { results: [DEMANDE] } });
     render(<Consultations />);
     await screen.findByText("C-00001/26");
@@ -92,7 +92,7 @@ describe("Consultations", () => {
   });
 
   test("un demandeur ne voit pas l'onglet Statistiques", async () => {
-    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", id: "u1" } });
+    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true, id: "u1" } });
     api.get.mockResolvedValue({ data: { results: [] } });
     render(<Consultations />);
     await screen.findByText(/Aucune demande/);
@@ -100,7 +100,7 @@ describe("Consultations", () => {
   });
 
   test("affiche l'erreur serveur plutôt qu'une liste vide muette", async () => {
-    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", id: "u1" } });
+    useAuth.mockReturnValue({ user: { role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true, id: "u1" } });
     api.get.mockRejectedValueOnce({ response: { data: { detail: "Accès refusé." } } });
     render(<Consultations />);
     await waitFor(() => expect(screen.getByText("Accès refusé.")).toBeInTheDocument());

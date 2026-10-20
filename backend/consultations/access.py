@@ -30,6 +30,10 @@ def controler_acces(user, demande, fichier, now=None):
     if not user.can_manage_consultations:
         if demande.demandeur_id != user.id:
             raise Http404
+        # Droit de demander retiré (peut_demander_consultation décoché, rôle
+        # changé…) : effectif immédiatement, sans attendre l'échéance.
+        if not user.can_request_consultations:
+            raise PermissionDenied("Vous n'avez plus le droit de consulter ces archives.")
         if demande.statut == Statut.EN_COURS:
             raise PermissionDenied("Cette demande n'a pas encore été validée.")
         if demande.statut == Statut.REJETEE:

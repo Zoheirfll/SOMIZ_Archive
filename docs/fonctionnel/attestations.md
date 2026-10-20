@@ -230,3 +230,10 @@ du document signé. Spec complète :
   comptée même si le document n'est pas encore récupéré), visible
   ADMIN/SUPERADMIN, rechargé à chaque navigation (`Navbar.jsx`, effet
   dépendant de `location.pathname`).
+
+## Droit de demander (2026-10-20)
+
+Un GESTIONNAIRE/CONSULTANT ne crée et ne voit des demandes que si `User.peut_demander_attestation` est coché
+(attribuable par tout ADMIN, voir `securite.md` point 47). **Retirer le droit coupe aussi l'accès en lecture à ses
+demandes passées** (`CanAccessAttestations`) : une demande « Prête » n'est plus récupérable par ce demandeur tant que
+le droit n'est pas rendu. À vérifier avant de décocher.

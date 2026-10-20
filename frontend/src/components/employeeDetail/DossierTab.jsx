@@ -4,6 +4,7 @@ import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import SecureDocViewer from "../SecureDocViewer";
 import ScanImportModal from "../ScanImportModal";
+import { canRequestAttestations } from "../../config/accesSections";
 import {
   PaperclipIcon,
   FileTextIcon,
@@ -623,7 +624,7 @@ const DossierTab = ({
                   documents pour accéder à une action pourtant fréquente
                   (upload). Inchangé sur desktop, où la sidebar entière
                   reste visible. */}
-              {["SUPERADMIN", "GESTIONNAIRE"].includes(user?.role) && (
+              {canRequestAttestations(user) && (
                 <div
                   style={{
                     order: isMobile ? -3 : 999999,
@@ -1111,7 +1112,7 @@ const DossierTab = ({
                     </div>
                   ) : docUrl ? (
                     <SecureDocViewer
-                      key={selectedFile?.id}
+                      key={`${selectedFile?.id}|${docUrl}`}
                       url={docUrl}
                       mimeType={selectedFile?.mime_type}
                       fileName={selectedFile?.file_name}

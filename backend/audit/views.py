@@ -15,8 +15,14 @@ from openpyxl.styles import Font
 
 from accounts.permissions import IsAdmin
 from audit.models import AuditLog
-from audit.stats import build_stats_detail, _categorize_emp_log, _ACTIVITY_KEYS
+from audit.stats import build_stats_detail, _categorize_emp_log, _contrats_echeance, _ACTIVITY_KEYS
 from employees.models import Employee, EmployeeDocument
+
+# Encart « contrats arrivant à échéance » du tableau de bord : fenêtre alignée
+# sur la notification (notifier_echeances_contrat, 30 jours) et nombre de lignes
+# affichées (le reste se consulte dans /statistiques).
+ECHEANCE_DASHBOARD_JOURS = 30
+ECHEANCE_DASHBOARD_MAX_LIGNES = 5
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
@@ -153,20 +159,27 @@ class AdminStatsView(APIView):
 
     def get(self, request):
         from employees.models import TypeDocument
-        
+
         total_emp = Employee.objects.filter(statut='actif').count()
 
         # Complétude par type — dynamique depuis la BDD. Les catégories
         # (ex. "ETAT CIVIL") ne sont jamais uploadables directement — les
         # exclure évite une ligne "0/51 (0%)" trompeuse ; seuls les
         # sous-types réels (feuilles) comptent.
+        # Une seule requête agrégée pour tous les types (avant : une requête
+        # par type de document — N+1 qui grossissait avec le référentiel).
+        types_feuilles = list(
+            TypeDocument.objects.filter(is_active=True, sous_types__isnull=True)
+            .select_related('parent').order_by('ordre', 'nom')
+        )
+        employes_par_type = dict(
+            EmployeeDocument.objects.filter(is_active=True)
+            .values_list('type_doc_id')
+            .annotate(nb=Count('employee', distinct=True))
+        )
         completude = {}
-        for t in TypeDocument.objects.filter(
-            is_active=True, sous_types__isnull=True
-        ).select_related('parent').order_by('ordre', 'nom'):
-            nb = EmployeeDocument.objects.filter(
-                type_doc=t, is_active=True
-            ).values('employee').distinct().count()
+        for t in types_feuilles:
+            nb = employes_par_type.get(t.id, 0)
             completude[t.code] = {
                 'label': t.nom,
                 'parent_nom': t.parent.nom if t.parent_id else None,
@@ -175,17 +188,26 @@ class AdminStatsView(APIView):
                 'required': t.obligatoire,
             }
 
-        # Dossiers complets — employés qui ont tous les types obligatoires
-        types_obligatoires = TypeDocument.objects.filter(
-            obligatoire=True, is_active=True, sous_types__isnull=True
-        )
-        emp_complets = Employee.objects.filter(statut='actif')
-        for t in types_obligatoires:
-            emp_complets = emp_complets.filter(
-                documents__type_doc=t,
-                documents__is_active=True
-            )
-        nb_complets = emp_complets.distinct().count()
+        # Dossiers complets — employés qui ont tous les types obligatoires.
+        # Sans type obligatoire configuré, tout dossier est complet (même règle
+        # que Employee.dossier_complet et EmployeeListSerializer).
+        ids_obligatoires = [t.id for t in types_feuilles if t.obligatoire]
+        emp_actifs = Employee.objects.filter(statut='actif')
+        if ids_obligatoires:
+            nb_complets = emp_actifs.annotate(
+                nb_presents=Count(
+                    'documents__type_doc',
+                    filter=Q(documents__is_active=True, documents__type_doc__in=ids_obligatoires),
+                    distinct=True,
+                )
+            ).filter(nb_presents=len(ids_obligatoires)).count()
+        else:
+            nb_complets = total_emp
+
+        # Contrats arrivant à échéance (30 jours) — encart du tableau de bord.
+        # Liste plafonnée aux plus proches ; le total exact sert au lien
+        # « voir tout » vers /statistiques. Organisation-wide (vue ADMIN).
+        contrats_echeance = _contrats_echeance(ECHEANCE_DASHBOARD_JOURS)
 
         # Activité 7 jours
         from django.utils import timezone
@@ -202,6 +224,8 @@ class AdminStatsView(APIView):
             'completude_par_type': completude,
             'activite_7_jours': list(activite),
             'total_documents': EmployeeDocument.objects.filter(is_active=True).count(),
+            'contrats_echeance': contrats_echeance[:ECHEANCE_DASHBOARD_MAX_LIGNES],
+            'contrats_echeance_total': len(contrats_echeance),
         })
 
 

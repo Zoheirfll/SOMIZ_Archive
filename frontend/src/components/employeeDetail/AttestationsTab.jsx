@@ -5,6 +5,7 @@ import { useTheme } from "../../context/ThemeContext";
 import StatutBadge from "../attestations/StatutBadge";
 import { FileTextIcon } from "../icons";
 import { formatDateFR } from "../../utils/formatDate";
+import { canRequestAttestations, canSeeAttestations } from "../../config/accesSections";
 
 // Onglet "Attestations" de la fiche employé — historique des demandes
 // d'attestation de travail pour CET employé (GET /attestations/demandes/
@@ -16,8 +17,8 @@ const AttestationsTab = ({ activeTab, employee, user, navigate }) => {
   const theme = useTheme();
   const [demandes, setDemandes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const canSee = user?.can_manage_attestations || user?.role === "GESTIONNAIRE";
-  const canRequest = ["SUPERADMIN", "GESTIONNAIRE"].includes(user?.role);
+  const canSee = canSeeAttestations(user);
+  const canRequest = canRequestAttestations(user);
 
   useEffect(() => {
     if (activeTab !== "attestations" || !canSee) return;

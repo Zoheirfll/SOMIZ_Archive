@@ -2,7 +2,7 @@ import { getPageActions } from "../config/commandPaletteActions";
 
 describe("getPageActions", () => {
   test("un CONSULTANT ne voit ni les pages admin ni les actions réservées", () => {
-    const items = getPageActions({ role: "CONSULTANT" });
+    const items = getPageActions({ role: "CONSULTANT", can_request_consultations: true });
     const labels = items.map((i) => i.label);
     expect(labels).toContain("Employés");
     expect(labels).toContain("Organigramme");
@@ -21,11 +21,34 @@ describe("getPageActions", () => {
   });
 
   test("un GESTIONNAIRE voit \"Nouvelle demande d'attestation\", pas \"Nouvel employé\" ni les pages admin", () => {
-    const items = getPageActions({ role: "GESTIONNAIRE" });
+    const items = getPageActions({ role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true });
     const labels = items.map((i) => i.label);
     expect(labels).toContain("Nouvelle demande d'attestation");
     expect(labels).not.toContain("Nouvel employé");
     expect(labels).not.toContain("Utilisateurs");
+  });
+
+  test("les pages Demandes et Registres suivent les mêmes règles de visibilité que la navbar", () => {
+    const labels = (user) => getPageActions(user).map((i) => i.label);
+
+    expect(labels({ role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true })).toEqual(expect.arrayContaining([
+      "Demandes d'attestation", "Consultations d'archives", "Nouvelle demande de consultation",
+    ]));
+    // CONSULTANT : consultations seulement, pas d'attestations.
+    expect(labels({ role: "CONSULTANT", can_request_consultations: true })).toEqual(expect.arrayContaining([
+      "Consultations d'archives", "Nouvelle demande de consultation",
+    ]));
+    expect(labels({ role: "CONSULTANT", can_request_consultations: true })).not.toContain("Demandes d'attestation");
+    // ADMIN sans drapeau « chargé de… » : aucune de ces pages.
+    const adminSimple = labels({ role: "ADMIN" });
+    ["Demandes d'attestation", "Consultations d'archives", "Registres"].forEach((l) =>
+      expect(adminSimple).not.toContain(l));
+    // Drapeaux d'un ADMIN chargé.
+    expect(labels({ role: "ADMIN", can_manage_consultations: true })).toContain("Consultations d'archives");
+    expect(labels({ role: "ADMIN", can_manage_registres: true })).toContain("Registres");
+    expect(labels({ role: "SUPERADMIN" })).toContain("Registres");
+    // Un ADMIN ne crée pas de demande de consultation (réservée aux demandeurs).
+    expect(labels({ role: "ADMIN", can_manage_consultations: true })).not.toContain("Nouvelle demande de consultation");
   });
 
   test("chaque entrée a un id, un label et un chemin uniques", () => {

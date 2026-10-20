@@ -25,7 +25,8 @@ concernés (details['nb']), pas le nombre de lignes d'audit.
 from calendar import monthrange
 from datetime import timedelta
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
 from employees.models import Employee, Contrat, TypeDocument, EmployeeDocument
@@ -67,13 +68,12 @@ def _indicateurs(date_debut, date_fin):
         ).count()
 
     def dossiers_completes(debut, fin):
-        types_obligatoires = TypeDocument.objects.filter(
+        ids_obligatoires = list(TypeDocument.objects.filter(
             obligatoire=True, is_active=True, sous_types__isnull=True
-        )
-        qs = Employee.objects.filter(statut='actif', date_embauche__range=[debut, fin])
-        for t in types_obligatoires:
-            qs = qs.filter(documents__type_doc=t, documents__is_active=True)
-        return qs.distinct().count()
+        ).values_list('id', flat=True))
+        if not ids_obligatoires:
+            return Employee.objects.filter(statut='actif', date_embauche__range=[debut, fin]).count()
+        return _employes_complets(ids_obligatoires).filter(date_embauche__range=[debut, fin]).count()
 
     rec, rec_prec = recrutements(date_debut, date_fin), recrutements(date_debut_prec, date_fin_prec)
     arc, arc_prec = archivages(date_debut, date_fin), archivages(date_debut_prec, date_fin_prec)
@@ -133,6 +133,23 @@ def _years_between(start, end):
     return years
 
 
+def _employes_complets(types_ids):
+    """
+    Employés ACTIFS possédant tous les types obligatoires donnés (documents
+    actifs). Une seule annotation agrégée, utilisable comme sous-requête
+    (`id__in=_employes_complets(ids).values('id')`) — remplace les boucles
+    `for t in types: qs.filter(documents__type_doc=t, ...)` qui ajoutaient une
+    jointure sur `documents` par type. `types_ids` doit être non vide.
+    """
+    return Employee.objects.filter(statut='actif').annotate(
+        nb_obligatoires_presents=Count(
+            'documents__type_doc',
+            filter=Q(documents__is_active=True, documents__type_doc__in=types_ids),
+            distinct=True,
+        )
+    ).filter(nb_obligatoires_presents=len(types_ids))
+
+
 def _dossiers_completes_par_mois_completion(types_obligatoires):
     """
     Dossiers complétés groupés par le mois où ils sont RÉELLEMENT devenus
@@ -148,10 +165,7 @@ def _dossiers_completes_par_mois_completion(types_obligatoires):
         return {}
     types_ids = [t.id for t in types_obligatoires]
 
-    qs = Employee.objects.filter(statut='actif')
-    for t in types_obligatoires:
-        qs = qs.filter(documents__type_doc=t, documents__is_active=True)
-    complete_ids = list(qs.distinct().values_list('id', flat=True))
+    complete_ids = list(_employes_complets(types_ids).values_list('id', flat=True))
     if not complete_ids:
         return {}
 
@@ -181,23 +195,33 @@ def _evolution_mensuelle(date_debut, date_fin):
     ))
     par_mois_completion = _dossiers_completes_par_mois_completion(types_obligatoires)
 
-    result = []
-    for m in months:
-        last_day = monthrange(m.year, m.month)[1]
-        m_debut, m_fin = m, m.replace(day=last_day)
-        recrutements = Employee.objects.filter(date_embauche__range=[m_debut, m_fin]).count()
-        archivages = AuditLog.objects.filter(
+    # Deux requêtes agrégées pour toute la période (avant : 2 requêtes PAR mois,
+    # soit ~50 requêtes pour une période de 24 mois).
+    premier = months[0]
+    dernier = months[-1].replace(day=monthrange(months[-1].year, months[-1].month)[1])
+    recrutements_par_mois = {
+        r['m'].strftime('%Y-%m'): r['n']
+        for r in Employee.objects.filter(date_embauche__range=[premier, dernier])
+        .annotate(m=TruncMonth('date_embauche')).values('m').annotate(n=Count('id'))
+    }
+    archivages_par_mois = {
+        r['m'].strftime('%Y-%m'): r['n']
+        for r in AuditLog.objects.filter(
             action=AuditLog.Action.MODIFY_EMP,
-            timestamp__date__range=[m_debut, m_fin],
+            timestamp__date__range=[premier, dernier],
             details__transfer__statut__vers__in=STATUTS_ARCHIVE,
-        ).count()
-        result.append({
-            'mois': m.strftime('%Y-%m'),
-            'recrutements': recrutements,
-            'archivages': archivages,
-            'dossiers_completes': par_mois_completion.get(m.strftime('%Y-%m'), 0),
-        })
-    return result
+        ).annotate(m=TruncMonth('timestamp')).values('m').annotate(n=Count('id'))
+    }
+
+    return [
+        {
+            'mois': cle,
+            'recrutements': recrutements_par_mois.get(cle, 0),
+            'archivages': archivages_par_mois.get(cle, 0),
+            'dossiers_completes': par_mois_completion.get(cle, 0),
+        }
+        for cle in (m.strftime('%Y-%m') for m in months)
+    ]
 
 
 def _pyramide(qs, date_field, tranches):
@@ -234,6 +258,8 @@ def _contrats_echeance(jours=90):
             'id': str(c.id),
             'numero_contrat': c.numero_contrat,
             'employee_id': str(c.employee_id),
+            # Le front construit l'URL de la fiche avec le matricule (employeeSlug.js).
+            'employee_matricule': c.employee.matricule,
             'employee_nom': f'{c.employee.prenom} {c.employee.nom}',
             'date_fin': c.date_fin.isoformat(),
             'jours_restants': (c.date_fin - today).days,
@@ -250,14 +276,22 @@ def _completude_par(group_field, extra_values=()):
     groupes = base.values(f'{group_field}_id', f'{group_field}__nom', f'{group_field}__slug', *extra_values).annotate(
         total=Count('id', distinct=True)
     )
+    # Complets par groupe en UNE requête (avant : une requête + une jointure par
+    # type obligatoire, répétées pour chaque direction/département). Sans type
+    # obligatoire, tout dossier est complet.
+    if types_obligatoires:
+        sous_requete = _employes_complets([t.id for t in types_obligatoires]).values('id')
+        base_complets = base.filter(id__in=sous_requete)
+    else:
+        base_complets = base
+    complets_par_groupe = dict(
+        base_complets.values_list(f'{group_field}_id').annotate(n=Count('id', distinct=True))
+    )
     result = []
     for g in groupes:
         group_id = g[f'{group_field}_id']
         total = g['total']
-        complets_qs = Employee.objects.filter(statut='actif', **{group_field: group_id})
-        for t in types_obligatoires:
-            complets_qs = complets_qs.filter(documents__type_doc=t, documents__is_active=True)
-        complets = complets_qs.distinct().count()
+        complets = complets_par_groupe.get(group_id, 0)
         row = {
             'id': str(group_id),
             'slug': g[f'{group_field}__slug'],

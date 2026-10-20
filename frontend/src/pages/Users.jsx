@@ -41,9 +41,23 @@ const EyeIcon = ({ open }) => open ? (
   </svg>
 );
 
+// Rôles pour lesquels « peut demander… » a un sens (les ADMIN traitent, ne demandent pas).
+const isDemandeur = (role) => role === "GESTIONNAIRE" || role === "CONSULTANT";
+
 const Users = () => {
   usePageTitle("Utilisateurs");
   const theme = useTheme();
+  const flagButtonStyle = (on) => ({
+    background: on ? theme.primaryBg : theme.bg,
+    border: `1px solid ${on ? theme.primaryBorder : theme.border}`,
+    color: on ? theme.primary : theme.textSecondary,
+    borderRadius: 8,
+    padding: "5px 12px",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  });
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -61,6 +75,8 @@ const Users = () => {
     charge_attestation: false,
     charge_consultation: false,
     charge_registre: false,
+    peut_demander_attestation: false,
+    peut_demander_consultation: false,
     password: "",
     password2: "",
   });
@@ -163,6 +179,8 @@ const Users = () => {
         charge_attestation: form.role === "ADMIN" ? !!form.charge_attestation : false,
         charge_consultation: form.role === "ADMIN" ? !!form.charge_consultation : false,
         charge_registre: form.role === "ADMIN" ? !!form.charge_registre : false,
+        peut_demander_attestation: isDemandeur(form.role) ? !!form.peut_demander_attestation : false,
+        peut_demander_consultation: isDemandeur(form.role) ? !!form.peut_demander_consultation : false,
         password: form.password,
       });
       const hasScope =
@@ -187,7 +205,7 @@ const Users = () => {
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
-      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, charge_registre: false, password: "", password2: "" });
+      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, charge_registre: false, peut_demander_attestation: false, peut_demander_consultation: false, password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
@@ -224,6 +242,17 @@ const Users = () => {
       fetchUsers(true);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Droit de faire des demandes (GESTIONNAIRE/CONSULTANT) — attribuable par tout ADMIN.
+  const togglePeutDemander = async (targetUser, champ) => {
+    try {
+      await api.patch(`/admin-users/${targetUser.id}/`, { [champ]: !targetUser[champ] });
+      fetchUsers(true);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: "error", text: "Impossible de modifier ce droit. Réessayez." });
     }
   };
 
@@ -426,6 +455,32 @@ const Users = () => {
                       placeholder="Ex. Secrétaire, Superviseur..."
                       className="input-focus" style={inputStyle}
                     />
+                  </div>
+                )}
+
+                {isDemandeur(form.role) && (
+                  <div>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        name="peut_demander_attestation"
+                        checked={!!form.peut_demander_attestation}
+                        onChange={handleChange}
+                      />
+                      Peut demander des attestations de travail
+                    </label>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 8 }}>
+                      <input
+                        type="checkbox"
+                        name="peut_demander_consultation"
+                        checked={!!form.peut_demander_consultation}
+                        onChange={handleChange}
+                      />
+                      Peut demander des consultations d'archives
+                    </label>
+                    <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
+                      Sans ces droits, le compte ne voit ni ne crée de demandes correspondantes. Modifiable à tout moment depuis la liste.
+                    </div>
                   </div>
                 )}
 
@@ -857,6 +912,24 @@ const Users = () => {
                               }}
                             >
                               {u.charge_registre ? "Registres ✓" : "Registres ✗"}
+                            </button>
+                          )}
+                          {isDemandeur(u.role) && (
+                            <button
+                              onClick={() => togglePeutDemander(u, "peut_demander_attestation")}
+                              title="Autorise ce compte à créer des demandes d'attestation de travail"
+                              style={flagButtonStyle(u.peut_demander_attestation)}
+                            >
+                              {u.peut_demander_attestation ? "Attestations ✓" : "Attestations ✗"}
+                            </button>
+                          )}
+                          {isDemandeur(u.role) && (
+                            <button
+                              onClick={() => togglePeutDemander(u, "peut_demander_consultation")}
+                              title="Autorise ce compte à créer des demandes de consultation d'archives"
+                              style={flagButtonStyle(u.peut_demander_consultation)}
+                            >
+                              {u.peut_demander_consultation ? "Consultations ✓" : "Consultations ✗"}
                             </button>
                           )}
                           {["CONSULTANT", "GESTIONNAIRE"].includes(u.role) && (

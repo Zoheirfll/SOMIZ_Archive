@@ -8,6 +8,8 @@ import useIsMobile from "../hooks/useIsMobile";
 import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import { KeyboardIcon, SunIcon, MoonIcon, SearchIcon } from "./icons";
 import NotificationBell from "./NotificationBell";
+import NavDropdown from "./NavDropdown";
+import { canSeeAttestations, canSeeConsultations, canSeeRegistres } from "../config/accesSections";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -38,7 +40,6 @@ const Navbar = () => {
   const isNarrow = useIsMobile(1300);
   const ROLE_SHORT = { SUPERADMIN: "SUPER", ADMIN: "ADMIN", CONSULTANT: "CONSULT.", GESTIONNAIRE: "GEST." };
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const { openHelp, openPalette } = useKeyboardShortcutsHelp();
   const theme = useTheme();
   const { mode, toggleMode } = useThemeMode();
@@ -88,13 +89,12 @@ const Navbar = () => {
   // SUPERADMIN toujours, ADMIN seulement si chargé des attestations (voir
   // User.can_manage_attestations côté backend) — un ADMIN non chargé n'a
   // plus aucun accès à /attestations, ni lien navbar ni badge.
-  const canSeeAttestations = user?.role === "GESTIONNAIRE" || !!user?.can_manage_attestations;
+  const seesAttestations = canSeeAttestations(user);
 
   const [pendingConsultations, setPendingConsultations] = useState(0);
   // Demandeurs (GESTIONNAIRE/CONSULTANT) et traiteurs uniquement — un ADMIN
   // non chargé des consultations n'a ni lien ni badge.
-  const canSeeConsultations =
-    ["GESTIONNAIRE", "CONSULTANT"].includes(user?.role) || !!user?.can_manage_consultations;
+  const seesConsultations = canSeeConsultations(user);
 
   useEffect(() => {
     // Badge « N à traiter » : traiteurs uniquement (pour un demandeur, le
@@ -118,7 +118,7 @@ const Navbar = () => {
     // (`pending=1`), la branche demandeur/traiteur du backend
     // (`get_queryset`) choisit le bon filtre. Voir
     // DemandeAttestationListCreateView.get_queryset.
-    if (!canSeeAttestations) return;
+    if (!seesAttestations) return;
     let cancelled = false;
     api.get("/attestations/demandes/", { params: { pending: 1 } })
       .then((res) => {
@@ -136,25 +136,27 @@ const Navbar = () => {
     // sinon puisque Navbar ne se démonte pas entre deux pages de l'app.
   }, [user?.role, location.pathname]);
 
-  // Entrée unique « Demandes » : regroupe les attestations de travail et les
-  // consultations d'archives (sélecteur d'onglets en haut de chaque liste,
-  // voir DemandesTabs). Mène à la première section accessible ; le badge
-  // additionne les deux compteurs « à traiter ».
-  const demandesPath = canSeeAttestations ? "/attestations" : "/consultations";
+  // Entrée « Demandes » : menu déroulant Attestations / Consultations, chaque
+  // section avec son propre badge « à traiter ». Si le compte n'a accès qu'à
+  // une seule section, un déroulant à un seul choix n'a pas de sens : l'entrée
+  // mène directement à cette section.
+  const demandesSections = [
+    { path: "/attestations", label: "Attestations de travail", visible: seesAttestations, badge: pendingAttestations },
+    { path: "/consultations", label: "Consultations d'archives", visible: seesConsultations, badge: pendingConsultations },
+  ].filter((s) => s.visible);
   const navLinks = [
     { path: "/employees", label: "Personnel" },
     { path: "/organigramme", label: "Organigramme" },
     {
-      path: demandesPath, label: "Demandes",
-      show: canSeeAttestations || canSeeConsultations,
+      path: demandesSections[0]?.path, label: "Demandes",
+      show: demandesSections.length > 0,
+      children: demandesSections.length > 1 ? demandesSections : undefined,
       match: (p) => p.startsWith("/attestations") || p.startsWith("/consultations"),
-      badge: pendingAttestations + pendingConsultations,
+      badge: demandesSections.reduce((total, s) => total + s.badge, 0),
     },
     {
       path: "/registres", label: "Registres",
-      // Le SUPERADMIN a toujours accès (testé sur le rôle, pas seulement sur le
-      // drapeau : robuste à une session ouverte avant l'ajout du champ).
-      show: user?.role === "SUPERADMIN" || !!user?.can_manage_registres,
+      show: canSeeRegistres(user),
     },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
@@ -170,7 +172,6 @@ const Navbar = () => {
     { path: "/audit", label: "Journal" },
   ];
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
-  const isAdminMenuActive = adminMenuLinks.some((item) => location.pathname === item.path);
 
   const goTo = (path) => {
     setDrawerOpen(false);
@@ -207,7 +208,9 @@ const Navbar = () => {
             flexShrink: 0,
           }}
         />
-        {!isMobile && (
+        {/* Masqué en desktop étroit : le logo suffit à identifier l'application et
+            la barre (8 entrées + 5 icônes + Déconnexion) ne tient pas en 1366 px. */}
+        {!isMobile && !isCompact && (
           <div>
             <div style={{ color: theme.text, fontWeight: 800, fontSize: 15, lineHeight: 1, letterSpacing: "-0.02em" }}>
               SOMIZ
@@ -223,6 +226,17 @@ const Navbar = () => {
       {!isMobile && (
         <div style={{ display: "flex", gap: 2 }}>
           {navLinks.map((item) => {
+            if (item.children) {
+              return (
+                <NavDropdown
+                  key={item.label}
+                  label={item.label}
+                  items={item.children}
+                  badge={item.badge}
+                  padding={isCompact ? "7px 10px" : "7px 14px"}
+                />
+              );
+            }
             const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
             return (
               <button
@@ -243,7 +257,7 @@ const Navbar = () => {
                 }}
                 onMouseEnter={(e) => {
                   if (!isActive) {
-                    e.currentTarget.style.background = theme.bg;
+                    e.currentTarget.style.background = theme.navHover;
                     e.currentTarget.style.color = theme.text;
                   }
                 }}
@@ -269,100 +283,12 @@ const Navbar = () => {
           })}
 
           {isAdmin && (
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => setAdminMenuOpen((v) => !v)}
-                style={{
-                  background: isAdminMenuActive || adminMenuOpen ? theme.primaryBg : "transparent",
-                  border: "none",
-                  borderRadius: 8,
-                  color: theme.text,
-                  padding: "7px 14px",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  fontFamily: theme.fontFamily,
-                  whiteSpace: "nowrap",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  transition: "background 0.15s, color 0.15s",
-                }}
-                onMouseEnter={(e) => {
-                  if (!isAdminMenuActive && !adminMenuOpen) {
-                    e.currentTarget.style.background = theme.bg;
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isAdminMenuActive && !adminMenuOpen) {
-                    e.currentTarget.style.background = "transparent";
-                  }
-                }}
-              >
-                Administration
-                <span style={{ fontSize: 10, transform: adminMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
-              </button>
-
-              {adminMenuOpen && (
-                <>
-                  <div
-                    onClick={() => setAdminMenuOpen(false)}
-                    style={{ position: "fixed", inset: 0, zIndex: 199 }}
-                  />
-                  <div
-                    className="anim-slide-down"
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 6px)",
-                      right: 0,
-                      background: theme.surface,
-                      border: `1px solid ${theme.border}`,
-                      borderRadius: 10,
-                      boxShadow: theme.shadowMd,
-                      padding: 6,
-                      minWidth: 170,
-                      zIndex: 200,
-                    }}
-                  >
-                    {adminMenuLinks.map((item) => {
-                      const isActive = location.pathname === item.path;
-                      return (
-                        <button
-                          key={item.path}
-                          onClick={() => {
-                            setAdminMenuOpen(false);
-                            navigate(item.path);
-                          }}
-                          style={{
-                            display: "block",
-                            width: "100%",
-                            textAlign: "left",
-                            background: isActive ? theme.primaryBg : "transparent",
-                            border: "none",
-                            borderRadius: 8,
-                            color: theme.text,
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                            fontSize: 13,
-                            fontWeight: 600,
-                            fontFamily: theme.fontFamily,
-                            whiteSpace: "nowrap",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isActive) e.currentTarget.style.background = theme.bg;
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isActive) e.currentTarget.style.background = "transparent";
-                          }}
-                        >
-                          {item.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
+            <NavDropdown
+              label="Administration"
+              items={adminMenuLinks}
+              align="right"
+              padding={isCompact ? "7px 10px" : "7px 14px"}
+            />
           )}
         </div>
       )}
@@ -671,7 +597,15 @@ const Navbar = () => {
               </div>
             </div>
 
-            {[...navLinks, ...(isAdmin ? adminMenuLinks : [])].map((item) => {
+            {[...navLinks, ...(isAdmin ? adminMenuLinks : [])]
+              .flatMap((item) => (item.children
+                ? item.children.map((c) => ({
+                    ...c,
+                    label: `${item.label} · ${c.label}`,
+                    match: (p) => p.startsWith(c.path),
+                  }))
+                : [item]))
+              .map((item) => {
               const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
               return (
                 <button

@@ -66,6 +66,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation',
             'charge_consultation', 'charge_registre',
+            'peut_demander_attestation', 'peut_demander_consultation',
             'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
             'scope_poles', 'scope_poles_nom',
@@ -126,6 +127,11 @@ class UserSerializer(serializers.ModelSerializer):
             attrs['charge_attestation'] = False
             attrs['charge_consultation'] = False
             attrs['charge_registre'] = False
+        # peut_demander_* : pendant demandeur, pour GESTIONNAIRE/CONSULTANT
+        # uniquement (même logique de remise à zéro en cas de changement de rôle).
+        if role not in ('GESTIONNAIRE', 'CONSULTANT'):
+            attrs['peut_demander_attestation'] = False
+            attrs['peut_demander_consultation'] = False
         return attrs
 
     def validate_charge_consultation(self, value):
@@ -164,7 +170,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role',
-            'charge_attestation', 'charge_consultation', 'charge_registre', 'password',
+            'charge_attestation', 'charge_consultation', 'charge_registre',
+            'peut_demander_attestation', 'peut_demander_consultation', 'password',
         ]
         read_only_fields = ['id']
 
@@ -213,6 +220,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
             attrs['charge_attestation'] = False
             attrs['charge_consultation'] = False
             attrs['charge_registre'] = False
+        if attrs.get('role') not in ('GESTIONNAIRE', 'CONSULTANT'):
+            attrs['peut_demander_attestation'] = False
+            attrs['peut_demander_consultation'] = False
         return attrs
 
     def validate_password(self, value):
@@ -262,6 +272,8 @@ class UserListCreateView(generics.ListCreateAPIView):
                 'charge_attestation': user.charge_attestation,
                 'charge_consultation': user.charge_consultation,
                 'charge_registre': user.charge_registre,
+                'peut_demander_attestation': user.peut_demander_attestation,
+                'peut_demander_consultation': user.peut_demander_consultation,
             },
         )
 
@@ -297,6 +309,8 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
                 'charge_attestation': u.charge_attestation,
                 'charge_consultation': u.charge_consultation,
                 'charge_registre': u.charge_registre,
+                'peut_demander_attestation': u.peut_demander_attestation,
+                'peut_demander_consultation': u.peut_demander_consultation,
                 'scope_directions': sorted(str(i) for i in u.scope_directions.values_list('id', flat=True)),
                 'scope_poles': sorted(str(i) for i in u.scope_poles.values_list('id', flat=True)),
                 'scope_departements': sorted(str(i) for i in u.scope_departements.values_list('id', flat=True)),

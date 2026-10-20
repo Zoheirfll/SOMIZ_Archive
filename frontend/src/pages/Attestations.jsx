@@ -10,10 +10,10 @@ import StatutBadge from "../components/attestations/StatutBadge";
 import ImportanceBadge from "../components/attestations/ImportanceBadge";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
-import DemandesTabs from "../components/DemandesTabs";
 import { ClipboardIcon, FileTextIcon } from "../components/icons";
 import StatDonutChart from "../components/charts/StatDonutChart";
 import StatAreaChart from "../components/charts/StatAreaChart";
+import { canRequestAttestations } from "../config/accesSections";
 
 // Mêmes préréglages de période que /statistiques, pour une expérience
 // cohérente entre les deux pages de reporting de l'application.
@@ -185,7 +185,7 @@ export default function Attestations() {
               {isAdmin ? "Suivi et traitement des demandes de tous les gestionnaires" : "Vos demandes en cours et leur avancement"}
             </p>
           </div>
-          {["GESTIONNAIRE", "SUPERADMIN"].includes(user?.role) && (
+          {canRequestAttestations(user) && (
             <Link to="/attestations/nouvelle" className="btn-lift" style={{
               display: "flex", alignItems: "center", gap: 8, background: "#fff", color: theme.primary,
               borderRadius: 10, padding: "11px 20px", fontWeight: 700, fontSize: 13, textDecoration: "none",
@@ -198,7 +198,6 @@ export default function Attestations() {
       </div>
 
       <div style={{ padding: contentPadding(isMobile), maxWidth: 1200, margin: "0 auto" }}>
-        <DemandesTabs />
         {isAdmin && (
           <div style={{ display: "flex", gap: 4, marginBottom: 20, background: theme.bg, borderRadius: 10, padding: 4, width: "fit-content" }}>
             {[{ key: "liste", label: "Liste" }, { key: "stats", label: "Statistiques" }].map((t) => (

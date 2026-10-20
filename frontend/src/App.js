@@ -4,6 +4,10 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { KeyboardShortcutsProvider } from "./context/KeyboardShortcutsContext";
 import GlobalShortcuts from "./components/GlobalShortcuts";
 import ProtectedRoute from "./components/ProtectedRoute";
+import {
+  canRequestAttestations, canRequestConsultations,
+  canSeeAttestations, canSeeConsultations,
+} from "./config/accesSections";
 import RouteFallback from "./components/RouteFallback";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -122,8 +126,8 @@ function App() {
             path="/attestations"
             element={
               <ProtectedRoute
-                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}
-                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_attestations}
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canSeeAttestations}
               >
                 <Attestations />
               </ProtectedRoute>
@@ -132,7 +136,10 @@ function App() {
           <Route
             path="/attestations/nouvelle"
             element={
-              <ProtectedRoute allowedRoles={["SUPERADMIN", "GESTIONNAIRE"]}>
+              <ProtectedRoute
+                allowedRoles={["SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canRequestAttestations}
+              >
                 <AttestationNouvelle />
               </ProtectedRoute>
             }
@@ -141,8 +148,8 @@ function App() {
             path="/attestations/:ref"
             element={
               <ProtectedRoute
-                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE"]}
-                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_attestations}
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canSeeAttestations}
               >
                 <AttestationDetail />
               </ProtectedRoute>
@@ -153,7 +160,7 @@ function App() {
             element={
               <ProtectedRoute
                 allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
-                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_consultations}
+                requireFn={canSeeConsultations}
               >
                 <Consultations />
               </ProtectedRoute>
@@ -162,7 +169,10 @@ function App() {
           <Route
             path="/consultations/nouvelle"
             element={
-              <ProtectedRoute allowedRoles={["GESTIONNAIRE", "CONSULTANT", "SUPERADMIN"]}>
+              <ProtectedRoute
+                allowedRoles={["GESTIONNAIRE", "CONSULTANT", "SUPERADMIN"]}
+                requireFn={canRequestConsultations}
+              >
                 <ConsultationNouvelle />
               </ProtectedRoute>
             }
@@ -172,7 +182,7 @@ function App() {
             element={
               <ProtectedRoute
                 allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
-                requireFn={(u) => u?.role !== "ADMIN" || u?.can_manage_consultations}
+                requireFn={canSeeConsultations}
               >
                 <ConsultationDetail />
               </ProtectedRoute>

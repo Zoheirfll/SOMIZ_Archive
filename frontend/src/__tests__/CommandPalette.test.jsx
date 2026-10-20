@@ -73,8 +73,34 @@ describe("CommandPalette", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/employees/MAT-001");
   });
 
+  test("cherche aussi les consultations d'archives pour un compte qui y a accès, et navigue par la référence", async () => {
+    const { slugDepuisReference } = require("../utils/consultations");
+    const consultation = { id: "con-1", reference: "00007/26", employee_nom: "Martin Luc", statut: "en_cours" };
+    useAuth.mockReturnValue({ user: { role: "CONSULTANT", can_request_consultations: true } });
+    api.get.mockImplementation((url) => {
+      if (url === "/consultations/demandes/") return Promise.resolve({ data: { results: [consultation] } });
+      return Promise.resolve({ data: [] });
+    });
+    render(<CommandPalette isOpen={true} onClose={jest.fn()} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      "/consultations/demandes/", { params: { q: "ma" } }
+    ));
+    fireEvent.click(await screen.findByText(/Martin Luc · 00007\/26/));
+    expect(mockNavigate).toHaveBeenCalledWith(`/consultations/${slugDepuisReference("00007/26")}`);
+  });
+
+  test("ne cherche pas les consultations pour un ADMIN non chargé des consultations", async () => {
+    useAuth.mockReturnValue({ user: { role: "ADMIN" } });
+    render(<CommandPalette isOpen={true} onClose={jest.fn()} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "ma" } });
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/employees/search/", { params: { q: "ma" } }));
+    expect(api.get).not.toHaveBeenCalledWith("/consultations/demandes/", expect.anything());
+  });
+
   test("ne cherche pas les attestations si l'utilisateur n'y a pas accès", async () => {
-    useAuth.mockReturnValue({ user: { role: "CONSULTANT" } });
+    useAuth.mockReturnValue({ user: { role: "CONSULTANT", can_request_consultations: true } });
     render(<CommandPalette isOpen={true} onClose={jest.fn()} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "du" } });
 

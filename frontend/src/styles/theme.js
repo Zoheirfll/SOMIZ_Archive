@@ -12,6 +12,7 @@ export const lightTheme = {
   bg: "#F1F5F9",               // slate-100 — fond général
   surface: "#FFFFFF",
   surfaceHover: "#F8FAFC",
+  navHover: "#D5E4DA",         // survol navbar/menus — vert-gris nettement plus foncé que bg, texte AAA
   surfaceElevated: "#FFFFFF",
 
   // ─── Textes ───────────────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ export const darkTheme = {
   surface: "#242526",          // niveau 1 — cartes, tables
   surfaceElevated: "#2A2B2D",
   surfaceHover: "#3A3B3C",
+  navHover: "#46594C",         // survol navbar/menus — vert-charbon plus clair que surface (sombre : « plus marqué » = plus clair)
 
   // ─── Textes ───────────────────────────────────────────────────────────────
   text: "#E4E6EB",             // ~14:1 sur bg (AAA) — blanc cassé, pas blanc pur (moins agressif)

@@ -1476,3 +1476,49 @@ registre 02 (documents reçus, puis classés). Détail : `docs/fonctionnel/regis
   peut pas réclamer tout le registre d'un coup en dehors de l'export (lui-même réservé, tracé et limité à 10/min).
 - **Piège technique** : le paramètre d'export s'appelle `fmt`, pas `format` — DRF réserve `?format=` à la négociation de
   contenu (`URL_FORMAT_OVERRIDE`) et répond 404 avant d'atteindre la vue pour tout format sans moteur de rendu.
+
+## 47. Droit de faire des demandes — drapeaux `peut_demander_*` (2026-10-20) — ✅ Implémenté
+
+**Contexte** : jusqu'ici, tout GESTIONNAIRE pouvait créer des demandes d'attestation et de consultation, tout
+CONSULTANT des demandes de consultation, sans moyen de le restreindre. Besoin : répartir (un gestionnaire pour les
+attestations, un autre pour les consultations) ou retirer le droit à un compte.
+
+- **Deux champs distincts** `User.peut_demander_attestation` / `peut_demander_consultation` (migration
+  `accounts/0019`), volontairement **séparés** de `charge_*` : `charge_*` signifie « traite » (ADMIN), ces champs
+  signifient « demande » (GESTIONNAIRE/CONSULTANT). Réutiliser `charge_*` aurait donné deux sens au même champ, et un
+  ADMIN rétrogradé en GESTIONNAIRE aurait gardé un droit sans le savoir.
+- **Pas de régression** : la migration initialise les champs à `True` pour les comptes existants qui pouvaient déjà
+  demander (GESTIONNAIRE : les deux ; CONSULTANT : consultations). Un compte créé ensuite démarre à `False`.
+- **Permissions** (`User.can_request_attestations` / `can_request_consultations`) : SUPERADMIN toujours ; GESTIONNAIRE/
+  CONSULTANT seulement si le drapeau est coché ; **jamais un ADMIN ordinaire** (séparation demandeur/traiteur
+  conservée, même avec le drapeau en base — testé). Appliquées par `CanRequest*` et `CanAccess*`, donc la liste et le
+  détail sont aussi refusés (403) sans le drapeau. Vérifié par des tests d'intégration sur les vraies routes
+  (`tests/test_peut_demander_flags.py`).
+- **Attribution** : tout ADMIN peut les attribuer (décision du 2026-10-20), contrairement à `charge_*` réservés au
+  SUPERADMIN. Raison : le drapeau n'ouvre aucun accès de traitement ni de périmètre supplémentaire ; le périmètre
+  organisationnel du compte continue de limiter les employés concernés. Les champs sont remis à `False` pour tout
+  autre rôle (`validate()`), et l'attribution est tracée dans `MODIFY_USER` / `CREATE_USER` (avant/après).
+- **Frontend** : `/users` affiche « Attestations ✓/✗ » et « Consultations ✓/✗ » pour GESTIONNAIRE et CONSULTANT ;
+  routes, navbar, palette de commandes et boutons « Nouvelle demande » suivent `can_request_*` (`/auth/me`, login).
+  Masquer un lien n'est qu'un confort, l'API reste le garde-fou.
+
+### Risque accepté — attribution par tout ADMIN (décision du 2026-10-20)
+
+La revue sécurité a relevé qu'un ADMIN chargé des attestations/consultations peut créer un compte CONSULTANT ou
+GESTIONNAIRE, lui cocher `peut_demander_*`, déposer une demande depuis ce compte puis la valider lui-même (l'audit
+montre alors deux comptes distincts). **Risque accepté** : les ADMIN ont la charge des comptes CONSULTANT/GESTIONNAIRE,
+le SUPERADMIN gère les ADMIN et voit tout l'audit, et chaque attribution est tracée (`CREATE_USER`/`MODIFY_USER`,
+valeurs avant/après). Ce chemin existait déjà avant les drapeaux (tout gestionnaire/consultant pouvait demander).
+**Mitigation** : le SUPERADMIN contrôle `/audit` (créations de comptes, attributions de droits, validations).
+
+### Correctif lié — révocation immédiate sur les fichiers livrés
+
+`consultations/access.py::controler_acces` vérifie `can_request_consultations` à chaque lecture : décocher le droit
+coupe aussi voir/imprimer/télécharger sur les consultations déjà validées (testé).
+
+### Note — migration 0019
+
+Elle initialise les drapeaux à `True` pour les GESTIONNAIRE/CONSULTANT **actifs** existants (préserve leurs droits
+d'avant). Les comptes **inactifs** sont exclus : un droit n'est pas attribué en masse à un compte désactivé, un ADMIN le
+coche à la réactivation. Cette initialisation n'est pas tracée dans l'audit : ne pas la lire comme une attribution
+individuelle.

@@ -18,7 +18,7 @@ class CanAccessConsultations(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return _compte_valide(user) and (
-            user.can_manage_consultations or user.role in ('GESTIONNAIRE', 'CONSULTANT')
+            user.can_manage_consultations or user.can_request_consultations
         )
 
 
@@ -33,12 +33,13 @@ class IsConsultationManager(BasePermission):
 
 
 class CanRequestConsultation(BasePermission):
-    """Création/annulation : GESTIONNAIRE, CONSULTANT et SUPERADMIN (comme
-    pour les attestations, voir CanRequestAttestation). Un ADMIN ordinaire,
+    """Création/annulation : SUPERADMIN, ou GESTIONNAIRE/CONSULTANT dont
+    `peut_demander_consultation` est coché (User.can_request_consultations,
+    comme pour les attestations, voir CanRequestAttestation). Un ADMIN ordinaire,
     même chargé des consultations, reste uniquement traiteur : séparation
     demandeur/validateur."""
-    message = "Seuls les comptes Gestionnaire, Consultant et Super-administrateur peuvent demander une consultation."
+    message = "Vous n'avez pas le droit de demander une consultation d'archives."
 
     def has_permission(self, request, view):
         user = request.user
-        return _compte_valide(user) and user.role in ('GESTIONNAIRE', 'CONSULTANT', 'SUPERADMIN')
+        return _compte_valide(user) and user.can_request_consultations

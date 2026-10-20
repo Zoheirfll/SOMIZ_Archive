@@ -7,7 +7,6 @@ import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
-import DemandesTabs from "../components/DemandesTabs";
 import ImportanceBadge from "../components/attestations/ImportanceBadge";
 import StatutConsultationBadge from "../components/consultations/StatutConsultationBadge";
 import { ClipboardIcon, FileTextIcon } from "../components/icons";
@@ -15,6 +14,7 @@ import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import StatDonutChart from "../components/charts/StatDonutChart";
 import StatAreaChart from "../components/charts/StatAreaChart";
 import { slugDepuisReference, tempsRestant } from "../utils/consultations";
+import { canRequestConsultations } from "../config/accesSections";
 
 // Mêmes préréglages de période que /attestations et /statistiques.
 const presetToRange = (preset) => {
@@ -63,7 +63,7 @@ export default function Consultations() {
   // SUPERADMIN toujours, ADMIN seulement si chargé des consultations.
   const isAdmin = !!user?.can_manage_consultations;
   // Le SUPERADMIN peut aussi demander (comme pour les attestations).
-  const peutDemander = ["GESTIONNAIRE", "CONSULTANT", "SUPERADMIN"].includes(user?.role);
+  const peutDemander = canRequestConsultations(user);
   const [demandes, setDemandes] = useState([]);
   const [statutFiltre, setStatutFiltre] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -205,7 +205,6 @@ export default function Consultations() {
       </div>
 
       <div style={{ padding: contentPadding(isMobile), maxWidth: 1200, margin: "0 auto" }}>
-        <DemandesTabs />
         {isAdmin && (
           <div style={{ display: "flex", gap: 4, marginBottom: 20, background: theme.bg, borderRadius: 10, padding: 4, width: "fit-content" }}>
             {[{ key: "liste", label: "Liste" }, { key: "stats", label: "Statistiques" }].map((t) => (

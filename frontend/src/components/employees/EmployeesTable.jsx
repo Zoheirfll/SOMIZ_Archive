@@ -881,6 +881,11 @@ const EmployeesTable = ({
                           whiteSpace: "nowrap",
                           cursor: h.key ? "pointer" : "default",
                           userSelect: "none",
+                          ...(h.id === "actions" && {
+                            position: "sticky",
+                            right: 0,
+                            background: theme.bg,
+                          }),
                         }}
                       >
                         {h.label}
@@ -1232,7 +1237,13 @@ const EmployeesTable = ({
                       </td>
                     )}
                     <td
-                      style={{ padding: "13px 16px" }}
+                      style={{
+                        padding: "13px 16px",
+                        position: "sticky",
+                        right: 0,
+                        background: "inherit",
+                        boxShadow: `-6px 0 8px -6px ${theme.border}`,
+                      }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button

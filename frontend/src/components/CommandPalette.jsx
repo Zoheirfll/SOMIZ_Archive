@@ -8,12 +8,12 @@ import { useShortcut } from "../hooks/useKeyboardShortcuts";
 import { getPageActions } from "../config/commandPaletteActions";
 import { SearchIcon, XIcon } from "./icons";
 import StatutBadge from "./attestations/StatutBadge";
+import StatutConsultationBadge from "./consultations/StatutConsultationBadge";
+import { canSeeAttestations, canSeeConsultations } from "../config/accesSections";
+import { slugDepuisReference } from "../utils/consultations";
 
 const normalize = (s) =>
   (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-
-const canSeeAttestations = (user) =>
-  user?.role === "GESTIONNAIRE" || !!user?.can_manage_attestations;
 
 export default function CommandPalette({ isOpen, onClose }) {
   const theme = useTheme();
@@ -25,9 +25,11 @@ export default function CommandPalette({ isOpen, onClose }) {
   const [query, setQuery] = useState("");
   const [employeeResults, setEmployeeResults] = useState([]);
   const [attestationResults, setAttestationResults] = useState([]);
+  const [consultationResults, setConsultationResults] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const showAttestations = canSeeAttestations(user);
+  const showConsultations = canSeeConsultations(user);
 
   // Réinitialise la recherche à chaque ouverture/fermeture — pas de
   // persistance de la dernière recherche entre deux ouvertures.
@@ -36,6 +38,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     setQuery("");
     setEmployeeResults([]);
     setAttestationResults([]);
+    setConsultationResults([]);
     setSelectedIndex(0);
     const t = setTimeout(() => inputRef.current?.focus(), 0);
     return () => clearTimeout(t);
@@ -49,6 +52,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     if (q.length < 2) {
       setEmployeeResults([]);
       setAttestationResults([]);
+      setConsultationResults([]);
       return undefined;
     }
     let cancelled = false;
@@ -65,9 +69,20 @@ export default function CommandPalette({ isOpen, onClose }) {
           })
           .catch(() => { if (!cancelled) setAttestationResults([]); });
       }
+
+      // Le serveur applique le périmètre : un demandeur ne reçoit que ses
+      // propres demandes, un traiteur toutes (voir consultations/views.py).
+      if (showConsultations) {
+        api.get("/consultations/demandes/", { params: { q } })
+          .then((res) => {
+            if (cancelled) return;
+            setConsultationResults(res.data?.results || res.data || []);
+          })
+          .catch(() => { if (!cancelled) setConsultationResults([]); });
+      }
     }, 300);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [query, isOpen, showAttestations]);
+  }, [query, isOpen, showAttestations, showConsultations]);
 
   const pageActions = useMemo(() => getPageActions(user), [user]);
   const filteredPageActions = useMemo(() => {
@@ -88,11 +103,16 @@ export default function CommandPalette({ isOpen, onClose }) {
         items.push({ kind: "attestation", key: `att-${d.id}`, data: d })
       );
     }
+    if (showConsultations) {
+      consultationResults.forEach((d) =>
+        items.push({ kind: "consultation", key: `con-${d.id}`, data: d })
+      );
+    }
     filteredPageActions.forEach((a) =>
       items.push({ kind: "page", key: `page-${a.id}`, data: a })
     );
     return items;
-  }, [employeeResults, attestationResults, filteredPageActions, showAttestations]);
+  }, [employeeResults, attestationResults, consultationResults, filteredPageActions, showAttestations, showConsultations]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -102,6 +122,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     if (!item) return;
     if (item.kind === "employee") navigate(`/employees/${item.data.matricule}`);
     else if (item.kind === "attestation") navigate(`/attestations/${item.data.reference.replace("/", "-")}`);
+    else if (item.kind === "consultation") navigate(`/consultations/${slugDepuisReference(item.data.reference)}`);
     else navigate(item.data.path);
     onClose();
   };
@@ -125,6 +146,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     trimmedQuery.length >= 2 &&
     employeeResults.length === 0 &&
     attestationResults.length === 0 &&
+    consultationResults.length === 0 &&
     filteredPageActions.length === 0;
 
   const rowStyle = (isSelected) => ({
@@ -143,6 +165,7 @@ export default function CommandPalette({ isOpen, onClose }) {
   return (
     <div
       role="dialog"
+      aria-modal="true"
       aria-label="Recherche rapide"
       style={{
         position: "fixed",
@@ -182,7 +205,7 @@ export default function CommandPalette({ isOpen, onClose }) {
             role="textbox"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher un employé, une attestation, une page…"
+            placeholder="Rechercher un employé, une demande, une page…"
             style={{
               flex: 1,
               border: "none",
@@ -258,6 +281,31 @@ export default function CommandPalette({ isOpen, onClose }) {
                       {`${d.employee_nom} · ${d.reference}`}
                     </span>
                     <StatutBadge statut={d.statut} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {showConsultations && consultationResults.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ padding: "6px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: theme.textMuted }}>
+                Consultations d'archives
+              </div>
+              {consultationResults.map((d) => {
+                cursor += 1;
+                const idx = cursor;
+                return (
+                  <div
+                    key={d.id}
+                    style={rowStyle(idx === selectedIndex)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    onClick={() => activate({ kind: "consultation", data: d })}
+                  >
+                    <span style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>
+                      {`${d.employee_nom} · ${d.reference}`}
+                    </span>
+                    <StatutConsultationBadge statut={d.statut_effectif || d.statut} />
                   </div>
                 );
               })}

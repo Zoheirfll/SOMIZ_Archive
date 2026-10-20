@@ -309,8 +309,13 @@ const SecureDocViewer = ({
               file={url}
               onLoadSuccess={({ numPages }) => {
                 setNumPages(numPages);
-                const target = initialPage && initialPage >= 1 && initialPage <= numPages ? initialPage : 1;
-                setPageNumber(target);
+                // Un rechargement du Document (ex. après enregistrement d'une
+                // rotation) ne doit pas ramener à la page 1 : on garde la page
+                // courante tant qu'elle existe encore.
+                setPageNumber((current) => {
+                  if (current >= 1 && current <= numPages) return current;
+                  return initialPage && initialPage >= 1 && initialPage <= numPages ? initialPage : 1;
+                });
               }}
               onLoadError={(err) => console.error("PDF load error:", err)}
               loading={<div style={{ color: "#fff", padding: 40 }}>Chargement du PDF...</div>}

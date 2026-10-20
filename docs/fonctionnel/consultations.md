@@ -147,9 +147,14 @@ d'archivé est une **vraie copie** : l'original n'est jamais exposé.
 
 Même disposition que `/attestations`, pour que les deux types de demande se lisent pareil :
 
-- **Navbar** : une seule entrée **« Demandes »** (active sur `/attestations*` et `/consultations*`, badge =
-  somme des deux compteurs « à traiter »). Un sélecteur d'onglets **Attestations de travail | Consultations
-  d'archives** (`DemandesTabs`) en haut de chaque liste, masqué si le compte n'a accès qu'à une section.
+- **Navbar** (modifié le 2026-10-19) : l'entrée **« Demandes »** est un **menu déroulant** (`NavDropdown.jsx`)
+  listant **Attestations de travail** et **Consultations d'archives**, chacune avec son propre badge « à traiter » ;
+  le bouton « Demandes » porte la somme des deux badges tant que le menu est fermé. Si le compte n'a accès qu'à une
+  seule section, l'entrée reste un lien direct (un déroulant à un seul choix n'apporte rien). Dans le tiroir mobile,
+  les deux sections sont dépliées (« Demandes · Attestations de travail »…). Le menu « Administration » utilise le
+  même composant. **Approche abandonnée** : l'ancien sélecteur d'onglets `DemandesTabs` en haut de chaque liste
+  (supprimé) — il mélangeait deux workflows distincts sous une même entrée de menu et obligeait à un clic
+  supplémentaire pour changer de section.
 - **Liste** (`Consultations.jsx`) : bandeau « Dossier RH », sous-onglets **Liste / Statistiques** (traiteur),
   recherche (référence, employé, matricule, demandeur), filtres de statut à pastilles, cartes avec importance et
   statut, **sélection groupée** (« Tout sélectionner », **Rejeter** et **Révoquer** — activés seulement si tous
@@ -204,3 +209,9 @@ pas dans `backend/media/`.
   garde-fou (`securite.md` point 44). Contrôler en base qu'aucun ADMIN ne l'a obtenu abusivement.
 - Après un `git pull` de cette branche, lancer `python manage.py migrate` (nouvelle colonne
   `auth_users.charge_consultation` et tables `consultation_*`) : sans cela, **la connexion renvoie une 500**.
+
+## Droit de demander (2026-10-20)
+
+Un GESTIONNAIRE/CONSULTANT ne crée et ne voit des demandes que si `User.peut_demander_consultation` est coché
+(attribuable par tout ADMIN, voir `securite.md` point 47). **Retirer le droit coupe aussi l'accès en lecture à ses
+demandes passées**, y compris un fichier livré encore valide. À vérifier avant de décocher.

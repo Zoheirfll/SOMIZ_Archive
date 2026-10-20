@@ -66,30 +66,47 @@ def test_generate_reference_format_is_5digits_slash_2digit_year():
 
 from unittest.mock import MagicMock
 
+from django.contrib.auth import get_user_model
+from django.utils import timezone
 
-def _fake_request(role, consented=True, active=True):
+User = get_user_model()
+
+
+def _fake_request(role, consented=True, active=True, peut_demander=True):
     request = MagicMock()
-    request.user = MagicMock()
-    request.user.is_authenticated = True
-    request.user.is_active = active
-    request.user.role = role
-    request.user.consent_loi1807_accepted_at = 'x' if consented else None
+    request.user = User(
+        username='fake', role=role, is_active=active,
+        peut_demander_attestation=peut_demander,
+        consent_loi1807_accepted_at=timezone.now() if consented else None,
+    )
     return request
 
 
-@pytest.mark.parametrize('role', ['GESTIONNAIRE', 'SUPERADMIN'])
-def test_can_request_attestation_allows_gestionnaire_and_superadmin(role):
+@pytest.mark.parametrize('role', ['GESTIONNAIRE', 'CONSULTANT', 'SUPERADMIN'])
+def test_can_request_attestation_allows_flagged_roles_and_superadmin(role):
     perm = CanRequestAttestation()
     assert perm.has_permission(_fake_request(role), None) is True
 
 
-@pytest.mark.parametrize('role', ['CONSULTANT', 'ADMIN'])
-def test_can_request_attestation_blocks_consultant_and_plain_admin(role):
+@pytest.mark.parametrize('role', ['GESTIONNAIRE', 'CONSULTANT'])
+def test_can_request_attestation_blocks_unflagged_gestionnaire_and_consultant(role):
+    """Sans le drapeau peut_demander_attestation, ni un gestionnaire ni un
+    consultant ne peuvent demander (ex. : un seul gestionnaire dédié)."""
+    perm = CanRequestAttestation()
+    assert perm.has_permission(_fake_request(role, peut_demander=False), None) is False
+
+
+def test_can_request_attestation_superadmin_ignores_flag():
+    perm = CanRequestAttestation()
+    assert perm.has_permission(_fake_request('SUPERADMIN', peut_demander=False), None) is True
+
+
+def test_can_request_attestation_blocks_plain_admin_even_if_flagged():
     """Un ADMIN ordinaire reste uniquement traiteur — le laisser créer ses
     propres demandes casserait la séparation demandeur/traiteur (voir
     attestations/permissions.py)."""
     perm = CanRequestAttestation()
-    assert perm.has_permission(_fake_request(role), None) is False
+    assert perm.has_permission(_fake_request('ADMIN', peut_demander=True), None) is False
 
 
 def test_can_request_attestation_blocks_unconsented_user():

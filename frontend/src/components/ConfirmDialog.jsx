@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { useTheme } from "../context/ThemeContext";
+import useModalA11y from "../hooks/useModalA11y";
 
 /**
  * Remplace window.prompt() par une modale stylée avec un champ texte,
@@ -30,6 +31,9 @@ export function usePrompt() {
     setState(null);
   };
 
+  const titleId = useId();
+  const dialogRef = useModalA11y({ isOpen: !!state, onEscape: () => settle(null), initialFocus: "input" });
+
   const PromptDialog = state ? (
     <div
       style={{
@@ -45,6 +49,10 @@ export function usePrompt() {
       onClick={() => settle(null)}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         style={{
           background: theme.surface,
           borderRadius: 16,
@@ -58,6 +66,7 @@ export function usePrompt() {
         onClick={(e) => e.stopPropagation()}
       >
         <div
+          id={titleId}
           style={{
             color: theme.text,
             fontSize: 14,
@@ -68,12 +77,11 @@ export function usePrompt() {
           {state.message}
         </div>
         <input
-          autoFocus
+          aria-labelledby={titleId}
           value={state.value}
           onChange={(e) => setState({ ...state, value: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === "Enter") settle(state.value.trim());
-            if (e.key === "Escape") settle(null);
           }}
           style={{
             width: "100%",
@@ -153,6 +161,15 @@ export function useConfirm() {
     setState(null);
   };
 
+  const titleId = useId();
+  // Action destructive : le focus démarre sur « Annuler » (un Entrée réflexe ne
+  // doit jamais détruire une donnée) ; sinon sur « Confirmer ».
+  const dialogRef = useModalA11y({
+    isOpen: !!state,
+    onEscape: () => settle(false),
+    initialFocus: "[data-modal-initial]",
+  });
+
   const ConfirmDialog = state ? (
     <div
       style={{
@@ -168,6 +185,10 @@ export function useConfirm() {
       onClick={() => settle(false)}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         style={{
           background: theme.surface,
           borderRadius: 16,
@@ -181,6 +202,7 @@ export function useConfirm() {
         onClick={(e) => e.stopPropagation()}
       >
         <div
+          id={titleId}
           style={{
             color: theme.text,
             fontSize: 14,
@@ -194,6 +216,7 @@ export function useConfirm() {
         </div>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button
+            data-modal-initial={state.danger ? "" : undefined}
             onClick={() => settle(false)}
             style={{
               background: theme.surface,
@@ -210,6 +233,7 @@ export function useConfirm() {
             Annuler
           </button>
           <button
+            data-modal-initial={state.danger ? undefined : ""}
             onClick={() => settle(true)}
             style={{
               background: state.danger ? theme.danger : theme.primary,

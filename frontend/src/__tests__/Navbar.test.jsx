@@ -65,6 +65,51 @@ describe("Navbar (desktop) — entrée « Registres »", () => {
   });
 });
 
+describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
+  const avecUtilisateur = (user) => {
+    useIsMobile.mockReturnValue(false);
+    useAuth.mockReturnValue({ user: { prenom: "A", nom: "B", ...user }, logoutSuccess: jest.fn() });
+    renderNavbar();
+  };
+
+  test("un GESTIONNAIRE voit Attestations et Consultations dans le déroulant", () => {
+    avecUtilisateur({ role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true });
+    // Fermé : aucune des deux sections n'est affichée.
+    expect(screen.queryByRole("menuitem", { name: /Attestations/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Demandes/ }));
+    expect(screen.getByRole("menuitem", { name: /Attestations de travail/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Consultations d'archives/ })).toBeInTheDocument();
+  });
+
+  test("un CONSULTANT n'a qu'une section : lien direct, pas de déroulant", () => {
+    avecUtilisateur({ role: "CONSULTANT", can_request_consultations: true });
+    const bouton = screen.getByRole("button", { name: /Demandes/ });
+    expect(bouton).not.toHaveAttribute("aria-haspopup");
+    fireEvent.click(bouton);
+    expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
+  });
+
+  test("Échap referme le déroulant", () => {
+    avecUtilisateur({ role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true });
+    fireEvent.click(screen.getByRole("button", { name: /Demandes/ }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+});
+
+describe("Navbar (desktop) — menu « Administration »", () => {
+  test("un ADMIN ouvre le déroulant et voit ses quatre entrées", () => {
+    useIsMobile.mockReturnValue(false);
+    useAuth.mockReturnValue({ user: { role: "ADMIN", prenom: "A", nom: "B" }, logoutSuccess: jest.fn() });
+    renderNavbar();
+    fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
+    ["Import", "Utilisateurs", "Configuration", "Journal"].forEach((nom) =>
+      expect(screen.getByRole("menuitem", { name: nom })).toBeInTheDocument()
+    );
+  });
+});
+
 describe("Navbar (desktop) — icône de recherche", () => {
   test("ouvre la palette de commandes au clic", () => {
     useIsMobile.mockReturnValue(false);
