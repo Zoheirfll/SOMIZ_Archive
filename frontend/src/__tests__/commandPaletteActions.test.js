@@ -51,6 +51,18 @@ describe("getPageActions", () => {
     expect(labels({ role: "ADMIN", can_manage_consultations: true })).not.toContain("Nouvelle demande de consultation");
   });
 
+  test("les congés suivent les mêmes règles : demandeur autorisé ou traiteur", () => {
+    const labels = (user) => getPageActions(user).map((i) => i.label);
+    expect(labels({ role: "GESTIONNAIRE", can_request_conges: true })).toEqual(expect.arrayContaining([
+      "Demandes de congé", "Nouvelle demande de congé",
+    ]));
+    // Un traiteur voit la page mais ne crée pas de demande.
+    expect(labels({ role: "ADMIN", can_manage_conges: true })).toContain("Demandes de congé");
+    expect(labels({ role: "ADMIN", can_manage_conges: true })).not.toContain("Nouvelle demande de congé");
+    // ADMIN non chargé : rien.
+    expect(labels({ role: "ADMIN" })).not.toContain("Demandes de congé");
+  });
+
   test("chaque entrée a un id, un label et un chemin uniques", () => {
     const items = getPageActions({ role: "SUPERADMIN" });
     const ids = items.map((i) => i.id);

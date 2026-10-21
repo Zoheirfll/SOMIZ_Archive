@@ -73,6 +73,8 @@ utiliser la fixture `django_capture_on_commit_callbacks(execute=True)` (voir
 | Consultations | Nouvelle demande | Traiteurs (SUPERADMIN + ADMIN `charge_consultation`), hors auteur | `consultations/notifications.py`, appelé par `DemandeConsultationListCreateView.perform_create` |
 | Consultations | Validée / Rejetée / Révoquée / Prolongée | Le demandeur (pas l'auteur du changement) | vues de traitement de `consultations/views.py` |
 | Consultations | Échéance dans moins de 24 h / 1 h | Demandeur + traiteur de la demande. Idempotent (drapeaux `rappel_24h_envoye` / `rappel_1h_envoye`, réinitialisés par une prolongation) | `manage.py notifier_echeances_consultation` |
+| Congés | Nouvelle demande | Traiteurs (SUPERADMIN + ADMIN `charge_conge`), hors auteur. Type `CONGE_NOUVELLE`, lien `/conges/<ref>` | `conges/notifications.py`, appelé par `DemandeCongeListCreateView.perform_create` |
+| Congés | Titre prêt / rejeté / annulé / interrompu | Le demandeur (pas l'auteur du changement). Types `CONGE_PRETE`, `CONGE_REJETEE`, `CONGE_ANNULEE`, `CONGE_INTERROMPUE`. Récupéré : aucune notification | vues d'action de `conges/views.py` (`ValiderView`, `RejeterView`, `AnnulerView`, `InterrompreView`) |
 
 **Tâches planifiées à créer en production** (rien ne les lance automatiquement) :
 `notifier_echeances_contrat` (quotidienne), `purge_notifications` (quotidienne ou hebdomadaire) et

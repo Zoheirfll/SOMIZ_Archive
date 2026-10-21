@@ -1,7 +1,7 @@
 import { DEFAULT_SHORTCUTS } from "./keyboardShortcuts";
 import {
-  canRequestAttestations, canRequestConsultations,
-  canSeeAttestations, canSeeConsultations, canSeeRegistres,
+  canRequestAttestations, canRequestConges, canRequestConsultations,
+  canSeeAttestations, canSeeConges, canSeeConsultations, canSeeRegistres,
 } from "./accesSections";
 
 const isAdmin = (role) => ["ADMIN", "SUPERADMIN"].includes(role);
@@ -11,6 +11,7 @@ const isAdmin = (role) => ["ADMIN", "SUPERADMIN"].includes(role);
 const SECTION_PAGES = [
   { id: "page-attestations", label: "Demandes d'attestation", path: "/attestations", isVisible: canSeeAttestations },
   { id: "page-consultations", label: "Consultations d'archives", path: "/consultations", isVisible: canSeeConsultations },
+  { id: "page-conges", label: "Demandes de congé", path: "/conges", isVisible: canSeeConges },
   { id: "page-registres", label: "Registres", path: "/registres", isVisible: canSeeRegistres },
 ];
 
@@ -47,6 +48,13 @@ const QUICK_ACTIONS = [
     path: "/consultations/nouvelle",
     // Même règle que la route /consultations/nouvelle (App.js).
     isVisible: canRequestConsultations,
+  },
+  {
+    id: "action-new-conge",
+    label: "Nouvelle demande de congé",
+    path: "/conges/nouvelle",
+    // Même règle que la route /conges/nouvelle (App.js).
+    isVisible: canRequestConges,
   },
 ];
 

@@ -293,3 +293,63 @@ def registre_admin(db):
         nom="Registre", prenom="Admin", role="ADMIN", charge_registre=True,
         consent_loi1807_accepted_at=timezone.now(),
     )
+
+
+# ─── Congés ────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def traiteur_conge(db):
+    """ADMIN chargé des demandes de congé."""
+    return User.objects.create_user(
+        username="traiteur_conge", password="TraitPass123!", nom="Traiteur", prenom="Conge",
+        role="ADMIN", charge_conge=True, consent_loi1807_accepted_at=timezone.now(),
+    )
+
+
+@pytest.fixture
+def demandeur_conge(db):
+    return User.objects.create_user(
+        username="demandeur_conge", password="DemPass123!", nom="Demandeur", prenom="Conge",
+        role="GESTIONNAIRE", peut_demander_conge=True, consent_loi1807_accepted_at=timezone.now(),
+    )
+
+
+@pytest.fixture
+def solde_employe(db, employee, traiteur_conge):
+    """Fabrique : initialise le solde de `employee` via le service (donc avec ses
+    mouvements INITIAL). Raccourcis en jours RESTANTS : `reliquat` → exercice
+    précédent, `annuel` → exercice en cours, `anticipe` → exercice suivant ;
+    `exercices` ajoute des exercices explicites ({"2023/2024": 5})."""
+    def _fabrique(reliquat=0, annuel=30, anticipe=30, exercices=None, droit_initial=0, cp_consomme=0,
+                  retrait_cs=0):
+        from conges.services import exercice_courant, exercice_precedent, exercice_suivant, initialiser_solde
+        courant = exercice_courant()
+        saisie = {courant: annuel, exercice_suivant(courant): anticipe}
+        if reliquat:
+            saisie[exercice_precedent(courant)] = reliquat
+        saisie.update(exercices or {})
+        return initialiser_solde(
+            employee, exercices=saisie,
+            compteurs={'droit_initial': droit_initial, 'cp_consomme': cp_consomme, 'retrait_cs': retrait_cs},
+            auteur=traiteur_conge, motif="Reprise de l'existant",
+        )
+    return _fabrique
+
+
+@pytest.fixture
+def demande_recue(db, employee, demandeur_conge):
+    """Fabrique : une demande `Reçue` du 01/11 au 11/11/2026 (10 jours)."""
+    compteur = {'n': 0}
+
+    def _fabrique(**champs):
+        import datetime
+        from conges.models import DemandeConge
+        compteur['n'] += 1
+        base = dict(
+            reference=f"{compteur['n']:05d}/26", employee=employee, demandeur=demandeur_conge,
+            date_depart=datetime.date(2026, 11, 1), date_retour=datetime.date(2026, 11, 11),
+            nb_jours=10, adresse_conge="12 rue des Oliviers, Oran",
+        )
+        base.update(champs)
+        return DemandeConge.objects.create(**base)
+    return _fabrique

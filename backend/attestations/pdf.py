@@ -138,7 +138,7 @@ def _draw_header(c, config):
     c.drawCentredString(centre, _y(30.5), config.holding or '')
 
 
-def _draw_title(c, mention=''):
+def _draw_title(c, mention='', titre="ATTESTATION DE TRAVAIL"):
     """Titre encadré, centré — seul élément du corps réellement en gras.
 
     Légèrement chassé (`setCharSpace`) comme sur le papier, où le titre est
@@ -148,8 +148,10 @@ def _draw_title(c, mention=''):
     utilisé uniquement par l'aperçu de configuration (données fictives, PDF
     jamais destiné à être imprimé/signé), pour qu'on ne confonde jamais ce
     PDF d'aperçu avec une vraie attestation. Absent (chaîne vide) sur toute
-    attestation réelle (AttestationApercuView)."""
-    titre = "ATTESTATION DE TRAVAIL"
+    attestation réelle (AttestationApercuView).
+
+    `titre` : texte du cadre — « ATTESTATION DE TRAVAIL » par défaut ; l'app
+    conges le réutilise avec « TITRE DE CONGE »."""
     taille, chasse = 17, 0
     largeur_texte = c.stringWidth(titre, POLICE_GRAS, taille) + chasse * len(titre)
     pad_x, pad_y = 6 * mm, 3 * mm

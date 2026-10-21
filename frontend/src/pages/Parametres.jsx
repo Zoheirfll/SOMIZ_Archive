@@ -23,6 +23,7 @@ import RefTable from "../components/parametres/RefTable";
 import { getRefColumns } from "../components/parametres/refColumns";
 import RefForm from "../components/parametres/RefForm";
 import ImportRefModal from "../components/parametres/ImportRefModal";
+import CongeParametresPanel from "../components/parametres/CongeParametresPanel";
 import { getInputStyle } from "../components/parametres/formStyles";
 import "../styles/animations.css";
 
@@ -32,7 +33,7 @@ const PAGE_SIZE = 25;
 // Singleton — pas de RefTable/RefForm générique ici (une seule ligne, jamais
 // de liste), un formulaire dédié qui charge/enregistre directement
 // /attestations/config/.
-const AttestationConfigPanel = ({ theme }) => {
+const DocumentConfigPanel = ({ theme, basePath, documentLabel, modeTestLabel }) => {
   const [config, setConfig] = useState(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -42,10 +43,10 @@ const AttestationConfigPanel = ({ theme }) => {
 
   useEffect(() => {
     api
-      .get("/attestations/config/")
+      .get(`${basePath}/config/`)
       .then((res) => setConfig(res.data))
       .catch(() => setMessage("Impossible de charger la configuration."));
-  }, []);
+  }, [basePath]);
 
   // Aperçu PDF live : régénéré à chaque frappe (debounce 500ms), sur des
   // données d'employé fictives — pour voir tout de suite l'effet d'un
@@ -57,7 +58,7 @@ const AttestationConfigPanel = ({ theme }) => {
     const { logo, id, ...champsTexte } = config;
     const timer = setTimeout(() => {
       api
-        .post("/attestations/config/apercu/", champsTexte, { responseType: "blob" })
+        .post(`${basePath}/config/apercu/`, champsTexte, { responseType: "blob" })
         .then((res) => {
           const url = URL.createObjectURL(res.data);
           setPreviewUrl((old) => {
@@ -69,7 +70,7 @@ const AttestationConfigPanel = ({ theme }) => {
         .catch(() => setPreviewError("Impossible de générer l'aperçu."));
     }, 500);
     return () => clearTimeout(timer);
-  }, [config]);
+  }, [config, basePath]);
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
@@ -81,7 +82,7 @@ const AttestationConfigPanel = ({ theme }) => {
       // texte, sinon son URL de lecture serait renvoyée comme valeur et
       // rejetée par le serializer ImageField.
       const { logo, ...champsTexte } = config;
-      const res = await api.put("/attestations/config/", champsTexte);
+      const res = await api.put(`${basePath}/config/`, champsTexte);
       setConfig(res.data);
       setMessage("Configuration enregistrée.");
     } catch {
@@ -98,7 +99,7 @@ const AttestationConfigPanel = ({ theme }) => {
     form.append("logo", file);
     setSaving(true);
     try {
-      const res = await api.patch("/attestations/config/", form, {
+      const res = await api.patch(`${basePath}/config/`, form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setConfig(res.data);
@@ -138,13 +139,13 @@ const AttestationConfigPanel = ({ theme }) => {
         </label>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <img
-            src={config.logo || "/api/attestations/config/logo-defaut/"}
-            alt="Logo de l'attestation"
+            src={config.logo || `/api${basePath}/config/logo-defaut/`}
+            alt={`Logo — ${documentLabel}`}
             style={{ height: 46, maxWidth: 120, objectFit: "contain", background: "#fff", borderRadius: 6, padding: 4 }}
           />
           {!config.logo && (
             <span style={{ fontSize: 12, color: theme.textMuted }}>
-              Logo par défaut (aucun logo téléversé) — c'est celui-ci qui apparaît sur les attestations générées.
+              {`Logo par défaut (aucun logo téléversé) — c'est celui-ci qui apparaît sur le document généré (${documentLabel}).`}
             </span>
           )}
           <label className="btn-lift" style={{
@@ -178,7 +179,7 @@ const AttestationConfigPanel = ({ theme }) => {
             checked={!!config.mode_test}
             onChange={(e) => setConfig({ ...config, mode_test: e.target.checked })}
           />
-          Mode test — imprime "(mode test)" sur toutes les attestations générées
+          {modeTestLabel}
         </label>
         <div style={{ fontSize: 11, color: theme.textMuted, marginTop: 4 }}>
           À décocher une fois les tests terminés, pour repasser en documents officiels sans mention.
@@ -219,7 +220,7 @@ const AttestationConfigPanel = ({ theme }) => {
       {previewUrl && (
         <iframe
           src={previewUrl}
-          title="Aperçu de l'attestation"
+          title={`Aperçu — ${documentLabel}`}
           style={{ width: "100%", height: 640, border: "none", borderRadius: 6, background: "#fff" }}
         />
       )}
@@ -246,17 +247,21 @@ const Parametres = () => {
   // — voir attestations/permissions.py) — les masquer plutôt que de laisser
   // l'utilisateur atterrir sur une page qui échoue.
   const canManageAttestations = !!user?.can_manage_attestations;
+  // Même principe pour l'onglet « Titre de congé » (User.can_manage_conges,
+  // IsCongeManager côté backend) : masqué pour un ADMIN non chargé des congés.
+  const canManageConges = !!user?.can_manage_conges;
   const visibleTabGroups = useMemo(
-    () =>
-      canManageAttestations
-        ? TAB_GROUPS
-        : TAB_GROUPS.map((group) => ({
-            ...group,
-            keys: group.keys.filter(
-              (key) => key !== "motifs-attestation" && key !== "attestation-config",
-            ),
-          })).filter((group) => group.keys.length > 0),
-    [canManageAttestations],
+    () => {
+      const masquees = new Set();
+      if (!canManageAttestations) { masquees.add("motifs-attestation"); masquees.add("attestation-config"); }
+      if (!canManageConges) masquees.add("conge-config");
+      if (masquees.size === 0) return TAB_GROUPS;
+      return TAB_GROUPS.map((group) => ({
+        ...group,
+        keys: group.keys.filter((key) => !masquees.has(key)),
+      })).filter((group) => group.keys.length > 0);
+    },
+    [canManageAttestations, canManageConges],
   );
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -358,6 +363,11 @@ const Parametres = () => {
       (activeTab === "motifs-attestation" || activeTab === "attestation-config")
     ) {
       setActiveTab("directions");
+      return;
+    }
+    if (activeTab === "conge-config") {
+      // Panneaux dédiés (paramètres, motifs, modèle du titre) : rien à charger via /ref/.
+      if (!canManageConges) setActiveTab("directions");
       return;
     }
     fetchTab(activeTab, page, search);
@@ -476,21 +486,21 @@ const Parametres = () => {
 
   const fetchDirections = async () => {
     try {
-      const r = await api.get("/ref/directions/");
+      const r = await api.get("/ref/directions/", { params: { _: Date.now() } });
       setDirections(r.data.results || r.data);
     } catch {}
   };
 
   const fetchPoles = async () => {
     try {
-      const r = await api.get("/ref/poles/");
+      const r = await api.get("/ref/poles/", { params: { _: Date.now() } });
       setPoles(r.data.results || r.data);
     } catch {}
   };
 
   const fetchDepartements = async () => {
     try {
-      const r = await api.get("/ref/departements/");
+      const r = await api.get("/ref/departements/", { params: { _: Date.now() } });
       setDepartements(r.data.results || r.data);
     } catch {}
   };
@@ -1016,7 +1026,22 @@ const Parametres = () => {
           {/* Contenu onglet */}
           <div style={{ padding: 24, flex: 1, minWidth: 0 }}>
           {activeTab === "attestation-config" ? (
-            <AttestationConfigPanel theme={theme} />
+            <DocumentConfigPanel
+              theme={theme}
+              basePath="/attestations"
+              documentLabel="attestation de travail"
+              modeTestLabel='Mode test — imprime "(mode test)" sur toutes les attestations générées'
+            />
+          ) : activeTab === "conge-config" ? (
+            <>
+              <CongeParametresPanel theme={theme} />
+              <DocumentConfigPanel
+                theme={theme}
+                basePath="/conges"
+                documentLabel="titre de congé"
+                modeTestLabel='Mode test — imprime "(mode test)" sur tous les titres de congé générés'
+              />
+            </>
           ) : (
           <>
             <div

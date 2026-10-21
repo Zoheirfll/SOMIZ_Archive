@@ -89,6 +89,23 @@ describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
   });
 
+  test("un gestionnaire autorisé aux congés voit « Congés » dans le déroulant", () => {
+    avecUtilisateur({ role: "GESTIONNAIRE", can_request_attestations: true, can_request_conges: true });
+    fireEvent.click(screen.getByRole("button", { name: /Demandes/ }));
+    expect(screen.getByRole("menuitem", { name: /Congés/ })).toBeInTheDocument();
+  });
+
+  test("un compte qui n'a que les congés : lien direct vers /conges, pas de déroulant", () => {
+    avecUtilisateur({ role: "GESTIONNAIRE", can_request_conges: true });
+    const bouton = screen.getByRole("button", { name: /Demandes/ });
+    expect(bouton).not.toHaveAttribute("aria-haspopup");
+  });
+
+  test("un ADMIN non chargé des congés ne voit pas la section", () => {
+    avecUtilisateur({ role: "ADMIN" });
+    expect(screen.queryByRole("button", { name: /Demandes/ })).not.toBeInTheDocument();
+  });
+
   test("Échap referme le déroulant", () => {
     avecUtilisateur({ role: "GESTIONNAIRE", can_request_attestations: true, can_request_consultations: true });
     fireEvent.click(screen.getByRole("button", { name: /Demandes/ }));

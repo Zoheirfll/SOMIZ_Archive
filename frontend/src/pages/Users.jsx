@@ -75,8 +75,10 @@ const Users = () => {
     charge_attestation: false,
     charge_consultation: false,
     charge_registre: false,
+    charge_conge: false,
     peut_demander_attestation: false,
     peut_demander_consultation: false,
+    peut_demander_conge: false,
     password: "",
     password2: "",
   });
@@ -181,6 +183,8 @@ const Users = () => {
         charge_registre: form.role === "ADMIN" ? !!form.charge_registre : false,
         peut_demander_attestation: isDemandeur(form.role) ? !!form.peut_demander_attestation : false,
         peut_demander_consultation: isDemandeur(form.role) ? !!form.peut_demander_consultation : false,
+        charge_conge: form.role === "ADMIN" ? !!form.charge_conge : false,
+        peut_demander_conge: isDemandeur(form.role) ? !!form.peut_demander_conge : false,
         password: form.password,
       });
       const hasScope =
@@ -205,7 +209,7 @@ const Users = () => {
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
-      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, charge_registre: false, peut_demander_attestation: false, peut_demander_consultation: false, password: "", password2: "" });
+      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, charge_registre: false, charge_conge: false, peut_demander_attestation: false, peut_demander_consultation: false, peut_demander_conge: false, password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
@@ -262,6 +266,18 @@ const Users = () => {
       fetchUsers(true);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Traiteur des demandes de congé — attribuable par un SUPERADMIN uniquement
+  // (le backend refuse sinon : voir _reserve_au_superadmin).
+  const toggleChargeConge = async (targetUser) => {
+    try {
+      await api.patch(`/admin-users/${targetUser.id}/`, { charge_conge: !targetUser.charge_conge });
+      fetchUsers(true);
+    } catch (err) {
+      console.error(err);
+      setMessage({ type: "error", text: "Impossible de modifier ce droit. Réessayez." });
     }
   };
 
@@ -478,6 +494,15 @@ const Users = () => {
                       />
                       Peut demander des consultations d'archives
                     </label>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 8 }}>
+                      <input
+                        type="checkbox"
+                        name="peut_demander_conge"
+                        checked={!!form.peut_demander_conge}
+                        onChange={handleChange}
+                      />
+                      Peut demander des congés
+                    </label>
                     <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
                       Sans ces droits, le compte ne voit ni ne crée de demandes correspondantes. Modifiable à tout moment depuis la liste.
                     </div>
@@ -531,6 +556,23 @@ const Users = () => {
                     </label>
                     <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
                       Tient les registres de mouvement et de réception des archives (/registres), partagés entre tous les comptes chargés. Un Super-administrateur y a toujours accès, quel que soit ce réglage.
+                    </div>
+                  </div>
+                )}
+
+                {form.role === "ADMIN" && (
+                  <div>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        name="charge_conge"
+                        checked={!!form.charge_conge}
+                        onChange={handleChange}
+                      />
+                      Chargé des demandes de congé
+                    </label>
+                    <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
+                      Reçoit et traite les demandes de congé, tient les soldes et édite les titres (/conges). Un Super-administrateur y a toujours accès, quel que soit ce réglage.
                     </div>
                   </div>
                 )}
@@ -914,6 +956,25 @@ const Users = () => {
                               {u.charge_registre ? "Registres ✓" : "Registres ✗"}
                             </button>
                           )}
+                          {u.role === "ADMIN" && user?.role === "SUPERADMIN" && (
+                            <button
+                              onClick={() => toggleChargeConge(u)}
+                              title="Reçoit et traite les demandes de congé, tient les soldes (/conges)"
+                              style={{
+                                background: u.charge_conge ? theme.primaryBg : theme.bg,
+                                border: `1px solid ${u.charge_conge ? theme.primaryBorder : theme.border}`,
+                                color: u.charge_conge ? theme.primary : theme.textSecondary,
+                                borderRadius: 8,
+                                padding: "5px 12px",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {u.charge_conge ? "Congés ✓" : "Congés ✗"}
+                            </button>
+                          )}
                           {isDemandeur(u.role) && (
                             <button
                               onClick={() => togglePeutDemander(u, "peut_demander_attestation")}
@@ -930,6 +991,15 @@ const Users = () => {
                               style={flagButtonStyle(u.peut_demander_consultation)}
                             >
                               {u.peut_demander_consultation ? "Consultations ✓" : "Consultations ✗"}
+                            </button>
+                          )}
+                          {isDemandeur(u.role) && (
+                            <button
+                              onClick={() => togglePeutDemander(u, "peut_demander_conge")}
+                              title="Autorise ce compte à créer des demandes de congé"
+                              style={flagButtonStyle(u.peut_demander_conge)}
+                            >
+                              {u.peut_demander_conge ? "Congés ✓" : "Congés ✗"}
                             </button>
                           )}
                           {["CONSULTANT", "GESTIONNAIRE"].includes(u.role) && (

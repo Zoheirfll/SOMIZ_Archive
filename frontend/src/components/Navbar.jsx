@@ -9,7 +9,7 @@ import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import { KeyboardIcon, SunIcon, MoonIcon, SearchIcon } from "./icons";
 import NotificationBell from "./NotificationBell";
 import NavDropdown from "./NavDropdown";
-import { canSeeAttestations, canSeeConsultations, canSeeRegistres } from "../config/accesSections";
+import { canSeeAttestations, canSeeConges, canSeeConsultations, canSeeRegistres } from "../config/accesSections";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -96,6 +96,11 @@ const Navbar = () => {
   // non chargé des consultations n'a ni lien ni badge.
   const seesConsultations = canSeeConsultations(user);
 
+  const [pendingConges, setPendingConges] = useState(0);
+  // Demandeurs autorisés (peut_demander_conge) et traiteurs (SUPERADMIN / ADMIN
+  // charge_conge) — un ADMIN non chargé des congés n'a ni lien ni badge.
+  const seesConges = canSeeConges(user);
+
   useEffect(() => {
     // Badge « N à traiter » : traiteurs uniquement (pour un demandeur, le
     // paramètre `pending` n'a pas de sens côté serveur).
@@ -136,6 +141,23 @@ const Navbar = () => {
     // sinon puisque Navbar ne se démonte pas entre deux pages de l'app.
   }, [user?.role, location.pathname]);
 
+  useEffect(() => {
+    // Même principe que les attestations : le traiteur compte les demandes
+    // Reçues, un demandeur compte ses titres Prêts à récupérer (la branche est
+    // choisie côté serveur par `pending=1`, voir DemandeCongeListCreateView).
+    if (!seesConges) { setPendingConges(0); return undefined; }
+    let cancelled = false;
+    api.get("/conges/demandes/", { params: { pending: 1 } })
+      .then((res) => {
+        if (cancelled) return;
+        setPendingConges(res.data?.count ?? (res.data?.results || res.data || []).length);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // Recharge à chaque changement de page : le badge suit les changements de
+    // statut faits sur /conges/:ref (Navbar ne se démonte pas entre deux pages).
+  }, [seesConges, location.pathname]);
+
   // Entrée « Demandes » : menu déroulant Attestations / Consultations, chaque
   // section avec son propre badge « à traiter ». Si le compte n'a accès qu'à
   // une seule section, un déroulant à un seul choix n'a pas de sens : l'entrée
@@ -143,6 +165,7 @@ const Navbar = () => {
   const demandesSections = [
     { path: "/attestations", label: "Attestations de travail", visible: seesAttestations, badge: pendingAttestations },
     { path: "/consultations", label: "Consultations d'archives", visible: seesConsultations, badge: pendingConsultations },
+    { path: "/conges", label: "Congés", visible: seesConges, badge: pendingConges },
   ].filter((s) => s.visible);
   const navLinks = [
     { path: "/employees", label: "Personnel" },
@@ -151,7 +174,7 @@ const Navbar = () => {
       path: demandesSections[0]?.path, label: "Demandes",
       show: demandesSections.length > 0,
       children: demandesSections.length > 1 ? demandesSections : undefined,
-      match: (p) => p.startsWith("/attestations") || p.startsWith("/consultations"),
+      match: (p) => p.startsWith("/attestations") || p.startsWith("/consultations") || p.startsWith("/conges"),
       badge: demandesSections.reduce((total, s) => total + s.badge, 0),
     },
     {

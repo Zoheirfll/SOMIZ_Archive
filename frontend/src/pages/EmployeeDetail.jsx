@@ -14,6 +14,7 @@ import PageBackground from "../components/PageBackground";
 import InfoNotice from "../components/InfoNotice";
 import CarriereTab from "../components/employeeDetail/CarriereTab";
 import AttestationsTab from "../components/employeeDetail/AttestationsTab";
+import CongesTab from "../components/employeeDetail/CongesTab";
 import ContratsTab from "../components/employeeDetail/ContratsTab";
 import DossierTab from "../components/employeeDetail/DossierTab";
 import EmployeeForm from "./EmployeeForm";
@@ -25,7 +26,7 @@ import usePageTitle from "../hooks/usePageTitle";
 import { formatDateTime, stripExt } from "../utils/employeeDocsDisplay";
 import { formatDateFR } from "../utils/formatDate";
 import Breadcrumb from "../components/employees/Breadcrumb";
-import { canSeeAttestations } from "../config/accesSections";
+import { canSeeAttestations, canSeeConges } from "../config/accesSections";
 
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
@@ -1522,6 +1523,9 @@ const EmployeeDetail = () => {
             },
             { key: "contrats", label: `Contrats (${contrats.length})` },
             { key: "carriere", label: "Carrière" },
+            ...(canSeeConges(user)
+              ? [{ key: "conges", label: "Congés" }]
+              : []),
             ...(canSeeAttestations(user)
               ? [{ key: "attestations", label: "Attestations" }]
               : []),
@@ -1587,6 +1591,13 @@ const EmployeeDetail = () => {
         />
 
         <AttestationsTab
+          activeTab={activeTab}
+          employee={employee}
+          user={user}
+          navigate={navigate}
+        />
+
+        <CongesTab
           activeTab={activeTab}
           employee={employee}
           user={user}

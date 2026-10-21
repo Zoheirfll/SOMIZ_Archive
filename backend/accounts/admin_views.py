@@ -65,8 +65,8 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation',
-            'charge_consultation', 'charge_registre',
-            'peut_demander_attestation', 'peut_demander_consultation',
+            'charge_consultation', 'charge_registre', 'charge_conge',
+            'peut_demander_attestation', 'peut_demander_consultation', 'peut_demander_conge',
             'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
             'scope_poles', 'scope_poles_nom',
@@ -127,11 +127,13 @@ class UserSerializer(serializers.ModelSerializer):
             attrs['charge_attestation'] = False
             attrs['charge_consultation'] = False
             attrs['charge_registre'] = False
+            attrs['charge_conge'] = False
         # peut_demander_* : pendant demandeur, pour GESTIONNAIRE/CONSULTANT
         # uniquement (même logique de remise à zéro en cas de changement de rôle).
         if role not in ('GESTIONNAIRE', 'CONSULTANT'):
             attrs['peut_demander_attestation'] = False
             attrs['peut_demander_consultation'] = False
+            attrs['peut_demander_conge'] = False
         return attrs
 
     def validate_charge_consultation(self, value):
@@ -145,6 +147,11 @@ class UserSerializer(serializers.ModelSerializer):
     def validate_charge_attestation(self, value):
         return _reserve_au_superadmin(
             self, value, self.instance.charge_attestation if self.instance else False, "aux attestations de travail",
+        )
+
+    def validate_charge_conge(self, value):
+        return _reserve_au_superadmin(
+            self, value, self.instance.charge_conge if self.instance else False, "aux demandes de congé",
         )
 
 
@@ -170,8 +177,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role',
-            'charge_attestation', 'charge_consultation', 'charge_registre',
-            'peut_demander_attestation', 'peut_demander_consultation', 'password',
+            'charge_attestation', 'charge_consultation', 'charge_registre', 'charge_conge',
+            'peut_demander_attestation', 'peut_demander_consultation', 'peut_demander_conge', 'password',
         ]
         read_only_fields = ['id']
 
@@ -183,6 +190,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def validate_charge_attestation(self, value):
         return _reserve_au_superadmin(self, value, False, "aux attestations de travail")
+
+    def validate_charge_conge(self, value):
+        return _reserve_au_superadmin(self, value, False, "aux demandes de congé")
 
     def validate_role(self, value):
         # SUPERADMIN ne peut jamais être créé/attribué via l'API — un
@@ -220,9 +230,11 @@ class UserCreateSerializer(serializers.ModelSerializer):
             attrs['charge_attestation'] = False
             attrs['charge_consultation'] = False
             attrs['charge_registre'] = False
+            attrs['charge_conge'] = False
         if attrs.get('role') not in ('GESTIONNAIRE', 'CONSULTANT'):
             attrs['peut_demander_attestation'] = False
             attrs['peut_demander_consultation'] = False
+            attrs['peut_demander_conge'] = False
         return attrs
 
     def validate_password(self, value):
@@ -274,6 +286,8 @@ class UserListCreateView(generics.ListCreateAPIView):
                 'charge_registre': user.charge_registre,
                 'peut_demander_attestation': user.peut_demander_attestation,
                 'peut_demander_consultation': user.peut_demander_consultation,
+                'charge_conge': user.charge_conge,
+                'peut_demander_conge': user.peut_demander_conge,
             },
         )
 
@@ -311,6 +325,8 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
                 'charge_registre': u.charge_registre,
                 'peut_demander_attestation': u.peut_demander_attestation,
                 'peut_demander_consultation': u.peut_demander_consultation,
+                'charge_conge': u.charge_conge,
+                'peut_demander_conge': u.peut_demander_conge,
                 'scope_directions': sorted(str(i) for i in u.scope_directions.values_list('id', flat=True)),
                 'scope_poles': sorted(str(i) for i in u.scope_poles.values_list('id', flat=True)),
                 'scope_departements': sorted(str(i) for i in u.scope_departements.values_list('id', flat=True)),

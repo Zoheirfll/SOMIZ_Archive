@@ -5,8 +5,8 @@ import { KeyboardShortcutsProvider } from "./context/KeyboardShortcutsContext";
 import GlobalShortcuts from "./components/GlobalShortcuts";
 import ProtectedRoute from "./components/ProtectedRoute";
 import {
-  canRequestAttestations, canRequestConsultations,
-  canSeeAttestations, canSeeConsultations,
+  canRequestAttestations, canRequestConges, canRequestConsultations,
+  canSeeAttestations, canSeeConges, canSeeConsultations,
 } from "./config/accesSections";
 import RouteFallback from "./components/RouteFallback";
 import Login from "./pages/Login";
@@ -35,6 +35,9 @@ const RechercheDocuments = lazy(() => import("./pages/RechercheDocuments"));
 const Attestations = lazy(() => import("./pages/Attestations"));
 const AttestationNouvelle = lazy(() => import("./pages/AttestationNouvelle"));
 const AttestationDetail = lazy(() => import("./pages/AttestationDetail"));
+const Conges = lazy(() => import("./pages/Conges"));
+const CongeNouvelle = lazy(() => import("./pages/CongeNouvelle"));
+const CongeDetail = lazy(() => import("./pages/CongeDetail"));
 const Consultations = lazy(() => import("./pages/Consultations"));
 const Registres = lazy(() => import("./pages/Registres"));
 const ConsultationNouvelle = lazy(() => import("./pages/ConsultationNouvelle"));
@@ -152,6 +155,40 @@ function App() {
                 requireFn={canSeeAttestations}
               >
                 <AttestationDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/conges"
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canSeeConges}
+              >
+                <Conges />
+              </ProtectedRoute>
+            }
+          />
+          {/* /conges/nouvelle doit précéder /conges/:ref (sinon « nouvelle » serait pris pour une référence). */}
+          <Route
+            path="/conges/nouvelle"
+            element={
+              <ProtectedRoute
+                allowedRoles={["SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canRequestConges}
+              >
+                <CongeNouvelle />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/conges/:ref"
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canSeeConges}
+              >
+                <CongeDetail />
               </ProtectedRoute>
             }
           />

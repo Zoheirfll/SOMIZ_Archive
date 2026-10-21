@@ -105,8 +105,8 @@ const mockTypes = [
   { id: "type-3", code: "NIN_DOC", nom: "Copie NIN", obligatoire: false, champ_source: "nin" },
 ];
 
-const renderPage = (role = "ADMIN") => {
-  useAuth.mockReturnValue({ user: { role, username: "admin" } });
+const renderPage = (role = "ADMIN", extra = {}) => {
+  useAuth.mockReturnValue({ user: { role, username: "admin", ...extra } });
   return render(
     <MemoryRouter initialEntries={["/employees/emp-uuid"]}>
       <Routes>
@@ -467,6 +467,40 @@ describe("EmployeeDetail — navigation", () => {
     renderPage("CONSULTANT");
     await waitFor(() => screen.getAllByText("EMP-001").length > 0);
     expect(screen.queryByText("✏️ Modifier")).not.toBeInTheDocument();
+  });
+});
+
+describe("EmployeeDetail — onglet Congés", () => {
+  test("un traiteur des congés voit l'onglet à côté de Carrière", async () => {
+    renderPage("ADMIN", { can_manage_conges: true });
+    expect(await screen.findByRole("button", { name: "Congés" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Carrière" })).toBeInTheDocument();
+  });
+
+  test("un demandeur autorisé voit l'onglet et le bouton Demander un congé", async () => {
+    renderPage("GESTIONNAIRE", { can_request_conges: true });
+    expect(await screen.findByRole("button", { name: "Congés" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Demander un congé" }));
+    expect(mockNavigate).toHaveBeenCalledWith("/conges/nouvelle", { state: { employeeId: "emp-uuid" } });
+  });
+
+  test("un ADMIN non chargé des congés ne voit ni l'onglet ni le bouton", async () => {
+    renderPage("ADMIN");
+    await waitFor(() => screen.getAllByText("EMP-001").length > 0);
+    expect(screen.queryByRole("button", { name: "Congés" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Demander un congé" })).not.toBeInTheDocument();
+  });
+
+  test("ouvrir l'onglet charge les soldes de l'employé par matricule", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.startsWith("/conges/soldes/")) return Promise.resolve({ data: { initialise: false, solde: null, mouvements: [] } });
+      if (url === "/conges/demandes/") return Promise.resolve({ data: { results: [] } });
+      return Promise.resolve({ data: mockEmployee });
+    });
+    renderPage("ADMIN", { can_manage_conges: true });
+    fireEvent.click(await screen.findByRole("button", { name: "Congés" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/conges/soldes/EMP-001/"));
+    expect(await screen.findByText(/Soldes non initialisés/)).toBeInTheDocument();
   });
 });
 

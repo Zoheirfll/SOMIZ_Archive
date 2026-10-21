@@ -14,6 +14,7 @@ urlpatterns = [
         path('ref/import/<str:model>/template/', __import__('employees.import_views', fromlist=['ReferentielImportTemplateView']).ReferentielImportTemplateView.as_view()),
         path('ocr/', include('ocr.urls')),
         path('attestations/', include('attestations.urls')),
+        path('conges/', include('conges.urls')),
         path('consultations/', include('consultations.urls')),
         path('registres/', include('registres.urls')),
         path('notifications/', include('notifications.urls')),

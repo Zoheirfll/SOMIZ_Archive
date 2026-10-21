@@ -1522,3 +1522,65 @@ Elle initialise les drapeaux à `True` pour les GESTIONNAIRE/CONSULTANT **actifs
 d'avant). Les comptes **inactifs** sont exclus : un droit n'est pas attribué en masse à un compte désactivé, un ADMIN le
 coche à la réactivation. Cette initialisation n'est pas tracée dans l'audit : ne pas la lire comme une attribution
 individuelle.
+
+## 48. Demandes de congé et soldes (2026-10-20) — ✅ Implémenté (backend)
+
+Détail fonctionnel : [`docs/fonctionnel/conges.md`](docs/fonctionnel/conges.md).
+
+- **Droits** : `User.charge_conge` (traiteur) n'est attribuable que par un SUPERADMIN (`_reserve_au_superadmin`) ;
+  `User.peut_demander_conge` (demandeur) par tout ADMIN, comme `peut_demander_*` (point 47). Un ADMIN ordinaire ne
+  crée jamais de demande, même avec le drapeau en base. Attributions tracées dans `MODIFY_USER` / `CREATE_USER`.
+- **Séparation des champs** : les champs réservés au traiteur (type, motif, observations, débit, signataire)
+  n'existent pas dans le serializer de création ; un demandeur ne peut pas les fixer, même dans le body (testé).
+- **Intégrité des soldes** : un solde ne se modifie que par `conges.services.appliquer_mouvement`, dans une
+  transaction avec `select_for_update()`. Chaque variation écrit un `MouvementConge` **immuable** (`save()` sur une
+  ligne existante et `delete()` lèvent une erreur). Invariant « solde = somme des mouvements » vérifié par la commande
+  `manage.py verifier_soldes_conges` (code retour ≠ 0 au moindre écart) et par les tests.
+- **Annulation après signature** : motif obligatoire, confirmation renforcée côté serveur (le traiteur doit retaper
+  la référence du titre — `AnnulerSerializer`), restitution des jours aux compartiments d'origine, titre **conservé**
+  (statut `Annulée`, jamais supprimé), avant/après tracés dans `ANNULER_CONGE`.
+- **Suppression** : l'annulation par le demandeur (statut `Reçue` seulement) est un soft-delete ; les motifs de congé
+  se désactivent (`is_active`), ils ne se suppriment pas.
+- **Scoping** : un demandeur ne voit que ses demandes et les soldes des employés de son périmètre
+  (`can_access_employee`), sans l'historique des mouvements ; hors périmètre → 403 (testé).
+- **Scan du titre signé** : type MIME vérifié par python-magic (jamais l'extension), 20 Mo maximum.
+- **Titre PDF** : généré côté serveur, réservé au traiteur, uniquement après validation ; la date imprimée est figée
+  au premier aperçu et toute réouverture un autre jour exige une confirmation explicite (409). Mention « (mode test) »
+  tant qu'elle n'est pas décochée dans la configuration.
+- **Audit** : 13 actions dédiées (`CREATE_CONGE`, `VALIDER_CONGE`, `REJETER_CONGE`, `RECUPERER_CONGE`, `ANNULER_CONGE`,
+  `INTERROMPRE_CONGE`, `DELETE_CONGE`, `MODIFY_CONGE`, `INITIAL_SOLDE_CONGE`, `CORRIGER_SOLDE_CONGE`, `BASCULE_CONGE`,
+  `APERCU_CONGE`, `SCAN_CONGE`). **Piège** : `AuditLog.action` est limité à 20 caractères — un nom plus long est
+  rejeté par PostgreSQL.
+- **Vérifié par des tests d'intégration sur de vraies routes métier** (pas seulement sur les permissions) :
+  `test_admin_non_charge_est_bloque_partout`, `test_config_stats_et_logo_interdits_au_demandeur_et_a_l_admin_non_charge`,
+  `test_demandeur_ne_voit_pas_le_solde_hors_perimetre`.
+- **Frontend** (livré) : routes, navbar, palette de commandes, onglet de la fiche et boutons suivent
+  `can_request_conges` / `can_manage_conges` (`/auth/me`, login) ; masquer un lien n'est qu'un confort, l'API reste le
+  garde-fou. L'annulation d'un titre exige de retaper la référence côté interface **et** côté serveur. Les aperçus PDF
+  passent par axios en blob, jamais par une navigation directe vers `/api/...`.
+- **Reste à traiter** : aucune saisie en masse des soldes de départ (employé par employé aujourd'hui) ; planifier
+  `basculer_exercice` sur l'hôte (le rattrapage automatique couvre un oubli, mais pas l'absence d'audit global du
+  1er juillet).
+
+### 48 bis. Révision « soldes par exercice », motifs et pièces jointes (2026-10-21) — ✅ Implémenté
+
+- **Soldes par exercice** (`SoldeExercice`) : mêmes garanties qu'au point 48 — modification uniquement par
+  `conges/services.py`, verrou `select_for_update()` sur l'en-tête **et** les lignes, `MouvementConge` immuable (un
+  par exercice touché), invariant contrôlé par `verifier_soldes_conges`. Contraintes en base : unicité
+  (employé, exercice), `consomme ≥ 0`, `consomme ≤ droit` — une écriture hors service incohérente échoue en base.
+- **Règle de consommation imposée côté serveur** : le plus ancien exercice non vide d'abord ; un exercice de départ
+  plus récent est refusé même si l'interface était contournée. Exercice au-delà de l'anticipé refusé (format
+  `AAAA/AAAA` validé, années consécutives).
+- **Champs proposés par le demandeur** : type, motif (actif, du bon type, durée fixe respectée) et exercice entrent
+  dans le serializer de création ; débit, ventilation, catégorie, observations, signataire restent hors de portée
+  (testé : `test_create_ignore_les_champs_reserves_au_traiteur`).
+- **Motifs** : lecture ouverte à tout utilisateur de l'app congés (pour choisir), écriture traiteur seul (testé :
+  `test_le_demandeur_lit_les_motifs_mais_ne_les_modifie_pas`, y compris les pièces attendues). Désactivation, jamais
+  de suppression.
+- **Pièces jointes** (`PieceJointeConge`) : MIME réel par python-magic, 20 Mo, **nom de stockage régénéré en UUID**
+  avec extension assainie (pas de traversée de chemin, nom client jamais dans le chemin — testé), servies uniquement
+  par l'API avec `nosniff`, jamais d'URL de fichier dans les réponses. Accès : traiteur, ou demandeur de **sa**
+  demande (testé : `test_pieces_jointes_cloisonnees_et_figees_apres_traitement`). Ajout figé pour le demandeur dès
+  que la demande n'est plus `Reçue`. Ajout **et chaque consultation** tracés (`PIECE_CONGE`).
+- **Migration destructive `conges/0002`** : suppression des anciennes colonnes de compartiments — à n'appliquer que
+  sur une base sans soldes réels ; sinon script de conversion validé et sauvegarde préalable obligatoires.

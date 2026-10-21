@@ -1,6 +1,28 @@
 import {
   canRequestAttestations, canRequestConsultations, canSeeAttestations, canSeeConsultations,
+  canRequestConges, canSeeConges,
 } from "../config/accesSections";
+
+describe("accesSections — congés", () => {
+  test("canRequestConges suit le droit demandeur", () => {
+    expect(canRequestConges({ can_request_conges: true })).toBe(true);
+    expect(canRequestConges({ can_request_conges: false })).toBe(false);
+    expect(canRequestConges(null)).toBe(false);
+  });
+
+  test("canSeeConges : demandeur autorisé ou traiteur", () => {
+    expect(canSeeConges({ can_request_conges: true })).toBe(true);
+    expect(canSeeConges({ can_manage_conges: true })).toBe(true);
+    expect(canSeeConges({ role: "ADMIN" })).toBe(false);
+    expect(canSeeConges(undefined)).toBe(false);
+  });
+
+  test("un traiteur voit la section sans pouvoir demander", () => {
+    const admin = { role: "ADMIN", can_manage_conges: true };
+    expect(canSeeConges(admin)).toBe(true);
+    expect(canRequestConges(admin)).toBe(false);
+  });
+});
 
 describe("accesSections — droits de demande (peut_demander_*)", () => {
   test("un gestionnaire sans droit ne voit ni ne demande rien", () => {

@@ -321,8 +321,15 @@ class ReferentielSearchMixin:
         # contenu dépend du périmètre CONSULTANT de l'utilisateur (pas un cache
         # partageable par un proxy intermédiaire).
         response = super().finalize_response(request, response, *args, **kwargs)
+        # Pas de cache pour le tableau CRUD de /parametres (requête avec
+        # ?page=) ni pour une requête portant `_` (cache-buster envoyé après
+        # une mutation) : sinon le rafraîchissement qui suit une modification
+        # relit l'ancienne valeur depuis le cache navigateur pendant 60 s.
         if request.method == 'GET':
-            response['Cache-Control'] = 'private, max-age=60'
+            if 'page' in request.query_params or '_' in request.query_params:
+                response['Cache-Control'] = 'no-cache'
+            else:
+                response['Cache-Control'] = 'private, max-age=60'
         return response
 
     def filter_search(self, qs):

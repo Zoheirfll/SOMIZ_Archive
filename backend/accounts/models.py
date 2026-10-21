@@ -117,6 +117,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text="Gestionnaire/Consultant : autorisé à créer des demandes de consultation d'archives.",
     )
 
+    # Pendants « congés » (2026-10-20) : traiteur (charge_conge, attribuable par
+    # un SUPERADMIN uniquement) et demandeur (peut_demander_conge, attribuable
+    # par tout ADMIN). Même logique que charge_attestation / peut_demander_attestation.
+    charge_conge = models.BooleanField(
+        default=False, verbose_name="Chargé des demandes de congé",
+        help_text="Réservé aux comptes Administrateur : reçoit et traite les "
+                   "demandes de congé, tient les soldes et édite les titres. Un "
+                   "Super-administrateur y a toujours accès, quel que soit ce champ.",
+    )
+    peut_demander_conge = models.BooleanField(
+        default=False, verbose_name="Peut demander des congés",
+        help_text="Gestionnaire/Consultant : autorisé à créer des demandes de congé.",
+    )
+
     # Sécurité : blocage après N tentatives
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
@@ -272,6 +286,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         GESTIONNAIRE/CONSULTANT seulement si peut_demander_consultation."""
         return self.is_superadmin or (
             self.role in (self.Role.GESTIONNAIRE, self.Role.CONSULTANT) and self.peut_demander_consultation
+        )
+
+    @property
+    def can_manage_conges(self):
+        """Traite les demandes de congé (valide, annule, interrompt, tient les
+        soldes) — SUPERADMIN toujours, ADMIN seulement si charge_conge."""
+        return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_conge)
+
+    @property
+    def can_request_conges(self):
+        """Peut créer une demande de congé : SUPERADMIN toujours,
+        GESTIONNAIRE/CONSULTANT seulement si peut_demander_conge."""
+        return self.is_superadmin or (
+            self.role in (self.Role.GESTIONNAIRE, self.Role.CONSULTANT) and self.peut_demander_conge
         )
 
     @property

@@ -157,6 +157,8 @@ class LoginView(APIView):
                 'can_manage_registres': user.can_manage_registres,
                 'can_request_attestations': user.can_request_attestations,
                 'can_request_consultations': user.can_request_consultations,
+                'can_manage_conges': user.can_manage_conges,
+                'can_request_conges': user.can_request_conges,
             }
         })
         _set_auth_cookies(request, response, refresh.access_token, refresh)
@@ -205,6 +207,8 @@ class UserMeView(APIView):
             'can_manage_registres': user.can_manage_registres,
             'can_request_attestations': user.can_request_attestations,
             'can_request_consultations': user.can_request_consultations,
+            'can_manage_conges': user.can_manage_conges,
+            'can_request_conges': user.can_request_conges,
             'needs_consent': not bool(user.consent_loi1807_accepted_at),
         })
 

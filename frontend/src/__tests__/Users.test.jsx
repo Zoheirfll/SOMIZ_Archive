@@ -352,4 +352,14 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
       "/admin-users/g1/", { peut_demander_consultation: true },
     ));
   });
+
+  test("un gestionnaire a aussi le bouton Congés, qui bascule peut_demander_conge via PATCH", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("g1", "gest", "GESTIONNAIRE")] } });
+    api.patch.mockResolvedValue({ data: {} });
+    renderPage();
+    userEvent.click(await screen.findByRole("button", { name: "Congés ✗" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      "/admin-users/g1/", { peut_demander_conge: true },
+    ));
+  });
 });
