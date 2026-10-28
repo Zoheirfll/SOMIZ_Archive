@@ -106,3 +106,13 @@ garde l'étape finale (débit des soldes, titre PDF).
   propositions : aucun compte n'apparaît sans clic d'un ADMIN.
 - Si le responsable change, l'ancien garde son compte (on ne le supprime
   pas) mais perd le droit de visa sur l'unité.
+
+## Page /users à grande échelle (2026-10-28)
+
+La liste `/api/admin-users/` est paginée (25 par page, `page_size` jusqu'à 100) avec `?q=` (identifiant, nom, prénom,
+libellé), `?role=` (liste séparée par des virgules) et un champ `compteurs` (comptes par rôle, hors filtre de rôle).
+L'interface a un onglet par rôle (Tous, Administrateurs, Gestionnaires, Consultants, À valider), une recherche
+temporisée et une pagination ; périmètre, droits et actions sont derrière le « + » de chaque ligne.
+Piège : `order_by()` vide avant le `values('role').annotate(...)` des compteurs, sinon le tri entre dans le GROUP BY.
+Avant ce changement l'interface ne lisait que la première page (25 comptes). `AuditLogs.jsx` charge encore
+`/admin-users/` sans pagination : son filtre « utilisateur » est limité à 25 comptes (à traiter).

@@ -14,7 +14,7 @@ const TYPES_UNITE = {
 // responsable d'une unité (saisie ou import). Un ADMIN valide (en choisissant
 // le rôle) ou refuse ; le mot de passe temporaire n'est montré qu'une fois.
 // Voir backend/accounts/propositions.py.
-const PropositionsCompte = ({ onCompteCree }) => {
+const PropositionsCompte = ({ onCompteCree, masque = false, onTotal }) => {
   const theme = useTheme();
   const { prompt, PromptDialog } = usePrompt();
   const [propositions, setPropositions] = useState([]);
@@ -42,6 +42,11 @@ const PropositionsCompte = ({ onCompteCree }) => {
   useEffect(() => {
     charger();
   }, [charger]);
+
+  // Nombre de comptes en attente de décision (badge de l'onglet « À valider »).
+  useEffect(() => {
+    if (onTotal) onTotal(propositions.length + sansCompte.length);
+  }, [propositions, sansCompte, onTotal]);
 
   const valider = async (p) => {
     setBusy(p.id);
@@ -94,6 +99,9 @@ const PropositionsCompte = ({ onCompteCree }) => {
   });
 
   if (propositions.length === 0 && sansCompte.length === 0 && !identifiants) return <>{PromptDialog}</>;
+  // Masquée hors de son onglet mais montée : le décompte et la fenêtre des
+  // identifiants temporaires (affichés une seule fois) restent actifs.
+  if (masque && !identifiants) return <>{PromptDialog}</>;
 
   return (
     <>

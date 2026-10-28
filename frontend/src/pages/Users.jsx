@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
@@ -66,6 +66,24 @@ const Users = () => {
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
   const { confirm, ConfirmDialog } = useConfirm();
   const [users, setUsers] = useState([]);
+  // Liste paginée côté serveur (des milliers de comptes à terme) : un onglet
+  // par rôle, recherche (debounce) et pagination ; les détails d'une ligne
+  // (périmètre, droits, actions) ne s'affichent qu'avec le « + ».
+  const [onglet, setOnglet] = useState("tous");
+  const [recherche, setRecherche] = useState("");
+  const [rechercheEffective, setRechercheEffective] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [compteurs, setCompteurs] = useState({});
+  const [ouverts, setOuverts] = useState(() => new Set());
+  const [nbAValider, setNbAValider] = useState(0);
+  const basculerDetail = (id) =>
+    setOuverts((prev) => {
+      const suivant = new Set(prev);
+      if (suivant.has(id)) suivant.delete(id);
+      else suivant.add(id);
+      return suivant;
+    });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -130,15 +148,34 @@ const Users = () => {
       window.history.replaceState({}, "");
       setTimeout(() => setMessage(null), 4000);
     }
-    fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setRechercheEffective(recherche.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [recherche]);
+
+  useEffect(() => {
+    if (onglet !== "valider") fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onglet, rechercheEffective, page]);
+
+  const ROLES_PAR_ONGLET = { ADMIN: "ADMIN,SUPERADMIN", GESTIONNAIRE: "GESTIONNAIRE", CONSULTANT: "CONSULTANT" };
 
   const fetchUsers = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response = await api.get("/admin-users/");
+      const params = { page };
+      if (ROLES_PAR_ONGLET[onglet]) params.role = ROLES_PAR_ONGLET[onglet];
+      if (rechercheEffective) params.q = rechercheEffective;
+      const response = await api.get("/admin-users/", { params });
       setUsers(response.data.results || response.data);
+      setTotal(response.data.count ?? (response.data.results || response.data).length);
+      setCompteurs(response.data.compteurs || {});
     } catch (err) {
       console.error(err);
     } finally {
@@ -414,7 +451,13 @@ const Users = () => {
           </div>
         )}
 
-        {isAdmin && <PropositionsCompte onCompteCree={() => fetchUsers(true)} />}
+        {isAdmin && (
+          <PropositionsCompte
+            masque={onglet !== "valider"}
+            onTotal={setNbAValider}
+            onCompteCree={() => fetchUsers(true)}
+          />
+        )}
 
         {/* Formulaire création */}
         {showForm && (
@@ -685,7 +728,65 @@ const Users = () => {
           </div>
         )}
 
+        {/* Onglets par rôle + recherche */}
+        {(() => {
+          const nbAdmins = (compteurs.ADMIN || 0) + (compteurs.SUPERADMIN || 0);
+          const nbTous = Object.values(compteurs).reduce((a, b) => a + b, 0);
+          const onglets = [
+            { cle: "tous", libelle: "Tous", n: nbTous },
+            { cle: "ADMIN", libelle: "Administrateurs", n: nbAdmins },
+            { cle: "GESTIONNAIRE", libelle: "Gestionnaires", n: compteurs.GESTIONNAIRE || 0 },
+            { cle: "CONSULTANT", libelle: "Consultants", n: compteurs.CONSULTANT || 0 },
+            ...(isAdmin ? [{ cle: "valider", libelle: "À valider", n: nbAValider }] : []),
+          ];
+          return (
+            <div style={{ marginBottom: 16 }}>
+              <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                {onglets.map((o) => {
+                  const actif = onglet === o.cle;
+                  return (
+                    <button
+                      key={o.cle}
+                      role="tab"
+                      aria-selected={actif}
+                      onClick={() => { setOnglet(o.cle); setPage(1); }}
+                      style={{
+                        background: actif ? theme.primary : theme.surface,
+                        color: actif ? "#fff" : theme.text,
+                        border: `1px solid ${actif ? theme.primary : theme.border}`,
+                        borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600,
+                        cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      {o.libelle}
+                      {(o.cle !== "valider" || o.n > 0) && (
+                        <span style={{ marginLeft: 8, opacity: 0.8, fontWeight: 700 }}>{o.n}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {onglet !== "valider" && (
+                <input
+                  type="search"
+                  value={recherche}
+                  onChange={(e) => setRecherche(e.target.value)}
+                  placeholder="Rechercher un identifiant, un nom, un prénom…"
+                  aria-label="Rechercher un compte"
+                  className="input-focus"
+                  style={{
+                    width: "100%", boxSizing: "border-box", border: `1px solid ${theme.border}`,
+                    borderRadius: 10, padding: "10px 14px", fontSize: 14, background: theme.surface,
+                    color: theme.text, fontFamily: "inherit",
+                  }}
+                />
+              )}
+            </div>
+          );
+        })()}
+
         {/* Liste utilisateurs */}
+        {onglet !== "valider" && (
         <div style={{
           background: theme.surface,
           border: `1px solid ${theme.border}`,
@@ -711,9 +812,9 @@ const Users = () => {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: theme.bg, borderBottom: `2px solid ${theme.border}` }}>
-                  {["Identifiant", "Nom & Prénom", "Rôle", "Périmètre", "Dernière connexion", "Statut", "Actions"].map((h) => (
+                  {["Identifiant", "Nom & Prénom", "Rôle", "Dernière connexion", "Statut", ""].map((h, i) => (
                     <th
-                      key={h}
+                      key={h || i}
                       style={{
                         padding: "13px 16px",
                         textAlign: "left",
@@ -722,14 +823,6 @@ const Users = () => {
                         fontWeight: 700,
                         textTransform: "uppercase",
                         letterSpacing: "0.06em",
-                        ...(h === "Actions"
-                          ? {
-                              position: "sticky",
-                              right: 0,
-                              background: theme.bg,
-                              boxShadow: "-4px 0 6px -4px rgba(0,0,0,0.2)",
-                            }
-                          : {}),
                       }}
                     >
                       {h}
@@ -740,12 +833,13 @@ const Users = () => {
               <tbody>
                 {users.map((u, idx) => {
                   const rowBg = idx % 2 === 0 ? theme.surface : theme.surfaceHover;
+                  const ouvert = ouverts.has(u.id);
                   return (
+                  <Fragment key={u.id}>
                   <tr
-                    key={u.id}
                     className="table-row-hover"
                     style={{
-                      borderBottom: `1px solid ${theme.border}`,
+                      borderBottom: ouvert ? "none" : `1px solid ${theme.border}`,
                       background: rowBg,
                     }}
                   >
@@ -754,16 +848,6 @@ const Users = () => {
                     </td>
                     <td style={{ padding: "13px 16px", color: theme.text, fontWeight: 600, fontSize: 14 }}>
                       {u.nom} {u.prenom}
-                      {(u.created_by_name || u.updated_by_name) && (
-                        <div style={{ color: theme.textMuted, fontWeight: 400, fontSize: 11, marginTop: 2 }}>
-                          {u.created_by_name && (
-                            <>Créé par {u.created_by_name}</>
-                          )}
-                          {u.updated_by_name && (
-                            <>{u.created_by_name ? " · " : ""}Modifié par {u.updated_by_name}</>
-                          )}
-                        </div>
-                      )}
                     </td>
                     <td style={{ padding: "13px 16px" }}>
                       <span style={{
@@ -778,7 +862,54 @@ const Users = () => {
                         {u.role === "GESTIONNAIRE" && u.libelle_role ? u.libelle_role : u.role}
                       </span>
                     </td>
-                    <td style={{ padding: "13px 16px", fontSize: 13, maxWidth: 220 }}>
+                    <td style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13 }}>
+                      {u.last_login
+                        ? new Date(u.last_login).toLocaleDateString("fr-FR")
+                        : "Jamais"}
+                    </td>
+                    <td style={{ padding: "13px 16px" }}>
+                      <span style={{
+                        background: u.is_active ? theme.primaryBg : theme.dangerBg,
+                        color: u.is_active ? theme.primary : theme.danger,
+                        border: `1px solid ${u.is_active ? theme.primaryBorder : theme.dangerBorder}`,
+                        borderRadius: 20,
+                        padding: "3px 12px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}>
+                        {u.is_active ? "Actif" : "Désactivé"}
+                      </span>
+                    </td>
+                    <td style={{ padding: "13px 16px", textAlign: "right", width: 56 }}>
+                      <button
+                        type="button"
+                        onClick={() => basculerDetail(u.id)}
+                        aria-expanded={ouvert}
+                        aria-label={`${ouvert ? "Replier" : "Afficher"} les détails de ${u.username}`}
+                        title={ouvert ? "Replier" : "Périmètre, droits et actions"}
+                        style={{
+                          width: 30, height: 30, borderRadius: 8, cursor: "pointer", fontSize: 18, lineHeight: 1,
+                          fontWeight: 700, fontFamily: "inherit",
+                          background: ouvert ? theme.primary : theme.primaryBg,
+                          color: ouvert ? "#fff" : theme.primary,
+                          border: `1px solid ${theme.primaryBorder}`,
+                        }}
+                      >
+                        {ouvert ? "−" : "+"}
+                      </button>
+                    </td>
+                  </tr>
+                  {ouvert && (
+                    <tr style={{ borderBottom: `1px solid ${theme.border}`, background: rowBg }}>
+                      <td colSpan={6} style={{ padding: "4px 16px 18px" }}>
+                        {(u.created_by_name || u.updated_by_name) && (
+                          <div style={{ color: theme.textMuted, fontSize: 11, marginBottom: 10 }}>
+                            {u.created_by_name && <>Créé par {u.created_by_name}</>}
+                            {u.updated_by_name && <>{u.created_by_name ? " · " : ""}Modifié par {u.updated_by_name}</>}
+                          </div>
+                        )}
+                        <div style={{ ...labelStyle, marginBottom: 6 }}>Périmètre</div>
+                        <div style={{ fontSize: 13, marginBottom: 14 }}>
                       {(() => {
                         // ADMIN comme SUPERADMIN sont toujours non
                         // restreints (User.is_admin couvre les deux côté
@@ -831,34 +962,7 @@ const Users = () => {
                           </div>
                         );
                       })()}
-                    </td>
-                    <td style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13 }}>
-                      {u.last_login
-                        ? new Date(u.last_login).toLocaleDateString("fr-FR")
-                        : "Jamais"}
-                    </td>
-                    <td style={{ padding: "13px 16px" }}>
-                      <span style={{
-                        background: u.is_active ? theme.primaryBg : theme.dangerBg,
-                        color: u.is_active ? theme.primary : theme.danger,
-                        border: `1px solid ${u.is_active ? theme.primaryBorder : theme.dangerBorder}`,
-                        borderRadius: 20,
-                        padding: "3px 12px",
-                        fontSize: 12,
-                        fontWeight: 600,
-                      }}>
-                        {u.is_active ? "Actif" : "Désactivé"}
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "13px 16px",
-                        position: "sticky",
-                        right: 0,
-                        background: rowBg,
-                        boxShadow: "-4px 0 6px -4px rgba(0,0,0,0.2)",
-                      }}
-                    >
+                        </div>
                       {isAdmin && (
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button
@@ -1043,15 +1147,26 @@ const Users = () => {
                           )}
                         </div>
                       )}
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>)}
+                  </Fragment>
                   );
                 })}
               </tbody>
             </table>
             </div>
           )}
+          {total > 25 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: `1px solid ${theme.border}`, fontSize: 13, color: theme.textSecondary, flexWrap: "wrap", gap: 8 }}>
+              <span>{total} comptes · page {page} sur {Math.ceil(total / 25)}</span>
+              <span style={{ display: "flex", gap: 8 }}>
+                <button disabled={page <= 1} onClick={() => setPage(page - 1)} style={{ border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text, borderRadius: 8, padding: "6px 14px", fontFamily: "inherit", cursor: page <= 1 ? "not-allowed" : "pointer" }}>Précédent</button>
+                <button disabled={page >= Math.ceil(total / 25)} onClick={() => setPage(page + 1)} style={{ border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text, borderRadius: 8, padding: "6px 14px", fontFamily: "inherit", cursor: page >= Math.ceil(total / 25) ? "not-allowed" : "pointer" }}>Suivant</button>
+              </span>
+            </div>
+          )}
         </div>
+        )}
       </div>
 
       {/* Modal Reset Mot de Passe */}

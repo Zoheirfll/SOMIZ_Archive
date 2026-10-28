@@ -2,8 +2,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import Count, Q
 from rest_framework import generics, serializers
 from rest_framework.exceptions import ValidationError
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -261,13 +263,48 @@ class UserCreateSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
+class UserListPagination(PageNumberPagination):
+    """25 comptes par page (jusqu'à 100 via `page_size`) ; la réponse ajoute
+    `compteurs` : nombre de comptes par rôle pour la recherche en cours (hors
+    filtre de rôle), pour les onglets de /users."""
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        reponse = super().get_paginated_response(data)
+        reponse.data['compteurs'] = getattr(self, 'compteurs', {})
+        return reponse
+
+
 class UserListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAdmin]
+    pagination_class = UserListPagination
+
+    def _recherche(self, qs):
+        q = (self.request.query_params.get('q') or '').strip()
+        if q:
+            qs = qs.filter(
+                Q(username__icontains=q) | Q(nom__icontains=q) | Q(prenom__icontains=q)
+                | Q(libelle_role__icontains=q)
+            )
+        return qs
 
     def get_queryset(self):
-        qs = User.objects.all().order_by('nom')
+        qs = User.objects.all().order_by('nom', 'prenom', 'username')
         # Périmètre de visibilité des comptes : voir visible_accounts.
         qs = visible_accounts(qs, self.request.user)
+        qs = self._recherche(qs)
+        if self.request.method == 'GET':
+            # Compteurs calculés avant le filtre de rôle (un onglet affiche
+            # le total de son rôle, quel que soit l'onglet ouvert). order_by()
+            # vide : sinon le tri par nom entre dans le GROUP BY et fausse le décompte.
+            self.paginator.compteurs = {
+                ligne['role']: ligne['n'] for ligne in qs.order_by().values('role').annotate(n=Count('id'))
+            }
+            roles = [r for r in (self.request.query_params.get('role') or '').split(',') if r]
+            if roles:
+                qs = qs.filter(role__in=roles)
         return qs
 
     def get_serializer_class(self):
