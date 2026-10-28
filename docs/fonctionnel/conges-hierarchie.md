@@ -8,7 +8,14 @@ bouton « Désigner » sur l'Organigramme, écran /mot-de-passe forcé). Journal
 à la validation d'un compte, l'unité dirigée est ajoutée à son périmètre. Le
 chef lit donc les dossiers de son unité et peut y saisir des demandes de
 congé ; l'ADMIN peut le restreindre ensuite (modal « Périmètre »). Seulement
-à la création du compte, pas lors d'une désignation ultérieure.
+à la création du compte (toutes les unités dirigées). Un compte GESTIONNAIRE/
+CONSULTANT déjà existant reçoit l'unité dès la désignation (sans proposition).
+
+## Responsables désignés avant cette fonctionnalité (rattrapage)
+Bloc « N responsables désignés sans compte » sur `/users` : aperçu nominatif
+puis « Générer les propositions » (`/admin-users/propositions/rattrapage/`).
+Crée seulement des propositions (`source: rattrapage`), à valider une à une.
+Rejouable sans doublon.
 
 ## Implémentation du visa (backend)
 - `conges/hierarchie.py` : `chaine_validation(employee)` (fonction pure).

@@ -19,13 +19,20 @@ const PropositionsCompte = ({ onCompteCree }) => {
   const [busy, setBusy] = useState(null);
   const [erreur, setErreur] = useState("");
   const [identifiants, setIdentifiants] = useState(null);
+  // Responsables désignés avant la mise en place des propositions (rattrapage).
+  const [sansCompte, setSansCompte] = useState([]);
 
   const charger = useCallback(async () => {
     try {
-      const { data } = await api.get("/admin-users/propositions/");
-      setPropositions(data);
+      const [props, rattrapage] = await Promise.all([
+        api.get("/admin-users/propositions/"),
+        api.get("/admin-users/propositions/rattrapage/"),
+      ]);
+      setPropositions(props.data);
+      setSansCompte(rattrapage.data);
     } catch {
       setPropositions([]);
+      setSansCompte([]);
     }
   }, []);
 
@@ -50,6 +57,19 @@ const PropositionsCompte = ({ onCompteCree }) => {
     }
   };
 
+  const genererPropositions = async () => {
+    setBusy("rattrapage");
+    setErreur("");
+    try {
+      await api.post("/admin-users/propositions/rattrapage/");
+      await charger();
+    } catch (err) {
+      setErreur(err.response?.data?.error || "Génération impossible.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const refuser = async (p) => {
     const motif = await prompt(`Motif du refus pour ${p.employee_nom} (facultatif) :`, "", { confirmLabel: "Refuser" });
     if (motif === null) return;
@@ -65,15 +85,49 @@ const PropositionsCompte = ({ onCompteCree }) => {
     }
   };
 
-  if (propositions.length === 0 && !identifiants) return <>{PromptDialog}</>;
-
   const bouton = (couleur, fond, bordure) => ({
     background: fond, color: couleur, border: `1px solid ${bordure}`, borderRadius: 8, padding: "6px 14px",
     fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
   });
 
+  if (propositions.length === 0 && sansCompte.length === 0 && !identifiants) return <>{PromptDialog}</>;
+
   return (
     <>
+      {sansCompte.length > 0 && (
+        <div
+          style={{
+            background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: 16,
+            padding: 20, marginBottom: 24,
+          }}
+        >
+          <h2 style={{ color: theme.text, margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>
+            {sansCompte.length} responsable{sansCompte.length > 1 ? "s" : ""} désigné{sansCompte.length > 1 ? "s" : ""} sans compte
+          </h2>
+          <p style={{ color: theme.textSecondary, fontSize: 12, margin: "0 0 12px", lineHeight: 1.5 }}>
+            Désignés avant la validation hiérarchique des congés. Rien n'est créé tant que vous ne validez pas :
+            « Générer les propositions » les ajoute seulement à la liste des comptes à valider ci-dessus, où vous
+            choisissez le rôle de chacun.
+          </p>
+          <ul style={{ margin: "0 0 14px", paddingLeft: 18, color: theme.text, fontSize: 13, lineHeight: 1.7 }}>
+            {sansCompte.map((r) => (
+              <li key={r.employee_id}>
+                <strong>{r.employee_nom}</strong>{" "}
+                <span style={{ color: theme.textSecondary, fontFamily: "monospace", fontSize: 11 }}>({r.matricule})</span>
+                {" — "}
+                {r.unites.map((u) => `${TYPES_UNITE[u.type] || u.type} « ${u.nom} »`).join(", ")}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button" disabled={busy === "rattrapage"} onClick={genererPropositions}
+            style={bouton(theme.surface, theme.primary, theme.primary)}
+          >
+            {busy === "rattrapage" ? "Génération…" : "Générer les propositions"}
+          </button>
+        </div>
+      )}
+
       {propositions.length > 0 && (
         <div
           style={{

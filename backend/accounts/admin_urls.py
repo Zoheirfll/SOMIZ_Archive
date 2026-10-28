@@ -2,12 +2,14 @@ from django.urls import path
 from accounts.admin_views import (
     UserListCreateView, UserUpdateView, EmployeeGrantsView,
     PropositionCompteListView, PropositionCompteValiderView, PropositionCompteRefuserView,
+    PropositionCompteRattrapageView,
 )
 from accounts.views import AdminResetPasswordView
 
 
 urlpatterns = [
     path('propositions/', PropositionCompteListView.as_view(), name='proposition-list'),
+    path('propositions/rattrapage/', PropositionCompteRattrapageView.as_view(), name='proposition-rattrapage'),
     path('propositions/<uuid:pk>/valider/', PropositionCompteValiderView.as_view(), name='proposition-valider'),
     path('propositions/<uuid:pk>/refuser/', PropositionCompteRefuserView.as_view(), name='proposition-refuser'),
     path('', UserListCreateView.as_view(), name='user-list'),

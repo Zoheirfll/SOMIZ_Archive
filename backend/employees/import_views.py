@@ -921,8 +921,8 @@ class ReferentielImportView(APIView):
                     details={'model': ModelClass.__name__, 'nom': obj.nom, 'import': True},
                 )
                 if getattr(obj, 'responsable_id', None):
-                    from accounts.propositions import proposer_compte
-                    proposer_compte(request, obj.responsable, obj, source='import')
+                    from accounts.propositions import rattacher_responsable
+                    rattacher_responsable(request, obj.responsable, obj, source='import')
 
         return Response({
             'nb_crees': nb_crees,

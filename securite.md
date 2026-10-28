@@ -1616,8 +1616,16 @@ Spec : `docs/fonctionnel/conges-hierarchie.md`.
   périmètre l'unité qu'il dirige (`scope_directions/departements/services/cellules/sections`). Il obtient donc la
   **lecture des dossiers RH de toute l'unité** (un directeur : toute sa direction) et peut y saisir des demandes de
   congé. Choix assumé pour que le chef puisse saisir pour son équipe ; l'ADMIN peut le réduire ensuite via le modal
-  « Périmètre ». Tracé : `VALIDER_COMPTE.details.perimetre`. Si l'unité a disparu entre la proposition et la
-  validation, le compte est créé sans périmètre. Le périmètre n'est ajouté qu'à la **création** : désigner plus tard
-  un employé qui a déjà un compte ne modifie pas son périmètre.
+  « Périmètre ». Tracé : `VALIDER_COMPTE.details.perimetre`. Le compte reçoit **toutes** les unités que
+  l'employé dirige à la validation (un chef de deux services les reçoit tous les deux) ; s'il n'en dirige plus aucune,
+  le compte est créé sans périmètre.
+- **Compte déjà existant** : désigner comme responsable un employé qui a déjà un compte GESTIONNAIRE/CONSULTANT ajoute
+  l'unité à son périmètre, sans proposition (tracé `MODIFY_USER`, `action: perimetre_responsable`) ; un compte
+  ADMIN/SUPERADMIN n'est pas touché (déjà organisation-wide). Cela ne fait qu'**élargir** : depuis le 2026-09-01 un
+  compte sans case cochée ne voit rien, il n'existe plus de compte « sans restriction » que l'ajout restreindrait.
+- **Rattrapage des responsables désignés avant la mise en place** (`/admin-users/propositions/rattrapage/`, ADMIN) :
+  GET = aperçu nominatif de qui n'a ni compte ni proposition (ne crée rien) ; POST = une proposition par responsable
+  (`source: rattrapage`), rejouable sans doublon. Aucun compte n'est créé : l'ADMIN valide chacun et choisit son rôle.
+  Constaté le 2026-10-28 sur la base de dev : 11 responsables sans compte.
 - **Reste** : migrations `accounts/0021-0022`, `audit/0015-0016`, `conges/0003` à appliquer ; l'ancien responsable d'une
   unité garde son compte (il perd le droit de visa, pas l'accès).

@@ -529,3 +529,27 @@ class PropositionCompteRefuserView(APIView):
         except PropositionError as e:
             raise ValidationError({'error': str(e)})
         return Response({'statut': 'refusee'})
+
+
+class PropositionCompteRattrapageView(APIView):
+    """Responsables désignés AVANT la mise en place des propositions de compte.
+
+    GET  /api/admin-users/propositions/rattrapage/ — aperçu : qui n'a ni compte
+         ni proposition (rien n'est créé).
+    POST /api/admin-users/propositions/rattrapage/ — crée une proposition par
+         responsable listé ; un ADMIN les valide ensuite une à une (aucun compte
+         n'est créé ici)."""
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from accounts.propositions import UNITES, responsables_sans_compte
+        return Response([{
+            'employee_id': str(emp.pk),
+            'employee_nom': f"{emp.prenom} {emp.nom}",
+            'matricule': emp.matricule,
+            'unites': [{'type': UNITES[u.__class__.__name__], 'nom': u.nom} for u in unites],
+        } for emp, unites in responsables_sans_compte()])
+
+    def post(self, request):
+        from accounts.propositions import proposer_rattrapage
+        return Response({'propositions_creees': proposer_rattrapage(request)}, status=201)

@@ -133,8 +133,8 @@ class ReferentielAuditMixin:
         if avant is not None and avant.get('responsable') == str(instance.responsable_id):
             return
         if getattr(instance, 'responsable_id', None):
-            from accounts.propositions import proposer_compte
-            proposer_compte(self.request, instance.responsable, instance)
+            from accounts.propositions import rattacher_responsable
+            rattacher_responsable(self.request, instance.responsable, instance)
 
     def perform_create(self, serializer):
         instance = serializer.save()
