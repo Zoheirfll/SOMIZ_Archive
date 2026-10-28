@@ -3,6 +3,9 @@ import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { usePrompt } from "../ConfirmDialog";
 
+// Rôle présélectionné à la validation (l'ADMIN peut le changer pour chaque compte).
+const ROLE_PAR_DEFAUT = "CONSULTANT";
+
 const TYPES_UNITE = {
   direction: "Direction", departement: "Département", service: "Service", cellule: "Cellule", section: "Section",
 };
@@ -45,7 +48,7 @@ const PropositionsCompte = ({ onCompteCree }) => {
     setErreur("");
     try {
       const { data } = await api.post(`/admin-users/propositions/${p.id}/valider/`, {
-        role: roles[p.id] || "GESTIONNAIRE",
+        role: roles[p.id] || ROLE_PAR_DEFAUT,
       });
       setIdentifiants({ nom: p.employee_nom, username: data.username, motDePasse: data.mot_de_passe_temporaire });
       await charger();
@@ -141,7 +144,8 @@ const PropositionsCompte = ({ onCompteCree }) => {
           <p style={{ color: theme.textSecondary, fontSize: 12, margin: "0 0 14px", lineHeight: 1.5 }}>
             Ces employés ont été désignés responsables d'une unité mais n'ont pas de compte. Aucun compte n'est
             créé tant que vous ne validez pas. À la validation, le compte reçoit pour périmètre l'unité dirigée :
-            il pourra lire les dossiers de cette unité et y saisir des demandes de congé.
+            il pourra voir les employés de cette unité et y saisir des demandes de congé. Consultant par défaut
+            (modifiable) ; un Gestionnaire ne consulte aucun document.
           </p>
           {erreur && (
             <div role="alert" style={{ color: theme.danger, fontSize: 13, marginBottom: 10, fontWeight: 600 }}>
@@ -170,7 +174,7 @@ const PropositionsCompte = ({ onCompteCree }) => {
               </div>
               <select
                 aria-label={`Rôle du compte de ${p.employee_nom}`}
-                value={roles[p.id] || "GESTIONNAIRE"}
+                value={roles[p.id] || ROLE_PAR_DEFAUT}
                 onChange={(e) => setRoles({ ...roles, [p.id]: e.target.value })}
                 className="input-focus"
                 style={{
@@ -178,8 +182,8 @@ const PropositionsCompte = ({ onCompteCree }) => {
                   background: theme.surface, color: theme.text, fontFamily: "inherit",
                 }}
               >
-                <option value="GESTIONNAIRE">Gestionnaire</option>
                 <option value="CONSULTANT">Consultant (lecture seule)</option>
+                <option value="GESTIONNAIRE">Gestionnaire (demandes uniquement)</option>
               </select>
               <button
                 type="button" disabled={busy === p.id} onClick={() => valider(p)}
