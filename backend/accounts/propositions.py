@@ -177,7 +177,8 @@ def valider_proposition(request, proposition, *, role):
         user = User.objects.create_user(
             username=generer_username(employee), password=mot_de_passe, role=role,
             nom=employee.nom, prenom=employee.prenom, employee=employee,
-            peut_demander_conge=True, must_change_password=True,
+            peut_demander_conge=True, peut_demander_attestation=True,
+            peut_demander_consultation=True, must_change_password=True,
             created_by=request.user,
         )
         # Périmètre pré-rempli avec l'unité dirigée (décision du 2026-10-28) : le

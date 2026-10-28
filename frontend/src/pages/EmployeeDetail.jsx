@@ -80,7 +80,7 @@ const EmployeeDetail = () => {
   const peutVoirDocuments = user?.role !== "GESTIONNAIRE";
   const [activeTab, setActiveTab] = useState(() => {
     const demande = searchParams.get("tab") || "dossier";
-    return !peutVoirDocuments && demande === "dossier" ? "carriere" : demande;
+    return !peutVoirDocuments && ["dossier", "contrats"].includes(demande) ? "carriere" : demande;
   });
   const [selectedDoc, setSelectedDoc] = useState(null);
   // Ids des documents dont l'historique (versions antérieures conservées)
@@ -1371,13 +1371,16 @@ const EmployeeDetail = () => {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gridTemplateColumns: isMobile || !peutVoirDocuments ? "1fr" : "1fr 1fr",
             gap: 24,
             marginBottom: 24,
           }}
         >
           {[
-            { title: "Informations personnelles", fields: infoFieldsPersonnel },
+            // Pas d'informations personnelles pour un GESTIONNAIRE (règle du 2026-10-28).
+            ...(peutVoirDocuments
+              ? [{ title: "Informations personnelles", fields: infoFieldsPersonnel }]
+              : []),
             { title: "Informations administratives", fields: infoFieldsAdministratif },
           ].map(({ title, fields }) => (
             <div
@@ -1528,7 +1531,9 @@ const EmployeeDetail = () => {
                   label: `Dossier (${employee.documents?.length || 0})`,
                 }]
               : []),
-            { key: "contrats", label: `Contrats (${contrats.length})` },
+            ...(peutVoirDocuments
+              ? [{ key: "contrats", label: `Contrats (${contrats.length})` }]
+              : []),
             { key: "carriere", label: "Carrière" },
             ...(canSeeConges(user)
               ? [{ key: "conges", label: "Congés" }]

@@ -2033,11 +2033,15 @@ class ContratDetailView(generics.RetrieveUpdateDestroyAPIView):
         return [IsAdminOrConsultant()]
 
     def retrieve(self, request, *args, **kwargs):
+        if request.user.is_gestionnaire:
+            # Règle du 2026-10-28 : pas de détail de contrat pour un GESTIONNAIRE
+            # (la liste des contrats reste visible dans l'onglet Carrière).
+            raise Http404("Contrat introuvable.")
         instance = self.get_object()
         AuditLog.log(
             request, AuditLog.Action.VIEW,
             target=instance.employee,
-            details={'action': 'view_contrat', 'numero_contrat': instance.numero_contrat}
+            details={'action': 'view_contrat','numero_contrat': instance.numero_contrat}
         )
         return super().retrieve(request, *args, **kwargs)
 

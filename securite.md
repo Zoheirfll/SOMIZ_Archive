@@ -1641,3 +1641,9 @@ Spec : `docs/fonctionnel/conges-hierarchie.md`.
   protège rien ; la protection est côté serveur.
 - **Tests** : `tests/test_gestionnaire_sans_documents.py` (routes réelles `/documents/` et `/documents/<id>/view/`).
 - **Pas couvert** : l'onglet Carrière, l'onglet Contrats et les champs personnels restent visibles dans le périmètre.
+
+**Compléments du 2026-10-28 (suite du point 50)** — pour un GESTIONNAIRE : plus d'onglet « Contrats » ni de bloc
+« Informations personnelles » dans l'interface ; `GET /api/contrats/<id>/` renvoie 404 (la liste des contrats reste
+visible dans « Carrière »). Les champs personnels ne sont pas bloqués durement côté serveur : le bloc est masqué et vide
+tant qu'aucun champ n'est coché. Un compte de responsable créé par validation reçoit d'office les trois droits de
+demande (attestations, consultations, congés), modifiables ensuite sur `/users`.

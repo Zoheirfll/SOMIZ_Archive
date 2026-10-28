@@ -92,6 +92,7 @@ class TestValidation:
         assert user.username == "jean.dupont"
         assert user.must_change_password is True
         assert user.peut_demander_conge is True
+        assert user.peut_demander_attestation is True and user.peut_demander_consultation is True
         assert user.check_password(mdp)
         prop.refresh_from_db()
         assert prop.statut == PropositionCompte.Statut.VALIDEE and prop.compte_cree == user

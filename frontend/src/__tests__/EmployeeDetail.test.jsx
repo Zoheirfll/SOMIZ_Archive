@@ -478,9 +478,16 @@ describe("EmployeeDetail — onglet Congés", () => {
   });
 
   test("un demandeur autorisé voit l'onglet et le bouton Demander un congé", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.startsWith("/conges/soldes/")) return Promise.resolve({ data: { initialise: false, solde: null, mouvements: [] } });
+      if (url === "/conges/demandes/") return Promise.resolve({ data: { results: [] } });
+      if (url.includes("/historique/") || url.endsWith("/contrats/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
     renderPage("GESTIONNAIRE", { can_request_conges: true });
-    expect(await screen.findByRole("button", { name: "Congés" })).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Demander un congé" }));
+    // Un GESTIONNAIRE n'a pas l'onglet Dossier : le bouton de demande est dans l'onglet Congés.
+    fireEvent.click(await screen.findByRole("button", { name: "Congés" }));
+    fireEvent.click(await screen.findByRole("button", { name: "+ Nouvelle demande" }));
     expect(mockNavigate).toHaveBeenCalledWith("/conges/nouvelle", { state: { employeeId: "emp-uuid" } });
   });
 

@@ -39,3 +39,13 @@ def test_consultant_avec_acces_voit_toujours_le_document(consultant_user, employ
     resp = _client(consultant_user).get(f'/api/employees/{employee.pk}/documents/')
     assert resp.status_code == 200
     assert len(resp.data) == 1
+
+
+def test_gestionnaire_ne_peut_pas_ouvrir_le_detail_d_un_contrat(gestionnaire_user, contrat):
+    gestionnaire_user.scope_directions.add(contrat.employee.service.departement.direction)
+    assert _client(gestionnaire_user).get(f'/api/contrats/{contrat.pk}/').status_code == 404
+
+
+def test_consultant_ouvre_le_detail_d_un_contrat(consultant_user, contrat):
+    consultant_user.scope_directions.add(contrat.employee.service.departement.direction)
+    assert _client(consultant_user).get(f'/api/contrats/{contrat.pk}/').status_code == 200
