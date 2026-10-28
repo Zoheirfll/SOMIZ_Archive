@@ -1629,3 +1629,15 @@ Spec : `docs/fonctionnel/conges-hierarchie.md`.
   Constaté le 2026-10-28 sur la base de dev : 11 responsables sans compte.
 - **Reste** : migrations `accounts/0021-0022`, `audit/0015-0016`, `conges/0003` à appliquer ; l'ancien responsable d'une
   unité garde son compte (il perd le droit de visa, pas l'accès).
+
+## 50. Un GESTIONNAIRE ne consulte aucun document (2026-10-28) — ✅ Implémenté
+
+- **Règle** : un GESTIONNAIRE fait des demandes (attestations, consultations, congés), il ne lit aucun document, même
+  avec périmètre complet, types de documents cochés ou grant « dossier complet ». Un CONSULTANT n'est pas concerné.
+- **Où** : `accounts/models.py` — `_type_doc_scope_ids()` renvoie un ensemble vide et
+  `_granted_type_doc_ids_for_employee()` renvoie `(False, set())` pour un GESTIONNAIRE. Le point est central : liste,
+  visualisation, documents de contrat et recherche en héritent.
+- **Interface** : onglet « Dossier » masqué (`EmployeeDetail.jsx`, onglet par défaut = Carrière). Le masquage seul ne
+  protège rien ; la protection est côté serveur.
+- **Tests** : `tests/test_gestionnaire_sans_documents.py` (routes réelles `/documents/` et `/documents/<id>/view/`).
+- **Pas couvert** : l'onglet Carrière, l'onglet Contrats et les champs personnels restent visibles dans le périmètre.

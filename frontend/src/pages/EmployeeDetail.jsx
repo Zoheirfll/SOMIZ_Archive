@@ -74,9 +74,14 @@ const EmployeeDetail = () => {
   const [adjacent, setAdjacent] = useState({ prev: null, next: null, first: null, last: null, position: null, total: 0 });
   const [contrats, setContrats] = useState([]);
   const [selectedContratId, setSelectedContratId] = useState(null);
-  const [activeTab, setActiveTab] = useState(
-    searchParams.get("tab") || "dossier",
-  );
+  // Un GESTIONNAIRE ne consulte pas les documents (il fait des demandes) :
+  // pas d'onglet Dossier, onglet par défaut = Carrière. Le serveur refuse
+  // de toute façon (accounts.models._type_doc_scope_ids).
+  const peutVoirDocuments = user?.role !== "GESTIONNAIRE";
+  const [activeTab, setActiveTab] = useState(() => {
+    const demande = searchParams.get("tab") || "dossier";
+    return !peutVoirDocuments && demande === "dossier" ? "carriere" : demande;
+  });
   const [selectedDoc, setSelectedDoc] = useState(null);
   // Ids des documents dont l'historique (versions antérieures conservées)
   // est déplié dans la sidebar — replié par défaut.
@@ -1517,10 +1522,12 @@ const EmployeeDetail = () => {
         {/* Onglets */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
           {[
-            {
-              key: "dossier",
-              label: `Dossier (${employee.documents?.length || 0})`,
-            },
+            ...(peutVoirDocuments
+              ? [{
+                  key: "dossier",
+                  label: `Dossier (${employee.documents?.length || 0})`,
+                }]
+              : []),
             { key: "contrats", label: `Contrats (${contrats.length})` },
             { key: "carriere", label: "Carrière" },
             ...(canSeeConges(user)

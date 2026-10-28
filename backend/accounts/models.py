@@ -546,6 +546,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         """IDs des TypeDocument sélectionnés — set vide si aucune restriction."""
         if self.is_admin or not self.pk:
             return set()
+        if self.is_gestionnaire:
+            # Règle du 2026-10-28 : un GESTIONNAIRE ne consulte jamais de
+            # document (il fait des demandes) — les types cochés sont ignorés.
+            return set()
         return set(self.scope_types_documents.values_list('id', flat=True))
 
     @property
@@ -588,6 +592,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         mais pas un dossier complet) est exclue avant de déterminer full."""
         if self.is_admin or not self.pk:
             return True, set()
+        if self.is_gestionnaire:
+            return False, set()  # pas de document pour un GESTIONNAIRE, même avec un grant
         rows = list(
             self.employee_grants.filter(employee_id=employee_id, champ_personnel__isnull=True)
             .values_list('type_doc_id', flat=True)
