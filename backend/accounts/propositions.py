@@ -19,6 +19,12 @@ from .models import PropositionCompte, User
 
 ROLES_AUTORISES = (User.Role.GESTIONNAIRE, User.Role.CONSULTANT)
 
+# Type d'unité d'une proposition -> M2M de périmètre du compte (User.scope_*).
+CHAMPS_PERIMETRE = {
+    'direction': 'scope_directions', 'departement': 'scope_departements', 'service': 'scope_services',
+    'cellule': 'scope_cellules', 'section': 'scope_sections',
+}
+
 # Champ du modèle d'unité (clé : nom de classe) -> libellé affiché.
 UNITES = {
     'Direction': 'direction', 'Departement': 'departement', 'Service': 'service',
@@ -79,6 +85,18 @@ def generer_mot_de_passe(longueur=14):
         return mdp
 
 
+def _ajouter_perimetre(user, proposition) -> bool:
+    champ = CHAMPS_PERIMETRE.get(proposition.unite_type)
+    if not champ:
+        return False
+    manager = getattr(user, champ)
+    unite = manager.model.objects.filter(pk=proposition.unite_id).first()
+    if unite is None:
+        return False
+    manager.add(unite)
+    return True
+
+
 def valider_proposition(request, proposition, *, role):
     """Crée le compte. Retourne (user, mot_de_passe_temporaire) ; le mot de
     passe n'est jamais stocké en clair ni relisible ensuite."""
@@ -98,6 +116,10 @@ def valider_proposition(request, proposition, *, role):
             peut_demander_conge=True, must_change_password=True,
             created_by=request.user,
         )
+        # Périmètre pré-rempli avec l'unité dirigée (décision du 2026-10-28) : le
+        # chef lit les dossiers de son unité et peut y saisir des demandes. Si
+        # l'unité a disparu entre-temps, le compte est créé sans périmètre.
+        perimetre = _ajouter_perimetre(user, proposition)
         proposition.statut = PropositionCompte.Statut.VALIDEE
         proposition.decide_par = request.user
         proposition.date_decision = timezone.now()
@@ -107,7 +129,7 @@ def valider_proposition(request, proposition, *, role):
     AuditLog.log(
         request, AuditLog.Action.VALIDER_COMPTE, target=user,
         details={'proposition': str(proposition.pk), 'role': role, 'username': user.username,
-                 'unite': f"{proposition.unite_type}:{proposition.unite_nom}"},
+                 'unite': f"{proposition.unite_type}:{proposition.unite_nom}", 'perimetre': perimetre},
     )
     return user, mot_de_passe
 

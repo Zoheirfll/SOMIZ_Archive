@@ -4,10 +4,11 @@ Statut (2026-10-28) : **implémenté** (backend + interface : filtre « À viser
 visa/refus et chronologie sur le détail, propositions de compte sur /users,
 bouton « Désigner » sur l'Organigramme, écran /mot-de-passe forcé). Journal :
 `securite.md` point 49.
-**Écart avec la spec initiale** : le périmètre organisationnel n'est PAS
-pré-rempli à la validation d'un compte — il donnerait la lecture des dossiers
-RH, ce que la décision « visa = congés seulement » exclut. À attribuer à la
-main depuis le modal « Périmètre » si le chef doit saisir pour son équipe.
+**Périmètre (décision du 2026-10-28, révise « visa = congés seulement »)** :
+à la validation d'un compte, l'unité dirigée est ajoutée à son périmètre. Le
+chef lit donc les dossiers de son unité et peut y saisir des demandes de
+congé ; l'ADMIN peut le restreindre ensuite (modal « Périmètre »). Seulement
+à la création du compte, pas lors d'une désignation ultérieure.
 
 ## Implémentation du visa (backend)
 - `conges/hierarchie.py` : `chaine_validation(employee)` (fonction pure).

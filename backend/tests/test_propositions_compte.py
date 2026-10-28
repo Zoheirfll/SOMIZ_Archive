@@ -97,6 +97,27 @@ class TestValidation:
         assert prop.statut == PropositionCompte.Statut.VALIDEE and prop.compte_cree == user
         assert AuditLog.objects.filter(action="VALIDER_COMPTE").exists()
 
+    def test_validation_pre_remplit_le_perimetre_avec_l_unite_dirigee(self, admin_user, employee, service):
+        prop = self._proposition(admin_user, employee, service)
+        user, _ = valider_proposition(FakeRequest(admin_user), prop, role="GESTIONNAIRE")
+        assert list(user.scope_services.all()) == [service]
+        assert not user.scope_directions.exists() and not user.scope_departements.exists()
+        assert AuditLog.objects.filter(action="VALIDER_COMPTE").first().details["perimetre"] is True
+        assert user.can_access_employee(employee)
+
+    def test_perimetre_direction_pour_un_directeur(self, admin_user, employee, direction):
+        auth_client(admin_user).patch(
+            f"/api/ref/directions/{direction.id}/", {"responsable": str(employee.id)}, format="json")
+        user, _ = valider_proposition(FakeRequest(admin_user), PropositionCompte.objects.get(), role="CONSULTANT")
+        assert list(user.scope_directions.all()) == [direction]
+
+    def test_unite_supprimee_compte_cree_sans_perimetre(self, admin_user, employee, service):
+        prop = self._proposition(admin_user, employee, service)
+        PropositionCompte.objects.filter(pk=prop.pk).update(unite_id="00000000-0000-0000-0000-000000000000")
+        prop.refresh_from_db()
+        user, _ = valider_proposition(FakeRequest(admin_user), prop, role="CONSULTANT")
+        assert not user.scope_services.exists()
+
     def test_role_non_autorise_refuse(self, admin_user, employee, service):
         prop = self._proposition(admin_user, employee, service)
         with pytest.raises(PropositionError):

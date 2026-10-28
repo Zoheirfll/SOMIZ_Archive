@@ -1612,8 +1612,12 @@ Spec : `docs/fonctionnel/conges-hierarchie.md`.
   ne peut pas valider avant la fin des visas. Chaque visa et chaque refus sont tracés (`VISER_CONGE`,
   `REFUSER_VISA_CONGE`), le visa « en lieu et place de » est horodaté et nominatif. Création/validation/refus de compte
   tracés (`PROPOSE_COMPTE`, `VALIDER_COMPTE`, `REFUSER_COMPTE`).
-- **Décision à prendre — périmètre** : un compte créé n'a **aucun périmètre organisationnel** (le visa ne donne accès
-  qu'aux congés, décision du 2026-10-28). Conséquence : il peut viser mais ne peut pas saisir de demande pour son équipe
-  tant qu'un ADMIN ne lui attribue pas un périmètre, ce qui donne aussi la **lecture des dossiers RH** de l'unité.
+- **Périmètre pré-rempli (décision du 2026-10-28, ⚠️ risque accepté)** : à la validation, le compte reçoit pour
+  périmètre l'unité qu'il dirige (`scope_directions/departements/services/cellules/sections`). Il obtient donc la
+  **lecture des dossiers RH de toute l'unité** (un directeur : toute sa direction) et peut y saisir des demandes de
+  congé. Choix assumé pour que le chef puisse saisir pour son équipe ; l'ADMIN peut le réduire ensuite via le modal
+  « Périmètre ». Tracé : `VALIDER_COMPTE.details.perimetre`. Si l'unité a disparu entre la proposition et la
+  validation, le compte est créé sans périmètre. Le périmètre n'est ajouté qu'à la **création** : désigner plus tard
+  un employé qui a déjà un compte ne modifie pas son périmètre.
 - **Reste** : migrations `accounts/0021-0022`, `audit/0015-0016`, `conges/0003` à appliquer ; l'ancien responsable d'une
   unité garde son compte (il perd le droit de visa, pas l'accès).

@@ -86,7 +86,8 @@ const PropositionsCompte = ({ onCompteCree }) => {
           </h2>
           <p style={{ color: theme.textSecondary, fontSize: 12, margin: "0 0 14px", lineHeight: 1.5 }}>
             Ces employés ont été désignés responsables d'une unité mais n'ont pas de compte. Aucun compte n'est
-            créé tant que vous ne validez pas.
+            créé tant que vous ne validez pas. À la validation, le compte reçoit pour périmètre l'unité dirigée :
+            il pourra lire les dossiers de cette unité et y saisir des demandes de congé.
           </p>
           {erreur && (
             <div role="alert" style={{ color: theme.danger, fontSize: 13, marginBottom: 10, fontWeight: 600 }}>
