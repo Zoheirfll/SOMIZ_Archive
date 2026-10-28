@@ -7,6 +7,13 @@ from rest_framework import exceptions
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 
+# Routes encore accessibles tant que le mot de passe temporaire n'a pas été
+# changé (sinon impossible de le changer, ni de se déconnecter).
+ROUTES_MOT_DE_PASSE_TEMPORAIRE = (
+    '/api/auth/me/', '/api/auth/change-password/', '/api/auth/logout/', '/api/auth/refresh/',
+)
+
+
 def is_token_revoked(user, token):
     """
     Vrai si le JWT (access ou refresh) a été émis avant le dernier changement
@@ -29,6 +36,18 @@ class JWTCookieAuthentication(JWTAuthentication):
         return user
 
     def authenticate(self, request):
+        resultat = self._authenticate(request)
+        # Appliqué ici (et non dans une permission) : l'authentification
+        # s'exécute pour TOUTES les vues, y compris celles qui déclarent leurs
+        # propres permission_classes et écrasent le défaut global.
+        if resultat and getattr(resultat[0], 'must_change_password', False)                 and request.path not in ROUTES_MOT_DE_PASSE_TEMPORAIRE:
+            raise exceptions.PermissionDenied(
+                'Vous devez changer votre mot de passe temporaire avant de continuer.',
+                code='password_change_required',
+            )
+        return resultat
+
+    def _authenticate(self, request):
         # Essayer d'abord le cookie httpOnly
         raw_token = request.COOKIES.get("access_token")
         if raw_token:

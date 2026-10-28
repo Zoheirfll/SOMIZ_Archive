@@ -210,6 +210,7 @@ class UserMeView(APIView):
             'can_manage_conges': user.can_manage_conges,
             'can_request_conges': user.can_request_conges,
             'needs_consent': not bool(user.consent_loi1807_accepted_at),
+            'must_change_password': user.must_change_password,
         })
 
 
@@ -265,7 +266,14 @@ class ChangePasswordView(APIView):
         except DjangoValidationError as e:
             return Response({'error': ' '.join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
+        if nouveau == ancien:
+            return Response(
+                {'error': "Le nouveau mot de passe doit être différent de l'ancien."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         request.user.set_password(nouveau)
+        request.user.must_change_password = False
         request.user.save()
 
         AuditLog.log(request, AuditLog.Action.MODIFY_EMP,

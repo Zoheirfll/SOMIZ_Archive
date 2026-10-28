@@ -126,12 +126,23 @@ class ReferentielAuditMixin:
     référentiels (Direction, TypeDocument, Catégorie...), voir securite.md
     point 38. À appliquer à toute nouvelle vue CRUD de référentiel."""
 
+    def _proposer_compte_responsable(self, instance, avant=None):
+        """Désigner un employé sans compte comme responsable d'une unité crée
+        une proposition de compte à valider par un ADMIN (jamais un compte
+        direct) — voir accounts/propositions.py."""
+        if avant is not None and avant.get('responsable') == str(instance.responsable_id):
+            return
+        if getattr(instance, 'responsable_id', None):
+            from accounts.propositions import proposer_compte
+            proposer_compte(self.request, instance.responsable, instance)
+
     def perform_create(self, serializer):
         instance = serializer.save()
         AuditLog.log(
             self.request, AuditLog.Action.CREATE_REF, target=instance,
             details={'model': instance.__class__.__name__, 'nom': _ref_label(instance)},
         )
+        self._proposer_compte_responsable(instance)
 
     def perform_update(self, serializer):
         avant = _ref_snapshot(serializer.instance)
@@ -143,6 +154,7 @@ class ReferentielAuditMixin:
                 self.request, AuditLog.Action.MODIFY_REF, target=instance,
                 details={'model': instance.__class__.__name__, 'nom': _ref_label(instance), 'champs': diff},
             )
+        self._proposer_compte_responsable(instance, avant)
 
     def perform_destroy(self, instance):
         AuditLog.log(

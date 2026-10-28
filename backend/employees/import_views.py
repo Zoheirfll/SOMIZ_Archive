@@ -3,6 +3,7 @@ employees/import_views.py
 Import CSV des employés en masse
 """
 import csv
+import unicodedata
 import io
 import logging
 import re
@@ -547,7 +548,7 @@ class ReferentielImportView(APIView):
         'directions': {
             'model': Direction,
             'required': {'nom'},
-            'optional': {'code', 'description'},
+            'optional': {'code', 'description', 'responsable_matricule', 'responsable_nom'},
         },
         'poles': {
             'model': Pole,
@@ -557,7 +558,7 @@ class ReferentielImportView(APIView):
         'departements': {
             'model': Departement,
             'required': {'nom', 'direction'},
-            'optional': {'code', 'description'},
+            'optional': {'code', 'description', 'responsable_matricule', 'responsable_nom'},
         },
         'services': {
             'model': Service,
@@ -568,7 +569,7 @@ class ReferentielImportView(APIView):
             # nom. Si la colonne 'direction' est renseignee, elle sert a
             # lever cette ambiguite ; sinon le departement n'est resolu par
             # son seul nom que s'il est le seul a porter ce nom.
-            'optional': {'code', 'direction', 'description'},
+            'optional': {'code', 'direction', 'description', 'responsable_matricule', 'responsable_nom'},
         },
         'cellules': {
             'model': Cellule,
@@ -584,7 +585,7 @@ class ReferentielImportView(APIView):
             # doit etre renseignee sur chaque ligne (verifie a l'execution,
             # pas dans 'required' qui ne sait exprimer que des colonnes
             # toujours obligatoires).
-            'optional': {'code', 'direction', 'departement', 'description'},
+            'optional': {'code', 'direction', 'departement', 'description', 'responsable_matricule', 'responsable_nom'},
         },
         'sections': {
             'model': Section,
@@ -592,7 +593,7 @@ class ReferentielImportView(APIView):
             # Memes regles que 'cellules' (voir commentaire ci-dessus) :
             # 'direction' sert a la fois de parent direct (departement vide)
             # et de desambiguisation (departement rempli).
-            'optional': {'code', 'direction', 'departement', 'description'},
+            'optional': {'code', 'direction', 'departement', 'description', 'responsable_matricule', 'responsable_nom'},
         },
         'postes': {
             'model': Poste,
@@ -633,6 +634,48 @@ class ReferentielImportView(APIView):
         'motifs-archivage': MotifArchivage.Categorie.ARCHIVAGE,
         'motifs-attestation': MotifArchivage.Categorie.ATTESTATION,
     }
+
+    # Unités qui acceptent une colonne responsable (2026-10-28).
+    MODELS_AVEC_RESPONSABLE = ('directions', 'departements', 'services', 'cellules', 'sections')
+
+    @staticmethod
+    def _normaliser(texte):
+        sans = unicodedata.normalize('NFKD', texte or '').encode('ascii', 'ignore').decode()
+        return ' '.join(sans.lower().split())
+
+    def _indexer_employes(self):
+        """matricule -> employé, et « prenom nom » / « nom prenom » normalisé ->
+        liste d'employés (plusieurs = homonymes, ligne refusée)."""
+        par_matricule, par_nom = {}, {}
+        for e in Employee.objects.all().only('id', 'matricule', 'nom', 'prenom'):
+            par_matricule[e.matricule.upper()] = e
+            for cle in (f"{e.prenom} {e.nom}", f"{e.nom} {e.prenom}"):
+                par_nom.setdefault(self._normaliser(cle), []).append(e)
+        return par_matricule, par_nom
+
+    def _resoudre_responsable(self, row, idx, ligne_erreurs):
+        """Matricule prioritaire ; à défaut le nom, accepté seulement s'il est
+        sans ambiguïté. Jamais de choix au hasard entre homonymes."""
+        par_matricule, par_nom = idx
+        matricule = row.get('responsable_matricule', '').strip().upper()
+        nom = row.get('responsable_nom', '').strip()
+        if matricule:
+            emp = par_matricule.get(matricule)
+            if not emp:
+                ligne_erreurs.append(f'Responsable : matricule "{matricule}" introuvable')
+            return emp
+        if nom:
+            trouves = par_nom.get(self._normaliser(nom), [])
+            if len(trouves) == 1:
+                return trouves[0]
+            if len(trouves) > 1:
+                ligne_erreurs.append(
+                    f'Responsable "{nom}" : {len({e.id for e in trouves})} employes correspondent, '
+                    'indiquez la colonne "responsable_matricule"'
+                )
+            else:
+                ligne_erreurs.append(f'Responsable "{nom}" introuvable')
+        return None
 
     def post(self, request, model):
         if model not in self.MODELS:
@@ -759,6 +802,7 @@ class ReferentielImportView(APIView):
         erreurs = []
         a_creer = []
         resultats = []
+        employes_idx = self._indexer_employes() if model in self.MODELS_AVEC_RESPONSABLE else None
 
         for num_ligne, row in enumerate(rows, start=2):
             row = {k.strip().lower(): (v or '').strip() for k, v in row.items() if k}
@@ -821,6 +865,10 @@ class ReferentielImportView(APIView):
             else:
                 cle_doublon = (None, nom.upper())
 
+            responsable = None
+            if model in self.MODELS_AVEC_RESPONSABLE:
+                responsable = self._resoudre_responsable(row, employes_idx, ligne_erreurs)
+
             if nom and cle_doublon in existants:
                 ligne_erreurs.append(f'"{nom}" existe deja a cet emplacement')
 
@@ -844,6 +892,8 @@ class ReferentielImportView(APIView):
                 kwargs['departement'] = departement
             if model in self.MOTIF_CATEGORIES:
                 kwargs['categorie'] = self.MOTIF_CATEGORIES[model]
+            if responsable:
+                kwargs['responsable'] = responsable
 
             a_creer.append(ModelClass(**kwargs))
             resultats.append({'ligne': num_ligne, 'nom': nom})
@@ -870,6 +920,9 @@ class ReferentielImportView(APIView):
                     request, AuditLog.Action.CREATE_REF, target=obj,
                     details={'model': ModelClass.__name__, 'nom': obj.nom, 'import': True},
                 )
+                if getattr(obj, 'responsable_id', None):
+                    from accounts.propositions import proposer_compte
+                    proposer_compte(request, obj.responsable, obj, source='import')
 
         return Response({
             'nb_crees': nb_crees,

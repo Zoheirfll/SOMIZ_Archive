@@ -74,6 +74,9 @@ class AuditLog(models.Model):
         CREATE_REF = 'CREATE_REF', 'Création référentiel'
         MODIFY_REF = 'MODIFY_REF', 'Modification référentiel'
         DELETE_REF = 'DELETE_REF', 'Suppression référentiel'
+        PROPOSE_COMPTE = 'PROPOSE_COMPTE', 'Proposition de compte (responsable)'
+        VALIDER_COMPTE = 'VALIDER_COMPTE', 'Validation proposition de compte'
+        REFUSER_COMPTE = 'REFUSER_COMPTE', 'Refus proposition de compte'
 
     # Pas de UUIDField ici — BIGSERIAL plus rapide pour les logs
     # (table peut atteindre des millions de lignes)

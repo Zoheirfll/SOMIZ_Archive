@@ -131,6 +131,22 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text="Gestionnaire/Consultant : autorisé à créer des demandes de congé.",
     )
 
+    # Fiche employé du titulaire du compte (2026-10-28) : permet de savoir
+    # qu'un compte est « chef de X » (= son employé est le `responsable` de
+    # l'unité X) pour la validation hiérarchique des congés. Voir
+    # docs/fonctionnel/conges-hierarchie.md. Un employé n'a qu'un compte.
+    employee = models.OneToOneField(
+        'employees.Employee', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='user_account', verbose_name="Fiche employé liée",
+        help_text="Fiche employé du titulaire du compte. Requise pour exercer une "
+                   "fonction d'encadrement (chef de service, directeur…).",
+    )
+
+    # Mot de passe temporaire (2026-10-28) : posé à True à la création d'un
+    # compte par validation d'une PropositionCompte ; l'utilisateur doit alors
+    # choisir son propre mot de passe avant d'utiliser l'application.
+    must_change_password = models.BooleanField(default=False)
+
     # Sécurité : blocage après N tentatives
     failed_login_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
@@ -722,3 +738,54 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.failed_login_attempts = 0
         self.locked_until = None
         self.save(update_fields=['failed_login_attempts', 'locked_until'])
+
+
+class PropositionCompte(models.Model):
+    """Proposition de création du compte d'un responsable d'unité (2026-10-28).
+
+    Créée quand un employé sans compte est désigné `responsable` d'une unité
+    (saisie ou import). Aucun compte n'existe tant qu'un ADMIN n'a pas validé :
+    voir accounts/propositions.py et docs/fonctionnel/conges-hierarchie.md.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        VALIDEE = 'validee', 'Validée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey(
+        'employees.Employee', on_delete=models.CASCADE, related_name='propositions_compte',
+    )
+    # Unité dirigée, mémorisée en texte (type + id + nom) : la proposition reste
+    # lisible même si l'unité est renommée ou supprimée entre-temps.
+    unite_type = models.CharField(max_length=20)
+    unite_id = models.UUIDField()
+    unite_nom = models.CharField(max_length=200)
+    source = models.CharField(max_length=20, default='designation')  # designation | import
+    statut = models.CharField(max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    propose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    date_decision = models.DateTimeField(null=True, blank=True)
+    motif_refus = models.TextField(blank=True)
+    role_attribue = models.CharField(max_length=20, blank=True)
+    compte_cree = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'propositions_compte'
+        ordering = ['-created_at']
+        constraints = [
+            # Une seule proposition ouverte par employé : désigner le même
+            # employé chef de deux unités ne crée pas deux propositions.
+            models.UniqueConstraint(
+                fields=['employee'], condition=Q(statut='en_attente'),
+                name='unique_proposition_ouverte_par_employe',
+            ),
+        ]

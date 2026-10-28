@@ -462,3 +462,70 @@ class EmployeeGrantsView(APIView):
 
         grants = EmployeeAccessGrant.objects.filter(user=target).select_related('employee', 'type_doc', 'champ_personnel')
         return Response({'grants': EmployeeAccessGrantSerializer(grants, many=True).data})
+
+# ─── Propositions de compte pour les responsables d'unité (2026-10-28) ──────
+
+class PropositionCompteListView(APIView):
+    """GET /api/admin-users/propositions/?statut=en_attente"""
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from accounts.models import PropositionCompte
+        qs = PropositionCompte.objects.select_related('employee', 'decide_par')
+        statut = request.query_params.get('statut', PropositionCompte.Statut.EN_ATTENTE)
+        if statut != 'tous':
+            qs = qs.filter(statut=statut)
+        return Response([{
+            'id': str(p.id),
+            'employee_id': str(p.employee_id),
+            'employee_nom': f"{p.employee.prenom} {p.employee.nom}",
+            'matricule': p.employee.matricule,
+            'unite_type': p.unite_type,
+            'unite_nom': p.unite_nom,
+            'source': p.source,
+            'statut': p.statut,
+            'role_attribue': p.role_attribue,
+            'motif_refus': p.motif_refus,
+            'decide_par': p.decide_par.full_name if p.decide_par_id else None,
+            'created_at': p.created_at,
+        } for p in qs[:200]])
+
+
+class PropositionCompteValiderView(APIView):
+    """POST /api/admin-users/propositions/<id>/valider/ {role}
+    Crée le compte et renvoie le mot de passe temporaire, UNE SEULE FOIS."""
+    permission_classes = [IsAdmin]
+
+    def post(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        from accounts.models import PropositionCompte
+        from accounts.propositions import PropositionError, valider_proposition
+        proposition = get_object_or_404(PropositionCompte, pk=pk)
+        try:
+            user, mot_de_passe = valider_proposition(
+                request, proposition, role=request.data.get('role', ''),
+            )
+        except PropositionError as e:
+            raise ValidationError({'error': str(e)})
+        response = Response({
+            'user_id': str(user.id), 'username': user.username,
+            'role': user.role, 'mot_de_passe_temporaire': mot_de_passe,
+        }, status=201)
+        response['Cache-Control'] = 'no-store'
+        return response
+
+
+class PropositionCompteRefuserView(APIView):
+    """POST /api/admin-users/propositions/<id>/refuser/ {motif}"""
+    permission_classes = [IsAdmin]
+
+    def post(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        from accounts.models import PropositionCompte
+        from accounts.propositions import PropositionError, refuser_proposition
+        proposition = get_object_or_404(PropositionCompte, pk=pk)
+        try:
+            refuser_proposition(request, proposition, motif=request.data.get('motif', ''))
+        except PropositionError as e:
+            raise ValidationError({'error': str(e)})
+        return Response({'statut': 'refusee'})
