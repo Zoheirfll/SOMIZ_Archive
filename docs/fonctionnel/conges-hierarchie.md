@@ -1,6 +1,26 @@
 # Congés — validation hiérarchique (spec, 2026-10-28)
 
-Statut : **conception validée, pas encore implémentée.**
+Statut (2026-10-28) : **backend implémenté** (comptes de responsables,
+chaîne, workflow de visa, API). **Reste** : interface (liste « à viser »,
+boutons viser/refuser, propositions de compte sur /users, désignation depuis
+l'Organigramme, écran de changement de mot de passe forcé), périmètre
+proposé à la validation d'un compte, `securite.md`.
+
+## Implémentation du visa (backend)
+- `conges/hierarchie.py` : `chaine_validation(employee)` (fonction pure).
+- `conges/visas.py` : `initialiser_chaine` (fige la chaîne en `VisaConge`),
+  `viser`, `refuser`. Statut `visa` (« En attente de visa ») avant `recue` :
+  sans chaîne la demande est `recue` d'emblée (comportement historique).
+- API : `POST /api/conges/demandes/<ref>/viser/` et `.../refuser-visa/`
+  (`motif` obligatoire) ; liste `?a_viser=1` ; `visas` et `peut_viser` dans
+  le serializer. Le droit de viser est vérifié dans `visas.py` (compte du
+  maillon ou d'un niveau supérieur), jamais seulement par la permission de
+  vue. Audit : `VISER_CONGE`, `REFUSER_VISA_CONGE`.
+- Le traiteur RH ne peut valider qu'une demande `recue` : impossible tant que
+  les visas ne sont pas donnés.
+- `CanAccessConges` laisse entrer tout compte à qui un visa est adressé.
+- Piège : `notify()` est différé à `on_commit` ; les tests doivent utiliser
+  `django_capture_on_commit_callbacks`.
 
 ## Besoin
 Une demande de congé doit être visée par la voie hiérarchique avant le

@@ -7,6 +7,7 @@ from .models import (
     CongeTemplateConfig, DemandeConge, MotifConge, MotifPiece, MouvementConge, ParametreConge,
     PieceJointeConge, TypeConge,
 )
+from . import visas
 from .reference import generate_reference
 from .services import COMPTEURS, CongeError, exercice_courant, exercice_suivant, valider_format_exercice
 from .workflow import trouver_chevauchement
@@ -84,11 +85,25 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
     interrompue_par_nom = serializers.SerializerMethodField()
     pieces_jointes = serializers.SerializerMethodField()
     conge_termine = serializers.BooleanField(read_only=True)
+    visas = serializers.SerializerMethodField()
+    peut_viser = serializers.SerializerMethodField()
+
+    def get_visas(self, obj):
+        return [{
+            'niveau': v.niveau, 'unite_type': v.unite_type, 'unite_nom': v.unite_nom,
+            'responsable_nom': v.responsable_nom, 'sans_compte': v.compte_id is None,
+            'decision': v.decision, 'decide_par_nom': v.decide_par.full_name if v.decide_par_id else None,
+            'date_decision': v.date_decision, 'motif': v.motif,
+        } for v in obj.visas.all()]
+
+    def get_peut_viser(self, obj):
+        request = self.context.get('request')
+        return bool(request and visas.peut_viser(obj, request.user))
 
     class Meta:
         model = DemandeConge
         fields = [
-            'id', 'reference', 'conge_termine', 'employee', 'employee_nom', 'employee_matricule',
+            'id', 'reference', 'conge_termine', 'visas', 'peut_viser', 'employee', 'employee_nom', 'employee_matricule',
             'employee_date_embauche', 'employee_direction_nom', 'employee_departement_nom',
             'employee_service_nom', 'employee_poste_nom', 'employee_type_contrat_nom',
             'contrat', 'contrat_numero',

@@ -31,6 +31,20 @@ def notifier_nouvelle_demande(demande):
     )
 
 
+def notifier_visa_requis(demande, auteur=None):
+    """Prévient les responsables de la chaîne dont le visa est attendu (dès la
+    création : un niveau supérieur peut viser sans attendre le niveau inférieur)."""
+    comptes = [
+        v.compte_id for v in demande.visas.all()
+        if v.compte_id and v.decision == 'en_attente' and (auteur is None or v.compte_id != auteur.pk)
+    ]
+    if comptes:
+        notify(
+            comptes, Notification.Type.CONGE_NOUVELLE,
+            f"Demande de congé {demande.reference} en attente de votre visa", _link(demande),
+        )
+
+
 def notifier_validee(demande, auteur=None):
     _vers_le_demandeur(
         demande, auteur, Notification.Type.CONGE_PRETE,

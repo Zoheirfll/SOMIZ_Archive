@@ -15,7 +15,11 @@ class CanAccessConges(_ConsentedActiveUser):
 
     def has_permission(self, request, view):
         user = request.user
-        return self._ok(user) and (user.can_manage_conges or user.can_request_conges)
+        # Un responsable à qui des visas sont adressés (conges.visas) accède
+        # aussi à l'app, même sans droit de demander ni de traiter.
+        return self._ok(user) and (
+            user.can_manage_conges or user.can_request_conges or user.visas_attendus.exists()
+        )
 
 
 class IsCongeManager(_ConsentedActiveUser):

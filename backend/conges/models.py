@@ -201,6 +201,9 @@ def aujourdhui():
 
 class DemandeConge(models.Model):
     class Statut(models.TextChoices):
+        # Visa hiérarchique en cours (2026-10-28) : voir conges/visas.py. Passe à
+        # RECUE quand le visa le plus haut de la chaîne est donné.
+        VISA = 'visa', 'En attente de visa'
         RECUE = 'recue', 'Reçue'
         PRETE = 'prete', 'Prête'
         RECUPEREE = 'recuperee', 'Récupérée'
@@ -353,3 +356,40 @@ class CongeTemplateConfig(models.Model):
 
     class Meta:
         db_table = 'conge_template_config'
+
+
+class VisaConge(models.Model):
+    """Un maillon de la chaîne de visa d'une demande, figé à sa création
+    (changer ensuite un `responsable` ne modifie pas les demandes en cours).
+    Une décision prise n'est jamais modifiée. Voir conges/visas.py."""
+
+    class Decision(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        VISE = 'vise', 'Visé'
+        VISE_PAR_SUPERIEUR = 'vise_par_superieur', 'Visé par un niveau supérieur'
+        REFUSE = 'refuse', 'Refusé'
+
+    demande = models.ForeignKey(DemandeConge, on_delete=models.CASCADE, related_name='visas')
+    niveau = models.PositiveSmallIntegerField()  # 1 direct, 2 département, 3 direction
+    unite_type = models.CharField(max_length=20)
+    unite_nom = models.CharField(max_length=200)
+    responsable_nom = models.CharField(max_length=200)
+    responsable = models.ForeignKey(
+        'employees.Employee', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    # Compte habilité à viser (None = responsable sans compte : seul un niveau
+    # supérieur peut alors viser à sa place).
+    compte = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='visas_attendus',
+    )
+    decision = models.CharField(max_length=20, choices=Decision.choices, default=Decision.EN_ATTENTE)
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    date_decision = models.DateTimeField(null=True, blank=True)
+    motif = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'visas_conge'
+        ordering = ['niveau']
+        constraints = [models.UniqueConstraint(fields=['demande', 'niveau'], name='unique_visa_par_niveau')]

@@ -16,7 +16,7 @@ from attestations.pdf import LOGO_PAR_DEFAUT
 from audit.models import AuditLog
 from config.liste_demandes import DemandePagination, appliquer_periode_importance_tri
 from employees.models import Employee
-from . import notifications, services, workflow
+from . import notifications, services, visas, workflow
 from .models import (
     CongeTemplateConfig, DemandeConge, MotifConge, MotifPiece, MouvementConge, ParametreConge,
     PieceJointeConge,
@@ -36,10 +36,13 @@ SELECT_RELATED = (
     'employee__poste', 'employee__type_contrat', 'contrat', 'demandeur', 'traite_par',
     'motif', 'annulee_par', 'interrompue_par',
 )
+PREFETCH = ('visas', 'visas__decide_par')
 
 
 def _actives():
-    return DemandeConge.objects.filter(is_active=True).select_related(*SELECT_RELATED)
+    return DemandeConge.objects.filter(is_active=True).select_related(*SELECT_RELATED).prefetch_related(
+        'visas', 'visas__decide_par',
+    )
 
 
 def erreurs_metier(vue):
@@ -112,7 +115,16 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
             if params.get('pending'):
                 qs = qs.filter(statut=DemandeConge.Statut.RECUE)  # badge traiteur : pas encore prises en charge
             return qs
-        qs = qs.filter(demandeur=user)  # un demandeur ne voit que ses demandes
+        # un demandeur ne voit que ses demandes ; un responsable voit aussi celles
+        # dont il est (ou a été) un maillon de la chaîne de visa
+        qs = qs.filter(Q(demandeur=user) | Q(visas__compte=user)).distinct()
+        if params.get('a_viser'):
+            qs = qs.filter(
+                statut=DemandeConge.Statut.VISA, visas__compte=user,
+                visas__decision='en_attente',
+            )
+        if params.get('statut'):
+            qs = qs.filter(statut=params['statut'])
         if params.get('pending'):
             qs = qs.filter(statut=DemandeConge.Statut.PRETE)  # badge demandeur : titres prêts à récupérer
         return qs
@@ -126,7 +138,12 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
                 'date_retour': demande.date_retour.isoformat(), 'nb_jours': demande.nb_jours,
             },
         )
-        notifications.notifier_nouvelle_demande(demande)
+        # Chaîne de visa : si elle existe, la demande attend ses visas avant d'être
+        # adressée aux traiteurs RH (sinon elle est `recue` d'emblée, comme avant).
+        if visas.initialiser_chaine(demande):
+            notifications.notifier_visa_requis(demande, self.request.user)
+        else:
+            notifications.notifier_nouvelle_demande(demande)
 
 
 class DemandeCongeDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIView):
@@ -138,12 +155,14 @@ class DemandeCongeDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIVi
     def get_object(self):
         obj = super().get_object()
         user = self.request.user
-        if not user.can_manage_conges and obj.demandeur_id != user.id:
+        if not user.can_manage_conges and obj.demandeur_id != user.id                 and not obj.visas.filter(compte=user).exists():
             raise PermissionDenied("Cette demande ne vous appartient pas.")
         return obj
 
     def perform_destroy(self, instance):
-        if instance.demandeur_id != self.request.user.id or instance.statut != DemandeConge.Statut.RECUE:
+        if instance.demandeur_id != self.request.user.id or instance.statut not in (
+            DemandeConge.Statut.RECUE, DemandeConge.Statut.VISA,
+        ):
             raise PermissionDenied(
                 "Une demande ne peut être annulée que par son auteur, tant qu'elle est au statut 'Reçue'."
             )
@@ -153,6 +172,43 @@ class DemandeCongeDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIVi
         )
         instance.is_active = False
         instance.save(update_fields=['is_active', 'updated_at'])
+
+
+# ─── Visa hiérarchique (chef direct → département → direction) ─────────────
+
+class ViserView(ReferenceLookupMixin, APIView):
+    """POST /demandes/<ref>/viser/ — le droit de viser est vérifié dans
+    visas.viser (compte du maillon ou d'un niveau supérieur), pas ici."""
+    permission_classes = [CanAccessConges]
+
+    @erreurs_metier
+    def post(self, request, ref):
+        demande = self.get_object()
+        avant = demande.statut
+        vise = visas.viser(demande, auteur=request.user)
+        AuditLog.log(
+            request, AuditLog.Action.VISER_CONGE, target=vise,
+            details={'reference': vise.reference, 'de': avant, 'vers': vise.statut},
+        )
+        if vise.statut == DemandeConge.Statut.RECUE:
+            notifications.notifier_nouvelle_demande(vise)  # chaîne complète : au traiteur RH
+        return _reponse(vise, request)
+
+
+class RefuserVisaView(ReferenceLookupMixin, APIView):
+    """POST /demandes/<ref>/refuser-visa/ {motif} — rejette la demande."""
+    permission_classes = [CanAccessConges]
+
+    @erreurs_metier
+    def post(self, request, ref):
+        demande = self.get_object()
+        refuse = visas.refuser(demande, auteur=request.user, motif=request.data.get('motif', ''))
+        AuditLog.log(
+            request, AuditLog.Action.REFUSER_VISA_CONGE, target=refuse,
+            details={'reference': refuse.reference, 'motif': refuse.motif_rejet},
+        )
+        notifications.notifier_rejetee(refuse, request.user)
+        return _reponse(refuse, request)
 
 
 # ─── Actions du traiteur sur un titre ──────────────────────────────────────
