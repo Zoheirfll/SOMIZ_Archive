@@ -8,9 +8,12 @@ import useIsMobile from "../hooks/useIsMobile";
 import { useConfirm } from "../components/ConfirmDialog";
 import StatutBadge from "../components/attestations/StatutBadge";
 import ImportanceBadge from "../components/attestations/ImportanceBadge";
+import FiltresPeriode from "../components/demandes/FiltresPeriode";
+import TableDemandes from "../components/demandes/TableDemandes";
+import { dateCourte, heureRecue } from "../utils/listeDemandes";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
-import { ClipboardIcon, FileTextIcon } from "../components/icons";
+import { ClipboardIcon } from "../components/icons";
 import StatDonutChart from "../components/charts/StatDonutChart";
 import StatAreaChart from "../components/charts/StatAreaChart";
 import { canRequestAttestations } from "../config/accesSections";
@@ -46,6 +49,17 @@ const STATUT_DOT_COLORS = {
   rejetee: (theme) => theme.danger,
 };
 
+const OPTIONS_TRI = [
+  { value: "-created_at", label: "Date de demande (récentes d'abord)" },
+  { value: "created_at", label: "Date de demande (anciennes d'abord)" },
+  { value: "-date_prete", label: "Date « Prête » (récentes d'abord)" },
+  { value: "-date_recuperee", label: "Date « Récupérée » (récentes d'abord)" },
+  { value: "employee", label: "Employé (A → Z)" },
+  { value: "motif", label: "Motif (A → Z)" },
+  { value: "importance", label: "Importance" },
+  { value: "statut", label: "Statut" },
+];
+
 const SectionHeader = ({ children, theme }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
     <div style={{ width: 4, height: 16, borderRadius: 2, background: theme.primary }} />
@@ -65,7 +79,12 @@ export default function Attestations() {
   // reste la source de vérité pour cette variable.
   const isAdmin = !!user?.can_manage_attestations;
   const [demandes, setDemandes] = useState([]);
+  const maintenant = new Date();
+  const [annee, setAnnee] = useState(maintenant.getFullYear());
+  const [mois, setMois] = useState(maintenant.getMonth() + 1); // null = toute l'année
   const [statutFiltre, setStatutFiltre] = useState("");
+  const [importance, setImportance] = useState("");
+  const [tri, setTri] = useState("-created_at");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -79,7 +98,9 @@ export default function Attestations() {
   const fetchDemandes = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = {};
+      const params = { annee, tri };
+      if (mois) params.mois = mois;
+      if (importance) params.importance = importance;
       if (statutFiltre) params.statut = statutFiltre;
       if (search) params.q = search;
       const res = await api.get("/attestations/demandes/", { params });
@@ -89,7 +110,7 @@ export default function Attestations() {
     }
   };
 
-  useEffect(() => { fetchDemandes(); }, [statutFiltre, search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchDemandes(); }, [statutFiltre, search, annee, mois, importance, tri]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // La sélection perd son sens si la liste change sous ses pieds (filtre,
   // recherche, refresh après action) — repart de zéro plutôt que de garder
@@ -160,6 +181,38 @@ export default function Attestations() {
     border: `1px solid ${theme.border}`,
     boxShadow: theme.shadowMd,
   };
+
+  const filtresActifs = !!(importance || statutFiltre || search);
+  const reinitialiser = () => { setImportance(""); setStatutFiltre(""); setSearchInput(""); setSearch(""); };
+  const dateEtape = (iso) => (
+    <span style={{ fontSize: 12, color: iso ? theme.textSecondary : theme.textMuted }}>{dateCourte(iso)}</span>
+  );
+  const colonnes = [
+    {
+      label: "Référence", cle: "created_at", width: "84px",
+      cell: (d) => (
+        <div>
+          <div style={{ fontWeight: 700, color: theme.primary, fontSize: 13 }}>{d.reference}</div>
+          <div style={{ fontSize: 11, color: theme.textMuted }}>{heureRecue(d.created_at)}</div>
+        </div>
+      ),
+    },
+    {
+      label: "Employé", cle: "employee", width: "minmax(160px, 1.5fr)",
+      cell: (d) => (
+        <div>
+          <div style={{ color: theme.text, fontSize: 14, fontWeight: 600, overflowWrap: "anywhere" }}>{d.employee_nom}</div>
+          <div style={{ color: theme.textMuted, fontSize: 12 }}>Demandé par {d.demandeur_nom}</div>
+        </div>
+      ),
+    },
+    { label: "Motif", cle: "motif", width: "minmax(100px, 1fr)", cell: (d) => <span style={{ color: theme.textSecondary, fontSize: 13 }}>{d.motif_nom || "—"}</span> },
+    { label: "Reçue", cle: "created_at", width: "66px", cell: (d) => dateEtape(d.created_at) },
+    { label: "Prête", cle: "date_prete", width: "66px", cell: (d) => dateEtape(d.date_prete) },
+    { label: "Récupérée", cle: "date_recuperee", width: "78px", cell: (d) => dateEtape(d.date_recuperee) },
+    { label: "Importance", cle: "importance", width: "84px", cell: (d) => <ImportanceBadge importance={d.importance} /> },
+    { label: "Statut", cle: "statut", width: "108px", cell: (d) => <StatutBadge statut={d.statut} /> },
+  ];
 
   if (loading) return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -472,6 +525,13 @@ export default function Attestations() {
               </div>
             )}
 
+            <FiltresPeriode
+              idPrefix="att" annee={annee} setAnnee={setAnnee} mois={mois} setMois={setMois}
+              importance={importance} setImportance={setImportance} tri={tri} setTri={setTri}
+              optionsTri={OPTIONS_TRI} total={demandes.length}
+              filtresActifs={filtresActifs} onReset={reinitialiser}
+            />
+
             {demandes.length === 0 ? (
               <div style={{
                 ...cardStyle, padding: "56px 24px", display: "flex", flexDirection: "column",
@@ -490,48 +550,12 @@ export default function Attestations() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {demandes.map((d) => (
-                  <Link
-                    key={d.id}
-                    to={`/attestations/${d.reference.replace("/", "-")}`}
-                    className="card-lift"
-                    style={{
-                      ...cardStyle, padding: "14px 18px", textDecoration: "none",
-                      display: "flex", alignItems: "center", gap: 14,
-                      flexWrap: isMobile ? "wrap" : "nowrap",
-                    }}
-                  >
-                    {isAdmin && (
-                      <input
-                        type="checkbox"
-                        checked={selected.has(d.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => { e.stopPropagation(); toggleSelected(d.id); }}
-                        style={{ flexShrink: 0, cursor: "pointer" }}
-                      />
-                    )}
-                    <div style={{
-                      width: 38, height: 38, borderRadius: 10, background: theme.primaryBg,
-                      color: theme.primary, display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0,
-                    }}>
-                      <FileTextIcon size={17} />
-                    </div>
-                    <div style={{ flex: isMobile ? "1 1 100%" : "0 0 110px", fontWeight: 700, color: theme.primary, fontSize: 13 }}>
-                      {d.reference}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 140 }}>
-                      <div style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>{d.employee_nom}</div>
-                      <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
-                        Demandé par {d.demandeur_nom}
-                      </div>
-                    </div>
-                    <ImportanceBadge importance={d.importance} />
-                    <StatutBadge statut={d.statut} />
-                  </Link>
-                ))}
-              </div>
+              <TableDemandes
+                demandes={demandes} colonnes={colonnes} tri={tri} setTri={setTri}
+                lien={(d) => `/attestations/${d.reference.replace("/", "-")}`}
+                aTraiter={isAdmin ? (d) => d.statut === "recue" : undefined}
+                selection={isAdmin ? { selected, toggle: toggleSelected, ariaLabel: (d) => `Sélectionner ${d.reference}` } : undefined}
+              />
             )}
           </>
         )}

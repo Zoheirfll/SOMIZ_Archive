@@ -17,6 +17,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from audit.models import AuditLog
+from config.liste_demandes import DemandePagination, appliquer_periode_importance_tri
 from . import services
 from .access import controler_acces
 from .filigrane import appliquer_filigrane
@@ -64,6 +65,11 @@ class ReferenceLookupMixin:
 class DemandeConsultationListCreateView(generics.ListCreateAPIView):
     """GET : traiteurs = toutes les demandes, demandeurs = les leurs.
     POST : GESTIONNAIRE/CONSULTANT."""
+    pagination_class = DemandePagination
+    TRIS = {
+        'created_at': 'created_at', 'date_validation': 'date_validation', 'date_echeance': 'date_echeance',
+        'employee': 'employee__nom', 'statut': 'statut', 'importance': 'importance', 'type_demande': 'type_demande',
+    }
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -79,6 +85,7 @@ class DemandeConsultationListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         qs = queryset_pour(user)
         params = self.request.query_params
+        qs = appliquer_periode_importance_tri(qs, params, self.TRIS, DemandeConsultation.Importance.values)
 
         q = params.get('q')
         if q:

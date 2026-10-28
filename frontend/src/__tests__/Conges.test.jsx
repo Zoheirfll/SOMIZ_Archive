@@ -44,7 +44,7 @@ describe("Conges — liste", () => {
     expect(await screen.findByText("00001/26")).toBeInTheDocument();
     expect(screen.getByText("Ali Benali")).toBeInTheDocument();
     expect(screen.getByText(/10 j/)).toBeInTheDocument();
-    expect(screen.getByText(/01\/11\/2026/)).toBeInTheDocument();
+    expect(screen.getByText(/1 nov\.\s*→\s*11 nov\./)).toBeInTheDocument();
   });
 
   test("un demandeur autorisé voit le lien Nouvelle demande", async () => {
@@ -73,8 +73,22 @@ describe("Conges — liste", () => {
     await screen.findByText("00001/26");
     fireEvent.click(screen.getByRole("button", { name: "Annulée" }));
     await waitFor(() =>
-      expect(api.get).toHaveBeenCalledWith("/conges/demandes/", { params: { statut: "annulee" } }),
+      expect(api.get).toHaveBeenCalledWith("/conges/demandes/", { params: expect.objectContaining({ statut: "annulee" }) }),
     );
+  });
+
+  test("filtre par importance et trie : relance la requête avec ces paramètres", async () => {
+    useAuth.mockReturnValue({ user: { id: 1, role: "ADMIN", can_manage_conges: true } });
+    render(<Conges />);
+    await screen.findByText("00001/26");
+    fireEvent.click(screen.getByRole("button", { name: "Haute" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      "/conges/demandes/", { params: expect.objectContaining({ importance: "haute", tri: "-created_at" }) },
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Trier par Employé" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      "/conges/demandes/", { params: expect.objectContaining({ tri: "employee" }) },
+    ));
   });
 
   test("état vide pour un demandeur sans demande", async () => {

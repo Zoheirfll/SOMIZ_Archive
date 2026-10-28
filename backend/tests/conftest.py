@@ -43,6 +43,19 @@ def _plateforme_sps_webhook_disabled_by_default(settings):
     settings.PLATEFORME_SPS_WEBHOOK_SECRET = ''
 
 
+@pytest.fixture(autouse=True)
+def _date_du_jour_conges_figee(monkeypatch):
+    """
+    Un titre de congé dont la date de retour est atteinte est figé (plus
+    d'annulation/interruption/rejet, voir docs/fonctionnel/conges.md). Les
+    tests utilisent des congés en novembre 2026 : sans ce fixture, ils
+    échoueraient dès que l'horloge réelle dépasserait ces dates. Un test
+    qui veut simuler un congé terminé re-patche `conges.models.aujourdhui`.
+    """
+    import datetime
+    monkeypatch.setattr('conges.models.aujourdhui', lambda: datetime.date(2026, 10, 28))
+
+
 @pytest.fixture
 def admin_user(db):
     return User.objects.create_user(

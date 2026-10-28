@@ -3,6 +3,8 @@ ocr/views.py
 Recherche plein texte dans le contenu OCR des documents — ADMIN uniquement.
 """
 
+import re
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -15,6 +17,7 @@ from ocr.models import OcrResult
 # large suffit très largement en usage réel (RH, pas un moteur de recherche
 # public) et évite de renvoyer une réponse énorme sur un terme trop courant.
 GLOBAL_SEARCH_MAX_RESULTS = 100
+GLOBAL_SEARCH_MAX_CANDIDATES = 500
 GLOBAL_SEARCH_SNIPPET_CONTEXT = 80
 
 # Seuls date_naissance/date_embauche restent de vraies colonnes Employee
@@ -61,6 +64,25 @@ def _find_matching_page_ordre(result, q):
     return None
 
 
+def _word_count(text, token):
+    return len(re.findall(rf'\b{re.escape(token)}\b', text, flags=re.IGNORECASE))
+
+
+def _score(result, tokens):
+    employee = result.file.document.employee
+    identity = f"{employee.nom} {employee.prenom}".lower()
+    owner_hits = sum(1 for t in tokens if re.search(rf'\b{re.escape(t.lower())}\b', identity))
+    occurrences = sum(_word_count(result.raw_text, t) for t in tokens)
+    return (owner_hits, occurrences)
+
+
+def _anchor(result, tokens):
+    """Terme autour duquel bâtir l'extrait/la page : la phrase complète si
+    elle apparaît telle quelle, sinon le premier mot de la requête."""
+    phrase = ' '.join(tokens)
+    return phrase if phrase.lower() in result.raw_text.lower() else tokens[0]
+
+
 class OcrGlobalSearchView(APIView):
     """
     GET /api/ocr/search/?q=<terme>
@@ -79,16 +101,29 @@ class OcrGlobalSearchView(APIView):
         if len(q) < 2:
             return Response({'results': [], 'truncated': False})
 
-        queryset = OcrResult.objects.filter(
-            status=OcrResult.Status.DONE, raw_text__icontains=q
-        ).select_related(
+        # Mots entiers uniquement (`\y` = frontière de mot PostgreSQL) :
+        # « saadi » ne doit plus remonter « Messaadi » ni « Saadia ». Chaque
+        # mot de la requête doit être présent (ordre libre) ; la phrase
+        # exacte n'est donc plus exigée (« Youcef SAADI » ≈ « SAADI Youcef »).
+        tokens = q.split()
+        queryset = OcrResult.objects.filter(status=OcrResult.Status.DONE)
+        for token in tokens:
+            queryset = queryset.filter(raw_text__iregex=rf'\y{re.escape(token)}\y')
+        queryset = queryset.select_related(
             'file__document__employee', 'file__document__type_doc'
-        ).order_by('file__document__employee__nom', 'file__document__employee__prenom')
+        )
 
         total = queryset.count()
+        # Classement : d'abord les documents de l'employé dont le nom/prénom
+        # correspond à la requête (le dossier de la personne cherchée), puis
+        # par nombre d'occurrences décroissant — au lieu de l'ordre
+        # alphabétique des propriétaires qui noyait le bon résultat.
+        candidates = list(queryset[:GLOBAL_SEARCH_MAX_CANDIDATES])
+        candidates.sort(key=lambda r: _score(r, tokens), reverse=True)
         results = []
-        for result in queryset[:GLOBAL_SEARCH_MAX_RESULTS]:
+        for result in candidates[:GLOBAL_SEARCH_MAX_RESULTS]:
             employee = result.file.document.employee
+            q = _anchor(result, tokens)
             page_ordre = _find_matching_page_ordre(result, q)
             page_id = None
             page_nom = None

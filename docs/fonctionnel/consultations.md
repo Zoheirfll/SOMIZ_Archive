@@ -215,3 +215,7 @@ pas dans `backend/media/`.
 Un GESTIONNAIRE/CONSULTANT ne crée et ne voit des demandes que si `User.peut_demander_consultation` est coché
 (attribuable par tout ADMIN, voir `securite.md` point 47). **Retirer le droit coupe aussi l'accès en lecture à ses
 demandes passées**, y compris un fichier livré encore valide. À vérifier avant de décocher.
+
+## Liste des demandes (2026-10-26)
+
+Même pattern que les attestations (voir `ui-conventions.md`, « Listes de demandes ») avec les colonnes Reçue / Validée / Échéance (temps restant pour une demande validée). Tris autorisés : `created_at`, `date_validation`, `date_echeance`, `employee`, `statut`, `importance`, `type_demande`.

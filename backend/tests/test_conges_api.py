@@ -745,3 +745,19 @@ def test_stats_exclut_les_demandes_supprimees_par_le_demandeur(demandeur_conge, 
     ref = _ref_via_api(demandeur_conge, employee)
     _client(demandeur_conge).delete(f'/api/conges/demandes/{ref}/')
     assert _client(traiteur_conge).get('/api/conges/stats/').data['total'] == 0
+
+
+# ─── Liste : période, filtres et tri (config/liste_demandes.py) ───────────
+
+def test_liste_filtre_annee_importance_et_tri_en_liste_blanche(traiteur_conge, demandeur_conge, employee):
+    demandeur_conge.scope_directions.add(employee.direction)
+    _creer(_client(demandeur_conge), employee, importance='haute')
+    traiteur = _client(traiteur_conge)
+    annee = timezone.now().year
+
+    assert traiteur.get('/api/conges/demandes/', {'annee': annee, 'importance': 'haute'}).data['count'] == 1
+    assert traiteur.get('/api/conges/demandes/', {'annee': annee, 'importance': 'faible'}).data['count'] == 0
+    assert traiteur.get('/api/conges/demandes/', {'annee': annee - 1}).data['count'] == 0
+    # Un tri hors liste blanche est ignoré (pas d'erreur 500, pas de champ arbitraire)
+    assert traiteur.get('/api/conges/demandes/', {'tri': 'password'}).status_code == 200
+    assert traiteur.get('/api/conges/demandes/', {'tri': '-employee'}).status_code == 200

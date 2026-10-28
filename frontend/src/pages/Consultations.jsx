@@ -8,8 +8,11 @@ import useIsMobile from "../hooks/useIsMobile";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
 import ImportanceBadge from "../components/attestations/ImportanceBadge";
+import FiltresPeriode from "../components/demandes/FiltresPeriode";
+import TableDemandes from "../components/demandes/TableDemandes";
+import { dateCourte, heureRecue } from "../utils/listeDemandes";
 import StatutConsultationBadge from "../components/consultations/StatutConsultationBadge";
-import { ClipboardIcon, FileTextIcon } from "../components/icons";
+import { ClipboardIcon } from "../components/icons";
 import { useConfirm, usePrompt } from "../components/ConfirmDialog";
 import StatDonutChart from "../components/charts/StatDonutChart";
 import StatAreaChart from "../components/charts/StatAreaChart";
@@ -47,6 +50,17 @@ const STATUT_DOT_COLORS = {
   revoquee: (theme) => theme.danger,
 };
 
+const OPTIONS_TRI = [
+  { value: "-created_at", label: "Date de demande (récentes d'abord)" },
+  { value: "created_at", label: "Date de demande (anciennes d'abord)" },
+  { value: "-date_validation", label: "Date de validation (récentes d'abord)" },
+  { value: "date_echeance", label: "Échéance la plus proche" },
+  { value: "employee", label: "Employé (A → Z)" },
+  { value: "type_demande", label: "Type (A → Z)" },
+  { value: "importance", label: "Importance" },
+  { value: "statut", label: "Statut" },
+];
+
 const SectionHeader = ({ children, theme }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
     <div style={{ width: 4, height: 16, borderRadius: 2, background: theme.primary }} />
@@ -65,7 +79,12 @@ export default function Consultations() {
   // Le SUPERADMIN peut aussi demander (comme pour les attestations).
   const peutDemander = canRequestConsultations(user);
   const [demandes, setDemandes] = useState([]);
+  const maintenant = new Date();
+  const [annee, setAnnee] = useState(maintenant.getFullYear());
+  const [mois, setMois] = useState(maintenant.getMonth() + 1); // null = toute l'année
   const [statutFiltre, setStatutFiltre] = useState("");
+  const [importance, setImportance] = useState("");
+  const [tri, setTri] = useState("-created_at");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -82,7 +101,9 @@ export default function Consultations() {
   const fetchDemandes = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = {};
+      const params = { annee, tri };
+      if (mois) params.mois = mois;
+      if (importance) params.importance = importance;
       if (statutFiltre) params.statut = statutFiltre;
       if (search) params.q = search;
       const res = await api.get("/consultations/demandes/", { params });
@@ -93,7 +114,7 @@ export default function Consultations() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [statutFiltre, search]);
+  }, [statutFiltre, search, annee, mois, importance, tri]);
 
   useEffect(() => { fetchDemandes(); }, [fetchDemandes]);
 
@@ -170,6 +191,48 @@ export default function Consultations() {
   const cardStyle = {
     background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, boxShadow: theme.shadowMd,
   };
+
+  const filtresActifs = !!(importance || statutFiltre || search);
+  const reinitialiser = () => { setImportance(""); setStatutFiltre(""); setSearchInput(""); setSearch(""); };
+  const dateEtape = (iso) => (
+    <span style={{ fontSize: 12, color: iso ? theme.textSecondary : theme.textMuted }}>{dateCourte(iso)}</span>
+  );
+  const colonnes = [
+    {
+      label: "Référence", cle: "created_at", width: "84px",
+      cell: (d) => (
+        <div>
+          <div style={{ fontWeight: 700, color: theme.primary, fontSize: 13 }}>{d.reference}</div>
+          <div style={{ fontSize: 11, color: theme.textMuted }}>{heureRecue(d.created_at)}</div>
+        </div>
+      ),
+    },
+    {
+      label: "Objet", cle: "employee", width: "minmax(160px, 1.5fr)",
+      cell: (d) => (
+        <div>
+          <div style={{ color: theme.text, fontSize: 14, fontWeight: 600, overflowWrap: "anywhere" }}>{d.employee_nom || d.description}</div>
+          <div style={{ color: theme.textMuted, fontSize: 12 }}>Demandé par {d.demandeur_nom}</div>
+        </div>
+      ),
+    },
+    { label: "Type", cle: "type_demande", width: "minmax(100px, 1fr)", cell: (d) => <span style={{ color: theme.textSecondary, fontSize: 13 }}>{d.type_demande_label}</span> },
+    { label: "Reçue", cle: "created_at", width: "66px", cell: (d) => dateEtape(d.created_at) },
+    { label: "Validée", cle: "date_validation", width: "66px", cell: (d) => dateEtape(d.date_validation) },
+    {
+      label: "Échéance", cle: "date_echeance", width: "92px",
+      cell: (d) => (
+        <div>
+          {dateEtape(d.date_echeance)}
+          {d.statut_effectif === "validee" && (
+            <div style={{ fontSize: 11, color: theme.textMuted }}>dans {tempsRestant(d.date_echeance)}</div>
+          )}
+        </div>
+      ),
+    },
+    { label: "Importance", cle: "importance", width: "84px", cell: (d) => <ImportanceBadge importance={d.importance} /> },
+    { label: "Statut", cle: "statut", width: "118px", cell: (d) => <StatutConsultationBadge statut={d.statut_effectif} /> },
+  ];
 
   if (loading) return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -444,6 +507,13 @@ export default function Consultations() {
               </div>
             )}
 
+            <FiltresPeriode
+              idPrefix="con" annee={annee} setAnnee={setAnnee} mois={mois} setMois={setMois}
+              importance={importance} setImportance={setImportance} tri={tri} setTri={setTri}
+              optionsTri={OPTIONS_TRI} total={demandes.length}
+              filtresActifs={filtresActifs} onReset={reinitialiser}
+            />
+
             {demandes.length === 0 && !error ? (
               <div style={{ ...cardStyle, padding: "56px 24px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
                 <div style={{ color: theme.textMuted, marginBottom: 14 }}><ClipboardIcon size={40} /></div>
@@ -459,44 +529,12 @@ export default function Consultations() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {demandes.map((d) => (
-                  <Link
-                    key={d.id}
-                    to={`/consultations/${slugDepuisReference(d.reference)}`}
-                    className="card-lift"
-                    style={{ ...cardStyle, padding: "14px 18px", textDecoration: "none", display: "flex", alignItems: "center", gap: 14, flexWrap: isMobile ? "wrap" : "nowrap" }}
-                  >
-                    {isAdmin && (
-                      <input
-                        type="checkbox"
-                        aria-label={`Sélectionner ${d.reference}`}
-                        checked={selected.has(d.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => { e.stopPropagation(); toggleSelected(d.id); }}
-                        style={{ flexShrink: 0, cursor: "pointer" }}
-                      />
-                    )}
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: theme.primaryBg, color: theme.primary, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <FileTextIcon size={17} />
-                    </div>
-                    <div style={{ flex: isMobile ? "1 1 100%" : "0 0 110px", fontWeight: 700, color: theme.primary, fontSize: 13 }}>
-                      {d.reference}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 140 }}>
-                      <div style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>
-                        {d.employee_nom || d.description}
-                      </div>
-                      <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
-                        {d.type_demande_label} · Demandé par {d.demandeur_nom}
-                        {d.statut_effectif === "validee" && ` · expire dans ${tempsRestant(d.date_echeance)}`}
-                      </div>
-                    </div>
-                    <ImportanceBadge importance={d.importance} />
-                    <StatutConsultationBadge statut={d.statut_effectif} />
-                  </Link>
-                ))}
-              </div>
+              <TableDemandes
+                demandes={demandes} colonnes={colonnes} tri={tri} setTri={setTri}
+                lien={(d) => `/consultations/${slugDepuisReference(d.reference)}`}
+                aTraiter={isAdmin ? (d) => d.statut === "en_cours" : undefined}
+                selection={isAdmin ? { selected, toggle: toggleSelected, ariaLabel: (d) => `Sélectionner ${d.reference}` } : undefined}
+              />
             )}
           </>
         )}

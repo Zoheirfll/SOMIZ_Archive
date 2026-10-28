@@ -297,3 +297,13 @@ et `page_texts`), la page de recherche `/api/ocr/search/` (ADMIN), le filtre
 champs » et « Suggestions » ci-dessus décrivent l'ancien comportement.
 `TypeDocument.champ_source` reste, mais ne sert plus qu'aux champs cliquables.
 Les anciens spec/plan OCR (`docs/superpowers/`) sont partiellement obsolètes.
+
+## Qualité OCR — refonte du moteur (2026-10-26)
+
+Constat : beaucoup de mots faux par rapport aux feuilles. Causes et corrections (`ocr/ocr_engine.py`) :
+- **`ara+fra+eng` en un seul passage** inventait du texte arabe parasite sur le français et déformait les mots latins. Remplacé par **deux passes par page** : `fra+eng` (latin) et `ara` (arabe, seules les lignes réellement arabes à confiance ≥ 60 sont fusionnées). Convient aux documents mixtes.
+- **Modèles `tessdata_best`** installés pour `ara`, `eng`, `fra` (les `fast` donnaient beaucoup d'erreurs). Anciens modèles sauvegardés dans `C:\Users\filali\tessdata_backup_fast_2026-10-26`. Sur tout nouveau poste/serveur : installer les `best`.
+- **Prétraitement** : orientation (OSD) + niveaux de gris + débruitage médian léger (OpenCV, `opencv-python-headless` ajouté à `requirements.txt` — à installer dans le **venv** `backend\venv`, pas seulement le Python système).
+- **Approches essayées puis abandonnées** (mesurées sur un vrai bulletin de présentation ANEM, page 1) : redressement `minAreaRect` (235 caractères lus) et binarisation adaptative (166 à 335 selon réglage) dégradent la lecture vs niveaux de gris simples (562) / + médian (674). Seuil de confiance ≥ 50 : supprime de vrais mots (« SAADI ») → seuil fixé à 30.
+- **Recherche** (`ocr/views.py`) : mots entiers, ordre libre, classement (dossier de la personne d'abord).
+- **À faire après déploiement** : `python manage.py backfill_ocr --force` pour relire les documents existants (les anciens textes restent faux sinon).

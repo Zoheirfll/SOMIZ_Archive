@@ -119,6 +119,12 @@ Statuts : `recue` → `prete` → `recuperee`, plus `rejetee`, `annulee`, `inter
   `jours_effectifs = date_rappel − date_depart` ; la différence est restituée **exercice le plus ancien d'abord**, dans
   la limite de ce qui y avait été débité. Le titre d'origine reste intact (`ventilation` inchangée) ; la période effective devient
   `[départ, rappel[` pour le contrôle de chevauchement. Aucun nouveau document.
+- **Congé terminé = titre figé (2026-10-28)** : dès que `date_retour <= aujourd'hui` (`DemandeConge.conge_termine`,
+  exposé par l'API), un titre établi (`prete`/`recuperee`) ne peut plus être **annulé, interrompu ni rejeté** — les
+  jours ont été consommés, les restituer fausserait les soldes. Contrôle dans `conges/workflow.py`
+  (`_refuser_si_termine`, sous le verrou de la demande) ; l'UI masque les boutons et affiche une mention. Restent
+  possibles : marquer récupéré, observations, aperçu PDF. Une demande encore `recue` (jamais validée, aucun débit)
+  reste rejetable même si sa période est passée, pour pouvoir la clore.
 - **Annulation par le demandeur** : `DELETE demandes/<ref>/`, statut `recue` seulement, soft-delete
   (`is_active=False`), sans effet sur les soldes.
 - **Chevauchement** : période `[date_depart, date_retour[` (`date_retour` = date de reprise). Refus si elle recoupe
@@ -250,6 +256,8 @@ supprimées par leur demandeur.
   mêmes valeurs par défaut pour les attestations, aucun comportement changé.
 - **Tests** : `Conges`, `CongeNouvelle`, `CongeDetail`, `CongesTab`, `CongeParametresPanel`, `congesUtils`, plus les
   ajouts à `Navbar`, `Users`, `commandPaletteActions`, `accesSections` et `EmployeeDetail`.
+
+- **Liste `/conges` (2026-10-26)** : navigation par année/mois de réception, regroupement par jour, colonnes Reçue/Prête/Récupérée, tri par en-tête, filtres importance et dates de départ — pattern commun décrit dans `ui-conventions.md` (« Listes de demandes »). Le détail `/conges/:ref` affiche le stepper Reçue → Prête → Récupérée (bandeau pour rejetée/annulée/interrompue), comme les attestations.
 
 ## Reste à faire
 

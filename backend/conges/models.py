@@ -3,6 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
 def conge_scan_upload_path(instance, filename):
@@ -192,6 +193,12 @@ class MouvementConge(models.Model):
         raise RuntimeError("Un mouvement de congé ne se supprime jamais.")
 
 
+def aujourdhui():
+    """Date du jour pour `conge_termine` — point unique, figé dans les tests
+    (tests/conftest.py) pour qu'ils ne dépendent pas de l'horloge réelle."""
+    return timezone.localdate()
+
+
 class DemandeConge(models.Model):
     class Statut(models.TextChoices):
         RECUE = 'recue', 'Reçue'
@@ -281,6 +288,12 @@ class DemandeConge(models.Model):
     class Meta:
         db_table = 'demandes_conge'
         ordering = ['-created_at']
+
+    @property
+    def conge_termine(self) -> bool:
+        """Date de reprise atteinte : le congé est consommé, le titre est figé
+        (plus d'annulation, d'interruption ni de rejet d'un titre établi)."""
+        return self.date_retour <= aujourdhui()
 
     def __str__(self):
         return f"{self.reference} — {self.employee} ({self.statut})"

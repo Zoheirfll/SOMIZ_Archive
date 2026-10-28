@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from audit.models import AuditLog
+from config.liste_demandes import DemandePagination, appliquer_periode_importance_tri
 from .models import DemandeAttestation, AttestationTemplateConfig
 from .pdf import build_attestation_pdf, LOGO_PAR_DEFAUT
 from .notifications import notifier_nouvelle_demande, notifier_changement_statut
@@ -43,6 +44,11 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
     attestations (User.can_manage_attestations) voient toutes les demandes,
     un GESTIONNAIRE ne voit que les siennes.
     POST /api/attestations/demandes/ — GESTIONNAIRE/SUPERADMIN."""
+    pagination_class = DemandePagination
+    TRIS = {
+        'created_at': 'created_at', 'date_prete': 'date_prete', 'date_recuperee': 'date_recuperee',
+        'employee': 'employee__nom', 'statut': 'statut', 'importance': 'importance', 'motif': 'motif__nom',
+    }
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -69,6 +75,10 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
             # employé, jamais celles d'un collègue). URL lisible : matricule
             # plutôt qu'UUID, même principe que ReferenceLookupMixin.
             qs = qs.filter(employee__matricule=employee_id)
+
+        qs = appliquer_periode_importance_tri(
+            qs, self.request.query_params, self.TRIS, DemandeAttestation.Importance.values,
+        )
 
         q = self.request.query_params.get('q')
         if q:

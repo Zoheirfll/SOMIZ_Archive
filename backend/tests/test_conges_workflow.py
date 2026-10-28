@@ -326,6 +326,32 @@ def test_un_titre_interrompu_n_est_pas_annulable_en_v1(demande_recue, traiteur_c
         workflow.annuler_demande(d, auteur=traiteur_conge, motif="x")
 
 
+def test_un_titre_dont_la_date_de_retour_est_atteinte_est_fige(demande_recue, traiteur_conge, solde_employe, motif_cp, employee, monkeypatch):
+    solde_employe()
+    d = _valider(demande_recue(), traiteur_conge, motif_cp)
+    assert not d.conge_termine
+    avant = _restants(employee)
+    monkeypatch.setattr('conges.models.aujourdhui', lambda: datetime.date(2026, 11, 11))
+    assert d.conge_termine
+    for action in (
+        lambda: workflow.annuler_demande(d, auteur=traiteur_conge, motif="x"),
+        lambda: workflow.rejeter_demande(d, auteur=traiteur_conge, motif="x"),
+        lambda: workflow.interrompre_demande(d, auteur=traiteur_conge, date_rappel=datetime.date(2026, 11, 5), motif="x"),
+    ):
+        with pytest.raises(TransitionInvalide):
+            action()
+    d = workflow.marquer_recuperee(d, auteur=traiteur_conge)
+    with pytest.raises(TransitionInvalide):
+        workflow.annuler_demande(d, auteur=traiteur_conge, motif="x")
+    assert _restants(employee) == avant
+
+
+def test_une_demande_recue_dont_la_periode_est_passee_reste_rejetable(demande_recue, traiteur_conge, monkeypatch):
+    d = demande_recue()
+    monkeypatch.setattr('conges.models.aujourdhui', lambda: datetime.date(2027, 1, 1))
+    assert workflow.rejeter_demande(d, auteur=traiteur_conge, motif="x").statut == DemandeConge.Statut.REJETEE
+
+
 def test_la_periode_effective_d_un_titre_interrompu_libere_les_dates(demande_recue, traiteur_conge, solde_employe, motif_cp, employee):
     solde_employe()
     d = _valider(demande_recue(), traiteur_conge, motif_cp)  # 01 → 11/11

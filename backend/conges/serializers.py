@@ -83,11 +83,12 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
     annulee_par_nom = serializers.SerializerMethodField()
     interrompue_par_nom = serializers.SerializerMethodField()
     pieces_jointes = serializers.SerializerMethodField()
+    conge_termine = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = DemandeConge
         fields = [
-            'id', 'reference', 'employee', 'employee_nom', 'employee_matricule',
+            'id', 'reference', 'conge_termine', 'employee', 'employee_nom', 'employee_matricule',
             'employee_date_embauche', 'employee_direction_nom', 'employee_departement_nom',
             'employee_service_nom', 'employee_poste_nom', 'employee_type_contrat_nom',
             'contrat', 'contrat_numero',

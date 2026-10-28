@@ -45,7 +45,85 @@ const InfoCard = ({ title, children, theme }) => (
   </div>
 );
 
-const ventilationTexte = (d) => (d.ventilation || [])
+const ETAPES = [
+  { value: "recue", label: "Reçue", dateKey: "created_at" },
+  { value: "prete", label: "Prête", dateKey: "date_prete" },
+  { value: "recuperee", label: "Récupérée", dateKey: "date_recuperee" },
+];
+
+const STATUTS_HORS_PARCOURS = {
+  rejetee: "Demande rejetée",
+  annulee: "Titre annulé",
+  interrompue: "Congé interrompu",
+};
+
+const formatDateEtape = (isoString) => {
+  if (!isoString) return "";
+  const dt = new Date(isoString);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+};
+
+const StatutStepper = ({ demande, theme, isMobile }) => {
+  const horsParcours = STATUTS_HORS_PARCOURS[demande.statut];
+  if (horsParcours) {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, color: theme.danger,
+        background: theme.dangerBg, borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700,
+      }}>
+        {horsParcours}
+      </div>
+    );
+  }
+  const idxActuel = ETAPES.findIndex((e) => e.value === demande.statut);
+  return (
+    <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+      {ETAPES.map((etape, i) => {
+        const atteinte = i <= idxActuel;
+        const courante = i === idxActuel;
+        const dateEtape = formatDateEtape(demande[etape.dateKey]);
+        return (
+          <div key={etape.value} style={{ display: "flex", alignItems: "center", flex: i < ETAPES.length - 1 ? 1 : "0 0 auto" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                background: atteinte ? theme.primary : theme.surface,
+                border: `2px solid ${atteinte ? theme.primary : theme.border}`,
+                color: atteinte ? "#fff" : theme.textMuted,
+                boxShadow: courante ? `0 0 0 4px ${theme.primaryBg}` : "none",
+                transition: "all 0.2s",
+              }}>
+                {atteinte ? <CheckIcon size={12} /> : <span style={{ fontSize: 10, fontWeight: 700 }}>{i + 1}</span>}
+              </div>
+              {!isMobile && (
+                <>
+                  <div style={{
+                    fontSize: 10, fontWeight: courante ? 700 : 600, marginTop: 6, textAlign: "center",
+                    color: atteinte ? theme.text : theme.textMuted, whiteSpace: "nowrap",
+                  }}>
+                    {etape.label}
+                  </div>
+                  {atteinte && dateEtape && (
+                    <div style={{ fontSize: 9, color: theme.textMuted, marginTop: 2, whiteSpace: "nowrap" }}>{dateEtape}</div>
+                  )}
+                </>
+              )}
+            </div>
+            {i < ETAPES.length - 1 && (
+              <div style={{
+                flex: 1, height: 2, margin: isMobile ? "0 2px" : "0 4px -18px",
+                background: i < idxActuel ? theme.primary : theme.border, transition: "all 0.2s",
+              }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const ventilationTexte =(d) => (d.ventilation || [])
   .map((p) => `${p.jours} j sur ${p.exercice}`)
   .join(" · ");
 
@@ -231,6 +309,8 @@ export default function CongeDetail() {
   const statut = d.statut;
   const peutAnnulerDemande = d.demandeur === user?.id && statut === "recue";
   const apercuPossible = isTraiteur && !["recue", "rejetee"].includes(statut);
+  // Date de retour atteinte : titre figé (règle appliquée aussi côté serveur).
+  const titreModifiable = !d.conge_termine;
   // Type/motif/exercice sont proposés dès la demande : le titre n'est établi
   // qu'à la validation (validateur renseigné).
   const titreEtabli = !!d.validateur_nom;
@@ -258,6 +338,10 @@ export default function CongeDetail() {
       </div>
 
       <div style={{ padding: contentPadding(isMobile), maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ ...cardStyle, padding: isMobile ? "20px 16px 28px" : "24px 32px 32px" }}>
+          <StatutStepper demande={d} theme={theme} isMobile={isMobile} />
+        </div>
+
         <InfoCard title="Informations de l'employé" theme={theme}>
           <Field label="Nom et prénom" value={d.employee_nom} theme={theme} />
           <Field label="Matricule" value={d.employee_matricule} theme={theme} />
@@ -373,22 +457,28 @@ export default function CongeDetail() {
           {isTraiteur && statut === "prete" && (
             <button onClick={marquerRecupere} className="btn-lift" style={btnPrimaire}>Marquer récupéré</button>
           )}
-          {isTraiteur && ["prete", "recuperee"].includes(statut) && (
+          {isTraiteur && titreModifiable && ["prete", "recuperee"].includes(statut) && (
             <button onClick={() => setModale("interrompre")} className="btn-lift" style={btnNeutre}>Interrompre le congé</button>
           )}
           {isTraiteur && ["recue", "prete", "recuperee"].includes(statut) && (
             <button onClick={modifierObservations} className="btn-lift" style={btnNeutre}>Observations</button>
           )}
-          {isTraiteur && ["prete", "recuperee"].includes(statut) && (
+          {isTraiteur && titreModifiable && ["prete", "recuperee"].includes(statut) && (
             <button onClick={() => setModale("annuler")} className="btn-lift" style={btnDanger}>Annuler le titre</button>
           )}
-          {isTraiteur && ["recue", "prete"].includes(statut) && (
+          {isTraiteur && (statut === "recue" || (statut === "prete" && titreModifiable)) && (
             <button onClick={rejeter} className="btn-lift" style={btnDanger}>Rejeter</button>
           )}
           {peutAnnulerDemande && (
             <button onClick={annulerDemande} className="btn-lift" style={btnDanger}>Annuler la demande</button>
           )}
         </div>
+
+        {isTraiteur && d.conge_termine && ["prete", "recuperee"].includes(statut) && (
+          <div style={{ fontSize: 12, color: theme.textMuted }}>
+            Congé terminé (date de retour atteinte) : le titre ne peut plus être annulé, interrompu ni rejeté.
+          </div>
+        )}
 
         {apercuPossible && d.date_document && (
           <div style={{ fontSize: 12, color: theme.textMuted }}>

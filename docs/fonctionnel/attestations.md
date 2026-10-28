@@ -237,3 +237,7 @@ Un GESTIONNAIRE/CONSULTANT ne crée et ne voit des demandes que si `User.peut_de
 (attribuable par tout ADMIN, voir `securite.md` point 47). **Retirer le droit coupe aussi l'accès en lecture à ses
 demandes passées** (`CanAccessAttestations`) : une demande « Prête » n'est plus récupérable par ce demandeur tant que
 le droit n'est pas rendu. À vérifier avant de décocher.
+
+## Liste des demandes (2026-10-26)
+
+Période année/mois, regroupement par jour de réception, colonnes Reçue/Prête/Récupérée, tri par en-tête, filtre d'importance : voir `ui-conventions.md` (« Listes de demandes »). Sélection groupée conservée (ADMIN chargé).

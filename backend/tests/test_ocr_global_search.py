@@ -52,7 +52,7 @@ def test_global_search_requires_at_least_2_characters(admin_user):
 
 
 def test_global_search_snippet_shows_context_around_match(admin_user, employee_document_file):
-    long_text = ("x" * 200) + "MOTCLE" + ("y" * 200)
+    long_text = ("x" * 200) + " MOTCLE " + ("y" * 200)
     OcrResult.objects.create(
         file=employee_document_file, status=OcrResult.Status.DONE, raw_text=long_text,
     )
@@ -98,3 +98,21 @@ def test_global_search_logs_audit(admin_user, employee_document_file):
     assert AuditLog.objects.filter(
         action=AuditLog.Action.VIEW, details__action='ocr_global_search'
     ).exists()
+
+
+def test_global_search_matches_whole_words_only(admin_user, employee_document_file):
+    OcrResult.objects.create(
+        file=employee_document_file, status=OcrResult.Status.DONE, raw_text="Mr Messaadi et Mme Saadia",
+    )
+    client = auth_client(admin_user)
+    response = client.get('/api/ocr/search/?q=saadi')
+    assert response.data['total'] == 0
+
+
+def test_global_search_words_in_any_order(admin_user, employee_document_file):
+    OcrResult.objects.create(
+        file=employee_document_file, status=OcrResult.Status.DONE, raw_text="SAADI Youcef, directeur",
+    )
+    client = auth_client(admin_user)
+    response = client.get('/api/ocr/search/?q=youcef saadi')
+    assert response.data['total'] == 1

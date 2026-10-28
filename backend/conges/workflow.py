@@ -24,6 +24,13 @@ def _verrouiller_demande(demande) -> DemandeConge:
     return DemandeConge.objects.select_for_update().select_related('employee').get(pk=demande.pk)
 
 
+def _refuser_si_termine(demande, action) -> None:
+    if demande.conge_termine:
+        raise TransitionInvalide(
+            f"Ce congé est terminé (date de retour atteinte) : il ne peut plus être {action}."
+        )
+
+
 def _motif_obligatoire(motif, message) -> str:
     motif = (motif or '').strip()
     if not motif:
@@ -119,6 +126,7 @@ def rejeter_demande(demande, *, auteur, motif) -> DemandeConge:
         if demande.statut not in (Statut.RECUE, Statut.PRETE):
             raise TransitionInvalide("Cette demande ne peut plus être rejetée.")
         if demande.statut == Statut.PRETE:
+            _refuser_si_termine(demande, "rejeté")
             _rendre_tout(
                 demande, nature=MouvementConge.Nature.RESTITUTION_ANNULATION, auteur=auteur,
                 motif=f"Rejet du titre {demande.reference} : {motif}",
@@ -152,6 +160,7 @@ def annuler_demande(demande, *, auteur, motif) -> DemandeConge:
             raise TransitionInvalide(
                 "Seul un titre prêt ou récupéré peut être annulé (un titre interrompu ne l'est pas)."
             )
+        _refuser_si_termine(demande, "annulé")
         _rendre_tout(
             demande, nature=MouvementConge.Nature.RESTITUTION_ANNULATION, auteur=auteur,
             motif=f"Annulation du titre {demande.reference} : {motif}",
@@ -174,6 +183,7 @@ def interrompre_demande(demande, *, auteur, date_rappel, motif) -> DemandeConge:
             raise TransitionInvalide(
                 "Seul un titre prêt ou récupéré peut être interrompu, une seule fois."
             )
+        _refuser_si_termine(demande, "interrompu")
         if not (demande.date_depart < date_rappel < demande.date_retour):
             raise CongeError(
                 "La date de rappel doit être postérieure à la date de départ et antérieure à la date de retour."

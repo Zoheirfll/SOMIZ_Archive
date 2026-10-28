@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 
 from attestations.pdf import LOGO_PAR_DEFAUT
 from audit.models import AuditLog
+from config.liste_demandes import DemandePagination, appliquer_periode_importance_tri
 from employees.models import Employee
 from . import notifications, services, workflow
 from .models import (
@@ -74,6 +75,13 @@ def _reponse(demande, request):
 # ─── Demandes : liste, création, détail, annulation par le demandeur ───────
 
 class DemandeCongeListCreateView(generics.ListCreateAPIView):
+    pagination_class = DemandePagination
+    TRIS = {
+        'created_at': 'created_at', 'date_depart': 'date_depart', 'nb_jours': 'nb_jours',
+        'employee': 'employee__nom', 'statut': 'statut', 'importance': 'importance',
+        'date_prete': 'date_prete', 'date_recuperee': 'date_recuperee',
+    }
+
     def get_permissions(self):
         return [CanRequestConge()] if self.request.method == 'POST' else [CanAccessConges()]
 
@@ -85,6 +93,13 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
         user, params = self.request.user, self.request.query_params
         if params.get('employee'):
             qs = qs.filter(employee__matricule=params['employee'])
+        qs = appliquer_periode_importance_tri(qs, params, self.TRIS, DemandeConge.Importance.values)
+        # Période du congé lui-même (dates valides uniquement, sinon ignorées)
+        for param, lookup in (('depart_du', 'date_depart__gte'), ('depart_au', 'date_depart__lte')):
+            try:
+                qs = qs.filter(**{lookup: datetime.strptime(params[param], '%Y-%m-%d').date()})
+            except (KeyError, ValueError):
+                pass
         q = params.get('q')
         if q:
             qs = qs.filter(

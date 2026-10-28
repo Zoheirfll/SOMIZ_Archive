@@ -7,13 +7,15 @@ import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import CongeStatutBadge from "../components/conges/CongeStatutBadge";
 import ImportanceBadge from "../components/attestations/ImportanceBadge";
+import FiltresPeriode from "../components/demandes/FiltresPeriode";
+import TableDemandes from "../components/demandes/TableDemandes";
 import Navbar from "../components/Navbar";
 import PageBackground from "../components/PageBackground";
-import { ClipboardIcon, FileTextIcon } from "../components/icons";
+import { ClipboardIcon } from "../components/icons";
 import StatDonutChart from "../components/charts/StatDonutChart";
 import StatAreaChart from "../components/charts/StatAreaChart";
 import { canRequestConges } from "../config/accesSections";
-import { formatDateFR } from "../utils/formatDate";
+import { dateCourte, heureRecue } from "../utils/listeDemandes";
 import { refVersUrl } from "../utils/conges";
 
 // Mêmes préréglages de période que /statistiques et /attestations.
@@ -39,7 +41,18 @@ const STATUTS = [
   { value: "interrompue", label: "Interrompue" },
 ];
 
-const SectionHeader = ({ children, theme }) => (
+const OPTIONS_TRI = [
+  { value: "-created_at", label: "Date de demande (récentes d'abord)" },
+  { value: "created_at", label: "Date de demande (anciennes d'abord)" },
+  { value: "date_depart", label: "Départ le plus proche" },
+  { value: "-date_depart", label: "Départ le plus lointain" },
+  { value: "-nb_jours", label: "Durée (plus longue d'abord)" },
+  { value: "employee", label: "Employé (A → Z)" },
+  { value: "importance", label: "Importance" },
+  { value: "statut", label: "Statut" },
+];
+
+const SectionHeader =({ children, theme }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
     <div style={{ width: 4, height: 16, borderRadius: 2, background: theme.primary }} />
     <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: theme.textSecondary }}>
@@ -55,7 +68,14 @@ export default function Conges() {
   // SUPERADMIN, ou ADMIN portant charge_conge (User.can_manage_conges).
   const isTraiteur = !!user?.can_manage_conges;
   const [demandes, setDemandes] = useState([]);
+  const maintenant = new Date();
+  const [annee, setAnnee] = useState(maintenant.getFullYear());
+  const [mois, setMois] = useState(maintenant.getMonth() + 1); // null = toute l'année
   const [statutFiltre, setStatutFiltre] = useState("");
+  const [importance, setImportance] = useState("");
+  const [departDu, setDepartDu] = useState("");
+  const [departAu, setDepartAu] = useState("");
+  const [tri, setTri] = useState("-created_at");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -66,8 +86,13 @@ export default function Conges() {
   const fetchDemandes = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const params = {};
+      const params = { annee };
+      if (mois) params.mois = mois;
       if (statutFiltre) params.statut = statutFiltre;
+      if (importance) params.importance = importance;
+      if (departDu) params.depart_du = departDu;
+      if (departAu) params.depart_au = departAu;
+      params.tri = tri;
       if (search) params.q = search;
       const res = await api.get("/conges/demandes/", { params });
       setDemandes(res.data?.results || res.data || []);
@@ -76,7 +101,7 @@ export default function Conges() {
     }
   };
 
-  useEffect(() => { fetchDemandes(); }, [statutFiltre, search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchDemandes(); }, [statutFiltre, search, annee, mois, importance, departDu, departAu, tri]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchStats = (range) => {
     api.get("/conges/stats/", { params: range || {} }).then((res) => setStats(res.data));
@@ -101,6 +126,44 @@ export default function Conges() {
   const cardStyle = {
     background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, boxShadow: theme.shadowMd,
   };
+
+  const filtresActifs = !!(importance || departDu || departAu || statutFiltre || search);
+  const reinitialiser = () => {
+    setImportance(""); setDepartDu(""); setDepartAu(""); setStatutFiltre(""); setSearchInput(""); setSearch("");
+  };
+  const dateEtape = (iso) => (
+    <span style={{ fontSize: 12, color: iso ? theme.textSecondary : theme.textMuted }}>{dateCourte(iso)}</span>
+  );
+  const colonnes = [
+    {
+      label: "Référence", cle: "created_at", width: "84px",
+      cell: (d) => (
+        <div>
+          <div style={{ fontWeight: 700, color: theme.primary, fontSize: 13 }}>{d.reference}</div>
+          <div style={{ fontSize: 11, color: theme.textMuted }}>{heureRecue(d.created_at)}</div>
+        </div>
+      ),
+    },
+    {
+      label: "Employé", cle: "employee", width: "minmax(150px, 1.5fr)",
+      cell: (d) => (
+        <div>
+          <div style={{ color: theme.text, fontSize: 14, fontWeight: 600, overflowWrap: "anywhere" }}>{d.employee_nom}</div>
+          <div style={{ color: theme.textMuted, fontSize: 12 }}>Demandé par {d.demandeur_nom}</div>
+        </div>
+      ),
+    },
+    {
+      label: "Congé du … au", cle: "date_depart", width: "minmax(120px, 1fr)",
+      cell: (d) => <span style={{ color: theme.textSecondary, fontSize: 13 }}>{dateCourte(d.date_depart)} → {dateCourte(d.date_retour)}</span>,
+    },
+    { label: "Durée", cle: "nb_jours", width: "46px", cell: (d) => <span style={{ color: theme.text, fontWeight: 700, fontSize: 13 }}>{d.nb_jours} j</span> },
+    { label: "Reçue", cle: "created_at", width: "66px", cell: (d) => dateEtape(d.created_at) },
+    { label: "Prête", cle: "date_prete", width: "66px", cell: (d) => dateEtape(d.date_prete) },
+    { label: "Récupérée", cle: "date_recuperee", width: "78px", cell: (d) => dateEtape(d.date_recuperee) },
+    { label: "Importance", cle: "importance", width: "84px", cell: (d) => <ImportanceBadge importance={d.importance} /> },
+    { label: "Statut", cle: "statut", width: "108px", cell: (d) => <CongeStatutBadge statut={d.statut} /> },
+  ];
 
   if (loading) return (
     <PageBackground style={{ fontFamily: theme.fontFamily }}>
@@ -296,6 +359,14 @@ export default function Conges() {
               </div>
             )}
 
+            <FiltresPeriode
+              idPrefix="cg" annee={annee} setAnnee={setAnnee} mois={mois} setMois={setMois}
+              importance={importance} setImportance={setImportance} tri={tri} setTri={setTri}
+              optionsTri={OPTIONS_TRI} total={demandes.length}
+              departDu={departDu} setDepartDu={setDepartDu} departAu={departAu} setDepartAu={setDepartAu}
+              filtresActifs={filtresActifs} onReset={reinitialiser}
+            />
+
             {demandes.length === 0 ? (
               <div style={{ ...cardStyle, padding: "56px 24px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
                 <div style={{ color: theme.textMuted, marginBottom: 14 }}><ClipboardIcon size={40} /></div>
@@ -311,38 +382,11 @@ export default function Conges() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {demandes.map((d) => (
-                  <Link
-                    key={d.id}
-                    to={`/conges/${refVersUrl(d.reference)}`}
-                    className="card-lift"
-                    style={{
-                      ...cardStyle, padding: "14px 18px", textDecoration: "none",
-                      display: "flex", alignItems: "center", gap: 14, flexWrap: isMobile ? "wrap" : "nowrap",
-                    }}
-                  >
-                    <div style={{
-                      width: 38, height: 38, borderRadius: 10, background: theme.primaryBg, color: theme.primary,
-                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                    }}>
-                      <FileTextIcon size={17} />
-                    </div>
-                    <div style={{ flex: isMobile ? "1 1 100%" : "0 0 110px", fontWeight: 700, color: theme.primary, fontSize: 13 }}>
-                      {d.reference}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 140 }}>
-                      <div style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>{d.employee_nom}</div>
-                      <div style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>Demandé par {d.demandeur_nom}</div>
-                    </div>
-                    <div style={{ color: theme.textSecondary, fontSize: 12, minWidth: 170 }}>
-                      {formatDateFR(d.date_depart)} → {formatDateFR(d.date_retour)} · {d.nb_jours} j
-                    </div>
-                    <ImportanceBadge importance={d.importance} />
-                    <CongeStatutBadge statut={d.statut} />
-                  </Link>
-                ))}
-              </div>
+              <TableDemandes
+                demandes={demandes} colonnes={colonnes} tri={tri} setTri={setTri}
+                lien={(d) => `/conges/${refVersUrl(d.reference)}`}
+                aTraiter={isTraiteur ? (d) => d.statut === "recue" : undefined}
+              />
             )}
           </>
         )}

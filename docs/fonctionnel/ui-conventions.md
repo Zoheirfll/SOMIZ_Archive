@@ -236,3 +236,28 @@ renvoyait pas le matricule ; corrigé, avec un test qui verrouille le lien.
   `NotificationBell` déclarent `role="dialog"` mais ni `aria-modal` ni piège de focus ; `RegistreModal` a
   `aria-modal` mais pas de piège de focus — à brancher sur `useModalA11y`. 5 `div` cliquables sans `role`
   sont à convertir en `button`. Les contrastes de couleur n'ont pas été audités (outil absent).
+
+## Listes de demandes — période, filtres, tri (2026-10-26)
+
+S'applique à `/attestations`, `/consultations` et `/conges` (volume : ~10 demandes/jour, ~300/mois). **Un seul
+pattern pour les trois pages**, ne pas le réécrire page par page :
+
+- **Frontend** : `components/demandes/FiltresPeriode.jsx` (année + mois de réception, filtre d'importance, tri,
+  dates de départ optionnelles — congés seulement, réinitialisation), `components/demandes/TableDemandes.jsx`
+  (liste dense groupée par jour, en-têtes triables, cases à cocher optionnelles via `selection`, compteur
+  « N à traiter ») et `utils/listeDemandes.js` (formats de date, regroupement, sens de tri). Chaque page ne
+  déclare que ses **colonnes** (`{ label, cle, width, cell }`) et ses `OPTIONS_TRI`.
+- **Backend** : `config/liste_demandes.py` — `DemandePagination` et `appliquer_periode_importance_tri()`.
+  Paramètres d'URL : `annee`, `mois`, `importance`, `tri=[-]cle`. Chaque vue déclare sa **liste blanche** `TRIS`
+  (clé d'URL → champ ORM) ; un `tri` inconnu est ignoré, jamais passé tel quel à `order_by`. Congés ajoute
+  `depart_du`/`depart_au` (dates invalides ignorées).
+- **Dates des étapes affichées** : Reçue / Prête / Récupérée (attestations, congés) ; Reçue / Validée / Échéance
+  (consultations).
+- **Regroupement par jour** uniquement quand le tri porte sur la date de demande (`created_at`) ; tout autre tri =
+  liste continue (un regroupement serait trompeur).
+- **Pagination** : l'ancienne limite DRF de 25 tronquait silencieusement la liste (la page ne lisait que la 1re
+  page). Ces vues paginent maintenant à 500. Une année entière peut dépasser 500 : filtrer par mois.
+- **Approches écartées** : grille de cartes (testée sur `/conges`, rejetée par l'utilisateur — trop d'espace par
+  demande pour 300/mois) ; lignes simples non groupées (illisibles à ce volume).
+- Tests : `Conges.test.jsx` (filtre importance + tri), `test_conges_api.py` (période, importance, tri en liste
+  blanche).
