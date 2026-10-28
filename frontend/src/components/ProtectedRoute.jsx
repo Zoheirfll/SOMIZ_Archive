@@ -6,6 +6,10 @@ const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = null, requ
   const location = useLocation();
   if (!authChecked) return null; // Attendre la vérification cookie avant de rediriger
   if (!authenticated) return <Navigate to="/login" replace />;
+  // Mot de passe temporaire : tout est bloqué (côté API aussi) jusqu'à son remplacement.
+  if (user?.must_change_password && location.pathname !== "/mot-de-passe") {
+    return <Navigate to="/mot-de-passe" replace />;
+  }
   if (user?.needs_consent && location.pathname !== "/consentement") {
     return <Navigate to="/consentement" state={{ from: location.pathname }} replace />;
   }

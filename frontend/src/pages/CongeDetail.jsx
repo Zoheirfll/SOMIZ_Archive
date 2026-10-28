@@ -129,6 +129,18 @@ const ventilationTexte =(d) => (d.ventilation || [])
 
 const tailleTexte = (octets) => (octets >= 1048576 ? `${(octets / 1048576).toFixed(1)} Mo` : `${Math.ceil(octets / 1024)} Ko`);
 
+const NIVEAUX_VISA = { 1: "Chef direct", 2: "Chef de département", 3: "Directeur" };
+
+// Texte de la ligne d'un maillon de la chaîne : état, auteur et motif éventuel.
+const libelleVisa = (v) => {
+  const qui = v.responsable_nom + (v.sans_compte ? " (sans compte)" : "");
+  if (v.decision === "en_attente") return `En attente — ${qui}`;
+  if (v.decision === "vise") return `Visé par ${v.decide_par_nom || qui}`;
+  if (v.decision === "vise_par_superieur") return v.motif || `Visé par ${v.decide_par_nom}`;
+  if (v.decision === "refuse") return `Refusé par ${v.decide_par_nom || qui}${v.motif ? ` : ${v.motif}` : ""}`;
+  return qui;
+};
+
 export default function CongeDetail() {
   const { ref } = useParams();
   const { user } = useAuth();
@@ -262,6 +274,19 @@ export default function CongeDetail() {
     if (erreur) setMessage(erreur);
   };
 
+  const viser = async () => {
+    if (!(await confirm("Donner votre visa sur cette demande de congé ?"))) return;
+    const erreur = await executer("viser", {});
+    if (erreur) setMessage(erreur);
+  };
+
+  const refuserVisa = async () => {
+    const motif = await prompt("Motif du refus (obligatoire) :", "", { confirmLabel: "Refuser" });
+    if (motif === null || !motif.trim()) return;
+    const erreur = await executer("refuser-visa", { motif: motif.trim() });
+    if (erreur) setMessage(erreur);
+  };
+
   const marquerRecupere = async () => {
     const erreur = await executer("recuperee", {});
     if (erreur) setMessage(erreur);
@@ -307,7 +332,7 @@ export default function CongeDetail() {
 
   const d = demande;
   const statut = d.statut;
-  const peutAnnulerDemande = d.demandeur === user?.id && statut === "recue";
+  const peutAnnulerDemande = d.demandeur === user?.id && ["recue", "visa"].includes(statut);
   const apercuPossible = isTraiteur && !["recue", "rejetee"].includes(statut);
   // Date de retour atteinte : titre figé (règle appliquée aussi côté serveur).
   const titreModifiable = !d.conge_termine;
@@ -432,6 +457,20 @@ export default function CongeDetail() {
           </InfoCard>
         )}
 
+        {d.visas?.length > 0 && (
+          <InfoCard title="Visa hiérarchique" theme={theme}>
+            {d.visas.map((v) => (
+              <Field
+                key={v.niveau}
+                label={`${NIVEAUX_VISA[v.niveau] || "Visa"} — ${v.unite_nom}`}
+                value={libelleVisa(v)}
+                theme={theme}
+                danger={v.decision === "refuse"}
+              />
+            ))}
+          </InfoCard>
+        )}
+
         {isTraiteur && <SoldesCard solde={solde} initialise={soldeInitialise} />}
 
         {message && (
@@ -441,6 +480,12 @@ export default function CongeDetail() {
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {d.peut_viser && (
+            <button onClick={viser} className="btn-lift" style={btnPrimaire}><CheckIcon size={13} /> Donner mon visa</button>
+          )}
+          {d.peut_viser && (
+            <button onClick={refuserVisa} className="btn-lift" style={btnDanger}>Refuser</button>
+          )}
           {isTraiteur && statut === "recue" && (
             <button onClick={ouvrirValidation} className="btn-lift" style={btnPrimaire}><CheckIcon size={13} /> Valider</button>
           )}

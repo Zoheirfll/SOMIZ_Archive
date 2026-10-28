@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import DesignerResponsableModal, { NIVEAUX_DESIGNABLES } from "../components/organigramme/DesignerResponsableModal";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
@@ -58,7 +60,7 @@ const ArrowRightIcon = ({ color }) => (
 // Cellule) dans l'écran drill-down. Le corps de la carte descend d'un
 // niveau (s'il a des enfants) ; le bouton flèche mène directement à la
 // liste des employés filtrée sur ce nœud.
-const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible, responsableNom }) => {
+const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible, responsableNom, onDesigner }) => {
   const theme = useTheme();
   const s = LEVEL[level];
   const baseColor = theme.mode === "dark" ? s.colorDark : s.color;
@@ -115,6 +117,28 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
           <div style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4 }}>
             {RESPONSABLE_ROLE[level]} : {responsableNom}
           </div>
+        )}        {onDesigner && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDesigner();
+            }}
+            style={{
+              marginTop: 6,
+              background: "none",
+              border: `1px dashed ${color}`,
+              color,
+              borderRadius: 6,
+              padding: "3px 8px",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {responsableNom ? "Changer le responsable" : `Désigner ${RESPONSABLE_ROLE[level].toLowerCase()}`}
+          </button>
         )}
         {!accessible && (
           <span
@@ -170,6 +194,9 @@ const Organigramme = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
+  const [designer, setDesigner] = useState(null); // nœud dont on désigne le responsable
   const [directions, setDirections] = useState([]);
   const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
@@ -305,6 +332,22 @@ const Organigramme = () => {
     ? childrenOf(current, current.level)
     : directions.map((d) => ({ ...d, level: "direction" }));
 
+  // Répercute une désignation sans recharger l'arbre (pas de flash, on reste
+  // à la même place). `path` garde des copies de nœuds : à mettre à jour aussi.
+  const appliquerResponsable = (level, data) => {
+    const patch = (liste) =>
+      liste.map((n) => (n.id === data.id ? { ...n, responsable: data.responsable, responsable_nom: data.responsable_nom } : n));
+    const setters = {
+      direction: setDirections, departement: setDepartements, service: setServices,
+      cellule: setCellules, section: setSections,
+    };
+    setters[level]?.(patch);
+    setPath((prev) => patch(prev));
+  };
+
+  const onDesignerPour = (node) =>
+    isAdmin && NIVEAUX_DESIGNABLES.includes(node.level) ? () => setDesigner(node) : undefined;
+
   const enter = (node) => setPath((prev) => [...prev, node]);
   const goToDepth = (depth) => setPath((prev) => prev.slice(0, depth));
 
@@ -386,6 +429,7 @@ const Organigramme = () => {
                   onNavigate={() => navigateTo(current, current.level)}
                   accessible={isAccessible(current, current.level)}
                   responsableNom={current.responsable_nom}
+                  onDesigner={onDesignerPour(current)}
                 />
               ) : (
                 <div
@@ -437,6 +481,7 @@ const Organigramme = () => {
                           onNavigate={() => navigateTo(node, node.level)}
                           accessible={isAccessible(node, node.level)}
                           responsableNom={node.responsable_nom}
+                          onDesigner={onDesignerPour(node)}
                         />
                       </div>
                     );
@@ -447,6 +492,14 @@ const Organigramme = () => {
           </div>
         )}
       </div>
+      {designer && (
+        <DesignerResponsableModal
+          node={designer}
+          roleLabel={RESPONSABLE_ROLE[designer.level]}
+          onClose={() => setDesigner(null)}
+          onSaved={appliquerResponsable}
+        />
+      )}
     </PageBackground>
   );
 };

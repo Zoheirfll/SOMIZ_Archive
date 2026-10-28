@@ -33,6 +33,7 @@ const presetToRange = (preset) => {
 
 const STATUTS = [
   { value: "", label: "Tous" },
+  { value: "visa", label: "En attente de visa" },
   { value: "recue", label: "Reçue" },
   { value: "prete", label: "Prête" },
   { value: "recuperee", label: "Récupérée" },
@@ -88,7 +89,9 @@ export default function Conges() {
     try {
       const params = { annee };
       if (mois) params.mois = mois;
-      if (statutFiltre) params.statut = statutFiltre;
+      // « a_viser » n'est pas un statut : demandes dont mon visa est attendu.
+      if (statutFiltre === "a_viser") params.a_viser = 1;
+      else if (statutFiltre) params.statut = statutFiltre;
       if (importance) params.importance = importance;
       if (departDu) params.depart_du = departDu;
       if (departAu) params.depart_au = departAu;
@@ -335,12 +338,12 @@ export default function Conges() {
               </form>
             )}
 
-            {isTraiteur && (
+            {(isTraiteur || user?.can_visa_conges) && (
               <div style={{ ...cardStyle, padding: "10px 12px", marginBottom: 20, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: theme.textMuted, padding: "0 4px 0 2px" }}>
                   Statut
                 </span>
-                {STATUTS.map((s) => {
+                {[...(user?.can_visa_conges ? [{ value: "a_viser", label: "À viser" }] : []), ...STATUTS].map((s) => {
                   const actif = statutFiltre === s.value;
                   return (
                     <button

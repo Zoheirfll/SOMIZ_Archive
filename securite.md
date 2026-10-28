@@ -1584,3 +1584,36 @@ Détail fonctionnel : [`docs/fonctionnel/conges.md`](docs/fonctionnel/conges.md)
   que la demande n'est plus `Reçue`. Ajout **et chaque consultation** tracés (`PIECE_CONGE`).
 - **Migration destructive `conges/0002`** : suppression des anciennes colonnes de compartiments — à n'appliquer que
   sur une base sans soldes réels ; sinon script de conversion validé et sauvegarde préalable obligatoires.
+
+## 49. Comptes de responsables d'unité, mot de passe temporaire et visa hiérarchique (2026-10-28) — ✅ Implémenté
+
+Spec : `docs/fonctionnel/conges-hierarchie.md`.
+
+- **Pas de création automatique directe d'un compte.** Désigner (saisie, Organigramme ou import) un employé sans compte
+  comme `responsable` d'une unité crée une `PropositionCompte` « en attente » ; seul un **ADMIN** la valide
+  (`IsAdmin`, testé : un CONSULTANT reçoit 403 sur la liste et la validation). Un import de masse ne produit donc que
+  des propositions. Rôle choisi par l'ADMIN, limité à GESTIONNAIRE/CONSULTANT (jamais ADMIN/SUPERADMIN, testé).
+  Une seule proposition ouverte par employé (contrainte en base) ; double validation refusée sous verrou.
+- **Mot de passe temporaire** : généré (`secrets`, 14 caractères, passé par `validate_password()`), renvoyé **une seule
+  fois** dans la réponse de validation (`Cache-Control: no-store`), jamais stocké en clair ni relisible. Rien n'est
+  envoyé par e-mail. Identifiant `prenom.nom` normalisé, suffixe numérique en cas d'homonyme.
+- **Changement imposé (`User.must_change_password`)** : appliqué dans `JWTCookieAuthentication.authenticate`, donc pour
+  **toutes** les vues même celles qui déclarent leurs propres `permission_classes` (leçon du point 47 : un ajout au
+  défaut global ne protège pas ces vues). Seules `/auth/me/`, `/auth/change-password/`, `/auth/logout/` et
+  `/auth/refresh/` restent accessibles. Testé sur une vraie route métier (`/api/employees/` → 403, puis débloquée après
+  le changement). Le nouveau mot de passe doit différer du temporaire. Côté interface : `/mot-de-passe`, redirection
+  depuis `ProtectedRoute` (prioritaire sur le consentement).
+- **Import des référentiels** : colonnes `responsable_matricule` (prioritaire) et `responsable_nom`. Un nom qui
+  correspond à plusieurs employés **refuse la ligne** (jamais de choix au hasard entre homonymes), tout comme un
+  matricule/nom introuvable. Attention : l'import n'a toujours pas d'aperçu avant validation.
+- **Visa hiérarchique** : la chaîne est figée à la création (`VisaConge`, décisions jamais modifiées). Le droit de viser
+  est vérifié dans `conges/visas.py` (compte du maillon ou d'un niveau **supérieur** ; jamais l'inverse) et non par la
+  seule permission de vue ; un étranger à la chaîne ne voit pas la demande (liste et détail filtrés). Le traiteur RH
+  ne peut pas valider avant la fin des visas. Chaque visa et chaque refus sont tracés (`VISER_CONGE`,
+  `REFUSER_VISA_CONGE`), le visa « en lieu et place de » est horodaté et nominatif. Création/validation/refus de compte
+  tracés (`PROPOSE_COMPTE`, `VALIDER_COMPTE`, `REFUSER_COMPTE`).
+- **Décision à prendre — périmètre** : un compte créé n'a **aucun périmètre organisationnel** (le visa ne donne accès
+  qu'aux congés, décision du 2026-10-28). Conséquence : il peut viser mais ne peut pas saisir de demande pour son équipe
+  tant qu'un ADMIN ne lui attribue pas un périmètre, ce qui donne aussi la **lecture des dossiers RH** de l'unité.
+- **Reste** : migrations `accounts/0021-0022`, `audit/0015-0016`, `conges/0003` à appliquer ; l'ancien responsable d'une
+  unité garde son compte (il perd le droit de visa, pas l'accès).

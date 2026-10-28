@@ -15,6 +15,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
 import useOrgScopeForm from "../hooks/useOrgScopeForm";
 import ScopeLevel from "../components/userScope/ScopeLevel";
+import PropositionsCompte from "../components/users/PropositionsCompte";
 
 // SVG icons
 const IconPlus = () => (
@@ -412,6 +413,8 @@ const Users = () => {
             {message.text}
           </div>
         )}
+
+        {isAdmin && <PropositionsCompte onCompteCree={() => fetchUsers(true)} />}
 
         {/* Formulaire création */}
         {showForm && (

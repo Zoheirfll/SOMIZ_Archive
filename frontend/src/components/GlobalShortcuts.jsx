@@ -25,7 +25,7 @@ export default function GlobalShortcuts() {
   const { user } = useAuth();
   const { helpOpen, toggleHelp, closeHelp, paletteOpen, togglePalette, closePalette, overrides } = useKeyboardShortcutsHelp();
 
-  const disabled = !user || location.pathname === "/login" || location.pathname === "/consentement";
+  const disabled = !user || location.pathname === "/login" || location.pathname === "/consentement" || location.pathname === "/mot-de-passe";
 
   NAV_SHORTCUTS.forEach((s) => {
     const combo = resolveCombo(s, overrides);

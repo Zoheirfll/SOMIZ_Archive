@@ -31,6 +31,7 @@ const Profil = lazy(() => import("./pages/Profil"));
 const ContratDetail = lazy(() => import("./pages/ContratDetail"));
 const Organigramme = lazy(() => import("./pages/Organigramme"));
 const Consentement = lazy(() => import("./pages/Consentement"));
+const ChangementMotDePasse = lazy(() => import("./pages/ChangementMotDePasse"));
 const RechercheDocuments = lazy(() => import("./pages/RechercheDocuments"));
 const Attestations = lazy(() => import("./pages/Attestations"));
 const AttestationNouvelle = lazy(() => import("./pages/AttestationNouvelle"));
@@ -61,6 +62,14 @@ function App() {
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/mot-de-passe"
+            element={
+              <ProtectedRoute>
+                <ChangementMotDePasse />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/consentement"
             element={

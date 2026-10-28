@@ -182,3 +182,17 @@ def test_responsable_sans_compte_le_niveau_superieur_peut_viser(monde, employee)
     resp = _client(monde["d"]).post(f"/api/conges/demandes/{_ref(d)}/viser/")
     assert resp.status_code == 200
     assert d.visas.get(niveau=1).decision == "vise_par_superieur"
+
+
+def test_responsable_sans_demande_recue_accede_quand_meme_aux_conges(monde):
+    # Le chef de service n'a reçu aucune demande : liste vide, mais accès accordé (pas 403).
+    resp = _client(monde["s"]).get("/api/conges/demandes/")
+    assert resp.status_code == 200
+    assert _rows(resp.data) == []
+    assert _client(monde["s"]).get("/api/auth/me/").data["can_visa_conges"] is True
+
+
+def test_compte_sans_fonction_ni_droit_n_a_pas_acces_aux_conges(employee):
+    simple = _compte(_emp(employee, "Z1", "Simple"))
+    assert _client(simple).get("/api/conges/demandes/").status_code == 403
+    assert _client(simple).get("/api/auth/me/").data["can_visa_conges"] is False

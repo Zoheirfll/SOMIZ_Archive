@@ -18,7 +18,7 @@ class CanAccessConges(_ConsentedActiveUser):
         # Un responsable à qui des visas sont adressés (conges.visas) accède
         # aussi à l'app, même sans droit de demander ni de traiter.
         return self._ok(user) and (
-            user.can_manage_conges or user.can_request_conges or user.visas_attendus.exists()
+            user.can_manage_conges or user.can_request_conges or user.can_visa_conges
         )
 
 

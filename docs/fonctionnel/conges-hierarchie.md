@@ -1,10 +1,13 @@
 # Congés — validation hiérarchique (spec, 2026-10-28)
 
-Statut (2026-10-28) : **backend implémenté** (comptes de responsables,
-chaîne, workflow de visa, API). **Reste** : interface (liste « à viser »,
-boutons viser/refuser, propositions de compte sur /users, désignation depuis
-l'Organigramme, écran de changement de mot de passe forcé), périmètre
-proposé à la validation d'un compte, `securite.md`.
+Statut (2026-10-28) : **implémenté** (backend + interface : filtre « À viser »,
+visa/refus et chronologie sur le détail, propositions de compte sur /users,
+bouton « Désigner » sur l'Organigramme, écran /mot-de-passe forcé). Journal :
+`securite.md` point 49.
+**Écart avec la spec initiale** : le périmètre organisationnel n'est PAS
+pré-rempli à la validation d'un compte — il donnerait la lecture des dossiers
+RH, ce que la décision « visa = congés seulement » exclut. À attribuer à la
+main depuis le modal « Périmètre » si le chef doit saisir pour son équipe.
 
 ## Implémentation du visa (backend)
 - `conges/hierarchie.py` : `chaine_validation(employee)` (fonction pure).

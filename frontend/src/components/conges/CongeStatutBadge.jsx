@@ -5,6 +5,7 @@ import { libelleStatutConge } from "../../utils/conges";
 export default function CongeStatutBadge({ statut }) {
   const theme = useTheme();
   const META = {
+    visa: { bg: theme.accentBg, color: theme.warning, dot: theme.warning },
     recue: { bg: theme.badgeBg, color: theme.badgeColor, dot: theme.textSecondary },
     prete: { bg: theme.primaryBg, color: theme.primary, dot: theme.primary },
     recuperee: { bg: theme.primaryBg, color: theme.primary, dot: theme.primary },

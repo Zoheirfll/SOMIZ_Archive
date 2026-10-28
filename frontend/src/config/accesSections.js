@@ -19,8 +19,9 @@ export const canSeeConsultations = (user) =>
 
 // Congés : demandeurs autorisés (peut_demander_conge) et traiteurs (SUPERADMIN /
 // ADMIN charge_conge) — User.can_request_conges / can_manage_conges côté backend.
+// Un responsable d'unité (can_visa_conges) y accède aussi : il vise les demandes de sa chaîne.
 export const canSeeConges = (user) =>
-  canRequestConges(user) || !!user?.can_manage_conges;
+  canRequestConges(user) || !!user?.can_manage_conges || !!user?.can_visa_conges;
 
 // Registres : le SUPERADMIN toujours (testé sur le rôle, pas seulement sur le
 // drapeau : robuste à une session ouverte avant l'ajout du champ), sinon un

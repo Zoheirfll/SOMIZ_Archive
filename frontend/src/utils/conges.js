@@ -20,6 +20,7 @@ export const libelleCategorie = (cat) =>
   (CATEGORIES_EXERCICE.find((c) => c.value === cat) || {}).label || cat || "";
 
 const LIBELLES_STATUT = {
+  visa: "En attente de visa",
   recue: "Reçue",
   prete: "Prête",
   recuperee: "Récupérée",

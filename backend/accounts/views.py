@@ -152,6 +152,7 @@ class LoginView(APIView):
                 'prenom': user.prenom,
                 'role': user.role,
                 'needs_consent': not bool(user.consent_loi1807_accepted_at),
+                'must_change_password': user.must_change_password,
                 'can_manage_attestations': user.can_manage_attestations,
                 'can_manage_consultations': user.can_manage_consultations,
                 'can_manage_registres': user.can_manage_registres,
@@ -159,6 +160,7 @@ class LoginView(APIView):
                 'can_request_consultations': user.can_request_consultations,
                 'can_manage_conges': user.can_manage_conges,
                 'can_request_conges': user.can_request_conges,
+                'can_visa_conges': user.can_visa_conges,
             }
         })
         _set_auth_cookies(request, response, refresh.access_token, refresh)
@@ -209,6 +211,7 @@ class UserMeView(APIView):
             'can_request_consultations': user.can_request_consultations,
             'can_manage_conges': user.can_manage_conges,
             'can_request_conges': user.can_request_conges,
+            'can_visa_conges': user.can_visa_conges,
             'needs_consent': not bool(user.consent_loi1807_accepted_at),
             'must_change_password': user.must_change_password,
         })

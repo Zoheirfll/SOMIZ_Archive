@@ -319,6 +319,21 @@ class User(AbstractBaseUser, PermissionsMixin):
         )
 
     @property
+    def can_visa_conges(self):
+        """Responsable d'une unité (son employé lié en est le `responsable`) ou
+        destinataire de visas : accède aux demandes de congé de sa chaîne.
+        Voir conges/visas.py et docs/fonctionnel/conges-hierarchie.md."""
+        if self.visas_attendus.exists():
+            return True
+        if not self.employee_id:
+            return False
+        from employees.models import Cellule, Departement, Direction, Section, Service
+        return any(
+            modele.objects.filter(responsable_id=self.employee_id, is_active=True).exists()
+            for modele in (Direction, Departement, Service, Cellule, Section)
+        )
+
+    @property
     def can_manage_registres(self):
         """True si ce compte tient les registres d'archives (mouvement et
         réception) — SUPERADMIN toujours, ADMIN seulement si charge_registre
