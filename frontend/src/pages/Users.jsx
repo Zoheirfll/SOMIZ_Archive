@@ -628,6 +628,7 @@ const Users = () => {
                   <input
                     type="password"
                     name="password"
+                    autoComplete="new-password"
                     value={form.password}
                     onChange={handleChange}
                     placeholder="Min. 10 caractères"
@@ -643,6 +644,7 @@ const Users = () => {
                   <input
                     type="password"
                     name="password2"
+                    autoComplete="new-password"
                     value={form.password2}
                     onChange={handleChange}
                     placeholder="Répétez le mot de passe"
@@ -769,6 +771,8 @@ const Users = () => {
               {onglet !== "valider" && (
                 <input
                   type="search"
+                  name="recherche-compte"
+                  autoComplete="off"
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value)}
                   placeholder="Rechercher un identifiant, un nom, un prénom…"
@@ -1221,6 +1225,7 @@ const Users = () => {
               <div style={{ position: "relative" }}>
                 <input
                   type={showResetMdp ? "text" : "password"}
+                  autoComplete="new-password"
                   value={resetForm.nouveau_mot_de_passe}
                   onChange={(e) => setResetForm({ ...resetForm, nouveau_mot_de_passe: e.target.value })}
                   placeholder="••••••••••"
@@ -1263,6 +1268,7 @@ const Users = () => {
               <div style={{ position: "relative" }}>
                 <input
                   type={showResetConfirm ? "text" : "password"}
+                  autoComplete="new-password"
                   value={resetForm.confirmation}
                   onChange={(e) => setResetForm({ ...resetForm, confirmation: e.target.value })}
                   placeholder="••••••••••"

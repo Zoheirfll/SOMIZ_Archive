@@ -77,7 +77,7 @@ def viser(demande, *, auteur) -> DemandeConge:
             v.decision = Decision.VISE if propre else Decision.VISE_PAR_SUPERIEUR
             v.decide_par, v.date_decision = auteur, maintenant
             if not propre:
-                v.motif = f"Visé en lieu et place de {v.responsable_nom} par {auteur.full_name}"
+                v.motif = f"Visé par {auteur.full_name} en raison de l'absence de {v.responsable_nom}"
             v.save()
         if not any(v.decision == Decision.EN_ATTENTE for v in visas):
             demande.statut = Statut.RECUE

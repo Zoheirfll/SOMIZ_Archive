@@ -104,7 +104,7 @@ def test_niveau_superieur_vise_sans_attendre_et_solde_les_inferieurs(monde, empl
     assert resp.status_code == 200
     decisions = {v.niveau: v for v in d.visas.all()}
     assert decisions[1].decision == "vise_par_superieur"
-    assert "en lieu et place" in decisions[1].motif
+    assert "en raison de l'absence" in decisions[1].motif
     assert decisions[2].decision == "vise"
     assert decisions[3].decision == "en_attente"
     d.refresh_from_db()
