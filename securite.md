@@ -1660,3 +1660,8 @@ demande (attestations, consultations, congés), modifiables ensuite sur `/users`
 - **Effets limités** : visas de congé de l'unité et lecture du périmètre de l'unité ; **aucun** accès aux documents
   (règle du point 50 : un GESTIONNAIRE n'en consulte pas) ni aux droits d'administration.
 - **Tests** : `backend/tests/test_interims.py` (15 cas), sur de vraies routes.
+
+**Complément point 51 — validation des attestations (2026-10-29)** : une demande d'attestation attend la validation
+du supérieur direct avant tout traitement ; le blocage (aperçu PDF, statut, rejet, masse, scan) est **côté serveur**
+(`attestations/serializers.py`, `views.py`), pas seulement masqué à l'écran. Un tiers reçoit 404 sur
+`viser/` et `refuser-visa/` (pas de fuite d'existence). Tests : `tests/test_attestations_visa.py`.

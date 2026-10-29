@@ -184,3 +184,35 @@ describe("AttestationDetail", () => {
     expect(screen.getByText("Service Administration du Personnel")).toBeInTheDocument();
   });
 });
+
+describe("AttestationDetail — validation du supérieur direct", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  const demandeEnVisa = {
+    id: "d1", reference: "00001/26", employee_nom: "Jean Dupont", motif_nom: "Dossier administratif",
+    statut: "visa", demandeur: "u2", demandeur_nom: "Ali Ben", commentaire: "",
+    created_at: "2026-09-01T10:00:00Z",
+    visa: { unite_nom: "Service Paie", responsable_nom: "Kheira FERGOUG", decision: "en_attente", interimaires: [] },
+  };
+
+  test("le supérieur direct voit Valider/Refuser et valide la demande", async () => {
+    useAuth.mockReturnValue({ user: { role: "CONSULTANT", id: "u3", can_visa_conges: true } });
+    api.get.mockResolvedValue({ data: { ...demandeEnVisa, peut_viser: true } });
+    api.post.mockResolvedValue({ data: {} });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /Valider la demande/ }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/attestations/demandes/d1/viser/"));
+    expect(screen.getByRole("button", { name: "Refuser" })).toBeInTheDocument();
+  });
+
+  test("un traiteur ne peut ni prévisualiser, ni passer à Prête, tant que la demande attend sa validation", async () => {
+    useAuth.mockReturnValue({ user: { role: "ADMIN", id: "u1", can_manage_attestations: true } });
+    api.get.mockResolvedValue({ data: { ...demandeEnVisa, peut_viser: false } });
+    renderDetail();
+    expect(await screen.findByText(/attend la validation de son supérieur direct/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Aperçu PDF/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Rejeter/ })).not.toBeInTheDocument();
+  });
+});

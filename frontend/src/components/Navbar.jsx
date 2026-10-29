@@ -125,21 +125,25 @@ const Navbar = () => {
     // DemandeAttestationListCreateView.get_queryset.
     if (!seesAttestations) return;
     let cancelled = false;
-    api.get("/attestations/demandes/", { params: { pending: 1 } })
-      .then((res) => {
-        if (cancelled) return;
-        // `count` si paginé (DRF), sinon la longueur d'un tableau brut —
-        // res.data.results.length sous-comptait dès que le nombre de
-        // demandes en attente dépassait une page.
-        const count = res.data?.count ?? (res.data?.results || res.data || []).length;
-        setPendingAttestations(count);
-      })
-      .catch(() => {});
+    // `count` si paginé (DRF), sinon la longueur d'un tableau brut —
+    // res.data.results.length sous-comptait dès que le nombre de demandes en
+    // attente dépassait une page.
+    const compter = (params) =>
+      api.get("/attestations/demandes/", { params })
+        .then((res) => res.data?.count ?? (res.data?.results || res.data || []).length)
+        .catch(() => 0);
+    // Un responsable compte aussi les demandes qu'il doit valider (`a_viser`).
+    Promise.all([
+      compter({ pending: 1 }),
+      user?.can_visa_conges && !user?.can_manage_attestations ? compter({ a_viser: 1 }) : 0,
+    ]).then(([prets, avalider]) => {
+      if (!cancelled) setPendingAttestations(prets + avalider);
+    });
     return () => { cancelled = true; };
     // Recharge à chaque changement de page — le badge doit refléter les
     // changements de statut faits sur /attestations/:id, jamais rechargés
     // sinon puisque Navbar ne se démonte pas entre deux pages de l'app.
-  }, [user?.role, location.pathname]);
+  }, [user?.role, seesAttestations, user?.can_visa_conges, user?.can_manage_attestations, location.pathname]);
 
   useEffect(() => {
     // Même principe que les attestations : le traiteur compte les demandes

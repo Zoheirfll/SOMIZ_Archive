@@ -10,8 +10,9 @@ export const canRequestConsultations = (user) => !!user?.can_request_consultatio
 export const canRequestConges = (user) => !!user?.can_request_conges;
 
 // Attestations : demandeur autorisé, ou traiteur (SUPERADMIN / ADMIN chargé).
+// Un responsable d'unité (can_visa_conges) y accède aussi : il valide les demandes de son équipe.
 export const canSeeAttestations = (user) =>
-  canRequestAttestations(user) || !!user?.can_manage_attestations;
+  canRequestAttestations(user) || !!user?.can_manage_attestations || !!user?.can_visa_conges;
 
 // Consultations d'archives : demandeurs autorisés et traiteurs.
 export const canSeeConsultations = (user) =>

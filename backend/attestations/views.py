@@ -15,7 +15,8 @@ from audit.models import AuditLog
 from config.liste_demandes import DemandePagination, appliquer_periode_importance_tri
 from .models import DemandeAttestation, AttestationTemplateConfig
 from .pdf import build_attestation_pdf, LOGO_PAR_DEFAUT
-from .notifications import notifier_nouvelle_demande, notifier_changement_statut
+from . import visas
+from .notifications import notifier_nouvelle_demande, notifier_changement_statut, notifier_visa_requis
 from .permissions import CanAccessAttestations, CanRequestAttestation, IsAttestationManager
 from .serializers import (
     DemandeAttestationSerializer, DemandeAttestationCreateSerializer,
@@ -101,13 +102,22 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
                 # pas encore récupéré par le gestionnaire.
                 qs = qs.filter(statut=DemandeAttestation.Statut.RECUE)
             return qs
-        qs = qs.filter(demandeur=user)
+        # Un demandeur voit ses demandes ; un responsable voit aussi celles qu'il
+        # doit valider (ou a validées) comme supérieur direct ou intérimaire.
+        qs = qs.filter(Q(demandeur=user) | visas.q_visa_de(user)).distinct()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        if self.request.query_params.get('a_viser'):
+            qs = qs.filter(
+                Q(statut=DemandeAttestation.Statut.VISA, visa__decision='en_attente') & visas.q_visa_de(user),
+            )
         if self.request.query_params.get('pending'):
             # Badge navbar (côté demandeur) : demandes prêtes à récupérer,
             # symétrique du badge ADMIN ci-dessus — le badge disparaît dès
             # qu'un ADMIN enregistre la récupération (statut Récupérée),
             # jamais avant, puisque seul un ADMIN peut changer le statut.
-            qs = qs.filter(statut=DemandeAttestation.Statut.PRETE)
+            qs = qs.filter(demandeur=user, statut=DemandeAttestation.Statut.PRETE)
         return qs
 
     def perform_create(self, serializer):
@@ -116,7 +126,13 @@ class DemandeAttestationListCreateView(generics.ListCreateAPIView):
             self.request, AuditLog.Action.CREATE_ATTESTATION, target=demande,
             details={'employee': str(demande.employee), 'motif': demande.motif.nom},
         )
-        notifier_nouvelle_demande(demande)
+        # Supérieur direct à attendre ? Les traiteurs ne sont prévenus qu'une
+        # fois la demande validée (statut Reçue).
+        visas.initialiser(demande, self.request.user)
+        if demande.statut == DemandeAttestation.Statut.VISA:
+            notifier_visa_requis(demande, self.request.user)
+        else:
+            notifier_nouvelle_demande(demande)
 
 
 class DemandeAttestationDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIView):
@@ -135,14 +151,18 @@ class DemandeAttestationDetailView(ReferenceLookupMixin, generics.RetrieveDestro
         obj = super().get_object()
         user = self.request.user
         if not user.can_manage_attestations and obj.demandeur_id != user.id:
-            raise PermissionDenied("Cette demande ne vous appartient pas.")
+            v = getattr(obj, 'visa', None)
+            if v is None or not DemandeAttestation.objects.filter(pk=obj.pk).filter(visas.q_visa_de(user)).exists():
+                raise PermissionDenied("Cette demande ne vous appartient pas.")
         return obj
 
     def perform_destroy(self, instance):
         user = self.request.user
-        if instance.demandeur_id != user.id or instance.statut != DemandeAttestation.Statut.RECUE:
+        if instance.demandeur_id != user.id or instance.statut not in (
+            DemandeAttestation.Statut.RECUE, DemandeAttestation.Statut.VISA,
+        ):
             raise PermissionDenied(
-                "Une demande ne peut être annulée que par son auteur, tant qu'elle est au statut 'Reçue'."
+                "Une demande ne peut être annulée que par son auteur, tant qu'elle n'est pas prise en charge."
             )
         AuditLog.log(
             self.request, AuditLog.Action.DELETE_ATTESTATION, target=instance,
@@ -245,6 +265,66 @@ class DemandeAttestationScanView(ReferenceLookupMixin, generics.UpdateAPIView):
     def post(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
 
+    def partial_update(self, request, *args, **kwargs):
+        if self.get_object().statut == DemandeAttestation.Statut.VISA:
+            return Response({'error': visas.MESSAGE_EN_VISA}, status=409)
+        return super().partial_update(request, *args, **kwargs)
+
+
+class _VisaObjetMixin(ReferenceLookupMixin):
+    """404 (jamais 400/403) pour qui n'est ni traiteur, ni demandeur, ni le
+    responsable de la validation : pas de fuite d'existence d'une référence."""
+
+    def get_object(self):
+        obj = super().get_object()
+        user = self.request.user
+        if user.can_manage_attestations or obj.demandeur_id == user.id:
+            return obj
+        if not DemandeAttestation.objects.filter(pk=obj.pk).filter(visas.q_visa_de(user)).exists():
+            from django.http import Http404
+            raise Http404
+        return obj
+
+
+class DemandeAttestationViserView(_VisaObjetMixin, generics.GenericAPIView):
+    """POST /api/attestations/demandes/<ref>/viser/ — supérieur direct (ou son
+    intérimaire actif) : valide la demande, qui devient `Reçue`."""
+    permission_classes = [CanAccessAttestations]
+    queryset = DemandeAttestation.objects.select_related('employee', 'visa')
+
+    def post(self, request, *args, **kwargs):
+        demande = self.get_object()
+        try:
+            demande = visas.viser(demande, auteur=request.user)
+        except visas.VisaError as exc:
+            return Response({'error': str(exc)}, status=400)
+        AuditLog.log(
+            request, AuditLog.Action.VISER_ATTESTATION, target=demande,
+            details={'employee': str(demande.employee), 'unite': demande.visa.unite_nom},
+        )
+        notifier_nouvelle_demande(demande)
+        return Response(DemandeAttestationSerializer(demande, context={'request': request}).data)
+
+
+class DemandeAttestationRefuserVisaView(_VisaObjetMixin, generics.GenericAPIView):
+    """POST /api/attestations/demandes/<ref>/refuser-visa/ {motif} — le supérieur
+    direct refuse : la demande est rejetée (motif obligatoire)."""
+    permission_classes = [CanAccessAttestations]
+    queryset = DemandeAttestation.objects.select_related('employee', 'visa')
+
+    def post(self, request, *args, **kwargs):
+        demande = self.get_object()
+        try:
+            demande = visas.refuser(demande, auteur=request.user, motif=request.data.get('motif', ''))
+        except visas.VisaError as exc:
+            return Response({'error': str(exc)}, status=400)
+        AuditLog.log(
+            request, AuditLog.Action.REFUSER_VISA_ATTEST, target=demande,
+            details={'employee': str(demande.employee), 'unite': demande.visa.unite_nom, 'motif': request.data.get('motif', '')},
+        )
+        notifier_changement_statut(demande, request.user)
+        return Response(DemandeAttestationSerializer(demande, context={'request': request}).data)
+
 
 class AttestationTemplateConfigView(generics.RetrieveUpdateAPIView):
     """GET/PUT /api/attestations/config/ — singleton, SUPERADMIN/ADMIN chargé only."""
@@ -324,6 +404,8 @@ class AttestationApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
         from employees.models import Contrat, EmployeeChampValeur
 
         demande = self.get_object()
+        if demande.statut == DemandeAttestation.Statut.VISA:
+            return Response({'error': visas.MESSAGE_EN_VISA}, status=409)
         today = tz.localdate()
 
         # La date imprimée sur le document ("Arzew le :"/"Édité le :") se

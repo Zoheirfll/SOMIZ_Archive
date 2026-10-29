@@ -5,6 +5,7 @@ from .views import (
     DemandeAttestationStatutView, DemandeAttestationBulkStatutView, DemandeAttestationScanView,
     AttestationTemplateConfigView, AttestationTemplateConfigApercuView, DefaultAttestationLogoView,
     AttestationApercuView, AttestationStatsView,
+    DemandeAttestationViserView, DemandeAttestationRefuserVisaView,
 )
 
 urlpatterns = [
@@ -16,6 +17,8 @@ urlpatterns = [
     path('demandes/<str:ref>/', DemandeAttestationDetailView.as_view()),
     path('demandes/<str:ref>/statut/', DemandeAttestationStatutView.as_view()),
     path('demandes/<str:ref>/scan/', DemandeAttestationScanView.as_view()),
+    path('demandes/<str:ref>/viser/', DemandeAttestationViserView.as_view()),
+    path('demandes/<str:ref>/refuser-visa/', DemandeAttestationRefuserVisaView.as_view()),
     path('demandes/<str:ref>/apercu/', AttestationApercuView.as_view()),
     path('config/', AttestationTemplateConfigView.as_view()),
     path('config/apercu/', AttestationTemplateConfigApercuView.as_view()),

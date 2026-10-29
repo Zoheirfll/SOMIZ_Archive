@@ -30,6 +30,22 @@ def notifier_nouvelle_demande(demande):
     )
 
 
+def notifier_visa_requis(demande, auteur=None):
+    """Prévient le supérieur direct (et l'intérimaire de son unité) que sa
+    validation est attendue."""
+    from . import visas
+    v = getattr(demande, 'visa', None)
+    if v is None or v.decision != 'en_attente':
+        return
+    candidats = ([v.compte_id] if v.compte_id else []) + [c.pk for c in visas.interimaires_actifs(v)]
+    comptes = [c for c in candidats if auteur is None or c != auteur.pk]
+    if comptes:
+        notify(
+            comptes, Notification.Type.ATTESTATION_NOUVELLE,
+            f"Demande d'attestation {demande.reference} en attente de votre validation", _link(demande),
+        )
+
+
 def notifier_changement_statut(demande, auteur=None):
     """Prévient le demandeur quand sa demande passe à Prête ou Rejetée
     (Récupérée est l'enregistrement d'un retrait physique, pas d'alerte)."""
