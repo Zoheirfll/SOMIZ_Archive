@@ -6,7 +6,7 @@ import GlobalShortcuts from "./components/GlobalShortcuts";
 import ProtectedRoute from "./components/ProtectedRoute";
 import {
   canRequestAttestations, canRequestConges, canRequestConsultations,
-  canSeeAttestations, canSeeConges, canSeeConsultations,
+  canSeeAttestations, canSeeConges, canSeeConsultations, canSeeInterims,
 } from "./config/accesSections";
 import RouteFallback from "./components/RouteFallback";
 import Login from "./pages/Login";
@@ -37,6 +37,7 @@ const Attestations = lazy(() => import("./pages/Attestations"));
 const AttestationNouvelle = lazy(() => import("./pages/AttestationNouvelle"));
 const AttestationDetail = lazy(() => import("./pages/AttestationDetail"));
 const Conges = lazy(() => import("./pages/Conges"));
+const Interims = lazy(() => import("./pages/Interims"));
 const CongeNouvelle = lazy(() => import("./pages/CongeNouvelle"));
 const CongeDetail = lazy(() => import("./pages/CongeDetail"));
 const Consultations = lazy(() => import("./pages/Consultations"));
@@ -164,6 +165,17 @@ function App() {
                 requireFn={canSeeAttestations}
               >
                 <AttestationDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/interims"
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canSeeInterims}
+              >
+                <Interims />
               </ProtectedRoute>
             }
           />

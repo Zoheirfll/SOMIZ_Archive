@@ -9,6 +9,7 @@ urlpatterns = [
         path('', include('employees.urls')),
         path('reporting/', include('audit.urls')),
         path('admin-users/', include('accounts.admin_urls')),
+        path('interims/', include('accounts.interim_urls')),
         path('ref/', include('employees.referentiel_urls')),
         path('ref/import/<str:model>/', __import__('employees.import_views', fromlist=['ReferentielImportView']).ReferentielImportView.as_view()),
         path('ref/import/<str:model>/template/', __import__('employees.import_views', fromlist=['ReferentielImportTemplateView']).ReferentielImportTemplateView.as_view()),

@@ -372,6 +372,9 @@ class VisaConge(models.Model):
     demande = models.ForeignKey(DemandeConge, on_delete=models.CASCADE, related_name='visas')
     niveau = models.PositiveSmallIntegerField()  # 1 direct, 2 département, 3 direction
     unite_type = models.CharField(max_length=20)
+    # Id de l'unité (null pour les visas antérieurs à l'intérim) : permet à un
+    # intérimaire actif de l'unité de viser à la place du titulaire.
+    unite_id = models.UUIDField(null=True, blank=True)
     unite_nom = models.CharField(max_length=200)
     responsable_nom = models.CharField(max_length=200)
     responsable = models.ForeignKey(

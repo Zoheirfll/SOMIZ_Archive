@@ -30,6 +30,8 @@ class Notification(models.Model):
         CONSULTATION_NOUVELLE = 'CONSULTATION_NOUVELLE', "Nouvelle demande de consultation"
         CONSULTATION_VALIDEE = 'CONSULTATION_VALIDEE', "Consultation validée"
         CONSULTATION_REJETEE = 'CONSULTATION_REJETEE', "Consultation rejetée"
+        INTERIM_A_VALIDER = 'INTERIM_A_VALIDER', "Intérim à valider"
+        INTERIM_DECIDE = 'INTERIM_DECIDE', "Décision sur un intérim"
         CONSULTATION_REVOQUEE = 'CONSULTATION_REVOQUEE', "Consultation révoquée"
         CONSULTATION_PROLONGEE = 'CONSULTATION_PROLONGEE', "Consultation prolongée"
         CONSULTATION_ECHEANCE = 'CONSULTATION_ECHEANCE', "Consultation bientôt expirée"

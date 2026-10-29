@@ -117,11 +117,10 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
             return qs
         # un demandeur ne voit que ses demandes ; un responsable voit aussi celles
         # dont il est (ou a été) un maillon de la chaîne de visa
-        qs = qs.filter(Q(demandeur=user) | Q(visas__compte=user)).distinct()
+        qs = qs.filter(Q(demandeur=user) | visas.q_visas_de(user)).distinct()
         if params.get('a_viser'):
             qs = qs.filter(
-                statut=DemandeConge.Statut.VISA, visas__compte=user,
-                visas__decision='en_attente',
+                Q(statut=DemandeConge.Statut.VISA, visas__decision='en_attente') & visas.q_visas_de(user),
             )
         if params.get('statut'):
             qs = qs.filter(statut=params['statut'])

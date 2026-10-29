@@ -18,6 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.http import Http404
 from accounts.cookie_auth import is_token_revoked
+from accounts.interims import peut_gerer_interim
 from accounts.permissions import IsAdmin, visible_accounts
 from audit.models import AuditLog
 
@@ -150,6 +151,7 @@ class LoginView(APIView):
                 'username': user.username,
                 'nom': user.nom,
                 'prenom': user.prenom,
+                'fonction': user.fonction,
                 'role': user.role,
                 'needs_consent': not bool(user.consent_loi1807_accepted_at),
                 'must_change_password': user.must_change_password,
@@ -161,6 +163,7 @@ class LoginView(APIView):
                 'can_manage_conges': user.can_manage_conges,
                 'can_request_conges': user.can_request_conges,
                 'can_visa_conges': user.can_visa_conges,
+                'can_gerer_interim': peut_gerer_interim(user),
             }
         })
         _set_auth_cookies(request, response, refresh.access_token, refresh)
@@ -202,6 +205,9 @@ class UserMeView(APIView):
             'id': str(user.id),
             'username': user.username,
             'full_name': user.full_name,
+            'nom': user.nom,
+            'prenom': user.prenom,
+            'fonction': user.fonction,
             'role': user.role,
             'is_admin': user.is_admin,
             'can_manage_attestations': user.can_manage_attestations,
@@ -212,6 +218,7 @@ class UserMeView(APIView):
             'can_manage_conges': user.can_manage_conges,
             'can_request_conges': user.can_request_conges,
             'can_visa_conges': user.can_visa_conges,
+            'can_gerer_interim': peut_gerer_interim(user),
             'needs_consent': not bool(user.consent_loi1807_accepted_at),
             'must_change_password': user.must_change_password,
         })

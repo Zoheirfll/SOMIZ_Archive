@@ -134,8 +134,11 @@ const NIVEAUX_VISA = { 1: "Chef direct", 2: "Chef de département", 3: "Directeu
 // Texte de la ligne d'un maillon de la chaîne : état, auteur et motif éventuel.
 const libelleVisa = (v) => {
   const qui = v.responsable_nom + (v.sans_compte ? " (sans compte)" : "");
-  if (v.decision === "en_attente") return `En attente — ${qui}`;
-  if (v.decision === "vise") return `Visé par ${v.decide_par_nom || qui}`;
+  if (v.decision === "en_attente") {
+    const interim = (v.interimaires || []).length ? ` (intérim : ${v.interimaires.join(", ")})` : "";
+    return `En attente — ${qui}${interim}`;
+  }
+  if (v.decision === "vise") return v.motif || `Visé par ${v.decide_par_nom || qui}`;
   if (v.decision === "vise_par_superieur") return v.motif || `Visé par ${v.decide_par_nom}`;
   if (v.decision === "refuse") return `Refusé par ${v.decide_par_nom || qui}${v.motif ? ` : ${v.motif}` : ""}`;
   return qui;

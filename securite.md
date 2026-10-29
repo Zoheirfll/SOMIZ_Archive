@@ -1647,3 +1647,16 @@ Spec : `docs/fonctionnel/conges-hierarchie.md`.
 visible dans « Carrière »). Les champs personnels ne sont pas bloqués durement côté serveur : le bloc est masqué et vide
 tant qu'aucun champ n'est coché. Un compte de responsable créé par validation reçoit d'office les trois droits de
 demande (attestations, consultations, congés), modifiables ensuite sur `/users`.
+
+## 51. Intérim des responsables d'unité (2026-10-29) — ✅ Implémenté
+
+- **Risque** : un droit temporaire qui survit à la période, ou une désignation sans contrôle, donnerait à un compte
+  des visas et un périmètre qu'il ne doit plus avoir.
+- **Mesures** : droit **calculé par date** (`Interim.actifs()` : statut `valide` et `date_debut ≤ aujourd'hui ≤
+  date_fin`) à chaque requête — aucune tâche de nettoyage dont l'échec laisserait des droits ouverts ; désignation par
+  le titulaire soumise à la validation de son supérieur direct ; intérimaire limité à l'équipe de l'unité (dérogation
+  réservée au SUPERADMIN) ; droit de désigner/valider/terminer vérifié côté serveur (`role_sur_unite`) ; un tiers reçoit
+  404 (pas 403) sur un intérim qui ne le concerne pas ; audit de la désignation, de la décision et de la fin anticipée.
+- **Effets limités** : visas de congé de l'unité et lecture du périmètre de l'unité ; **aucun** accès aux documents
+  (règle du point 50 : un GESTIONNAIRE n'en consulte pas) ni aux droits d'administration.
+- **Tests** : `backend/tests/test_interims.py` (15 cas), sur de vraies routes.

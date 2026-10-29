@@ -177,6 +177,7 @@ const Navbar = () => {
   const navLinks = [
     { path: "/employees", label: "Personnel" },
     { path: "/organigramme", label: "Organigramme" },
+    { path: "/interims", label: "Intérim", show: !!user?.can_gerer_interim },
     {
       path: demandesSections[0]?.path, label: "Demandes",
       show: demandesSections.length > 0,
@@ -345,7 +346,7 @@ const Navbar = () => {
                   marginTop: 2,
                 }}
               >
-                {user?.role}
+                {user?.fonction || user?.role}
               </div>
             </div>
             )}
@@ -623,7 +624,7 @@ const Navbar = () => {
                   marginTop: 2,
                 }}
               >
-                {user?.role}
+                {user?.fonction || user?.role}
               </div>
             </div>
 

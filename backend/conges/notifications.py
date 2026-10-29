@@ -34,10 +34,14 @@ def notifier_nouvelle_demande(demande):
 def notifier_visa_requis(demande, auteur=None):
     """Prévient les responsables de la chaîne dont le visa est attendu (dès la
     création : un niveau supérieur peut viser sans attendre le niveau inférieur)."""
-    comptes = [
-        v.compte_id for v in demande.visas.all()
-        if v.compte_id and v.decision == 'en_attente' and (auteur is None or v.compte_id != auteur.pk)
-    ]
+    from . import visas as visas_service
+    comptes = []
+    for v in demande.visas.all():
+        if v.decision != 'en_attente':
+            continue
+        # Le titulaire et, s'il y en a un en cours, l'intérimaire de l'unité.
+        candidats = ([v.compte_id] if v.compte_id else []) + [c.pk for c in visas_service.interimaires_actifs(v)]
+        comptes += [c for c in candidats if auteur is None or c != auteur.pk]
     if comptes:
         notify(
             comptes, Notification.Type.CONGE_NOUVELLE,

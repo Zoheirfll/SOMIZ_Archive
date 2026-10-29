@@ -94,6 +94,10 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             'responsable_nom': v.responsable_nom, 'sans_compte': v.compte_id is None,
             'decision': v.decision, 'decide_par_nom': v.decide_par.full_name if v.decide_par_id else None,
             'date_decision': v.date_decision, 'motif': v.motif,
+            # Intérimaires en cours de l'unité (visa encore en attente seulement).
+            'interimaires': (
+                [c.full_name for c in visas.interimaires_actifs(v)] if v.decision == 'en_attente' else []
+            ),
         } for v in obj.visas.all()]
 
     def get_peut_viser(self, obj):

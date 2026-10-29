@@ -319,11 +319,20 @@ class User(AbstractBaseUser, PermissionsMixin):
         )
 
     @property
+    def fonction(self):
+        """Fonction du titulaire = poste de sa fiche employé liée (« Fonction »
+        sur la fiche employé), ex. « Chef de service ». Vide si le compte n'est
+        lié à aucun employé ou si l'employé n'a pas de poste renseigné."""
+        if not self.employee_id or not self.employee.poste_id:
+            return ""
+        return self.employee.poste.nom
+
+    @property
     def can_visa_conges(self):
         """Responsable d'une unité (son employé lié en est le `responsable`) ou
         destinataire de visas : accède aux demandes de congé de sa chaîne.
         Voir conges/visas.py et docs/fonctionnel/conges-hierarchie.md."""
-        if self.visas_attendus.exists():
+        if self.visas_attendus.exists() or Interim.unites_actives(self):
             return True
         if not self.employee_id:
             return False
@@ -347,14 +356,22 @@ class User(AbstractBaseUser, PermissionsMixin):
         restriction (ADMIN, ou CONSULTANT sans périmètre assigné)."""
         if self.is_admin or not self.pk:
             return set(), set(), set(), set(), set(), set()
-        return (
-            set(self.scope_directions.values_list('id', flat=True)),
-            set(self.scope_poles.values_list('id', flat=True)),
-            set(self.scope_departements.values_list('id', flat=True)),
-            set(self.scope_services.values_list('id', flat=True)),
-            set(self.scope_cellules.values_list('id', flat=True)),
-            set(self.scope_sections.values_list('id', flat=True)),
-        )
+        directions = set(self.scope_directions.values_list('id', flat=True))
+        departements = set(self.scope_departements.values_list('id', flat=True))
+        services = set(self.scope_services.values_list('id', flat=True))
+        cellules = set(self.scope_cellules.values_list('id', flat=True))
+        sections = set(self.scope_sections.values_list('id', flat=True))
+        # Intérim actif (2026-10-29) : l'unité remplacée s'ajoute au périmètre
+        # tant que la fiche est valide ; aucune donnée à nettoyer à la fin, le
+        # droit se calcule à chaque requête d'après les dates.
+        cibles = {
+            'direction': directions, 'departement': departements, 'service': services,
+            'cellule': cellules, 'section': sections,
+        }
+        for unite_type, unite_id in Interim.unites_actives(self):
+            cibles[unite_type].add(unite_id)
+        return (directions, set(self.scope_poles.values_list('id', flat=True)), departements,
+                services, cellules, sections)
 
     @property
     def has_scope_restriction(self):
@@ -810,3 +827,67 @@ class PropositionCompte(models.Model):
                 name='unique_proposition_ouverte_par_employe',
             ),
         ]
+
+
+class Interim(models.Model):
+    """Intérim d'un responsable d'unité (2026-10-29).
+
+    Le titulaire (ou son supérieur direct, ou le SUPERADMIN) désigne un
+    intérimaire pour une période. Une désignation faite par le titulaire doit
+    être validée par son supérieur direct ; celle du supérieur, du SUPERADMIN
+    ou du directeur (sans supérieur) prend effet immédiatement. Pendant la
+    période (statut `valide`, dates incluses) l'intérimaire reçoit les visas de
+    l'unité et la lit dans son périmètre ; passé `date_fin` tout s'arrête seul.
+    Voir accounts/interims.py et docs/fonctionnel/conges-hierarchie.md.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'À valider'
+        VALIDE = 'valide', 'Validé'
+        REFUSE = 'refuse', 'Refusé'
+        TERMINE = 'termine', 'Terminé avant échéance'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Unité remplacée, mémorisée en texte comme PropositionCompte.
+    unite_type = models.CharField(max_length=20)
+    unite_id = models.UUIDField()
+    unite_nom = models.CharField(max_length=200)
+    titulaire = models.ForeignKey(
+        'employees.Employee', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    titulaire_nom = models.CharField(max_length=200)
+    interimaire = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='interims_recus')
+    date_debut = models.DateField()
+    date_fin = models.DateField()
+    statut = models.CharField(max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    propose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    date_decision = models.DateTimeField(null=True, blank=True)
+    motif = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'interims'
+        ordering = ['-date_debut', '-created_at']
+
+    @classmethod
+    def actifs(cls, jour=None):
+        from django.utils import timezone
+        jour = jour or timezone.localdate()
+        return cls.objects.filter(statut=cls.Statut.VALIDE, date_debut__lte=jour, date_fin__gte=jour)
+
+    @classmethod
+    def unites_actives(cls, user, jour=None):
+        """[(unite_type, unite_id)] des intérims en cours de `user`."""
+        if not getattr(user, 'pk', None):
+            return []
+        return list(cls.actifs(jour).filter(interimaire=user).values_list('unite_type', 'unite_id'))
+
+    @property
+    def est_actif(self):
+        from django.utils import timezone
+        return self.statut == self.Statut.VALIDE and self.date_debut <= timezone.localdate() <= self.date_fin

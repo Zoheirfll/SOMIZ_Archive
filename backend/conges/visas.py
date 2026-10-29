@@ -6,7 +6,10 @@ viser sans attendre le niveau inférieur (chef absent) ; l'inverse est
 impossible. Un refus, à n'importe quelle étape, rejette la demande.
 """
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
+
+from accounts.models import Interim
 
 from .hierarchie import chaine_validation
 from .models import DemandeConge, VisaConge
@@ -24,7 +27,8 @@ def initialiser_chaine(demande) -> list[VisaConge]:
         return []
     visas = [
         VisaConge(
-            demande=demande, niveau=m.niveau, unite_type=m.unite_type, unite_nom=m.unite_nom,
+            demande=demande, niveau=m.niveau, unite_type=m.unite_type, unite_id=m.unite_id,
+            unite_nom=m.unite_nom,
             responsable_id=m.responsable_id, responsable_nom=m.responsable_nom, compte=m.compte,
         )
         for m in maillons
@@ -35,9 +39,33 @@ def initialiser_chaine(demande) -> list[VisaConge]:
     return visas
 
 
+def _habilite(visa, user, unites_interim) -> bool:
+    """`user` est le compte du maillon, ou intérimaire actif de son unité."""
+    return visa.compte_id == user.id or (visa.unite_type, visa.unite_id) in unites_interim
+
+
+def q_visas_de(user, prefixe='visas__') -> Q:
+    """Filtre des demandes dont un visa revient à `user` (titulaire ou
+    intérimaire actif). À combiner dans UN seul `filter()` avec les autres
+    conditions sur `visas__` pour qu'elles portent sur la même ligne."""
+    q = Q(**{f'{prefixe}compte': user})
+    for unite_type, unite_id in Interim.unites_actives(user):
+        q |= Q(**{f'{prefixe}unite_type': unite_type, f'{prefixe}unite_id': unite_id})
+    return q
+
+
+def interimaires_actifs(visa):
+    """Comptes qui assurent aujourd'hui l'intérim de l'unité de ce visa."""
+    if not visa.unite_id:
+        return []
+    return [i.interimaire for i in Interim.actifs().filter(
+        unite_type=visa.unite_type, unite_id=visa.unite_id).select_related('interimaire')]
+
+
 def niveau_de(visas, user):
     """Plus haut niveau que `user` occupe dans cette chaîne (None sinon)."""
-    niveaux = [v.niveau for v in visas if v.compte_id == user.id]
+    unites = set(Interim.unites_actives(user))
+    niveaux = [v.niveau for v in visas if _habilite(v, user, unites)]
     return max(niveaux) if niveaux else None
 
 
@@ -72,11 +100,15 @@ def viser(demande, *, auteur) -> DemandeConge:
         if not a_traiter:
             raise CongeError("Vous n'avez aucun visa à donner sur cette demande.")
         maintenant = timezone.now()
+        unites = set(Interim.unites_actives(auteur))
         for v in a_traiter:
-            propre = v.compte_id == auteur.id
-            v.decision = Decision.VISE if propre else Decision.VISE_PAR_SUPERIEUR
+            titulaire = v.compte_id == auteur.id
+            interimaire = not titulaire and (v.unite_type, v.unite_id) in unites
+            v.decision = Decision.VISE if (titulaire or interimaire) else Decision.VISE_PAR_SUPERIEUR
             v.decide_par, v.date_decision = auteur, maintenant
-            if not propre:
+            if interimaire:
+                v.motif = f"Visé par {auteur.full_name}, intérimaire de {v.responsable_nom}"
+            elif not titulaire:
                 v.motif = f"Visé par {auteur.full_name} en raison de l'absence de {v.responsable_nom}"
             v.save()
         if not any(v.decision == Decision.EN_ATTENTE for v in visas):
@@ -97,7 +129,8 @@ def refuser(demande, *, auteur, motif) -> DemandeConge:
         a_traiter = _a_traiter(visas, auteur)
         if not a_traiter:
             raise CongeError("Vous n'avez aucun visa à refuser sur cette demande.")
-        propre = next((v for v in a_traiter if v.compte_id == auteur.id), a_traiter[-1])
+        unites = set(Interim.unites_actives(auteur))
+        propre = next((v for v in a_traiter if _habilite(v, auteur, unites)), a_traiter[-1])
         propre.decision, propre.decide_par = Decision.REFUSE, auteur
         propre.date_decision, propre.motif = timezone.now(), motif
         propre.save()

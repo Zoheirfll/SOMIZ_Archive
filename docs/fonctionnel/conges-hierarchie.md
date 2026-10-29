@@ -116,3 +116,28 @@ temporisée et une pagination ; périmètre, droits et actions sont derrière le
 Piège : `order_by()` vide avant le `values('role').annotate(...)` des compteurs, sinon le tri entre dans le GROUP BY.
 Avant ce changement l'interface ne lisait que la première page (25 comptes). `AuditLogs.jsx` charge encore
 `/admin-users/` sans pagination : son filtre « utilisateur » est limité à 25 comptes (à traiter).
+
+## Intérim des responsables (2026-10-29)
+
+Décidé avec le propriétaire du projet : un responsable absent peut être remplacé pour une période bornée.
+
+- **Modèle** `accounts.Interim` (unité remplacée en type + id + nom, titulaire, intérimaire = compte, `date_debut`,
+  `date_fin`, statut `en_attente | valide | refuse | termine`). Page `/interims`, API `/api/interims/`
+  (`accounts/interim_views.py`), règles dans `accounts/interims.py`.
+- **Qui désigne** : le titulaire (chef de service, de département, directeur), son supérieur direct (chef de
+  département pour un service, directeur pour un département) ou le SUPERADMIN. Un titulaire qui a un supérieur direct
+  voit sa désignation **en attente** jusqu'à validation de celui-ci ; la désignation du supérieur, du SUPERADMIN ou du
+  directeur (sans supérieur) prend effet immédiatement. Seul un SUPERADMIN peut valider à la place d'un supérieur.
+- **Qui peut être intérimaire** : un compte GESTIONNAIRE/CONSULTANT actif de l'équipe (service/cellule/section ;
+  pour un département, aussi les chefs des unités qui en dépendent ; pour une direction, les chefs de département).
+  Le SUPERADMIN peut déroger. Jamais le titulaire lui-même ; pas de chevauchement sur une même unité.
+- **Effet** (calculé à chaque requête d'après les dates, **rien à nettoyer** à la fin) : l'intérimaire reçoit les visas
+  de l'unité (`conges.visas.q_visas_de`, `niveau_de`, `VisaConge.unite_id`), est notifié, et l'unité s'ajoute à son
+  périmètre (`User._scope_ids`). Le titulaire garde ses droits (il peut revenir plus tôt). À `date_fin` ou après une
+  fin anticipée (titulaire, supérieur direct ou SUPERADMIN), l'intérimaire perd tout.
+- **Traçabilité** : visa donné par l'intérimaire = « Visé par X, intérimaire de Y » ; visa donné par un supérieur sans
+  intérim = « Visé par X en raison de l'absence de Y ». Audit `PROPOSE_INTERIM`, `DECIDE_INTERIM`, `FIN_INTERIM`.
+- **Limite** : les visas déjà créés avant la migration `conges/0004` n'ont pas d'`unite_id` et ne s'ouvrent donc pas à
+  un intérimaire.
+- Approche écartée : ajouter l'unité au périmètre de l'intérimaire puis la retirer par tâche planifiée — si la tâche
+  ne tourne pas, les droits restent.

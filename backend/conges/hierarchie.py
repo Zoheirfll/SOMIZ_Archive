@@ -29,6 +29,7 @@ LIBELLES = {
 class Maillon:
     niveau: int
     unite_type: str          # section | cellule | service | departement | direction
+    unite_id: object         # pk de l'unité
     unite_nom: str
     responsable_id: object   # Employee.pk
     responsable_nom: str
@@ -49,7 +50,7 @@ def _maillon(niveau, unite_type, unite, employee):
     if responsable is None or responsable.pk == employee.pk:
         return None
     return Maillon(
-        niveau=niveau, unite_type=unite_type, unite_nom=unite.nom,
+        niveau=niveau, unite_type=unite_type, unite_id=unite.pk, unite_nom=unite.nom,
         responsable_id=responsable.pk,
         responsable_nom=f"{responsable.prenom} {responsable.nom}",
         compte=_compte_de(responsable),

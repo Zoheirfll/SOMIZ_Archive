@@ -79,6 +79,9 @@ class AuditLog(models.Model):
         REFUSER_COMPTE = 'REFUSER_COMPTE', 'Refus proposition de compte'
         VISER_CONGE = 'VISER_CONGE', 'Visa hiérarchique demande congé'
         REFUSER_VISA_CONGE = 'REFUSER_VISA_CONGE', 'Refus visa hiérarchique congé'
+        PROPOSE_INTERIM = 'PROPOSE_INTERIM', "Désignation d'un intérimaire"
+        DECIDE_INTERIM = 'DECIDE_INTERIM', 'Décision sur un intérim'
+        FIN_INTERIM = 'FIN_INTERIM', "Fin anticipée d'un intérim"
 
     # Pas de UUIDField ici — BIGSERIAL plus rapide pour les logs
     # (table peut atteindre des millions de lignes)
