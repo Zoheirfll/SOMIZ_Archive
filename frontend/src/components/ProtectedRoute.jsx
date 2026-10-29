@@ -10,7 +10,11 @@ const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = null, requ
   if (user?.must_change_password && location.pathname !== "/mot-de-passe") {
     return <Navigate to="/mot-de-passe" replace />;
   }
-  if (user?.needs_consent && location.pathname !== "/consentement") {
+  // Un compte neuf cumule mot de passe temporaire ET consentement à donner :
+  // le mot de passe passe en premier, donc on ne renvoie pas vers
+  // /consentement depuis /mot-de-passe (sinon boucle de redirection infinie
+  // entre les deux pages → page blanche).
+  if (user?.needs_consent && location.pathname !== "/consentement" && location.pathname !== "/mot-de-passe") {
     return <Navigate to="/consentement" state={{ from: location.pathname }} replace />;
   }
   if (adminOnly && !["ADMIN", "SUPERADMIN"].includes(user?.role)) return <Navigate to="/employees" replace />;

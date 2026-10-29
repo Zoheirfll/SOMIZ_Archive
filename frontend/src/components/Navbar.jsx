@@ -147,16 +147,23 @@ const Navbar = () => {
     // choisie côté serveur par `pending=1`, voir DemandeCongeListCreateView).
     if (!seesConges) { setPendingConges(0); return undefined; }
     let cancelled = false;
-    api.get("/conges/demandes/", { params: { pending: 1 } })
-      .then((res) => {
-        if (cancelled) return;
-        setPendingConges(res.data?.count ?? (res.data?.results || res.data || []).length);
-      })
-      .catch(() => {});
+    const compter = (params) =>
+      api.get("/conges/demandes/", { params })
+        .then((res) => res.data?.count ?? (res.data?.results || res.data || []).length)
+        .catch(() => 0);
+    // Un responsable compte aussi les demandes qu'il doit viser (`a_viser`,
+    // ignoré pour un traiteur côté serveur) : la cloche et le badge « Demandes »
+    // doivent annoncer la même chose.
+    Promise.all([
+      compter({ pending: 1 }),
+      user?.can_visa_conges && !user?.can_manage_conges ? compter({ a_viser: 1 }) : 0,
+    ]).then(([titres, visas]) => {
+      if (!cancelled) setPendingConges(titres + visas);
+    });
     return () => { cancelled = true; };
     // Recharge à chaque changement de page : le badge suit les changements de
     // statut faits sur /conges/:ref (Navbar ne se démonte pas entre deux pages).
-  }, [seesConges, location.pathname]);
+  }, [seesConges, user?.can_visa_conges, user?.can_manage_conges, location.pathname]);
 
   // Entrée « Demandes » : menu déroulant Attestations / Consultations, chaque
   // section avec son propre badge « à traiter ». Si le compte n'a accès qu'à

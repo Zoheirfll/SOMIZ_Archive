@@ -101,6 +101,16 @@ describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
     expect(bouton).not.toHaveAttribute("aria-haspopup");
   });
 
+  test("un responsable voit sur « Demandes » le nombre de congés à viser", async () => {
+    const api = require("../services/api").default;
+    api.get.mockImplementation((url, { params } = {}) =>
+      Promise.resolve({ data: url === "/conges/demandes/" && params?.a_viser ? { count: 2, results: [] } : { count: 0, results: [] } }));
+    avecUtilisateur({ role: "CONSULTANT", can_visa_conges: true, can_request_conges: true });
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith("/conges/demandes/", { params: { a_viser: 1 } });
+    api.get.mockImplementation(() => Promise.resolve({ data: [] }));
+  });
+
   test("un ADMIN non chargé des congés ne voit pas la section", () => {
     avecUtilisateur({ role: "ADMIN" });
     expect(screen.queryByRole("button", { name: /Demandes/ })).not.toBeInTheDocument();
