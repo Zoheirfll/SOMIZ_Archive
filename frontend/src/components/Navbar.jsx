@@ -190,10 +190,6 @@ const Navbar = () => {
       match: (p) => p.startsWith("/attestations") || p.startsWith("/consultations") || p.startsWith("/conges"),
       badge: demandesSections.reduce((total, s) => total + s.badge, 0),
     },
-    {
-      path: "/registres", label: "Registres",
-      show: canSeeRegistres(user),
-    },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
     { path: "/statistiques", label: "Statistiques", adminOnly: true },
     { path: "/recherche-documents", label: "Recherche OCR", adminOnly: true },
@@ -205,6 +201,8 @@ const Navbar = () => {
     { path: "/import", label: "Import" },
     { path: "/users", label: "Utilisateurs" },
     { path: "/interims", label: "Intérim" },
+    // Registres d'archives : SUPERADMIN ou ADMIN `charge_registre` (toujours un compte admin).
+    ...(canSeeRegistres(user) ? [{ path: "/registres", label: "Registres" }] : []),
     { path: "/parametres", label: "Configuration" },
     { path: "/audit", label: "Journal" },
   ];

@@ -49,19 +49,22 @@ describe("Navbar (desktop) — entrée « Registres »", () => {
 
   test("le SUPERADMIN la voit toujours, même sans le champ can_manage_registres (session ancienne)", () => {
     avecUtilisateur({ role: "SUPERADMIN" });
-    expect(screen.getByRole("button", { name: "Registres" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
+    expect(screen.getByRole("menuitem", { name: "Registres" })).toBeInTheDocument();
   });
 
   test("un ADMIN chargé des registres la voit", () => {
     avecUtilisateur({ role: "ADMIN", can_manage_registres: true });
-    expect(screen.getByRole("button", { name: "Registres" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
+    expect(screen.getByRole("menuitem", { name: "Registres" })).toBeInTheDocument();
   });
 
   test("un ADMIN chargé des consultations seulement ne la voit pas", () => {
     avecUtilisateur({ role: "ADMIN", can_manage_consultations: true });
     // Garde-fou contre un test vide : « Demandes » (consultations) doit, lui, être affiché.
     expect(screen.getByRole("button", { name: /Demandes/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Registres" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
+    expect(screen.queryByRole("menuitem", { name: "Registres" })).not.toBeInTheDocument();
   });
 });
 
