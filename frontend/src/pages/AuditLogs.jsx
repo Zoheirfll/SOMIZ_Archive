@@ -96,6 +96,9 @@ const AuditLogs = () => {
     searchParams.get("date_debut") || searchParams.get("date_fin") ? null : "tout"
   ));
   const [filterableUsers, setFilterableUsers] = useState([]);
+  // Recherche de compte côté serveur : /admin-users/ est paginé (des milliers
+  // de comptes à terme), le filtre ne peut plus charger la liste entière.
+  const [rechercheCompte, setRechercheCompte] = useState("");
   const [actionChoices, setActionChoices] = useState([]);
   const isMobile = useIsMobile();
 
@@ -104,9 +107,14 @@ const AuditLogs = () => {
   }, [page, filters]);
 
   useEffect(() => {
-    fetchFilterableUsers();
     fetchActionChoices();
   }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => fetchFilterableUsers(rechercheCompte.trim()), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rechercheCompte]);
 
   const { overrides: shortcutOverrides } = useKeyboardShortcutsHelp();
   usePaginationShortcuts({
@@ -123,15 +131,20 @@ const AuditLogs = () => {
   // tous les comptes pour un SUPERADMIN, ou seulement soi-même + les
   // CONSULTANT pour un ADMIN ordinaire — pour ne jamais proposer un
   // utilisateur que le filtre ne pourrait de toute façon pas montrer.
-  const fetchFilterableUsers = async () => {
+  const fetchFilterableUsers = async (q = "") => {
     try {
-      const response = await api.get("/admin-users/");
-      const all = response.data.results || response.data;
-      const visible = isSuperAdmin
-        ? all
-        : all.filter((u) => u.role === "CONSULTANT" || u.username === user?.username);
+      const params = { page_size: 50 };
+      if (q) params.q = q;
+      // ADMIN ordinaire : seulement les CONSULTANT (+ soi-même, ajouté ci-dessous).
+      if (!isSuperAdmin) params.role = "CONSULTANT";
+      const response = await api.get("/admin-users/", { params });
+      const visible = [...(response.data.results || response.data)];
+      const moi = user?.username;
+      if (!isSuperAdmin && moi && (!q || moi.toLowerCase().includes(q.toLowerCase())) && !visible.some((u) => u.username === moi)) {
+        visible.push({ id: `moi-${moi}`, username: moi, prenom: user?.prenom || "", nom: user?.nom || "", role: user?.role });
+      }
       setFilterableUsers(
-        [...visible].sort((a, b) => a.username.localeCompare(b.username)),
+        visible.sort((a, b) => a.username.localeCompare(b.username)),
       );
     } catch (err) {
       console.error(err);
@@ -295,6 +308,10 @@ const AuditLogs = () => {
               <option value="">
                 {isSuperAdmin ? "Tous les utilisateurs" : "Vous + Consultants"}
               </option>
+              {/* Le compte filtré reste proposé même s'il n'est plus dans les résultats de la recherche. */}
+              {filters.user && !filterableUsers.some((u) => u.username === filters.user) && (
+                <option value={filters.user}>{filters.user}</option>
+              )}
               {filterableUsers.map((u) => (
                 <option key={u.id} value={u.username}>
                   {u.username} — {u.prenom} {u.nom} ({u.role === "CONSULTANT" ? "Consultant" : u.role === "SUPERADMIN" ? "Super-admin" : "Admin"})
@@ -302,6 +319,14 @@ const AuditLogs = () => {
               ))}
             </select>
           </div>
+          <input
+            type="search"
+            value={rechercheCompte}
+            onChange={(e) => setRechercheCompte(e.target.value)}
+            placeholder="Chercher un compte…"
+            aria-label="Chercher un compte dans le filtre utilisateur"
+            style={{ ...inputStyle, minWidth: 170 }}
+          />
           <select
             name="action"
             value={filters.action}

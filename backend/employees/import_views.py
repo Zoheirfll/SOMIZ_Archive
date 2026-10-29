@@ -940,38 +940,40 @@ class ReferentielImportTemplateView(APIView):
     """
     permission_classes = [IsAdmin]
 
+    # Colonnes optionnelles `responsable_matricule` (prioritaire) / `responsable_nom`
+    # (accepté seulement s'il désigne un seul employé) : voir ReferentielImportView.
     TEMPLATES = {
         'directions': {
-            'headers': ['nom', 'code', 'description'],
-            'example': ['Direction Generale', 'DG', 'Direction principale'],
+            'headers': ['nom', 'code', 'description', 'responsable_matricule', 'responsable_nom'],
+            'example': ['Direction Generale', 'DG', 'Direction principale', '', ''],
         },
         'poles': {
             'headers': ['nom', 'code', 'direction', 'description'],
             'example': ['Pole Machines Tournantes', 'PMT', 'Direction Generale', ''],
         },
         'departements': {
-            'headers': ['nom', 'code', 'direction', 'description'],
-            'example': ['DAP', 'DAP', 'Direction Generale', 'Departement Administration du Personnel'],
+            'headers': ['nom', 'code', 'direction', 'description', 'responsable_matricule', 'responsable_nom'],
+            'example': ['DAP', 'DAP', 'Direction Generale', 'Departement Administration du Personnel', '', ''],
         },
         'services': {
-            'headers': ['nom', 'code', 'departement', 'direction', 'description'],
+            'headers': ['nom', 'code', 'departement', 'direction', 'description', 'responsable_matricule', 'responsable_nom'],
             # 'direction' optionnelle — utile seulement si plusieurs
             # departements du referentiel partagent le meme nom (voir
             # ReferentielImportView.MODELS['services']).
-            'example': ['Service Paie', 'SP', 'DAP', '', ''],
+            'example': ['Service Paie', 'SP', 'DAP', '', '', '', ''],
         },
         'cellules': {
-            'headers': ['nom', 'code', 'direction', 'departement', 'description'],
+            'headers': ['nom', 'code', 'direction', 'departement', 'description', 'responsable_matricule', 'responsable_nom'],
             # Au moins une des deux colonnes direction/departement doit etre
             # renseignee par ligne ; si 'departement' est rempli, 'direction'
             # devient facultative et sert seulement a lever l'ambiguite si
             # plusieurs departements portent ce nom — voir
             # ReferentielImportView.MODELS['cellules'].
-            'example': ['Cellule Oeuvres Sociales', 'COS', '', 'DAP', ''],
+            'example': ['Cellule Oeuvres Sociales', 'COS', '', 'DAP', '', '', ''],
         },
         'sections': {
-            'headers': ['nom', 'code', 'direction', 'departement', 'description'],
-            'example': ['Section Controle Qualite', 'SCQ', '', 'DAP', ''],
+            'headers': ['nom', 'code', 'direction', 'departement', 'description', 'responsable_matricule', 'responsable_nom'],
+            'example': ['Section Controle Qualite', 'SCQ', '', 'DAP', '', '', ''],
         },
         'postes': {
             'headers': ['nom', 'code', 'description'],
