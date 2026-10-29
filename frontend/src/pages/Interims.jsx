@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../services/api";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 import { heroPadding, contentPadding } from "../styles/theme";
 import useIsMobile from "../hooks/useIsMobile";
 import Navbar from "../components/Navbar";
@@ -24,6 +25,7 @@ const aujourdhui = () => new Date().toISOString().slice(0, 10);
 export default function Interims() {
   usePageTitle("Intérim");
   const theme = useTheme();
+  const { user } = useAuth();
   const isMobile = useIsMobile();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
@@ -155,6 +157,13 @@ export default function Interims() {
             borderRadius: 10, padding: "12px 16px", marginBottom: 20, fontSize: 14, fontWeight: 600,
           }}>
             {message.text}
+          </div>
+        )}
+
+        {!donnees.peut_gerer && ["ADMIN", "SUPERADMIN"].includes(user?.role) && (
+          <div style={{ ...carte, padding: "12px 16px", color: theme.textSecondary, fontSize: 13 }}>
+            Consultation seule : vous voyez tous les intérims pour les contrôler. Seuls les responsables d'unité,
+            leur supérieur direct et le SUPERADMIN peuvent en désigner, valider ou y mettre fin.
           </div>
         )}
 

@@ -181,7 +181,8 @@ const Navbar = () => {
   const navLinks = [
     { path: "/employees", label: "Personnel" },
     { path: "/organigramme", label: "Organigramme" },
-    { path: "/interims", label: "Intérim", show: !!user?.can_gerer_interim },
+    // Les ADMIN/SUPERADMIN le trouvent dans « Administration » ; les responsables d'unité ici.
+    { path: "/interims", label: "Intérim", show: !!user?.can_gerer_interim && !["ADMIN", "SUPERADMIN"].includes(user?.role) },
     {
       path: demandesSections[0]?.path, label: "Demandes",
       show: demandesSections.length > 0,
@@ -203,6 +204,7 @@ const Navbar = () => {
   const adminMenuLinks = [
     { path: "/import", label: "Import" },
     { path: "/users", label: "Utilisateurs" },
+    { path: "/interims", label: "Intérim" },
     { path: "/parametres", label: "Configuration" },
     { path: "/audit", label: "Journal" },
   ];

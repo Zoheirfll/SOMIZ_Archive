@@ -7,6 +7,7 @@ jest.mock("../services/api", () => ({
   __esModule: true, default: { get: jest.fn(), post: jest.fn() },
 }));
 jest.mock("../components/Navbar", () => () => <nav data-testid="navbar" />);
+jest.mock("../context/AuthContext", () => ({ useAuth: () => ({ user: { role: "CONSULTANT" } }) }));
 
 import api from "../services/api";
 import Interims from "../pages/Interims";

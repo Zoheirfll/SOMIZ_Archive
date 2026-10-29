@@ -192,3 +192,18 @@ def test_me_expose_can_gerer_interim(monde, superadmin_user):
     assert _client(monde["s"]).get("/api/auth/me/").data["can_gerer_interim"] is True
     assert _client(monde["equipe"]).get("/api/auth/me/").data["can_gerer_interim"] is False
     assert _client(superadmin_user).get("/api/auth/me/").data["can_gerer_interim"] is True
+
+
+def test_admin_lit_tous_les_interims_sans_pouvoir_agir_superadmin_peut_tout(monde, service, admin_user, superadmin_user):
+    interim_id = _designer(_client(monde["s"]), "service", service, monde["equipe"]).data["id"]
+    vu_admin = _client(admin_user).get("/api/interims/").data
+    assert [i["id"] for i in vu_admin["interims"]] == [interim_id]
+    assert vu_admin["unites"] == [] and vu_admin["interims"][0]["peut_decider"] is False
+    assert vu_admin["interims"][0]["peut_terminer"] is False
+    # ni désigner, ni valider, ni terminer
+    assert _designer(_client(admin_user), "service", service, monde["equipe"]).status_code == 400
+    assert _client(admin_user).post(f"/api/interims/{interim_id}/decider/", {"accepter": True}, format="json").status_code == 400
+    assert _client(admin_user).post(f"/api/interims/{interim_id}/terminer/").status_code == 400
+    vu_super = _client(superadmin_user).get("/api/interims/").data
+    assert vu_super["interims"][0]["peut_decider"] is True and vu_super["interims"][0]["peut_terminer"] is True
+

@@ -26,7 +26,9 @@ export const canSeeConges = (user) =>
 
 // Intérim : responsables d'unité et SUPERADMIN (désignent / valident), plus tout
 // compte qui assure un intérim (il retrouve sa fiche via la notification).
-export const canSeeInterims = (user) => !!user?.can_gerer_interim || !!user?.can_visa_conges;
+// Les ADMIN y accèdent en lecture seule (contrôle), le SUPERADMIN voit tout et agit.
+export const canSeeInterims = (user) =>
+  !!user?.can_gerer_interim || !!user?.can_visa_conges || ["ADMIN", "SUPERADMIN"].includes(user?.role);
 
 // Registres : le SUPERADMIN toujours (testé sur le rôle, pas seulement sur le
 // drapeau : robuste à une session ouverte avant l'ajout du champ), sinon un

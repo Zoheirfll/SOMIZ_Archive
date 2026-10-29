@@ -267,7 +267,9 @@ def terminer(request, interim):
 def interims_visibles(user):
     """Intérims que `user` peut consulter : les siens comme intérimaire, ceux de
     ses unités et ceux qu'il doit valider ; le SUPERADMIN voit tout."""
-    if user.role == User.Role.SUPERADMIN:
+    # SUPERADMIN : tout, avec les droits d'action ; ADMIN : tout, en lecture seule
+    # (contrôle) — `role_sur_unite` ne leur donne aucun droit sur une unité.
+    if user.role in (User.Role.SUPERADMIN, User.Role.ADMIN):
         return Interim.objects.all()
     filtre = Q(interimaire=user)
     if user.employee_id:

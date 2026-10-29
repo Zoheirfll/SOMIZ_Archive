@@ -124,6 +124,7 @@ Décidé avec le propriétaire du projet : un responsable absent peut être remp
 - **Modèle** `accounts.Interim` (unité remplacée en type + id + nom, titulaire, intérimaire = compte, `date_debut`,
   `date_fin`, statut `en_attente | valide | refuse | termine`). Page `/interims`, API `/api/interims/`
   (`accounts/interim_views.py`), règles dans `accounts/interims.py`.
+- **Lecture** : le SUPERADMIN voit tous les intérims et agit ; un ADMIN les voit tous en lecture seule (contrôle), via « Administration > Intérim ». Les responsables y accèdent par l'entrée « Intérim » du menu.
 - **Qui désigne** : le titulaire (chef de service, de département, directeur), son supérieur direct (chef de
   département pour un service, directeur pour un département) ou le SUPERADMIN. Un titulaire qui a un supérieur direct
   voit sa désignation **en attente** jusqu'à validation de celui-ci ; la désignation du supérieur, du SUPERADMIN ou du
