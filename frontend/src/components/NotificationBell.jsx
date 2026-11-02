@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
 import useIsMobile from "../hooks/useIsMobile";
 import useNotifications from "../hooks/useNotifications";
 import { formatDateTime } from "../utils/employeeDocsDisplay";
 import { BellIcon } from "./icons";
+import LienNav from "./LienNav";
 
 const SEVERITY_COLOR_KEY = { info: "primary", warning: "warning", critical: "danger" };
 
 const NotificationBell = ({ size = 36 }) => {
   const theme = useTheme();
-  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
@@ -40,7 +39,6 @@ const NotificationBell = ({ size = 36 }) => {
   const handleClick = (n) => {
     if (!n.read_at) markRead(n.id);
     setOpen(false);
-    if (n.link) navigate(n.link);
   };
 
   const label = count > 0
@@ -143,9 +141,12 @@ const NotificationBell = ({ size = 36 }) => {
             )}
             {items.map((n) => {
               const color = theme[SEVERITY_COLOR_KEY[n.severity] || "primary"];
+              // Une notification qui mène quelque part est un vrai lien (nouvel onglet possible).
+              const Item = n.link ? LienNav : "button";
               return (
-                <button
+                <Item
                   key={n.id}
+                  {...(n.link ? { to: n.link } : {})}
                   onClick={() => handleClick(n)}
                   style={{
                     display: "flex", gap: 10, width: "100%", textAlign: "left",
@@ -173,7 +174,7 @@ const NotificationBell = ({ size = 36 }) => {
                       {formatDateTime(n.created_at)}
                     </span>
                   </span>
-                </button>
+                </Item>
               );
             })}
           </div>

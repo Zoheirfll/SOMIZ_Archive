@@ -8,7 +8,8 @@ import api from "../../services/api";
 // fichiers) : chaque page interne est nommée, réorganisable, remplaçable,
 // supprimable, et on peut en insérer de nouvelles. Voir le modèle
 // EmployeeDocumentFilePage côté backend.
-const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged }) => {
+// `typesList` : types « feuilles » (uploadables) — destinations possibles d'un déplacement.
+const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged, typesList = [] }) => {
   const theme = useTheme();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
@@ -22,6 +23,10 @@ const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged }) => {
   const [busy, setBusy] = useState(null);
   const [message, setMessage] = useState(null);
   const [addTarget, setAddTarget] = useState(null); // { fileId, position }
+  // Déplacer un document/des pages mal classés vers un autre type (2026-11-01) :
+  // { fileId?, pageIds? } ; sans fileId = tout le document.
+  const [deplacement, setDeplacement] = useState(null);
+  const [typeCible, setTypeCible] = useState("");
   const addInputRef = useRef(null);
   const replaceInputRef = useRef(null);
   const replaceTargetRef = useRef(null);
@@ -87,6 +92,35 @@ const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged }) => {
       "Impossible de supprimer cette page.",
     );
     if (isLast) onClose();
+  };
+
+  const ouvrirDeplacement = (cible) => {
+    setTypeCible("");
+    setDeplacement(cible);
+  };
+
+  const confirmerDeplacement = async () => {
+    const type = typesList.find((t) => String(t.id) === String(typeCible));
+    if (!type || !deplacement) return;
+    const quoi = deplacement.pageIds
+      ? `${deplacement.pageIds.length} page${deplacement.pageIds.length > 1 ? "s" : ""}`
+      : "tout le document";
+    if (!(await confirm(
+      `Déplacer ${quoi} de « ${docLabel} » vers « ${type.nom} » ? `
+      + "Si l'employé a déjà un document de ce type, le contenu y sera ajouté à la suite.",
+      { danger: false },
+    ))) return;
+    const cible = deplacement;
+    setDeplacement(null);
+    const url = cible.pageIds
+      ? `/files/${cible.fileId}/pages/deplacer/`
+      : `/documents/${doc.id}/deplacer/`;
+    const corps = cible.pageIds ? { pages: cible.pageIds, type_doc: type.id } : { type_doc: type.id };
+    await run("deplacer", () => api.post(url, corps), "Impossible de déplacer ce document.");
+    // Le document d'origine peut avoir disparu (tout déplacé) : on referme le panneau.
+    if (!cible.pageIds || cible.pageIds.length >= (files.find((f) => f.id === cible.fileId)?.pages?.length || 0)) {
+      onClose();
+    }
   };
 
   const replacePage = (file, page) => {
@@ -281,6 +315,7 @@ const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged }) => {
                           key={page.id}
                           style={{
                             display: "flex",
+                            flexWrap: "wrap",
                             alignItems: "center",
                             gap: 8,
                             padding: "8px 10px",
@@ -352,7 +387,7 @@ const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged }) => {
                           <div
                             title={page.nom}
                             style={{
-                              flex: 1,
+                              flex: "1 1 140px",
                               minWidth: 0,
                               color: theme.text,
                               fontSize: 13,
@@ -402,6 +437,18 @@ const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged }) => {
                           >
                             + avant
                           </button>
+                          {typesList.length > 0 && file.mime_type === "application/pdf" && (
+                            <button
+                              type="button"
+                              onClick={() => ouvrirDeplacement({ fileId: file.id, pageIds: [page.id] })}
+                              disabled={!!busy}
+                              title="Déplacer cette page vers un autre type de document"
+                              aria-label={`Déplacer ${page.nom}`}
+                              style={smallBtn({ cursor: busy ? "not-allowed" : "pointer" })}
+                            >
+                              Déplacer
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => deletePage(file, page)}
@@ -451,6 +498,54 @@ const DocumentPagesModal = ({ doc, docLabel, onClose, onChanged }) => {
             );
           })}
         </div>
+
+        {typesList.length > 0 && (
+          <button
+            type="button"
+            onClick={() => ouvrirDeplacement({})}
+            disabled={!!busy}
+            style={{ ...smallBtn({ cursor: busy ? "not-allowed" : "pointer" }), alignSelf: "flex-start", marginTop: 10 }}
+          >
+            Déplacer tout le document vers un autre type…
+          </button>
+        )}
+
+        {deplacement && (
+          <div
+            role="dialog"
+            aria-label="Choisir le type de destination"
+            style={{
+              marginTop: 12, padding: 14, borderRadius: 10, border: `1px solid ${theme.border}`,
+              background: theme.bg,
+            }}
+          >
+            <label htmlFor="type-cible" style={{ display: "block", fontSize: 12, fontWeight: 700, color: theme.textSecondary, marginBottom: 6 }}>
+              {deplacement.pageIds ? "Déplacer cette page vers :" : "Déplacer tout le document vers :"}
+            </label>
+            <select
+              id="type-cible" value={typeCible} onChange={(e) => setTypeCible(e.target.value)}
+              style={{
+                width: "100%", padding: "8px 10px", fontSize: 13, borderRadius: 8,
+                border: `1px solid ${theme.border}`, background: theme.surface, color: theme.text,
+              }}
+            >
+              <option value="">Choisir un type…</option>
+              {typesList.filter((t) => t.code !== doc.type_document).map((t) => (
+                <option key={t.id} value={t.id}>{t.nom}</option>
+              ))}
+            </select>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 }}>
+              <button type="button" onClick={() => setDeplacement(null)} style={smallBtn()}>Annuler</button>
+              <button
+                type="button" onClick={confirmerDeplacement} disabled={!typeCible}
+                style={smallBtn({ background: theme.primary, color: theme.surface, border: `1px solid ${theme.primary}`,
+                  opacity: typeCible ? 1 : 0.5, cursor: typeCible ? "pointer" : "not-allowed" })}
+              >
+                Déplacer
+              </button>
+            </div>
+          </div>
+        )}
 
         <input
           ref={addInputRef}

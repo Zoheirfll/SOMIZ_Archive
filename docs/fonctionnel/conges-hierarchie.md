@@ -142,3 +142,53 @@ Décidé avec le propriétaire du projet : un responsable absent peut être remp
   un intérimaire.
 - Approche écartée : ajouter l'unité au périmètre de l'intérimaire puis la retirer par tâche planifiée — si la tâche
   ne tourne pas, les droits restent.
+
+## Validation niveau par niveau (2026-10-29)
+
+Un responsable valide **uniquement son propre niveau** : le visa du chef de département ne solde plus
+automatiquement celui du chef de service. En cas d'absence d'un responsable **en dessous** de lui, il utilise un
+bouton explicite « Absent ? Valider à la place de … » (un niveau à la fois, avec confirmation) ; le directeur dispose de
+même d'un bouton par niveau inférieur en attente. `POST viser/` accepte `{niveau}` ; sans `niveau` il valide le niveau
+de l'auteur (400 s'il l'a déjà fait). La fiche expose `visa_possibilites: {propre, a_la_place[]}`. Traçabilité :
+« Validé par X en raison de l'absence de Y » ; l'audit `VISER_CONGE` garde `a_la_place_niveau`.
+Vocabulaire visible : « validation / validé » (le code garde `visa`, `viser`).
+**Filtres** de la liste des congés : `?attente_niveau=1|2|3` (en attente du chef de service/cellule/section, du chef de
+département, du directeur), en plus de `?statut=visa` et `?a_viser=1`.
+
+
+
+## Révision du 2026-10-31 — l'accord est hiérarchique, la DRH contrôle et enregistre
+
+**Règle métier (Zoheir)** : le congé est demandé par le gestionnaire ou la secrétaire, **accordé par les chefs
+supérieurs** (visas). L'ADMIN chargé des congés ne décide pas — « avec lui ou sans lui l'employé ira en congé » : il
+**contrôle et vérifie** la saisie, la **corrige** si besoin, **enregistre** (débit des soldes, trace) et **génère le
+titre** pour le dossier.
+
+| Code (inchangé) | Ancien libellé | Nouveau libellé |
+|---|---|---|
+| `visa` | En attente de validation | En attente d'accord hiérarchique |
+| `recue` | Reçue | Accordé — à enregistrer |
+| `accordee` | Accordé | Enregistré |
+
+Codes de statut conservés (aucune donnée à migrer) ; seuls les libellés changent (migration `conges/0008`, choices).
+
+- **Chef** : bouton « Accorder » (au lieu de « Valider la demande »), « Accorder à la place de … » en cas d'absence.
+- **DRH** : bouton « Contrôler et enregistrer » (`ValiderView`, inchangée côté route) ; plus de « Rejeter » (route
+  supprimée). Corrections tracées (`corrections`) et notifiées au demandeur (champs listés).
+- **Chronologie** du détail : Saisie → « Accord <unité> » par niveau (depuis `visas`) → Enregistré par la DRH.
+- **Aucun supérieur désigné** (décision : bloquer et signaler) : la demande reste `visa` sans ligne de visa
+  (`sans_superieur` dans l'API), les traiteurs reçoivent une alerte ; relance automatique quand un responsable est
+  désigné (`referentiel_views._proposer_compte_responsable` → `visas.relancer_demandes_sans_chaine`), ou bouton
+  « Recalculer la chaîne d'accord ». **Révise** la règle initiale « sans chaîne, la demande est `recue` d'emblée ».
+- Notifications : à l'accord complet, les traiteurs (« à contrôler et enregistrer ») **et** le demandeur (« accordé
+  par la hiérarchie ») ; à l'enregistrement, le demandeur (« enregistré par la DRH », avec les corrections).
+- Options écartées : renvoyer la demande au saisissant pour correction (choix : la DRH corrige elle-même, tracé) ;
+  laisser le SUPERADMIN accorder à défaut de chef ; considérer la demande accordée d'office sans chaîne.
+- Piège tests : les fixtures n'ont pas de responsable, une demande créée reste donc `visa` ;
+  `tests/test_conges_api.py::_accord_hierarchique` simule l'accord pour les tests du traitement RH.
+- `workflow.rejeter_demande` n'est plus appelée par aucune route (conservée, couverte par ses tests unitaires) :
+  à supprimer si aucun besoin n'apparaît.
+
+## Intérim depuis l'Organigramme (2026-11-01)
+
+Chaque carte d'unité que le compte peut gérer (`GET /interims/` → `unites`, droit calculé serveur par `role_sur_unite`) porte « Désigner un intérimaire » (`components/organigramme/DesignerInterimModal.jsx`, mêmes règles et candidats que `/interims`, confirmation avant envoi, validation du supérieur direct annoncée). Les intérims validés en cours ou à venir de **toutes** les unités (`en_cours` dans la même réponse) s'affichent sur la carte : « Intérim : nom — jusqu'au … » ou « Intérim prévu : nom — dès le … » (même niveau d'information que le nom du responsable, déjà public).

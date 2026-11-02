@@ -4,6 +4,7 @@ import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import useModalA11y from "../../hooks/useModalA11y";
 import ResponsableField from "../parametres/ResponsableField";
+import useLienLigne from "../../hooks/useLienLigne";
 
 // Endpoint /ref/<segment>/ de chaque niveau désignable (le Pôle n'intervient
 // pas dans la chaîne de visa des congés : pas de désignation ici).
@@ -20,6 +21,7 @@ export const NIVEAUX_DESIGNABLES = Object.keys(SEGMENTS);
 const DesignerResponsableModal = ({ node, roleLabel, onClose, onSaved }) => {
   const theme = useTheme();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const titleId = useId();
   const dialogRef = useModalA11y({ isOpen: true, onEscape: onClose, initialFocus: "input" });
   const [choix, setChoix] = useState({ id: node.responsable || null, label: node.responsable_nom || "" });
@@ -44,7 +46,9 @@ const DesignerResponsableModal = ({ node, roleLabel, onClose, onSaved }) => {
       onSaved(node.level, data);
       setResultat({ propositionEnAttente });
     } catch (err) {
-      setErreur(err.response?.data?.error || err.response?.data?.detail || "Enregistrement impossible.");
+      const data = err.response?.data;
+      // Erreur de champ (ex. responsable déjà à la tête d'une autre unité).
+      setErreur(data?.error || data?.detail || data?.responsable?.[0] || "Enregistrement impossible.");
     } finally {
       setSaving(false);
     }
@@ -83,11 +87,11 @@ const DesignerResponsableModal = ({ node, roleLabel, onClose, onSaved }) => {
             <p style={{ color: theme.text, fontSize: 14, lineHeight: 1.6, margin: "0 0 18px" }}>
               {choix.id ? `${choix.label} est désigné(e).` : "Le responsable a été retiré."}{" "}
               {resultat.propositionEnAttente &&
-                "Cet employé n'a pas encore de compte : une proposition vous attend dans « Utilisateurs » pour la valider (c'est elle qui lui donne le droit de viser les congés)."}
+                "Cet employé n'a pas encore de compte : une proposition vous attend dans « Utilisateurs » pour la valider (c'est elle qui lui donne le droit de valider les congés)."}
             </p>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               {resultat.propositionEnAttente && (
-                <button type="button" style={bouton(true)} onClick={() => navigate("/users")}>
+                <button type="button" style={bouton(true)} {...lienLigne("/users")}>
                   Valider le compte
                 </button>
               )}

@@ -8,6 +8,7 @@ import {
   IconSection,
 } from "./icons";
 import HierarchyCard from "./HierarchyCard";
+import { slugify } from "../../utils/slugify";
 import SectionHeader from "./SectionHeader";
 
 const delayClass = (i) =>
@@ -72,6 +73,23 @@ const HierarchyView = ({
   // Style/comportement par type de nœud — un même écran (departements/
   // services) peut mélanger plusieurs types (Pôle+Département+Cellule,
   // ou Service+Cellule), donc le style se lit par item, pas par écran.
+  // URL du drill-down (pilotée par ?lvl=&dir=&dep=&svc=) — permet « ouvrir dans un
+  // nouvel onglet ». Pôle / cellule / section n'ont pas d'URL : pas de href.
+  const hrefDe = (item) => {
+    const q = (o) => `/employees?${new URLSearchParams(o).toString()}`;
+    if (item.__type === "direction") return q({ lvl: "departements", dir: slugify(item.nom) });
+    if (item.__type === "pole" && selectedDirection)
+      return q({ lvl: "departements", dir: slugify(selectedDirection.nom), pol: slugify(item.nom) });
+    if (item.__type === "departement" && selectedDirection)
+      return q({ lvl: "services", dir: slugify(selectedDirection.nom), dep: slugify(item.nom) });
+    if (item.__type === "service" && selectedDirection && selectedDepartement)
+      return q({ lvl: "employees", dir: slugify(selectedDirection.nom), dep: slugify(selectedDepartement.nom), svc: slugify(item.nom) });
+    // Cellule / section : mêmes liens que l'Organigramme (liste filtrée, résolue par slug).
+    if ((item.__type === "cellule" || item.__type === "section") && item.slug)
+      return `/employees?${item.__type}=${encodeURIComponent(item.slug)}`;
+    return undefined;
+  };
+
   const TYPE_META = {
     direction: {
       color: theme.directionColor,
@@ -237,6 +255,7 @@ const HierarchyView = ({
                 accentColor={meta.color}
                 animClass={`anim-pop ${delayClass(idx)}`}
                 onClick={() => meta.onSelect(item)}
+                href={hrefDe(item)}
               />
             );
           })}

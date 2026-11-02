@@ -48,3 +48,31 @@ def test_recherche_par_nom_ou_identifiant(admin_user, comptes):
 
 def test_un_non_admin_n_accede_pas_a_la_liste(consultant_user, comptes):
     assert _client(consultant_user).get('/api/admin-users/').status_code == 403
+
+
+def test_fonction_du_compte_vient_du_poste_de_l_employe_lie(admin_user, employee):
+    """La « fonction » d'un compte = poste de la fiche employé liée ; vide sinon.
+    Exposée dans la liste /admin-users/ et dans /auth/me (navbar, profil)."""
+    from employees.models import Poste
+    employee.poste = Poste.objects.create(nom="Chef de service")
+    employee.save()
+    chef = User.objects.create_user(username="chef.sap", password="x", nom="Chef", prenom="Sap",
+                                    role=User.Role.CONSULTANT, employee=employee)
+    simple = User.objects.create_user(username="sans.fiche", password="x", nom="Sans", prenom="Fiche",
+                                      role=User.Role.CONSULTANT)
+
+    resp = _client(admin_user).get('/api/admin-users/', {'q': 'chef.sap'})
+    assert resp.data['results'][0]['fonction'] == "Chef de service"
+    assert _client(chef).get('/api/auth/me/').data['fonction'] == "Chef de service"
+    assert _client(simple).get('/api/auth/me/').data['fonction'] == ""
+
+
+def test_fonction_deduite_de_la_responsabilite_d_unite(admin_user, employee, direction):
+    """Un directeur sans poste renseigné affiche « Directeur · <direction> »."""
+    employee.poste = None
+    employee.save()
+    direction.responsable = employee
+    direction.save()
+    directeur = User.objects.create_user(username="dir.rh", password="x", nom="Dir", prenom="RH",
+                                         role=User.Role.CONSULTANT, employee=employee)
+    assert _client(directeur).get('/api/auth/me/').data['fonction'] == f"Directeur · {direction.nom}"

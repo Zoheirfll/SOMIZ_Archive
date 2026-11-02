@@ -252,6 +252,8 @@ describe("Users — toggle actif/désactivé", () => {
     await ouvrirDetails();
     await waitFor(() => screen.getByText("Désactiver"));
     fireEvent.click(screen.getByText("Désactiver"));
+    expect(api.patch).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith(
         "/admin-users/user-uuid/",
@@ -331,6 +333,22 @@ describe("Users — modal reset mot de passe", () => {
       expect(screen.getByText("Minimum 10 caractères.")).toBeInTheDocument();
     });
   });
+
+  test("reset MDP demande une confirmation avant l'appel serveur", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("1", "user")] } });
+    api.post.mockResolvedValue({ data: {} });
+    renderPage();
+    await ouvrirDetails();
+    fireEvent.click(await screen.findByRole("button", { name: /reset mdp/i }));
+    const inputs = screen.getAllByPlaceholderText("••••••••••");
+    fireEvent.change(inputs[0], { target: { value: "Passw0rd!Long1" } });
+    fireEvent.change(inputs[1], { target: { value: "Passw0rd!Long1" } });
+    fireEvent.click(screen.getByText("Réinitialiser"));
+    expect(await screen.findByText(/Réinitialiser le mot de passe du compte « user »/)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/admin-users/1/reset-password/", expect.any(Object)));
+  });
 });
 
 describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () => {
@@ -364,6 +382,7 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     renderPage();
     await ouvrirDetails();
     userEvent.click(await screen.findByRole("button", { name: "Attestations ✓" }));
+    userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/admin-users/g1/", { peut_demander_attestation: false },
     ));
@@ -375,6 +394,7 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     renderPage();
     await ouvrirDetails();
     userEvent.click(await screen.findByRole("button", { name: "Consultations ✗" }));
+    userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/admin-users/g1/", { peut_demander_consultation: true },
     ));
@@ -386,8 +406,20 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     renderPage();
     await ouvrirDetails();
     userEvent.click(await screen.findByRole("button", { name: "Congés ✗" }));
+    userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/admin-users/g1/", { peut_demander_conge: true },
     ));
+  });
+
+  test("Annuler la confirmation ne modifie pas le droit", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("g1", "gest", "GESTIONNAIRE")] } });
+    renderPage();
+    await ouvrirDetails();
+    userEvent.click(await screen.findByRole("button", { name: "Congés ✗" }));
+    expect(await screen.findByText(/Accorder le droit « demandes de congé »/)).toBeInTheDocument();
+    userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    await waitFor(() => expect(screen.queryByText(/Accorder le droit/)).not.toBeInTheDocument());
+    expect(api.patch).not.toHaveBeenCalled();
   });
 });

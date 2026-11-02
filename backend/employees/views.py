@@ -26,6 +26,7 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
 from accounts.permissions import IsAdmin, IsAdminOrConsultant
 from audit.models import AuditLog
+from employees.sortie import MSG_OBLIGATOIRE, desactiver_comptes_lies, erreur_date_sortie, lire_date
 from employees.models import (
     Employee,
     EmployeeDocument,
@@ -399,6 +400,14 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(
                 documents__fichiers__ocr_result__raw_text__icontains=q_contenu
             ).distinct()
+
+        # Drill-down depuis les indicateurs de parité du reporting.
+        # `non_renseigne` = employés dont le sexe n'est pas saisi.
+        sexe = self.request.query_params.get('sexe', '').strip()
+        if sexe in Employee.Sexe.values:
+            qs = qs.filter(sexe=sexe)
+        elif sexe == 'non_renseigne':
+            qs = qs.filter(sexe='')
 
         # Drill-down depuis les pyramides âge/ancienneté de /statistiques
         # (clic sur une barre) — voir audit/stats.py _pyramide, dont chaque
@@ -2333,7 +2342,7 @@ class EmployeeBulkDeleteView(APIView):
             )
             return Response({'nb_supprimes': nb})
         elif action == 'restaurer':
-            employees.update(statut=Employee.Statut.ACTIF, motif_archivage=None)
+            employees.update(statut=Employee.Statut.ACTIF, motif_archivage=None, date_sortie=None)
             AuditLog.objects.create(
                 user=request.user,
                 username_snapshot=request.user.username,
@@ -2345,9 +2354,34 @@ class EmployeeBulkDeleteView(APIView):
             )
             return Response({'nb_restaures': nb})
         else:
-            # Soft delete — archivage, motif optionnel
+            # Soft delete — archivage, motif optionnel, date de sortie obligatoire
+            # (vraie date de départ, base du turnover — voir employees/sortie.py).
+            try:
+                date_sortie = lire_date(request.data.get('date_sortie'))
+            except ValueError:
+                return Response({'error': "Date de sortie invalide (format AAAA-MM-JJ)."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if date_sortie is None:
+                return Response({'error': MSG_OBLIGATOIRE}, status=status.HTTP_400_BAD_REQUEST)
+            erreur = erreur_date_sortie(date_sortie)
+            if erreur:
+                return Response({'error': erreur}, status=status.HTTP_400_BAD_REQUEST)
+            trop_tot = list(
+                employees.filter(date_embauche__gt=date_sortie).values_list('matricule', flat=True)[:10]
+            )
+            if trop_tot:
+                return Response(
+                    {'error': "La date de sortie précède la date de recrutement de : " + ', '.join(trop_tot)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             motif_id = request.data.get('motif_archivage') or None
-            employees.update(statut=Employee.Statut.ARCHIVE, motif_archivage_id=motif_id)
+            a_desactiver = list(employees.exclude(statut__in=Employee.STATUTS_SORTIE).values_list('pk', flat=True))
+            employees.update(
+                statut=Employee.Statut.ARCHIVE, motif_archivage_id=motif_id, date_sortie=date_sortie,
+            )
+            # update() ne déclenche pas post_save : désactivation explicite des
+            # comptes liés aux employés sortants (employees/sortie.py).
+            desactiver_comptes_lies(a_desactiver, request)
             AuditLog.objects.create(
                 user=request.user,
                 username_snapshot=request.user.username,
@@ -2355,7 +2389,67 @@ class EmployeeBulkDeleteView(APIView):
                 target_model='Employee',
                 target_label=f'Archivage en masse — {nb} employé(s)',
                 ip_address=AuditLog._get_ip(request),
-                details={'ids': ids, 'nb': nb, 'action': 'archive', 'motif_archivage': motif_id},
+                details={'ids': ids, 'nb': nb, 'action': 'archive', 'motif_archivage': motif_id,
+                         'date_sortie': date_sortie.isoformat()},
             )
             return Response({'nb_archives': nb})
 
+
+
+# ─── Déplacer un document mal classé (2026-11-01) ─────────────────────────────
+
+class DocumentDeplacerView(APIView):
+    """
+    POST /api/documents/{doc_id}/deplacer/ {"type_doc": <id>} — reclasse tout
+    le document dans un autre type (ADMIN only). Voir employees/deplacement.py.
+    """
+    permission_classes = [IsAdmin]
+
+    def post(self, request, doc_id):
+        from employees.deplacement import DeplacementError, deplacer_document, type_cible_valide
+        try:
+            document = EmployeeDocument.objects.select_related('type_doc').get(pk=doc_id)
+        except EmployeeDocument.DoesNotExist:
+            raise Http404
+        try:
+            cible = type_cible_valide(request.data.get('type_doc'), document.type_doc)
+            avant = document.type_doc.nom
+            destination = deplacer_document(document, cible, request.user)
+        except DeplacementError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC, target=destination,
+            details={'action': 'deplacer_document', 'de': avant, 'vers': cible.nom,
+                     'fusionne': destination.pk != document.pk},
+        )
+        return Response(EmployeeDocumentSerializer(destination).data)
+
+
+class FilePagesDeplacerView(APIView):
+    """
+    POST /api/files/{file_id}/pages/deplacer/ {"pages": [<page_id>, ...],
+    "type_doc": <id>} — déplace des pages d'un PDF vers un autre type de
+    document du même employé/contrat (ADMIN only). Voir employees/deplacement.py.
+    """
+    permission_classes = [IsAdmin]
+
+    def post(self, request, file_id):
+        from employees.deplacement import DeplacementError, deplacer_pages, type_cible_valide
+        file_obj, pages = _get_pdf_file_for_pages(file_id)
+        source = file_obj.document
+        try:
+            cible = type_cible_valide(request.data.get('type_doc'), source.type_doc)
+            noms = [p.nom for p in pages if str(p.id) in {str(i) for i in (request.data.get('pages') or [])}]
+            destination = deplacer_pages(
+                file_obj, pages, request.data.get('pages') or [], cible, request.user,
+                enqueue_ocr=_enqueue_ocr, reset_ocr=_reset_ocr, save_pdf=_save_pdf_to_file,
+            )
+        except DeplacementError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PdfReadError as exc:
+            return Response({'error': f'PDF invalide : {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+        AuditLog.log(
+            request, AuditLog.Action.MODIFY_DOC, target=destination,
+            details={'action': 'deplacer_pages', 'de': source.type_doc.nom, 'vers': cible.nom, 'pages': noms},
+        )
+        return Response(EmployeeDocumentSerializer(destination).data)

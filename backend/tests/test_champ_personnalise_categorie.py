@@ -19,7 +19,8 @@ class TestChampPersonnaliseCategorie:
 @pytest.mark.django_db
 class TestSeedChampsSysteme:
     def test_19_system_fields_seeded(self):
-        assert ChampPersonnalise.objects.filter(is_systeme=True).count() == 19
+        # 19 champs d'origine + sexe (0040) + date_sortie (0041).
+        assert ChampPersonnalise.objects.filter(is_systeme=True).count() == 21
 
     def test_date_naissance_is_personnel(self):
         c = ChampPersonnalise.objects.get(code="date_naissance")

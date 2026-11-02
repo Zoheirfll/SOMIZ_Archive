@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
@@ -9,6 +8,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
+import useLienLigne from "../hooks/useLienLigne";
 
 const IconSearch = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
@@ -36,7 +36,7 @@ function highlight(snippet, query, theme) {
 export default function RechercheDocuments() {
   usePageTitle("Recherche documentaire");
   const theme = useTheme();
-  const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const isMobile = useIsMobile();
   const [query, setQuery] = useState("");
   const [lastQuery, setLastQuery] = useState("");
@@ -163,7 +163,7 @@ export default function RechercheDocuments() {
         {results.map((r) => (
           <div
             key={r.file_id}
-            onClick={() => navigate(
+            {...lienLigne(
               `/employees/${r.employee_matricule}?tab=dossier&fileId=${r.file_id}` +
               (r.page_ordre ? `&page=${r.page_ordre}` : "")
             )}

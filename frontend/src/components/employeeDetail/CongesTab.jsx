@@ -9,6 +9,7 @@ import { FileTextIcon } from "../icons";
 import { formatDateFR } from "../../utils/formatDate";
 import { refVersUrl } from "../../utils/conges";
 import { canRequestConges, canSeeConges } from "../../config/accesSections";
+import LienNav from "../LienNav";
 
 // Une ligne de mouvement touche au plus un exercice (droit/consommé) et/ou les
 // compteurs de l'employé.
@@ -101,14 +102,14 @@ const CongesTab = ({ activeTab, employee, user, navigate }) => {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
               {entete("Titres de congé")}
               {canRequest && (
-                <button
-                  type="button"
-                  onClick={() => navigate("/conges/nouvelle", { state: { employeeId: employee.id } })}
+                <LienNav
+                  to="/conges/nouvelle"
+                  state={{ employeeId: employee.id }}
                   className="btn-lift"
                   style={{ ...bouton, background: theme.primary, color: "#fff", border: "none" }}
                 >
                   + Nouvelle demande
-                </button>
+                </LienNav>
               )}
             </div>
             {demandes.length === 0 ? (

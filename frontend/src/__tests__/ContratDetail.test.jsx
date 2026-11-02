@@ -152,16 +152,13 @@ describe("ContratDetail — fil d'ariane", () => {
   test("bouton ← navigue en arrière", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Employés"));
-    fireEvent.click(screen.getByText("Employés"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees");
+    expect(screen.getByText("Employés").closest("a")).toHaveAttribute("href", "/employees");
   });
 
   test("bouton employé navigue vers sa fiche", async () => {
     renderPage();
     await waitFor(() => screen.getAllByText(/MAT-0042/));
-    const empBtn = screen.getByRole("button", { name: /MAT-0042/ });
-    fireEvent.click(empBtn);
-    expect(mockNavigate).toHaveBeenCalledWith("/employees/MAT-0042");
+    expect(screen.getByRole("link", { name: /MAT-0042/ })).toHaveAttribute("href", "/employees/MAT-0042");
   });
 });
 

@@ -98,13 +98,17 @@ devient actuel). Il faut seulement **ouvrir la ligne du nouvel anticipé** au dr
 
 ## Workflow d'un titre
 
-Statuts : `recue` → `prete` → `recuperee`, plus `rejetee`, `annulee`, `interrompue`.
+Statuts : `visa` (chaîne de validation) → `recue` → **`accordee`** (« Accordé »), plus `rejetee`, `annulee`, `interrompue`.
+
+**Congé accordé (2026-10-29)** : « Prête » et « Récupérée » ont fusionné. Un titre de congé est une pièce de dossier que
+presque personne ne vient « récupérer » : la validation par le traiteur vaut octroi (soldes débités à ce moment-là).
+`date_prete` → `date_accord`, `date_recuperee` supprimée, route `…/recuperee/` supprimée (migration `conges/0005`,
+lignes existantes `prete`/`recuperee` → `accordee`). Notification : « Votre congé … est accordé ».
 
 | Action | Route (traiteur) | Effet sur les soldes |
 |---|---|---|
 | Valider | `POST demandes/<ref>/valider/` | débit (voir ci-dessus), `traite_par`, `validateur_nom` figé |
 | Rejeter | `POST …/rejeter/` | motif obligatoire ; si le titre était prêt, restitution intégrale |
-| Marquer récupéré | `POST …/recuperee/` | aucun |
 | **Annuler** (même signé) | `POST …/annuler/` | restitution intégrale, titre **conservé** (`Annulée`) |
 | **Interrompre** | `POST …/interrompre/` | restitution des jours non pris |
 | Observations | `PATCH …/observations/` | aucun ; modifiable tant que le titre n'est ni récupéré, ni annulé, ni interrompu |
@@ -150,9 +154,16 @@ reliquat et ventilation restent dans la page du traiteur ; l'observation n'est p
 - Réutilise l'en-tête, le cadre de titre et le bloc de référence de `attestations/pdf.py` ; `_draw_title(c, mention,
   titre=…)` a gagné un paramètre `titre` (valeur par défaut inchangée, test de non-régression). **Piège** : ne jamais
   réaffecter `titre` dans le corps de `_draw_title`, sinon le paramètre est ignoré (un test le garde).
-- `GET demandes/<ref>/apercu/` : traiteur seul, uniquement après validation (`400` sinon). **Date imprimée figée au
-  premier aperçu** (`date_document`) ; rouvrir un autre jour renvoie **409** `{needs_confirmation, date_document,
-  date_nouvelle}` tant que `?confirmer_date=1` est absent. Un titre `annulee` imprime un filigrane « ANNULE ».
+- **Titre figé (2026-10-29)** — `conges/titre.py` : hors mode test, le PDF est **généré une seule fois à l'octroi** et stocké
+  (`DemandeConge.titre_pdf`, nom UUID) ; `GET demandes/<ref>/apercu/` le sert tel quel, octet pour octet, même si le modèle
+  (logo, adresse, signataire par défaut…) change ensuite. Une erreur se corrige en **annulant** (jamais en modifiant) :
+  le titre annulé est servi avec le filigrane « ANNULE » **superposé** (pypdf) au fichier d'origine, qui reste intact.
+  Si la génération échoue à l'octroi, le congé reste accordé et le titre est généré au premier aperçu.
+- **Mode test** : tant que `CongeTemplateConfig.mode_test` est actif, **rien n'est figé** : le titre est regénéré à chaque
+  aperçu (avec la date `date_document` figée au premier aperçu et la mention rouge « (mode test) »), pour qu'un document
+  de test ne devienne jamais un titre définitif. Désactiver le mode test fige les titres au prochain aperçu.
+- `GET demandes/<ref>/apercu/` : traiteur seul, uniquement après validation (`400` pour `visa`, `recue`, `rejetee`).
+  Pas encore copié dans le dossier de l'employé (décision du propriétaire : à faire plus tard, après validation).
 - **Mode test** : « (mode test) » en rouge sous le sous-titre tant que `CongeTemplateConfig.mode_test` est actif.
 - **Mise en page** : positions en constantes `Y_*` / `X_*` de `conges/pdf.py`, ajustées par comparaison avec la photo
   (colonne des deux-points à 78 mm, 2e colonne placée dynamiquement après son libellé). **À affiner à partir du PDF

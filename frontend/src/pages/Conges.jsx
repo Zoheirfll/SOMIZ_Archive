@@ -33,10 +33,12 @@ const presetToRange = (preset) => {
 
 const STATUTS = [
   { value: "", label: "Tous" },
-  { value: "visa", label: "En attente de visa" },
+  { value: "visa", label: "En attente de validation" },
+  { value: "attente_1", label: "Attente : chef de service / cellule / section" },
+  { value: "attente_2", label: "Attente : chef de département" },
+  { value: "attente_3", label: "Attente : directeur" },
   { value: "recue", label: "Reçue" },
-  { value: "prete", label: "Prête" },
-  { value: "recuperee", label: "Récupérée" },
+  { value: "accordee", label: "Enregistré" },
   { value: "rejetee", label: "Rejetée" },
   { value: "annulee", label: "Annulée" },
   { value: "interrompue", label: "Interrompue" },
@@ -91,6 +93,7 @@ export default function Conges() {
       if (mois) params.mois = mois;
       // « a_viser » n'est pas un statut : demandes dont mon visa est attendu.
       if (statutFiltre === "a_viser") params.a_viser = 1;
+      else if (statutFiltre.startsWith("attente_")) params.attente_niveau = statutFiltre.slice("attente_".length);
       else if (statutFiltre) params.statut = statutFiltre;
       if (importance) params.importance = importance;
       if (departDu) params.depart_du = departDu;
@@ -162,8 +165,7 @@ export default function Conges() {
     },
     { label: "Durée", cle: "nb_jours", width: "46px", cell: (d) => <span style={{ color: theme.text, fontWeight: 700, fontSize: 13 }}>{d.nb_jours} j</span> },
     { label: "Reçue", cle: "created_at", width: "66px", cell: (d) => dateEtape(d.created_at) },
-    { label: "Prête", cle: "date_prete", width: "66px", cell: (d) => dateEtape(d.date_prete) },
-    { label: "Récupérée", cle: "date_recuperee", width: "78px", cell: (d) => dateEtape(d.date_recuperee) },
+    { label: "Enregistré", cle: "date_accord", width: "78px", cell: (d) => dateEtape(d.date_accord) },
     { label: "Importance", cle: "importance", width: "84px", cell: (d) => <ImportanceBadge importance={d.importance} /> },
     { label: "Statut", cle: "statut", width: "108px", cell: (d) => <CongeStatutBadge statut={d.statut} /> },
   ];
@@ -298,7 +300,7 @@ export default function Conges() {
                     xKey="mois"
                     series={[
                       { key: "recues", label: "Reçues", color: theme.primary },
-                      { key: "recuperees", label: "Récupérées", color: theme.departementColor },
+                      { key: "accordees", label: "Enregistrés", color: theme.departementColor },
                     ]}
                   />
                 </div>
@@ -343,7 +345,7 @@ export default function Conges() {
                 <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: theme.textMuted, padding: "0 4px 0 2px" }}>
                   Statut
                 </span>
-                {[...(user?.can_visa_conges ? [{ value: "a_viser", label: "À viser" }] : []), ...STATUTS].map((s) => {
+                {[...(user?.can_visa_conges ? [{ value: "a_viser", label: "À valider" }] : []), ...STATUTS].map((s) => {
                   const actif = statutFiltre === s.value;
                   return (
                     <button

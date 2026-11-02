@@ -20,10 +20,15 @@ Decision = VisaConge.Decision
 
 
 def initialiser_chaine(demande) -> list[VisaConge]:
-    """Fige la chaîne. Sans maillon, la demande reste `recue` (comportement
-    historique). Sinon elle passe à `visa`."""
+    """Fige la chaîne et passe la demande à `visa`. Sans maillon (aucun
+    supérieur désigné), elle reste **bloquée** à `visa` sans ligne de visa
+    (2026-10-31 : personne n'accorde à la place de la hiérarchie) — voir
+    `sans_superieur` et `relancer_demandes_sans_chaine`."""
     maillons = chaine_validation(demande.employee)
     if not maillons:
+        if demande.statut != Statut.VISA:
+            demande.statut = Statut.VISA
+            demande.save(update_fields=['statut', 'updated_at'])
         return []
     visas = [
         VisaConge(
@@ -37,6 +42,25 @@ def initialiser_chaine(demande) -> list[VisaConge]:
     demande.statut = Statut.VISA
     demande.save(update_fields=['statut', 'updated_at'])
     return visas
+
+
+def sans_superieur(demande) -> bool:
+    """Demande bloquée : en attente d'accord mais aucune chaîne (aucun
+    responsable désigné au-dessus de l'employé)."""
+    return demande.statut == Statut.VISA and not demande.visas.exists()
+
+
+def relancer_demandes_sans_chaine() -> list[DemandeConge]:
+    """Recalcule la chaîne des demandes bloquées faute de supérieur (après la
+    désignation d'un responsable dans l'organigramme). Renvoie celles qui ont
+    désormais une chaîne (à notifier)."""
+    relancees = []
+    for demande in (DemandeConge.objects.filter(statut=Statut.VISA, is_active=True, visas__isnull=True)
+                    .select_related('employee')):
+        with transaction.atomic():
+            if initialiser_chaine(demande):
+                relancees.append(demande)
+    return relancees
 
 
 def _habilite(visa, user, unites_interim) -> bool:
@@ -88,28 +112,54 @@ def _verrouiller(demande):
     return DemandeConge.objects.select_for_update().select_related('employee').get(pk=demande.pk)
 
 
-def viser(demande, *, auteur) -> DemandeConge:
-    """Vise au plus haut niveau de `auteur` ; solde les niveaux inférieurs en
-    attente. Si plus aucun maillon n'est en attente, la demande passe à `recue`."""
+def possibilites(demande, user):
+    """(propres, remplacables) : maillons en attente que `user` peut viser **à
+    son propre titre** (titulaire ou intérimaire), et maillons en attente d'un
+    niveau inférieur qu'il peut viser **à la place** d'un responsable absent."""
+    if demande.statut != Statut.VISA:
+        return [], []
+    visas = list(demande.visas.all())
+    unites = set(Interim.unites_actives(user))
+    a_traiter = _a_traiter(visas, user)
+    propres = [v for v in a_traiter if _habilite(v, user, unites)]
+    return propres, [v for v in a_traiter if v not in propres]
+
+
+def viser(demande, *, auteur, niveau=None) -> DemandeConge:
+    """Vise **un seul** niveau (2026-10-29) : le sien par défaut, ou, avec
+    `niveau`, celui d'un responsable inférieur absent (visa « à la place de »,
+    jamais automatique). Si plus aucun maillon n'est en attente, la demande
+    passe à `recue`."""
     with transaction.atomic():
         demande = _verrouiller(demande)
         if demande.statut != Statut.VISA:
-            raise TransitionInvalide("Cette demande n'est pas en attente de visa.")
+            raise TransitionInvalide("Cette demande n'est pas en attente de validation.")
         visas = list(demande.visas.select_for_update())
         a_traiter = _a_traiter(visas, auteur)
         if not a_traiter:
-            raise CongeError("Vous n'avez aucun visa à donner sur cette demande.")
+            raise CongeError("Vous n'avez aucune validation à donner sur cette demande.")
         maintenant = timezone.now()
         unites = set(Interim.unites_actives(auteur))
-        for v in a_traiter:
+        if niveau is None:
+            cibles = [v for v in a_traiter if _habilite(v, auteur, unites)]
+            if not cibles:
+                raise CongeError(
+                    "Votre validation est déjà donnée. En cas d'absence d'un responsable en dessous de vous, "
+                    "validez explicitement à sa place."
+                )
+        else:
+            cibles = [v for v in a_traiter if v.niveau == niveau]
+            if not cibles:
+                raise CongeError("Ce niveau n'est pas en attente de validation, ou vous ne pouvez pas valider à sa place.")
+        for v in cibles:
             titulaire = v.compte_id == auteur.id
             interimaire = not titulaire and (v.unite_type, v.unite_id) in unites
             v.decision = Decision.VISE if (titulaire or interimaire) else Decision.VISE_PAR_SUPERIEUR
             v.decide_par, v.date_decision = auteur, maintenant
             if interimaire:
-                v.motif = f"Visé par {auteur.full_name}, intérimaire de {v.responsable_nom}"
+                v.motif = f"Validé par {auteur.full_name}, intérimaire de {v.responsable_nom}"
             elif not titulaire:
-                v.motif = f"Visé par {auteur.full_name} en raison de l'absence de {v.responsable_nom}"
+                v.motif = f"Validé par {auteur.full_name} en raison de l'absence de {v.responsable_nom}"
             v.save()
         if not any(v.decision == Decision.EN_ATTENTE for v in visas):
             demande.statut = Statut.RECUE
@@ -124,11 +174,11 @@ def refuser(demande, *, auteur, motif) -> DemandeConge:
     with transaction.atomic():
         demande = _verrouiller(demande)
         if demande.statut != Statut.VISA:
-            raise TransitionInvalide("Cette demande n'est pas en attente de visa.")
+            raise TransitionInvalide("Cette demande n'est pas en attente de validation.")
         visas = list(demande.visas.select_for_update())
         a_traiter = _a_traiter(visas, auteur)
         if not a_traiter:
-            raise CongeError("Vous n'avez aucun visa à refuser sur cette demande.")
+            raise CongeError("Vous n'avez aucune validation à refuser sur cette demande.")
         unites = set(Interim.unites_actives(auteur))
         propre = next((v for v in a_traiter if _habilite(v, auteur, unites)), a_traiter[-1])
         propre.decision, propre.decide_par = Decision.REFUSE, auteur

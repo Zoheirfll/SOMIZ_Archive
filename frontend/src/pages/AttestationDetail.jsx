@@ -311,7 +311,7 @@ export default function AttestationDetail() {
           <Breadcrumb
             variant="hero"
             items={[
-              { label: "Attestations", onClick: () => navigate("/attestations") },
+              { label: "Attestations", to: "/attestations" },
               { label: demande.reference },
             ]}
           />

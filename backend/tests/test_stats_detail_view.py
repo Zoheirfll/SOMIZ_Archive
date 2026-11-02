@@ -6,6 +6,15 @@ from rest_framework.test import APIClient
 from employees.models import Employee, Contrat
 from audit.models import AuditLog
 
+
+@pytest.fixture
+def admin_user(admin_user):
+    """ADMIN de ces tests : porteur de l'accès aux statistiques RH
+    (acces_statistiques, 2026-10-31) — sans lui, tout le reporting répond 403."""
+    admin_user.acces_statistiques = True
+    admin_user.save(update_fields=['acces_statistiques'])
+    return admin_user
+
 User = get_user_model()
 
 

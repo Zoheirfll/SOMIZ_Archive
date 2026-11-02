@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { KeyboardShortcutsProvider } from "./context/KeyboardShortcutsContext";
 import GlobalShortcuts from "./components/GlobalShortcuts";
+import MenuLien from "./components/MenuLien";
 import ProtectedRoute from "./components/ProtectedRoute";
 import {
   canRequestAttestations, canRequestConges, canRequestConsultations,
@@ -21,7 +22,7 @@ const Employees = lazy(() => import("./pages/Employees"));
 const EmployeeDetail = lazy(() => import("./pages/EmployeeDetail"));
 const EmployeeForm = lazy(() => import("./pages/EmployeeForm"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Statistiques = lazy(() => import("./pages/Statistiques"));
+const RapportRH = lazy(() => import("./pages/reporting/RapportRH"));
 const Users = lazy(() => import("./pages/Users"));
 const UserPerimetre = lazy(() => import("./pages/UserPerimetre"));
 const AuditLogs = lazy(() => import("./pages/AuditLogs"));
@@ -59,6 +60,7 @@ function App() {
       <KeyboardShortcutsProvider>
       <BrowserRouter>
         <GlobalShortcuts />
+        <MenuLien />
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<RootRedirect />} />
@@ -127,11 +129,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/statistiques" element={<Navigate to="/statistiques/synthese" replace />} />
+          {/* Une page non autorisée est redirigée par RapportRH (pagesVisibles). */}
           <Route
-            path="/statistiques"
+            path="/statistiques/:page"
             element={
-              <ProtectedRoute adminOnly>
-                <Statistiques />
+              <ProtectedRoute>
+                {/* ADMIN ou CONSULTANT autorisés : RapportRH filtre par pagesVisibles. */}
+                <RapportRH />
               </ProtectedRoute>
             }
           />

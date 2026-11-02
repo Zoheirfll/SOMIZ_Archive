@@ -101,6 +101,18 @@ class User(AbstractBaseUser, PermissionsMixin):
                    "mouvement et de réception des archives. Un Super-administrateur "
                    "y a toujours accès, quel que soit ce champ.",
     )
+    # Accès au menu Statistiques (reporting RH, 2026-10-31) : un ADMIN n'y a
+    # accès que si ce drapeau est coché ; un SUPERADMIN toujours. Attribuable
+    # par un SUPERADMIN uniquement (admin_views.py), tracé dans MODIFY_USER.
+    # Les pages Congés / Attestations & consultations restent ouvertes à leurs
+    # traiteurs (charge_conge, charge_attestation/consultation) indépendamment.
+    acces_statistiques = models.BooleanField(
+        default=False, verbose_name="Accès aux statistiques RH",
+        help_text="Administrateur ou Consultant : accès au menu Statistiques "
+                   "(effectifs, mouvements, démographie, rapports mensuels...). Un "
+                   "Consultant n'y voit aucune liste nominative. Un Super-administrateur "
+                   "y a toujours accès, quel que soit ce champ.",
+    )
 
     # Pendant « demandeur » des drapeaux charge_* ci-dessus (2026-10-20) :
     # un GESTIONNAIRE/CONSULTANT ne peut créer des demandes d'attestation /
@@ -320,12 +332,25 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def fonction(self):
-        """Fonction du titulaire = poste de sa fiche employé liée (« Fonction »
-        sur la fiche employé), ex. « Chef de service ». Vide si le compte n'est
-        lié à aucun employé ou si l'employé n'a pas de poste renseigné."""
-        if not self.employee_id or not self.employee.poste_id:
+        """Fonction du titulaire, déduite de sa fiche employé liée :
+        1. s'il est `responsable` d'unités actives : « Directeur · DRH »,
+           « Chef de service · SAP »… (intitulé = verbose_name du champ
+           `responsable`, plusieurs unités séparées par « ; ») — c'est ce qui
+           fait d'un compte un chef, même sans poste renseigné ;
+        2. sinon le poste de la fiche (« Fonction » sur la fiche employé) ;
+        3. sinon vide (compte sans fiche liée).
+        Le front n'affiche que la partie avant « · » dans l'espace réduit."""
+        if not self.employee_id:
             return ""
-        return self.employee.poste.nom
+        from employees.models import Cellule, Departement, Direction, Pole, Section, Service
+        parties = []
+        for modele in (Direction, Pole, Departement, Service, Cellule, Section):
+            titre = modele._meta.get_field('responsable').verbose_name
+            for unite in modele.objects.filter(responsable_id=self.employee_id, is_active=True):
+                parties.append(f"{titre} · {unite.nom}")
+        if parties:
+            return " ; ".join(parties)
+        return self.employee.poste.nom if self.employee.poste_id else ""
 
     @property
     def can_visa_conges(self):
@@ -349,6 +374,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         est coché. Indépendant de charge_consultation : un chargé des
         consultations n'a pas accès aux registres sans être coché ici."""
         return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_registre)
+
+    @property
+    def can_view_statistiques(self):
+        """True si ce compte accède au reporting RH (menu Statistiques, hors
+        pages Congés/Demandes réservées à leurs traiteurs) — SUPERADMIN
+        toujours, ADMIN ou CONSULTANT (2026-11-01, sans listes nominatives :
+        reporting/nominatif.py) seulement si acces_statistiques est coché."""
+        return self.is_superadmin or (
+            self.role in (self.Role.ADMIN, self.Role.CONSULTANT) and self.acces_statistiques
+        )
 
     def _scope_ids(self):
         """(direction_ids, pole_ids, departement_ids, service_ids,

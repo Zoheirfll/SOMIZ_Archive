@@ -326,7 +326,7 @@ class TestBulkDeleteView:
         client = auth_client(admin_user)
         resp = client.post(
             self.BULK_URL,
-            {"ids": [str(employee.pk)], "action": "archive"},
+            {"ids": [str(employee.pk)], "action": "archive", "date_sortie": "2026-01-31"},
             format="json",
         )
         assert resp.status_code == 200
@@ -339,7 +339,7 @@ class TestBulkDeleteView:
         client = auth_client(admin_user)
         resp = client.post(
             self.BULK_URL,
-            {"ids": [str(employee.pk)], "action": "archive", "motif_archivage": str(motif.pk)},
+            {"ids": [str(employee.pk)], "action": "archive", "motif_archivage": str(motif.pk), "date_sortie": "2026-01-31"},
             format="json",
         )
         assert resp.status_code == 200

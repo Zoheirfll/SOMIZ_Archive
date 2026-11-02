@@ -42,7 +42,7 @@ def _types_documents_actifs():
 def _employee_row_headers(champs, types_docs):
     return [
         'Matricule', 'N° Contrat actif', 'Nom', 'Prénom', 'Fonction',
-        'Date de naissance', 'Date de recrutement',
+        'Date de naissance', 'Date de recrutement', 'Sexe', 'Date de sortie',
         'Date début contrat', 'Date fin contrat', 'Statut du contrat',
         'Type de contrat', 'Catégorie', 'Statut',
         'Direction', 'Département', 'Service', 'Cellule', 'Section',
@@ -83,6 +83,8 @@ def _employee_row_values(employee, champs, types_docs, contrat=None, valeurs_par
         employee.matricule, contrat.get('numero_contrat') or '', employee.nom, employee.prenom,
         employee.poste.nom if employee.poste_id else '',
         _iso(employee.date_naissance), _iso(employee.date_embauche),
+        employee.get_sexe_display() if employee.sexe else '',
+        _iso(employee.date_sortie),
         _iso(contrat.get('date_debut')),
         _iso(contrat.get('date_fin')),
         statuts_contrat.get(contrat.get('statut'), contrat.get('statut') or ''),

@@ -10,6 +10,11 @@ def conge_scan_upload_path(instance, filename):
     return f"conges/{instance.employee_id}/{uuid.uuid4()}_{filename}"
 
 
+def conge_titre_upload_path(instance, filename):
+    # Nom régénéré (UUID) : jamais le nom fourni dans le chemin.
+    return f"conges/titres/{instance.employee_id}/{uuid.uuid4()}.pdf"
+
+
 def conge_piece_upload_path(instance, filename):
     # Nom régénéré (UUID) : jamais le nom fourni par le client dans le chemin.
     extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'bin'
@@ -203,10 +208,15 @@ class DemandeConge(models.Model):
     class Statut(models.TextChoices):
         # Visa hiérarchique en cours (2026-10-28) : voir conges/visas.py. Passe à
         # RECUE quand le visa le plus haut de la chaîne est donné.
-        VISA = 'visa', 'En attente de visa'
-        RECUE = 'recue', 'Reçue'
-        PRETE = 'prete', 'Prête'
-        RECUPEREE = 'recuperee', 'Récupérée'
+        # Libellés révisés le 2026-10-31 (codes inchangés) : l'ACCORD est donné
+        # par la hiérarchie (visas) ; le chargé des congés ne décide pas, il
+        # contrôle, corrige si besoin, ENREGISTRE (débit des soldes) et génère
+        # le titre pour le dossier. Voir docs/fonctionnel/conges-hierarchie.md.
+        VISA = 'visa', "En attente d'accord hiérarchique"
+        RECUE = 'recue', 'Accordé — à enregistrer'
+        # Enregistré par la DRH (2026-10-29 « Accordé », renommé le 2026-10-31).
+        # Le titre est un document de dossier, généré une fois (conges/titre.py).
+        ACCORDEE = 'accordee', 'Enregistré'
         REJETEE = 'rejetee', 'Rejetée'
         ANNULEE = 'annulee', 'Annulée'
         INTERROMPUE = 'interrompue', 'Interrompue'
@@ -269,8 +279,9 @@ class DemandeConge(models.Model):
     )
     date_interruption = models.DateTimeField(null=True, blank=True)
 
-    date_prete = models.DateTimeField(null=True, blank=True)
-    date_recuperee = models.DateTimeField(null=True, blank=True)
+    date_accord = models.DateTimeField(null=True, blank=True)
+    # Titre PDF figé à l'octroi (hors mode test) : jamais regénéré ensuite.
+    titre_pdf = models.FileField(upload_to=conge_titre_upload_path, null=True, blank=True)
     # Date imprimée sur le titre, figée au premier aperçu (voir CongeApercuView).
     date_document = models.DateField(null=True, blank=True)
     scan_document = models.FileField(upload_to=conge_scan_upload_path, null=True, blank=True)
@@ -365,8 +376,8 @@ class VisaConge(models.Model):
 
     class Decision(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
-        VISE = 'vise', 'Visé'
-        VISE_PAR_SUPERIEUR = 'vise_par_superieur', 'Visé par un niveau supérieur'
+        VISE = 'vise', 'Validé'
+        VISE_PAR_SUPERIEUR = 'vise_par_superieur', 'Validé par un niveau supérieur'
         REFUSE = 'refuse', 'Refusé'
 
     demande = models.ForeignKey(DemandeConge, on_delete=models.CASCADE, related_name='visas')

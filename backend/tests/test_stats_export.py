@@ -5,6 +5,15 @@ from rest_framework.test import APIClient
 from audit.models import AuditLog
 
 
+@pytest.fixture
+def admin_user(admin_user):
+    """ADMIN de ces tests : porteur de l'accès aux statistiques RH
+    (acces_statistiques, 2026-10-31) — sans lui, tout le reporting répond 403."""
+    admin_user.acces_statistiques = True
+    admin_user.save(update_fields=['acces_statistiques'])
+    return admin_user
+
+
 def auth_client(user):
     client = APIClient()
     client.force_authenticate(user=user)

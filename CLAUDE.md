@@ -12,7 +12,7 @@ Conformité : Loi 18-07/ANPDP (Algérie) + RGPD.
 - `GESTIONNAIRE` — lecture seule type CONSULTANT sur son périmètre organisationnel (même mécanisme de scoping exactement), plus le droit de créer des demandes d'attestation de travail pour les employés de ce périmètre (voir section "Demandes d'attestation de travail"). `User.libelle_role` (ex. "Secrétaire", "Superviseur") est un simple libellé d'affichage par compte — aucune permission n'en dépend.
 - **Droit de faire des demandes (2026-10-20)** — `CONSULTANT` et `GESTIONNAIRE` ne créent (et ne voient) des demandes d'attestation/de consultation que si `User.peut_demander_attestation` / `peut_demander_consultation` est coché (boutons « Attestations ✓/✗ » et « Consultations ✓/✗ » sur `/users`, attribuables par **tout ADMIN**). Distinct de `charge_*` (qui signifie « traite », ADMIN uniquement). Le SUPERADMIN peut toujours demander ; un ADMIN ordinaire jamais. Voir `securite.md` point 47.
 - **Consultations d'archives** (app `consultations`) — `CONSULTANT` et `GESTIONNAIRE` peuvent demander à consulter un dossier/document/information archivé ; seul un `SUPERADMIN`, ou un `ADMIN` portant `User.charge_consultation`, les traite (valide, livre un scan, prolonge, révoque). Le drapeau `charge_consultation` n'est attribuable que par un SUPERADMIN (idem `charge_attestation`, corrigé le 2026-10-08). Le SUPERADMIN peut aussi créer des demandes et traiter les siennes (comme pour les attestations). Le demandeur choisit durée et droits (téléchargement/impression) **souhaités** ; le traiteur les accorde ou les modifie. Navbar : entrée « Demandes » = menu déroulant Attestations / Consultations (lien direct si une seule section accessible). Voir `docs/fonctionnel/consultations.md`.
-- **Demandes de congé** (app `conges`, 2026-10-20) — `GESTIONNAIRE`/`CONSULTANT` portant `User.peut_demander_conge` (et `SUPERADMIN`) saisissent la demande ; seul un `SUPERADMIN`, ou un `ADMIN` portant `User.charge_conge` (attribuable par un SUPERADMIN uniquement), la traite : validation (qui **débite les soldes par exercice**, le plus ancien d'abord puis en cascade jusqu'à l'anticipé), rejet, annulation même après signature, interruption de congé, saisie initiale et correction des soldes. Un ADMIN ordinaire ne crée jamais de demande. Titre de congé PDF imprimable (mêmes conditions que les attestations : date figée, mode test). Onglet « Congés » sur la fiche employé (soldes + historique). Voir `docs/fonctionnel/conges.md`.
+- **Demandes de congé** (app `conges`, 2026-10-20) — `GESTIONNAIRE`/`CONSULTANT` portant `User.peut_demander_conge` (et `SUPERADMIN`) saisissent la demande ; **l'accord est donné par la hiérarchie** (visas des chefs, `conges-hierarchie.md`, révisé le 2026-10-31 : sans supérieur désigné la demande reste bloquée) ; seul un `SUPERADMIN`, ou un `ADMIN` portant `User.charge_conge` (attribuable par un SUPERADMIN uniquement), la **contrôle, corrige (tracé) et enregistre** — il ne décide pas, plus de « Rejeter » : enregistrement (qui **débite les soldes par exercice**, le plus ancien d'abord puis en cascade jusqu'à l'anticipé), rejet, annulation même après signature, interruption de congé, saisie initiale et correction des soldes. Un ADMIN ordinaire ne crée jamais de demande. Titre de congé PDF imprimable (mêmes conditions que les attestations : date figée, mode test). Onglet « Congés » sur la fiche employé (soldes + historique). Voir `docs/fonctionnel/conges.md`.
 
 ### Journal d'audit — visibilité par rôle (2026-08-30)
 
@@ -50,7 +50,7 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - [`docs/fonctionnel/referentiels.md`](docs/fonctionnel/referentiels.md) — À lire avant de toucher aux référentiels organisationnels (Direction/Pôle/Département/Service/Cellule/Section), aux slugs d'URL, aux imports CSV/xlsx, aux types de contrat ou aux motifs.
 - [`docs/fonctionnel/documents.md`](docs/fonctionnel/documents.md) — À lire avant de toucher aux documents (upload, suppression, renommage, rotation, scan-import), aux types de documents, à la photo de profil ou à l'OCR. Contient l'incident de purge du 2026-07-22.
 - [`docs/fonctionnel/employes.md`](docs/fonctionnel/employes.md) — À lire avant de toucher à la fiche/au formulaire/à la liste des employés, aux champs personnalisés, à l'historique de carrière, aux transferts, à l'archivage ou à l'export Excel (ordre des colonnes, colonnes du contrat, colonnes sensibles NIN/sécu/RIB — `securite.md` point 45).
-- [`docs/fonctionnel/statistiques-audit.md`](docs/fonctionnel/statistiques-audit.md) — À lire avant de toucher à /statistiques, à audit/stats.py ou aux liens de preuve vers /audit.
+- [`docs/fonctionnel/statistiques-audit.md`](docs/fonctionnel/statistiques-audit.md) — À lire avant de toucher à /statistiques (menu de pages, app `reporting`), à audit/stats.py ou aux liens de preuve vers /audit.
 - [`docs/fonctionnel/comptes-conformite.md`](docs/fonctionnel/comptes-conformite.md) — À lire avant de toucher à la suppression de compte, aux permissions IsAdmin/IsAdminOrConsultant ou au flux de consentement.
 - [`docs/fonctionnel/attestations.md`](docs/fonctionnel/attestations.md) — À lire avant de toucher à l'app attestations (workflow de statuts, PDF ReportLab, configuration du modèle, mode test, statistiques).
 - [`docs/fonctionnel/consultations.md`](docs/fonctionnel/consultations.md) — À lire avant de toucher à l'app consultations (demandes de consultation d'archives : workflow, livraison de fichiers par l'application, filigrane, expiration serveur, prolongation, rappels, purge manuelle).
@@ -67,6 +67,8 @@ Aucun rôle ne peut modifier ou purger le journal (pas de DELETE sur
 - Une permission « transversale » se vérifie par un test d'intégration sur une vraie route métier — voir `comptes-conformite.md`.
 - L'export Excel des employés (`employees/export_views.py`) reste réservé aux ADMIN et tracé dans l'audit ; il contient des données sensibles (NIN, sécu, RIB) — toute nouvelle colonne sensible se documente dans `securite.md`.
 - Un fichier livré par `consultations` ne se sert jamais sans `controler_acces()` (expiration vérifiée côté serveur à chaque lecture) et jamais non filigrané à un demandeur — voir `consultations.md`.
+- L'accès au reporting RH (menu Statistiques, objectifs, rapports mensuels, anciens `stats-detail`/`stats-export`) passe par `User.acces_statistiques` / `can_view_statistiques` (permission `CanViewStatistiques`) — ADMIN ou CONSULTANT portant le drapeau (CONSULTANT : jamais de données nominatives, `reporting/nominatif.py`), SUPERADMIN toujours ; attribuable par un SUPERADMIN uniquement, tracé dans `MODIFY_USER`.
+- Un compte ADMIN/GESTIONNAIRE est lié à la fiche employé de son titulaire (`User.employee`, obligatoire à la création et au changement de rôle, jamais délié) ; la sortie de l'employé désactive le compte (`employees/sortie.py#desactiver_comptes_lies`) — `securite.md` point 55.
 - L'accès aux registres passe par `User.charge_registre` (SUPERADMIN uniquement pour l'attribuer, jamais `charge_consultation`) ; l'attribution d'un drapeau « chargé de… » est tracée dans `MODIFY_USER`.
 - Un solde de congé ne se modifie **jamais directement** : uniquement via `conges.services` (transaction + verrou `select_for_update()` + `MouvementConge` immuable) ; `charge_conge` n'est attribuable que par un SUPERADMIN ; l'annulation d'un titre signé restitue les jours et se confirme par saisie de la référence — voir `conges.md`. `AuditLog.action` est limité à **20 caractères**.
 - Une ligne de registre (`registres`) ne se supprime qu'**après annulation avec motif**, avec un instantané complet dans l'audit (hard delete tracé, confirmation par saisie de la référence) ; toute modification est tracée avec l'ancienne valeur ; export et impression sont tracés, sans colonnes sensibles, et le paramètre d'export s'appelle `fmt` (jamais `format`, réservé par DRF) — voir `registres.md`.
@@ -141,7 +143,7 @@ Direction
 | `/employees/:id/modifier` | Modifier employé | ADMIN |
 | `/contrats/:id` | Détail contrat | Tous |
 | `/dashboard` | Tableau de bord (indicateurs instantanés) | ADMIN |
-| `/statistiques` | Statistiques RH détaillées (filtres, périmètre, export) | ADMIN |
+| `/statistiques/:page` | Menu « Statistiques » : 13 pages (Synthèse DRH, Effectifs, Parité, Démographie & retraites, Mouvements & rétention, Carrière, Contrats, Comparaison des unités, Qualité, Documents, Congés, Attestations & consultations, Activité) + bilan social et rapports mensuels — `/statistiques` redirige vers la synthèse ; voir `statistiques-audit.md` | SUPERADMIN, ADMIN `acces_statistiques` (attribuable par un SUPERADMIN uniquement) ; Congés : `charge_conge` ; Demandes : `charge_attestation`/`charge_consultation` |
 | `/attestations` | Demandes d'attestation de travail (liste ADMIN, "mes demandes" GESTIONNAIRE, reporting) | ADMIN, GESTIONNAIRE |
 | `/attestations/nouvelle` | Nouvelle demande d'attestation | ADMIN, GESTIONNAIRE |
 | `/attestations/:ref` | Détail, traitement (statuts, aperçu, scan) | ADMIN (lecture pour le demandeur) |
@@ -198,14 +200,14 @@ PATCH /api/contrats/<uuid>/
 - **Les uploads sont validés côté backend** — le frontend n'a pas à valider le MIME type
 - **Toute nouvelle vue listant des employés/documents/contrats doit appliquer le scoping** — `request.user.employee_scope_q()` ou `can_access_employee()` (voir section Scoping ci-dessus)
 - **Les mutations de mot de passe passent par `django.contrib.auth.password_validation.validate_password()`**, pas juste un check de longueur
-- **Journal complet d'audit sécurité** : voir [`securite.md`](securite.md) (racine du projet) — 24 points vérifiés/corrigés, à mettre à jour à chaque nouveau point de sécurité traité
+- **Journal complet d'audit sécurité** : voir [`securite.md`](securite.md) (racine du projet) — 56 points vérifiés/corrigés, à mettre à jour à chaque nouveau point de sécurité traité
 
 ---
 
 ## Tests
 
-- Backend : `pytest` (188 tests dans `backend/tests/`)
-- Frontend : Jest + React Testing Library (261+ tests dans `frontend/src/__tests__/`)
+- Backend : `pytest` (~1 300 tests dans `backend/tests/`)
+- Frontend : Jest + React Testing Library (~630 tests dans `frontend/src/__tests__/`)
 - Lancer les tests backend : `cd backend && pytest`
 - Lancer les tests frontend : `cd frontend && npm test`
 - **Après toute modification touchant `accounts`/`employees` (permissions, scoping, modèles) : lancer la suite complète avant de commit** — l'app dépend de PostgreSQL + Redis actifs localement (`REDIS_URL` dans `.env`, repli automatique sur cache mémoire si absent)

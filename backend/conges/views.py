@@ -17,6 +17,8 @@ from audit.models import AuditLog
 from config.liste_demandes import DemandePagination, appliquer_periode_importance_tri
 from employees.models import Employee
 from . import notifications, services, visas, workflow
+from . import titre as titre_conge
+from .services import CongeError
 from .models import (
     CongeTemplateConfig, DemandeConge, MotifConge, MotifPiece, MouvementConge, ParametreConge,
     PieceJointeConge,
@@ -82,7 +84,7 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
     TRIS = {
         'created_at': 'created_at', 'date_depart': 'date_depart', 'nb_jours': 'nb_jours',
         'employee': 'employee__nom', 'statut': 'statut', 'importance': 'importance',
-        'date_prete': 'date_prete', 'date_recuperee': 'date_recuperee',
+        'date_accord': 'date_accord',
     }
 
     def get_permissions(self):
@@ -109,6 +111,14 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
                 Q(reference__icontains=q) | Q(employee__nom__icontains=q) | Q(employee__prenom__icontains=q) |
                 Q(employee__matricule__icontains=q) | Q(demandeur__nom__icontains=q) | Q(demandeur__prenom__icontains=q)
             )
+        # « En attente de … » : niveau de la chaîne dont le visa est encore attendu
+        # (1 chef direct, 2 chef de département, 3 directeur) — même ligne de visa
+        # pour le statut et la décision.
+        if params.get('attente_niveau') in ('1', '2', '3'):
+            qs = qs.filter(
+                statut=DemandeConge.Statut.VISA, visas__niveau=int(params['attente_niveau']),
+                visas__decision='en_attente',
+            ).distinct()
         if user.can_manage_conges:
             if params.get('statut'):
                 qs = qs.filter(statut=params['statut'])
@@ -125,7 +135,7 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
         if params.get('statut'):
             qs = qs.filter(statut=params['statut'])
         if params.get('pending'):
-            qs = qs.filter(statut=DemandeConge.Statut.PRETE)  # badge demandeur : titres prêts à récupérer
+            qs = qs.none()  # plus de « titre à récupérer » : un congé accordé est une pièce de dossier
         return qs
 
     def perform_create(self, serializer):
@@ -137,12 +147,13 @@ class DemandeCongeListCreateView(generics.ListCreateAPIView):
                 'date_retour': demande.date_retour.isoformat(), 'nb_jours': demande.nb_jours,
             },
         )
-        # Chaîne de visa : si elle existe, la demande attend ses visas avant d'être
-        # adressée aux traiteurs RH (sinon elle est `recue` d'emblée, comme avant).
+        # Chaîne d'accord hiérarchique : la demande attend ses visas avant d'être
+        # adressée aux traiteurs RH. Sans aucun supérieur désigné, elle reste
+        # bloquée (2026-10-31) et les traiteurs sont alertés.
         if visas.initialiser_chaine(demande):
             notifications.notifier_visa_requis(demande, self.request.user)
         else:
-            notifications.notifier_nouvelle_demande(demande)
+            notifications.notifier_sans_superieur(demande)
 
 
 class DemandeCongeDetailView(ReferenceLookupMixin, generics.RetrieveDestroyAPIView):
@@ -184,10 +195,15 @@ class ViserView(ReferenceLookupMixin, APIView):
     def post(self, request, ref):
         demande = self.get_object()
         avant = demande.statut
-        vise = visas.viser(demande, auteur=request.user)
+        try:
+            niveau = int(request.data['niveau']) if request.data.get('niveau') not in (None, '') else None
+        except (TypeError, ValueError):
+            raise CongeError("Niveau de validation invalide.")
+        vise = visas.viser(demande, auteur=request.user, niveau=niveau)
         AuditLog.log(
             request, AuditLog.Action.VISER_CONGE, target=vise,
-            details={'reference': vise.reference, 'de': avant, 'vers': vise.statut},
+            details={'reference': vise.reference, 'de': avant, 'vers': vise.statut,
+                     'a_la_place_niveau': niveau},
         )
         if vise.statut == DemandeConge.Statut.RECUE:
             notifications.notifier_nouvelle_demande(vise)  # chaîne complète : au traiteur RH
@@ -216,12 +232,32 @@ class _ActionTraiteurView(ReferenceLookupMixin, APIView):
     permission_classes = [IsCongeManager]
 
 
+def _valeur_audit(v):
+    if hasattr(v, 'isoformat'):
+        return v.isoformat()
+    if hasattr(v, 'pk'):
+        return str(v)
+    return v
+
+
 class ValiderView(_ActionTraiteurView):
+    """« Contrôler et enregistrer » (2026-10-31) : le chargé des congés ne
+    décide pas — l'accord est hiérarchique. Il vérifie ce qui a été saisi, le
+    corrige si besoin (chaque correction tracée : `corrections` {champ: [avant,
+    après]}, le demandeur en est notifié), débite les soldes et fige le titre."""
+
     @erreurs_metier
     def post(self, request, ref):
         demande = self.get_object()
         serializer = ValiderSerializer(data=request.data, context={'demande': demande})
         serializer.is_valid(raise_exception=True)
+        corrections = {}
+        for champ in ('type_conge', 'motif', 'nb_jours', 'date_depart', 'date_retour', 'adresse_conge',
+                      'observations'):
+            if champ in serializer.validated_data:
+                avant, apres = getattr(demande, champ), serializer.validated_data[champ]
+                if (avant or None) != (apres or None):
+                    corrections[champ] = [_valeur_audit(avant), _valeur_audit(apres)]
         valide = workflow.valider_demande(demande, auteur=request.user, donnees=serializer.validated_data)
         AuditLog.log(
             request, AuditLog.Action.VALIDER_CONGE, target=valide,
@@ -230,35 +266,39 @@ class ValiderView(_ActionTraiteurView):
                 'motif': valide.motif.nom if valide.motif_id else None,
                 'ventilation': valide.ventilation, 'categorie_exercice': valide.categorie_exercice,
                 'signataire': valide.signataire_nom, 'interim': valide.signataire_interim,
+                'corrections': corrections,
             },
         )
-        notifications.notifier_validee(valide, request.user)
+        # Titre figé une fois pour toutes (sauf mode test) : voir conges/titre.py.
+        titre_conge.figer(valide)
+        notifications.notifier_validee(valide, request.user, corrections=corrections)
         return _reponse(valide, request)
 
 
-class RejeterView(_ActionTraiteurView):
+# Pas de « Rejeter » pour le chargé des congés (supprimé le 2026-10-31) : il ne
+# décide pas. Un refus vient de la hiérarchie (RefuserVisaView) ; un congé
+# enregistré se défait par AnnulerView (motif + saisie de la référence).
+
+
+class RecalculerChaineView(_ActionTraiteurView):
+    """POST /demandes/<ref>/recalculer-chaine/ — demande bloquée faute de
+    supérieur : recalcule la chaîne après désignation du responsable."""
+
     @erreurs_metier
     def post(self, request, ref):
         demande = self.get_object()
-        serializer = RejeterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ancien = demande.statut
-        rejete = workflow.rejeter_demande(demande, auteur=request.user, motif=serializer.validated_data['motif'])
-        AuditLog.log(
-            request, AuditLog.Action.REJETER_CONGE, target=rejete,
-            details={'de': ancien, 'motif': rejete.motif_rejet},
-        )
-        notifications.notifier_rejetee(rejete, request.user)
-        return _reponse(rejete, request)
-
-
-class RecupereeView(_ActionTraiteurView):
-    @erreurs_metier
-    def post(self, request, ref):
-        recuperee = workflow.marquer_recuperee(self.get_object(), auteur=request.user)
-        AuditLog.log(request, AuditLog.Action.RECUPERER_CONGE, target=recuperee,
-                     details={'reference': recuperee.reference})
-        return _reponse(recuperee, request)
+        if not visas.sans_superieur(demande):
+            raise CongeError("Cette demande n'est pas bloquée faute de supérieur.")
+        if not visas.initialiser_chaine(demande):
+            raise CongeError(
+                "Toujours aucun supérieur désigné pour cet employé : désignez le responsable de son unité "
+                "dans l'organigramme."
+            )
+        AuditLog.log(request, AuditLog.Action.MODIFY_CONGE, target=demande,
+                     details={'reference': demande.reference, 'action': 'recalcul_chaine'})
+        notifications.notifier_visa_requis(demande, request.user)
+        demande.refresh_from_db()
+        return _reponse(demande, request)
 
 
 class AnnulerView(_ActionTraiteurView):
@@ -540,11 +580,22 @@ class CongeApercuView(ReferenceLookupMixin, generics.RetrieveAPIView):
         from employees.models import Contrat
 
         demande = self.get_object()
-        if demande.statut in (DemandeConge.Statut.RECUE, DemandeConge.Statut.REJETEE):
+        if demande.statut in (DemandeConge.Statut.VISA, DemandeConge.Statut.RECUE, DemandeConge.Statut.REJETEE):
             return Response(
                 {'error': "Le titre n'est généré qu'après validation de la demande."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        config, _ = CongeTemplateConfig.objects.get_or_create(pk=1)
+        nom_fichier = f'titre_conge_{demande.reference.replace("/", "-")}.pdf'
+        if titre_conge.figer(demande, config):
+            # Titre figé : servi tel quel, ni date ni modèle ne peuvent changer.
+            AuditLog.log(
+                request, AuditLog.Action.APERCU_CONGE, target=demande,
+                details={'reference': demande.reference, 'fige': True},
+            )
+            reponse = HttpResponse(titre_conge.lire_fige(demande), content_type='application/pdf')
+            reponse['Content-Disposition'] = f'inline; filename="{nom_fichier}"'
+            return reponse
         today = tz.localdate()
         if demande.date_document and demande.date_document != today:
             if request.query_params.get('confirmer_date') != '1':
@@ -608,7 +659,7 @@ class CongeTemplateConfigApercuView(APIView):
                 setattr(config, champ, valeur)
         interim = config.signataire_interim and bool(config.signataire_interim_nom.strip())
         exemple = SimpleNamespace(
-            reference="00000/00", statut='prete', type_conge='CP',
+            reference="00000/00", statut='accordee', type_conge='CP',
             categorie_exercice='RELIQUAT', nb_jours=13,
             employee=SimpleNamespace(
                 matricule="000000", nom="EXEMPLE", prenom="Ali", date_embauche=date(2015, 1, 1),
@@ -678,9 +729,9 @@ class CongeStatsView(APIView):
             for code in libelles if comptes.get(code, 0) > 0
         ]
 
-        duree = qs.filter(statut=DemandeConge.Statut.RECUPEREE).annotate(
+        duree = qs.filter(statut=DemandeConge.Statut.ACCORDEE).annotate(
             duree=ExpressionWrapper(
-                Coalesce(F('date_recuperee'), F('updated_at')) - F('created_at'), output_field=DurationField(),
+                Coalesce(F('date_accord'), F('updated_at')) - F('created_at'), output_field=DurationField(),
             )
         ).aggregate(moyenne=Avg('duree'))['moyenne']
 
@@ -688,15 +739,15 @@ class CongeStatsView(APIView):
             r['mois'].strftime('%Y-%m'): r['count']
             for r in qs.annotate(mois=TruncMonth('created_at')).values('mois').annotate(count=Count('id'))
         }
-        recuperees = {
+        accordees = {
             r['mois'].strftime('%Y-%m'): r['count']
-            for r in qs.filter(statut=DemandeConge.Statut.RECUPEREE)
-                       .annotate(mois=TruncMonth(Coalesce(F('date_recuperee'), F('updated_at'))))
+            for r in qs.filter(statut=DemandeConge.Statut.ACCORDEE)
+                       .annotate(mois=TruncMonth(Coalesce(F('date_accord'), F('updated_at'))))
                        .values('mois').annotate(count=Count('id'))
         }
         evolution = [
-            {'mois': m, 'recues': recues.get(m, 0), 'recuperees': recuperees.get(m, 0)}
-            for m in sorted(set(recues) | set(recuperees))
+            {'mois': m, 'recues': recues.get(m, 0), 'accordees': accordees.get(m, 0)}
+            for m in sorted(set(recues) | set(accordees))
         ]
         return Response({
             'total': qs.count(), 'par_gestionnaire': par_gestionnaire, 'par_employe': par_employe,

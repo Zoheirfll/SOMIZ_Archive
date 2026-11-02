@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import LienNav from "./LienNav";
 
 // Menu déroulant de la navbar desktop (« Demandes », « Administration »).
 // `items` : [{ path, label, badge? }]. Le `badge` global s'affiche sur le
@@ -85,11 +86,11 @@ export default function NavDropdown({ label, items, align = "left", padding = "7
             {items.map((item) => {
               const isActive = location.pathname.startsWith(item.path);
               return (
-                <button
+                <LienNav
                   key={item.path}
-                  type="button"
                   role="menuitem"
-                  onClick={() => navigate(item.path)}
+                  to={item.path}
+                  onClick={() => setOpen(false)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -120,7 +121,7 @@ export default function NavDropdown({ label, items, align = "left", padding = "7
                       {item.badge}
                     </span>
                   )}
-                </button>
+                </LienNav>
               );
             })}
           </div>

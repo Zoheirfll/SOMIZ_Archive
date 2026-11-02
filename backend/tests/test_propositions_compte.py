@@ -250,7 +250,10 @@ class TestPerimetreComptesExistantsEtRattrapage:
     def test_chef_de_deux_unites_recoit_les_deux_au_perimetre(self, admin_user, employee, service, departement):
         client = auth_client(admin_user)
         client.patch(f"/api/ref/services/{service.id}/", {"responsable": str(employee.id)}, format="json")
-        client.patch(f"/api/ref/departements/{departement.id}/", {"responsable": str(employee.id)}, format="json")
+        # Donnée historique : depuis le 2026-11-01 l'API refuse un 2e poste de chef
+        # (test_responsable_unique.py) ; un cas déjà en base reste géré.
+        departement.responsable = employee
+        departement.save()
         user, _ = valider_proposition(FakeRequest(admin_user), PropositionCompte.objects.get(), role="GESTIONNAIRE")
         assert list(user.scope_services.all()) == [service]
         assert list(user.scope_departements.all()) == [departement]

@@ -11,8 +11,8 @@ from .services import (
 )
 
 Statut = DemandeConge.Statut
-STATUTS_ACTIFS = (Statut.RECUE, Statut.PRETE, Statut.RECUPEREE, Statut.INTERROMPUE)
-STATUTS_ANNULABLES = (Statut.PRETE, Statut.RECUPEREE)
+STATUTS_ACTIFS = (Statut.RECUE, Statut.ACCORDEE, Statut.INTERROMPUE)
+STATUTS_ANNULABLES = (Statut.ACCORDEE,)
 CHAMPS_VALIDATION = (
     'type_conge', 'motif', 'date_etablissement', 'nb_jours', 'date_depart', 'date_retour',
     'exercice', 'adresse_conge', 'observations', 'signataire_nom', 'signataire_titre',
@@ -89,8 +89,8 @@ def valider_demande(demande, *, auteur, donnees) -> DemandeConge:
             demande.reference = donnees['reference']
         demande.ventilation = ventilation
         demande.categorie_exercice = cat
-        demande.statut = Statut.PRETE
-        demande.date_prete = timezone.now()
+        demande.statut = Statut.ACCORDEE
+        demande.date_accord = timezone.now()
         demande.traite_par = auteur
         demande.validateur_nom = auteur.full_name
         demande.save()
@@ -123,9 +123,9 @@ def rejeter_demande(demande, *, auteur, motif) -> DemandeConge:
     motif = _motif_obligatoire(motif, "Motif de rejet requis.")
     with transaction.atomic():
         demande = _verrouiller_demande(demande)
-        if demande.statut not in (Statut.RECUE, Statut.PRETE):
+        if demande.statut not in (Statut.RECUE, Statut.ACCORDEE):
             raise TransitionInvalide("Cette demande ne peut plus être rejetée.")
-        if demande.statut == Statut.PRETE:
+        if demande.statut == Statut.ACCORDEE:
             _refuser_si_termine(demande, "rejeté")
             _rendre_tout(
                 demande, nature=MouvementConge.Nature.RESTITUTION_ANNULATION, auteur=auteur,
@@ -133,18 +133,6 @@ def rejeter_demande(demande, *, auteur, motif) -> DemandeConge:
             )
         demande.statut = Statut.REJETEE
         demande.motif_rejet = motif
-        demande.traite_par = auteur
-        demande.save()
-        return demande
-
-
-def marquer_recuperee(demande, *, auteur) -> DemandeConge:
-    with transaction.atomic():
-        demande = _verrouiller_demande(demande)
-        if demande.statut != Statut.PRETE:
-            raise TransitionInvalide("Seul un titre prêt peut être marqué comme récupéré.")
-        demande.statut = Statut.RECUPEREE
-        demande.date_recuperee = timezone.now()
         demande.traite_par = auteur
         demande.save()
         return demande
@@ -158,7 +146,7 @@ def annuler_demande(demande, *, auteur, motif) -> DemandeConge:
         demande = _verrouiller_demande(demande)
         if demande.statut not in STATUTS_ANNULABLES:
             raise TransitionInvalide(
-                "Seul un titre prêt ou récupéré peut être annulé (un titre interrompu ne l'est pas)."
+                "Seul un congé accordé peut être annulé (un titre interrompu ne l'est pas)."
             )
         _refuser_si_termine(demande, "annulé")
         _rendre_tout(

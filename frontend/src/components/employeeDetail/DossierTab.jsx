@@ -1,5 +1,4 @@
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import SecureDocViewer from "../SecureDocViewer";
@@ -11,6 +10,7 @@ import {
   ImageIcon,
   Spinner,
 } from "../icons";
+import LienNav from "../LienNav";
 import {
   stripExt,
   formatSizeMo,
@@ -88,7 +88,6 @@ const DossierTab = ({
   busyIds,
 }) => {
   const theme = useTheme();
-  const navigate = useNavigate();
   return (
   <>
     {activeTab === "dossier" && (
@@ -632,8 +631,9 @@ const DossierTab = ({
                     background: theme.bg,
                   }}
                 >
-                  <button
-                    onClick={() => navigate("/attestations/nouvelle", { state: { employeeId: employee.id } })}
+                  <LienNav
+                    to="/attestations/nouvelle"
+                    state={{ employeeId: employee.id }}
                     className="btn-lift"
                     style={{
                       display: "flex",
@@ -652,7 +652,7 @@ const DossierTab = ({
                     }}
                   >
                     Demander une attestation
-                  </button>
+                  </LienNav>
                 </div>
               )}
 
@@ -664,8 +664,9 @@ const DossierTab = ({
                     background: theme.bg,
                   }}
                 >
-                  <button
-                    onClick={() => navigate("/conges/nouvelle", { state: { employeeId: employee.id } })}
+                  <LienNav
+                    to="/conges/nouvelle"
+                    state={{ employeeId: employee.id }}
                     className="btn-lift"
                     style={{
                       display: "flex",
@@ -684,7 +685,7 @@ const DossierTab = ({
                     }}
                   >
                     Demander un congé
-                  </button>
+                  </LienNav>
                 </div>
               )}
 

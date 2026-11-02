@@ -39,6 +39,10 @@ def _employee_post_save(sender, instance, created, **kwargs):
         return
 
     statut_avant = getattr(instance, '_statut_avant_save', None)
+    if statut_avant not in Employee.STATUTS_SORTIE and instance.statut in Employee.STATUTS_SORTIE:
+        # Départ de l'employé : son compte SOMIZ lié est désactivé (sortie.py).
+        from employees.sortie import desactiver_comptes_lies
+        desactiver_comptes_lies([instance.pk])
     if statut_avant != Employee.Statut.ARCHIVE and instance.statut == Employee.Statut.ARCHIVE:
         envoyer_webhook_employe(instance, 'employee.archived')
     else:

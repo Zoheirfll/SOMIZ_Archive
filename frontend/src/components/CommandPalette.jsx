@@ -11,6 +11,7 @@ import StatutBadge from "./attestations/StatutBadge";
 import StatutConsultationBadge from "./consultations/StatutConsultationBadge";
 import { canSeeAttestations, canSeeConsultations } from "../config/accesSections";
 import { slugDepuisReference } from "../utils/consultations";
+import LienNav from "./LienNav";
 
 const normalize = (s) =>
   (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -118,12 +119,18 @@ export default function CommandPalette({ isOpen, onClose }) {
     setSelectedIndex(0);
   }, [flatResults.length]);
 
+  // URL de destination d'un résultat : sert au lien (clic droit / Ctrl+clic = nouvel
+  // onglet) et à la touche Entrée.
+  const urlDe = (item) => {
+    if (item.kind === "employee") return `/employees/${item.data.matricule}`;
+    if (item.kind === "attestation") return `/attestations/${item.data.reference.replace("/", "-")}`;
+    if (item.kind === "consultation") return `/consultations/${slugDepuisReference(item.data.reference)}`;
+    return item.data.path;
+  };
+
   const activate = (item) => {
     if (!item) return;
-    if (item.kind === "employee") navigate(`/employees/${item.data.matricule}`);
-    else if (item.kind === "attestation") navigate(`/attestations/${item.data.reference.replace("/", "-")}`);
-    else if (item.kind === "consultation") navigate(`/consultations/${slugDepuisReference(item.data.reference)}`);
-    else navigate(item.data.path);
+    navigate(urlDe(item));
     onClose();
   };
 
@@ -241,12 +248,11 @@ export default function CommandPalette({ isOpen, onClose }) {
                 cursor += 1;
                 const idx = cursor;
                 return (
-                  <div
+                  <LienNav to={urlDe({ kind: "employee", data: e })}
                     key={e.id}
                     style={rowStyle(idx === selectedIndex)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    onClick={() => activate({ kind: "employee", data: e })}
-                  >
+                    onClick={onClose}>
                     <span style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>
                       {e.nom} {e.prenom}
                       <span style={{ color: theme.textMuted, fontWeight: 400 }}> · {e.matricule}</span>
@@ -256,7 +262,7 @@ export default function CommandPalette({ isOpen, onClose }) {
                         N° {e.numero_contrat_actif}
                       </span>
                     )}
-                  </div>
+                  </LienNav>
                 );
               })}
             </div>
@@ -271,17 +277,16 @@ export default function CommandPalette({ isOpen, onClose }) {
                 cursor += 1;
                 const idx = cursor;
                 return (
-                  <div
+                  <LienNav to={urlDe({ kind: "attestation", data: d })}
                     key={d.id}
                     style={rowStyle(idx === selectedIndex)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    onClick={() => activate({ kind: "attestation", data: d })}
-                  >
+                    onClick={onClose}>
                     <span style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>
                       {`${d.employee_nom} · ${d.reference}`}
                     </span>
                     <StatutBadge statut={d.statut} />
-                  </div>
+                  </LienNav>
                 );
               })}
             </div>
@@ -296,17 +301,16 @@ export default function CommandPalette({ isOpen, onClose }) {
                 cursor += 1;
                 const idx = cursor;
                 return (
-                  <div
+                  <LienNav to={urlDe({ kind: "consultation", data: d })}
                     key={d.id}
                     style={rowStyle(idx === selectedIndex)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    onClick={() => activate({ kind: "consultation", data: d })}
-                  >
+                    onClick={onClose}>
                     <span style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>
                       {`${d.employee_nom} · ${d.reference}`}
                     </span>
                     <StatutConsultationBadge statut={d.statut_effectif || d.statut} />
-                  </div>
+                  </LienNav>
                 );
               })}
             </div>
@@ -321,14 +325,13 @@ export default function CommandPalette({ isOpen, onClose }) {
                 cursor += 1;
                 const idx = cursor;
                 return (
-                  <div
+                  <LienNav to={urlDe({ kind: "page", data: a })}
                     key={a.id}
                     style={rowStyle(idx === selectedIndex)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    onClick={() => activate({ kind: "page", data: a })}
-                  >
+                    onClick={onClose}>
                     <span style={{ color: theme.text, fontSize: 14, fontWeight: 600 }}>{a.label}</span>
-                  </div>
+                  </LienNav>
                 );
               })}
             </div>

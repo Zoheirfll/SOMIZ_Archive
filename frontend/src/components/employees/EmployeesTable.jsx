@@ -2,6 +2,8 @@ import { useTheme } from "../../context/ThemeContext";
 import Skeleton from "../Skeleton";
 import EmployeeAvatar from "../EmployeeAvatar";
 import { employeeSlug } from "../../utils/employeeSlug";
+import LienNav from "../LienNav";
+import useLienLigne from "../../hooks/useLienLigne";
 import { formatDateFR } from "../../utils/formatDate";
 import { IconService, IconUsers } from "./icons";
 import DocFilterPanel from "./DocFilterPanel";
@@ -68,6 +70,8 @@ const EmployeesTable = ({
   setArchiveModalOpen,
 }) => {
   const theme = useTheme();
+  // Ctrl+clic / clic molette sur une cellule = nouvel onglet (useLienLigne).
+  const lienLigne = useLienLigne();
   return (
     <div className="anim-fade-in">
       {/* Bannière filtre service actif */}
@@ -943,9 +947,7 @@ const EmployeesTable = ({
                       </td>
                     )}
                     <td
-                      onClick={() =>
-                        navigate(`/employees/${employeeSlug(emp)}`)
-                      }
+                      {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                       style={{ padding: "13px 16px", cursor: "pointer" }}
                     >
                       <EmployeeAvatar
@@ -956,9 +958,7 @@ const EmployeesTable = ({
                       />
                     </td>
                     <td
-                      onClick={() =>
-                        navigate(`/employees/${employeeSlug(emp)}`)
-                      }
+                      {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                       style={{ padding: "13px 16px", cursor: "pointer" }}
                     >
                       <span
@@ -973,14 +973,14 @@ const EmployeesTable = ({
                           padding: "3px 8px",
                         }}
                       >
-                        {emp.matricule}
+                        <LienNav to={`/employees/${employeeSlug(emp)}`} style={{ color: "inherit" }}>
+                          {emp.matricule}
+                        </LienNav>
                       </span>
                     </td>
                     {isColumnVisible("numero_contrat") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           whiteSpace: "nowrap",
@@ -1012,9 +1012,7 @@ const EmployeesTable = ({
                       </td>
                     )}
                     <td
-                      onClick={() =>
-                        navigate(`/employees/${employeeSlug(emp)}`)
-                      }
+                      {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                       style={{
                         padding: "13px 16px",
                         color: theme.text,
@@ -1028,9 +1026,7 @@ const EmployeesTable = ({
                     </td>
                     {isColumnVisible("date_naissance") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           color: theme.textSecondary,
@@ -1048,9 +1044,7 @@ const EmployeesTable = ({
                     )}
                     {isColumnVisible("date_embauche") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           color: theme.textSecondary,
@@ -1068,9 +1062,7 @@ const EmployeesTable = ({
                     )}
                     {isColumnVisible("direction") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           color: theme.textSecondary,
@@ -1085,9 +1077,7 @@ const EmployeesTable = ({
                     )}
                     {isColumnVisible("departement") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           color: theme.textSecondary,
@@ -1102,9 +1092,7 @@ const EmployeesTable = ({
                     )}
                     {isColumnVisible("service") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           color: theme.textSecondary,
@@ -1122,9 +1110,7 @@ const EmployeesTable = ({
                     )}
                     {isColumnVisible("poste") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           color: theme.textSecondary,
@@ -1139,9 +1125,7 @@ const EmployeesTable = ({
                     )}
                     {isColumnVisible("statut") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{ padding: "13px 16px", cursor: "pointer" }}
                       >
                         <span
@@ -1172,9 +1156,7 @@ const EmployeesTable = ({
                     )}
                     {isColumnVisible("motif_archivage") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{
                           padding: "13px 16px",
                           color: theme.textSecondary,
@@ -1192,9 +1174,7 @@ const EmployeesTable = ({
                       .map((c) => (
                         <td
                           key={c.code}
-                          onClick={() =>
-                            navigate(`/employees/${employeeSlug(emp)}`)
-                          }
+                          {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                           style={{
                             padding: "13px 16px",
                             color: theme.textSecondary,
@@ -1209,9 +1189,7 @@ const EmployeesTable = ({
                       ))}
                     {isColumnVisible("dossier") && (
                       <td
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                        {...lienLigne(`/employees/${employeeSlug(emp)}`)}
                         style={{ padding: "13px 16px", cursor: "pointer" }}
                       >
                         <span
@@ -1246,10 +1224,8 @@ const EmployeesTable = ({
                       }}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <button
-                        onClick={() =>
-                          navigate(`/employees/${employeeSlug(emp)}`)
-                        }
+                      <LienNav
+                        to={`/employees/${employeeSlug(emp)}`}
                         className="btn-lift"
                         style={{
                           background: theme.primary,
@@ -1264,7 +1240,7 @@ const EmployeesTable = ({
                         }}
                       >
                         Voir →
-                      </button>
+                      </LienNav>
                     </td>
                   </tr>
                 ))}

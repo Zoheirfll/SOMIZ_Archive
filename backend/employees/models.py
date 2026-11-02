@@ -9,6 +9,7 @@ import os
 from django.db import models, transaction
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
+from django.utils import timezone
 from django.utils.text import slugify
 
 
@@ -601,13 +602,30 @@ class Employee(models.Model):
         ARCHIVE = 'archive', 'Archivé'
         DEMOBILISE = 'demobilise', 'Démobilisé'
 
+    class Sexe(models.TextChoices):
+        MASCULIN = 'M', 'Masculin'
+        FEMININ = 'F', 'Féminin'
+
+    # Statuts qui signifient « a quitté l'organisation » (mêmes que
+    # STATUTS_ARCHIVE de audit/stats.py, en valeurs et non en libellés).
+    STATUTS_SORTIE = (Statut.INACTIF, Statut.ARCHIVE, Statut.DEMOBILISE)
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     matricule = models.CharField(max_length=20, unique=True, db_index=True)
     nom = models.CharField(max_length=100, db_index=True)
     prenom = models.CharField(max_length=100)
     date_naissance = models.DateField(null=True, blank=True)
+    # Colonne fixe (pas un ChampPersonnalise) pour les indicateurs de parité
+    # du reporting — valeurs garanties, agrégation directe. Vide = non
+    # renseigné (employés existants). Champ système PERSONNEL : masqué dans
+    # la fiche pour un compte sans accès (EmployeeDetailSerializer).
+    sexe = models.CharField(max_length=1, choices=Sexe.choices, blank=True, default='', verbose_name="Sexe")
     date_embauche = models.DateField(null=True, blank=True, verbose_name="Date de recrutement")
     date_fin_contrat = models.DateField(null=True, blank=True, verbose_name="Date de fin de contrat")
+    # Vraie date de départ (≠ date du clic d'archivage, conservée par l'audit).
+    # Exigée à toute transition vers un statut de sortie faite par un humain,
+    # vidée à la restauration — règles : employees/sortie.py.
+    date_sortie = models.DateField(null=True, blank=True, verbose_name="Date de sortie")
     statut = models.CharField(max_length=20, choices=Statut.choices, default=Statut.ACTIF)
 
     photo = models.ImageField(upload_to=employee_photo_upload_path, null=True, blank=True, verbose_name="Photo")
@@ -770,8 +788,20 @@ class Employee(models.Model):
             return
         update_fields = []
         if dernier.statut != self.statut:
+            statut_avant = self.statut
             self.statut = dernier.statut
             update_fields.append('statut')
+            if self.statut == self.Statut.ACTIF:
+                if self.date_sortie:
+                    self.date_sortie = None
+                    update_fields.append('date_sortie')
+            elif (statut_avant not in self.STATUTS_SORTIE and not self.date_sortie
+                  and dernier.date_fin and dernier.date_fin <= timezone.localdate()):
+                # Transition automatique (aucun clic, donc aucune saisie) : la
+                # fin du contrat est la meilleure date de départ connue. Sans
+                # fin de contrat, la date reste vide (page Qualité des données).
+                self.date_sortie = dernier.date_fin
+                update_fields.append('date_sortie')
         if dernier.date_fin != self.date_fin_contrat:
             self.date_fin_contrat = dernier.date_fin
             update_fields.append('date_fin_contrat')

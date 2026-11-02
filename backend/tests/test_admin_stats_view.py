@@ -113,3 +113,24 @@ class TestPasDeNPlusUn:
             TypeDocument.objects.create(nom=f'T{i}', code=f'T{i}', obligatoire=(i % 2 == 0))
         apres = self._requetes(admin_user)
         assert apres == avant, f"{avant} requêtes pour 3 types, {apres} pour 15 : N+1"
+
+
+@pytest.mark.django_db
+class TestContratsEchus:
+    """Contrats échus d'employés actifs : dossiers à mettre à jour (2026-11-01)."""
+
+    def test_contrat_echu_liste_du_plus_ancien_au_plus_recent(self, admin_user, employee, type_contrat):
+        _contrat(employee, 'C-RECENT', -3, type_contrat)
+        _contrat(employee, 'C-ANCIEN', -40, type_contrat)
+        data = auth_client(admin_user).get(URL).data
+        assert [c['numero_contrat'] for c in data['contrats_echus']] == ['C-ANCIEN', 'C-RECENT']
+        assert data['contrats_echus_total'] == 2
+        assert data['contrats_echus'][0]['jours_depasses'] == 40
+        assert data['contrats_echus'][0]['employee_matricule'] == employee.matricule
+
+    def test_employe_sorti_ou_contrat_en_cours_exclu(self, admin_user, employee, type_contrat):
+        _contrat(employee, 'C-EN-COURS', 10, type_contrat)
+        _contrat(employee, 'C-ECHU', -5, type_contrat)
+        Employee.objects.filter(pk=employee.pk).update(statut='archive')
+        data = auth_client(admin_user).get(URL).data
+        assert data['contrats_echus'] == [] and data['contrats_echus_total'] == 0

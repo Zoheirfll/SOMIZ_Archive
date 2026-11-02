@@ -17,7 +17,7 @@ class Notification(models.Model):
         ATTESTATION_PRETE = 'ATTESTATION_PRETE', "Attestation prête"
         ATTESTATION_REJETEE = 'ATTESTATION_REJETEE', "Attestation rejetée"
         CONGE_NOUVELLE = 'CONGE_NOUVELLE', "Nouvelle demande de congé"
-        CONGE_PRETE = 'CONGE_PRETE', "Titre de congé prêt"
+        CONGE_PRETE = 'CONGE_PRETE', "Congé accordé"
         CONGE_REJETEE = 'CONGE_REJETEE', "Demande de congé rejetée"
         CONGE_ANNULEE = 'CONGE_ANNULEE', "Titre de congé annulé"
         CONGE_INTERROMPUE = 'CONGE_INTERROMPUE', "Congé interrompu"

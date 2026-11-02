@@ -68,9 +68,10 @@ describe("NotificationBell", () => {
     setup();
     await screen.findByTestId("notification-badge");
     fireEvent.click(screen.getByLabelText("Notifications, 1 non lue"));
-    fireEvent.click(await screen.findByText("Nouvelle demande d'attestation 00123/26"));
+    const lien = (await screen.findByText("Nouvelle demande d'attestation 00123/26")).closest("a");
+    expect(lien).toHaveAttribute("href", "/attestations/00123-26");
+    fireEvent.click(lien);
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/notifications/n1/lue/"));
-    expect(mockNavigate).toHaveBeenCalledWith("/attestations/00123-26");
   });
 
   test("« Tout marquer comme lu » appelle l'API", async () => {

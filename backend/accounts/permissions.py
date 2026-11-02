@@ -69,3 +69,18 @@ def visible_accounts(queryset, requester):
     return queryset.exclude(role='SUPERADMIN').exclude(
         Q(role='ADMIN') & ~Q(pk=requester.pk)
     )
+
+
+class CanViewStatistiques(BasePermission):
+    """Reporting RH (menu Statistiques, rapports mensuels, objectifs DRH,
+    anciens endpoints stats-detail/stats-export) : SUPERADMIN, ou ADMIN
+    portant `acces_statistiques` (attribuable par un SUPERADMIN uniquement)
+    — voir User.can_view_statistiques (2026-10-31)."""
+    message = "Vous n'avez pas accès aux statistiques RH."
+
+    def has_permission(self, request, view):
+        user = request.user
+        # Consentement Loi 18-07 vérifié ici aussi : les vues qui déclarent leurs
+        # permission_classes écrasent le défaut global (HasConsented).
+        return bool(user and user.is_authenticated and user.is_active
+                    and user.consent_loi1807_accepted_at and user.can_view_statistiques)

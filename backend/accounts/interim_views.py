@@ -1,6 +1,6 @@
 """API de gestion des intérims de responsables (2026-10-29).
 
-GET  /api/interims/                    unités gérables + intérims visibles
+GET  /api/interims/                    unités gérables + intérims visibles + `en_cours` (organigramme)
 GET  /api/interims/candidats/          comptes proposables pour une unité
 POST /api/interims/                    désigner un intérimaire
 POST /api/interims/<id>/decider/       valider / refuser (supérieur direct, SUPERADMIN)
@@ -102,6 +102,18 @@ def _unites_gerables(user):
     return resultat
 
 
+def _en_cours():
+    from django.utils import timezone
+    aujourdhui = timezone.localdate()
+    return [
+        {'unite_type': i.unite_type, 'unite_id': str(i.unite_id), 'interimaire_nom': _nom(i.interimaire),
+         'titulaire_nom': i.titulaire_nom, 'date_debut': i.date_debut, 'date_fin': i.date_fin,
+         'actif': i.date_debut <= aujourdhui}
+        for i in Interim.objects.filter(statut=Interim.Statut.VALIDE, date_fin__gte=aujourdhui)
+        .select_related('interimaire').order_by('date_debut')
+    ]
+
+
 class InterimListCreateView(APIView):
     permission_classes = [IsAdminOrConsultant]
 
@@ -111,6 +123,10 @@ class InterimListCreateView(APIView):
             'peut_gerer': peut_gerer_interim(request.user),
             'unites': _unites_gerables(request.user),
             'interims': [_representer(i, request.user) for i in interims],
+            # Organigramme (2026-11-01) : intérims validés en cours ou à venir de
+            # TOUTES les unités, affichés sur les cartes — même niveau
+            # d'information que le nom du responsable, déjà visible de tous.
+            'en_cours': _en_cours(),
         })
 
     def post(self, request):

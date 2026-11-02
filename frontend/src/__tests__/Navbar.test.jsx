@@ -61,8 +61,8 @@ describe("Navbar (desktop) — entrée « Registres »", () => {
 
   test("un ADMIN chargé des consultations seulement ne la voit pas", () => {
     avecUtilisateur({ role: "ADMIN", can_manage_consultations: true });
-    // Garde-fou contre un test vide : « Demandes » (consultations) doit, lui, être affiché.
-    expect(screen.getByRole("button", { name: /Demandes/ })).toBeInTheDocument();
+    // Garde-fou contre un test vide : « Demandes » (consultations) doit, lui, être affiché (lien direct).
+    expect(screen.getByRole("link", { name: /Demandes/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
     expect(screen.queryByRole("menuitem", { name: "Registres" })).not.toBeInTheDocument();
   });
@@ -86,9 +86,11 @@ describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
 
   test("un CONSULTANT n'a qu'une section : lien direct, pas de déroulant", () => {
     avecUtilisateur({ role: "CONSULTANT", can_request_consultations: true });
-    const bouton = screen.getByRole("button", { name: /Demandes/ });
-    expect(bouton).not.toHaveAttribute("aria-haspopup");
-    fireEvent.click(bouton);
+    // Vrai lien (clic droit / Ctrl+clic : nouvel onglet), pas un bouton de déroulant.
+    const lien = screen.getByRole("link", { name: /Demandes/ });
+    expect(lien).not.toHaveAttribute("aria-haspopup");
+    expect(lien).toHaveAttribute("href", "/consultations");
+    fireEvent.click(lien);
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
   });
 
@@ -100,8 +102,9 @@ describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
 
   test("un compte qui n'a que les congés : lien direct vers /conges, pas de déroulant", () => {
     avecUtilisateur({ role: "GESTIONNAIRE", can_request_conges: true });
-    const bouton = screen.getByRole("button", { name: /Demandes/ });
-    expect(bouton).not.toHaveAttribute("aria-haspopup");
+    const lien = screen.getByRole("link", { name: /Demandes/ });
+    expect(lien).not.toHaveAttribute("aria-haspopup");
+    expect(lien).toHaveAttribute("href", "/conges");
   });
 
   test("un responsable voit sur « Demandes » le nombre de congés à viser", async () => {
@@ -117,6 +120,16 @@ describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
   test("un ADMIN non chargé des congés ne voit pas la section", () => {
     avecUtilisateur({ role: "ADMIN" });
     expect(screen.queryByRole("button", { name: /Demandes/ })).not.toBeInTheDocument();
+  });
+
+  test("Statistiques : masqué pour un ADMIN sans acces_statistiques, visible avec", () => {
+    avecUtilisateur({ role: "ADMIN" });
+    expect(screen.queryByText("Statistiques")).not.toBeInTheDocument();
+  });
+
+  test("Statistiques : visible pour un ADMIN portant can_view_statistiques", () => {
+    avecUtilisateur({ role: "ADMIN", can_view_statistiques: true });
+    expect(screen.getByText("Statistiques")).toBeInTheDocument();
   });
 
   test("Échap referme le déroulant", () => {

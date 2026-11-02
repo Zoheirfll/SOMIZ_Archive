@@ -235,4 +235,18 @@ export const SYSTEM_FIELDS = [
     type_champ: "date",
     system: true,
   },
+  {
+    id: "sys-sexe",
+    nom: "Sexe",
+    code: "sexe",
+    type_champ: "liste",
+    system: true,
+  },
+  {
+    id: "sys-date_sortie",
+    nom: "Date de sortie",
+    code: "date_sortie",
+    type_champ: "date",
+    system: true,
+  },
 ];

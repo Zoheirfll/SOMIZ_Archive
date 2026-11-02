@@ -268,6 +268,29 @@ def _contrats_echeance(jours=90):
     ]
 
 
+def _contrats_echus():
+    """Contrats encore « actifs » dont la date de fin est passée, pour des
+    employés toujours actifs : contrat à renouveler ou sortie à saisir —
+    dossier à mettre à jour (tableau de bord + Statistiques > Contrats). Les
+    plus anciens dépassements d'abord."""
+    today = timezone.localdate()
+    contrats = Contrat.objects.filter(
+        statut='actif', date_fin__lt=today, employee__statut='actif',
+    ).select_related('employee').order_by('date_fin')
+    return [
+        {
+            'id': str(c.id),
+            'numero_contrat': c.numero_contrat,
+            'employee_id': str(c.employee_id),
+            'employee_matricule': c.employee.matricule,
+            'employee_nom': f'{c.employee.prenom} {c.employee.nom}',
+            'date_fin': c.date_fin.isoformat(),
+            'jours_depasses': (today - c.date_fin).days,
+        }
+        for c in contrats
+    ]
+
+
 def _completude_par(group_field, extra_values=()):
     types_obligatoires = list(TypeDocument.objects.filter(
         obligatoire=True, is_active=True, sous_types__isnull=True

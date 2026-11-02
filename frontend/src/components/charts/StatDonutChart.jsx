@@ -3,6 +3,12 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 import { useTheme } from "../../context/ThemeContext";
 import ChartTooltip from "./ChartTooltip";
 import { colorAt } from "./chartColors";
+import { LienAction } from "../LienNav";
+import { menuClicDroit, ouvreAilleurs } from "../MenuLien";
+
+// Entrée de légende : vrai lien quand l'appelant fournit `href`, sinon simple bloc.
+const Entree = ({ href, onAction, ...rest }) =>
+  href ? <LienAction href={href} onAction={onAction} {...rest} /> : <div {...rest} />;
 
 // Un champ de recherche apparaît au-dessus de la légende dès qu'il y a de
 // quoi filtrer — inutile pour un donut à une seule catégorie (ex. "Par
@@ -14,7 +20,7 @@ const SEARCH_THRESHOLD = 1;
 // libellés (ex. "Par Fonction", 10+ catégories), ce qui déforme la carte par
 // rapport à ses voisines dans la grille. Ici la carte garde toujours la même
 // hauteur, quel que soit le nombre de catégories.
-const DonutLegend = ({ data, theme, height, onSliceClick, matches }) => (
+const DonutLegend = ({ data, theme, height, onSliceClick, urlDe, matches }) => (
   <div
     style={{
       maxHeight: height, overflowY: "auto", fontSize: 12, color: theme.textSecondary,
@@ -23,9 +29,11 @@ const DonutLegend = ({ data, theme, height, onSliceClick, matches }) => (
   >
     {data.map((entry, index) => (
       matches(entry) && (
-        <div
+        <Entree
           key={entry.id || entry.nom}
-          onClick={onSliceClick ? () => onSliceClick(entry) : undefined}
+          {...(urlDe && onSliceClick
+            ? { href: urlDe(entry), onAction: () => onSliceClick(entry) }
+            : { onClick: onSliceClick ? () => onSliceClick(entry) : undefined })}
           title={`${entry.nom} (${entry.count})`}
           style={{
             display: "flex", alignItems: "center", gap: 6, padding: "3px 0",
@@ -36,14 +44,14 @@ const DonutLegend = ({ data, theme, height, onSliceClick, matches }) => (
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {entry.nom}
           </span>
-        </div>
+        </Entree>
       )
     ))}
   </div>
 );
 
 // Camembert (donut) pour une répartition {nom, count}[], avec total au centre.
-const StatDonutChart = ({ data, onSliceClick, height = 240 }) => {
+const StatDonutChart = ({ data, onSliceClick, urlDe, height = 240 }) => {
   const theme = useTheme();
   const [search, setSearch] = useState("");
 
@@ -87,7 +95,8 @@ const StatDonutChart = ({ data, onSliceClick, height = 240 }) => {
                 innerRadius="58%"
                 outerRadius="85%"
                 paddingAngle={2}
-                onClick={onSliceClick ? (entry) => onSliceClick(entry) : undefined}
+                onClick={onSliceClick ? (entry, _i, e) => (urlDe && ouvreAilleurs(e) ? window.open(urlDe(entry), "_blank", "noopener") : onSliceClick(entry)) : undefined}
+                onContextMenu={urlDe ? (entry, _i, e) => menuClicDroit(e, urlDe(entry)) : undefined}
                 style={{ cursor: onSliceClick ? "pointer" : "default" }}
                 isAnimationActive={true}
               >
@@ -119,7 +128,7 @@ const StatDonutChart = ({ data, onSliceClick, height = 240 }) => {
             Aucun résultat.
           </div>
         ) : (
-          <DonutLegend data={data} theme={theme} height={height} onSliceClick={onSliceClick} matches={matches} />
+          <DonutLegend data={data} theme={theme} height={height} onSliceClick={onSliceClick} urlDe={urlDe} matches={matches} />
         )}
       </div>
     </div>

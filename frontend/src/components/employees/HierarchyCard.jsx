@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { IconArrowRight } from "./icons";
+import { LienAction } from "../LienNav";
 
 // Carte hiérarchique premium (Direction/Département/Service/Pôle/Cellule/
 // Section) utilisée dans le drill-down organisationnel de /employees —
@@ -15,14 +16,17 @@ const HierarchyCard = ({
   accentColor,
   animClass,
   onClick,
+  href,
 }) => {
   const theme = useTheme();
   const [hovered, setHovered] = useState(false);
+  // Avec `href` : vrai lien (clic droit / Ctrl+clic = nouvel onglet), le clic simple garde l'action d'état.
+  const Racine = href ? LienAction : "div";
 
   return (
-    <div
+    <Racine
       className={animClass}
-      onClick={onClick}
+      {...(href ? { href, onAction: onClick } : { onClick })}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -198,7 +202,7 @@ const HierarchyCard = ({
           </div>
         </div>
       </div>
-    </div>
+    </Racine>
   );
 };
 

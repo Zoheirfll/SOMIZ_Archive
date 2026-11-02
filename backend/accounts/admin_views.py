@@ -15,7 +15,59 @@ from employees.models import ChampPersonnalise, Employee, EmployeeAccessGrant, T
 
 User = get_user_model()
 
-class UserSerializer(serializers.ModelSerializer):
+# Comptes ADMIN / GESTIONNAIRE = personnel de l'entreprise : liés à leur fiche
+# employé (2026-10-31, securite.md point 55). Obligatoire à la création, au
+# passage à l'un de ces rôles, et un compte lié ne peut plus être délié ; les
+# comptes existants sans fiche restent utilisables (signalés « Sans fiche » sur
+# /users) jusqu'à régularisation. SUPERADMIN exempté (compte de secours).
+ROLES_FICHE_OBLIGATOIRE = ('ADMIN', 'GESTIONNAIRE')
+MSG_FICHE_OBLIGATOIRE = "Un compte Administrateur ou Gestionnaire doit être lié à la fiche employé de son titulaire."
+
+
+class FicheEmployeMixin:
+    """Champ `employee` (fiche liée) partagé par la création et la
+    modification de compte, + `employee_info` en lecture."""
+
+    def get_employee_info(self, obj):
+        e = obj.employee
+        if e is None:
+            return None
+        return {'id': str(e.id), 'matricule': e.matricule, 'nom': e.nom, 'prenom': e.prenom, 'statut': e.statut}
+
+    def validate_employee(self, value):
+        if value is None:
+            return None
+        if value.statut != Employee.Statut.ACTIF:
+            raise serializers.ValidationError("Cette fiche n'est pas active (employé sorti) : impossible d'y lier un compte.")
+        autre = User.objects.filter(employee=value)
+        if self.instance is not None:
+            autre = autre.exclude(pk=self.instance.pk)
+        autre = autre.first()
+        if autre:
+            raise serializers.ValidationError(f"Cette fiche est déjà liée au compte « {autre.username} ».")
+        return value
+
+    def _verifier_fiche(self, attrs):
+        instance = self.instance
+        role = attrs.get('role', instance.role if instance else None)
+        employee = attrs['employee'] if 'employee' in attrs else (instance.employee if instance else None)
+        if role in ROLES_FICHE_OBLIGATOIRE and employee is None:
+            creation = instance is None
+            changement_role = instance is not None and instance.role != role
+            deliaison = instance is not None and 'employee' in attrs and instance.employee_id
+            if creation or changement_role or deliaison:
+                raise serializers.ValidationError({'employee': MSG_FICHE_OBLIGATOIRE})
+        if 'employee' in attrs and employee is not None:
+            # Identité reprise de la fiche : pas d'écart nom/prénom entre le compte et le dossier RH.
+            attrs['nom'], attrs['prenom'] = employee.nom, employee.prenom
+        return attrs
+
+
+class UserSerializer(FicheEmployeMixin, serializers.ModelSerializer):
+    employee = serializers.PrimaryKeyRelatedField(
+        queryset=Employee.objects.all(), required=False, allow_null=True,
+    )
+    employee_info = serializers.SerializerMethodField()
     scope_directions_nom = serializers.SerializerMethodField()
     scope_poles_nom = serializers.SerializerMethodField()
     scope_departements_nom = serializers.SerializerMethodField()
@@ -27,6 +79,7 @@ class UserSerializer(serializers.ModelSerializer):
     employee_grants_count = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
+    fonction = serializers.CharField(read_only=True)
 
     def get_created_by_name(self, obj):
         return obj.created_by.full_name if obj.created_by_id else None
@@ -66,8 +119,8 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'nom', 'prenom', 'role', 'libelle_role', 'charge_attestation',
-            'charge_consultation', 'charge_registre', 'charge_conge',
+            'id', 'username', 'nom', 'prenom', 'fonction', 'role', 'libelle_role', 'charge_attestation',
+            'charge_consultation', 'charge_registre', 'charge_conge', 'acces_statistiques',
             'peut_demander_attestation', 'peut_demander_consultation', 'peut_demander_conge',
             'is_active', 'last_login',
             'scope_directions', 'scope_directions_nom',
@@ -78,7 +131,7 @@ class UserSerializer(serializers.ModelSerializer):
             'scope_sections', 'scope_sections_nom',
             'scope_types_documents', 'scope_types_documents_nom',
             'scope_champs_personnels', 'scope_champs_personnels_nom',
-            'employee_grants_count',
+            'employee_grants_count', 'employee', 'employee_info',
             'created_by_name', 'updated_by_name', 'date_joined', 'updated_at',
         ]
         read_only_fields = ['id', 'last_login', 'date_joined', 'updated_at']
@@ -130,13 +183,16 @@ class UserSerializer(serializers.ModelSerializer):
             attrs['charge_consultation'] = False
             attrs['charge_registre'] = False
             attrs['charge_conge'] = False
+        # Statistiques RH : ADMIN ou CONSULTANT (2026-11-01).
+        if role not in ('ADMIN', 'CONSULTANT'):
+            attrs['acces_statistiques'] = False
         # peut_demander_* : pendant demandeur, pour GESTIONNAIRE/CONSULTANT
         # uniquement (même logique de remise à zéro en cas de changement de rôle).
         if role not in ('GESTIONNAIRE', 'CONSULTANT'):
             attrs['peut_demander_attestation'] = False
             attrs['peut_demander_consultation'] = False
             attrs['peut_demander_conge'] = False
-        return attrs
+        return self._verifier_fiche(attrs)
 
     def validate_charge_consultation(self, value):
         return _reserve_au_superadmin(self, value, self.instance.charge_consultation if self.instance else False)
@@ -156,6 +212,11 @@ class UserSerializer(serializers.ModelSerializer):
             self, value, self.instance.charge_conge if self.instance else False, "aux demandes de congé",
         )
 
+    def validate_acces_statistiques(self, value):
+        return _reserve_au_superadmin(
+            self, value, self.instance.acces_statistiques if self.instance else False, "aux statistiques RH",
+        )
+
 
 def _reserve_au_superadmin(serializer, value, valeur_actuelle, objet="aux consultations d'archives"):
     """Donner un accès traiteur (consultations d'archives, attestations de
@@ -172,15 +233,19 @@ def _reserve_au_superadmin(serializer, value, valeur_actuelle, objet="aux consul
     return value
 
 
-class UserCreateSerializer(serializers.ModelSerializer):
+class UserCreateSerializer(FicheEmployeMixin, serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=10)
+    employee = serializers.PrimaryKeyRelatedField(
+        queryset=Employee.objects.all(), required=False, allow_null=True,
+    )
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'nom', 'prenom', 'role', 'libelle_role',
-            'charge_attestation', 'charge_consultation', 'charge_registre', 'charge_conge',
+            'charge_attestation', 'charge_consultation', 'charge_registre', 'charge_conge', 'acces_statistiques',
             'peut_demander_attestation', 'peut_demander_consultation', 'peut_demander_conge', 'password',
+            'employee',
         ]
         read_only_fields = ['id']
 
@@ -195,6 +260,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
     def validate_charge_conge(self, value):
         return _reserve_au_superadmin(self, value, False, "aux demandes de congé")
+
+    def validate_acces_statistiques(self, value):
+        return _reserve_au_superadmin(self, value, False, "aux statistiques RH")
 
     def validate_role(self, value):
         # SUPERADMIN ne peut jamais être créé/attribué via l'API — un
@@ -233,11 +301,13 @@ class UserCreateSerializer(serializers.ModelSerializer):
             attrs['charge_consultation'] = False
             attrs['charge_registre'] = False
             attrs['charge_conge'] = False
+        if attrs.get('role') not in ('ADMIN', 'CONSULTANT'):
+            attrs['acces_statistiques'] = False
         if attrs.get('role') not in ('GESTIONNAIRE', 'CONSULTANT'):
             attrs['peut_demander_attestation'] = False
             attrs['peut_demander_consultation'] = False
             attrs['peut_demander_conge'] = False
-        return attrs
+        return self._verifier_fiche(attrs)
 
     def validate_password(self, value):
         # min_length=10 ci-dessus déjà couvert par MinimumLengthValidator, mais
@@ -291,7 +361,7 @@ class UserListCreateView(generics.ListCreateAPIView):
         return qs
 
     def get_queryset(self):
-        qs = User.objects.all().order_by('nom', 'prenom', 'username')
+        qs = User.objects.select_related('employee__poste').order_by('nom', 'prenom', 'username')
         # Périmètre de visibilité des comptes : voir visible_accounts.
         qs = visible_accounts(qs, self.request.user)
         qs = self._recherche(qs)
@@ -305,6 +375,9 @@ class UserListCreateView(generics.ListCreateAPIView):
             roles = [r for r in (self.request.query_params.get('role') or '').split(',') if r]
             if roles:
                 qs = qs.filter(role__in=roles)
+            if self.request.query_params.get('fiche') == 'sans':
+                # Comptes à régulariser : ADMIN/GESTIONNAIRE sans fiche employé liée.
+                qs = qs.filter(role__in=ROLES_FICHE_OBLIGATOIRE, employee__isnull=True)
         return qs
 
     def get_serializer_class(self):
@@ -325,6 +398,8 @@ class UserListCreateView(generics.ListCreateAPIView):
                 'peut_demander_consultation': user.peut_demander_consultation,
                 'charge_conge': user.charge_conge,
                 'peut_demander_conge': user.peut_demander_conge,
+                'acces_statistiques': user.acces_statistiques,
+                'employee': user.employee.matricule if user.employee_id else None,
             },
         )
 
@@ -364,6 +439,8 @@ class UserUpdateView(generics.RetrieveUpdateDestroyAPIView):
                 'peut_demander_consultation': u.peut_demander_consultation,
                 'charge_conge': u.charge_conge,
                 'peut_demander_conge': u.peut_demander_conge,
+                'acces_statistiques': u.acces_statistiques,
+                'employee': u.employee.matricule if u.employee_id else None,
                 'scope_directions': sorted(str(i) for i in u.scope_directions.values_list('id', flat=True)),
                 'scope_poles': sorted(str(i) for i in u.scope_poles.values_list('id', flat=True)),
                 'scope_departements': sorted(str(i) for i in u.scope_departements.values_list('id', flat=True)),

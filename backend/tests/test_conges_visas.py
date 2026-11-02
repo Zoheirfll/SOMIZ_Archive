@@ -79,13 +79,22 @@ def test_demande_avec_chaine_passe_en_visa_et_notifie_les_trois_niveaux(
         assert Notification.objects.filter(recipient=monde[cle]).exists()
 
 
-def test_demande_sans_chaine_reste_recue(employee, monde):
+def test_demande_sans_chaine_reste_bloquee_puis_relancee_a_la_designation(employee, monde):
+    # 2026-10-31 : sans supérieur, personne n'accorde à la place de la hiérarchie.
+    chef_service = employee.service.responsable
     Departement.objects.update(responsable=None)
     Direction.objects.update(responsable=None)
     employee.service.responsable = None
     employee.service.save()
     d = _creer(monde["demandeur"], employee)
-    assert d.statut == "recue" and not d.visas.exists()
+    assert d.statut == "visa" and not d.visas.exists()
+    from conges import visas
+    assert visas.sans_superieur(d)
+    employee.service.responsable = chef_service
+    employee.service.save()
+    assert [x.pk for x in visas.relancer_demandes_sans_chaine()] == [d.pk]
+    d.refresh_from_db()
+    assert d.statut == "visa" and d.visas.exists() and not visas.sans_superieur(d)
 
 
 def test_chaine_complete_ordre_normal_puis_recue(monde, employee):
@@ -98,17 +107,52 @@ def test_chaine_complete_ordre_normal_puis_recue(monde, employee):
     assert AuditLog.objects.filter(action="VISER_CONGE").count() == 3
 
 
-def test_niveau_superieur_vise_sans_attendre_et_solde_les_inferieurs(monde, employee):
+def test_le_chef_de_departement_ne_vise_que_son_niveau_pas_celui_du_chef_de_service(monde, employee):
     d = _creer(monde["demandeur"], employee)
     resp = _client(monde["d"]).post(f"/api/conges/demandes/{_ref(d)}/viser/")
     assert resp.status_code == 200
     decisions = {v.niveau: v for v in d.visas.all()}
-    assert decisions[1].decision == "vise_par_superieur"
-    assert "en raison de l'absence" in decisions[1].motif
     assert decisions[2].decision == "vise"
+    assert decisions[1].decision == "en_attente"  # jamais soldé automatiquement
     assert decisions[3].decision == "en_attente"
     d.refresh_from_db()
-    assert d.statut == "visa"  # le directeur doit encore viser
+    assert d.statut == "visa"
+    # Il a encore la possibilité de viser, explicitement, à la place du chef de service absent.
+    detail = _client(monde["d"]).get(f"/api/conges/demandes/{_ref(d)}/").data
+    assert detail["visa_possibilites"] == {"propre": False, "a_la_place": [
+        {"niveau": 1, "unite_nom": decisions[1].unite_nom, "responsable_nom": decisions[1].responsable_nom}]}
+    # Un second visa « normal » n'a plus rien à signer à son niveau.
+    assert _client(monde["d"]).post(f"/api/conges/demandes/{_ref(d)}/viser/").status_code == 400
+
+
+def test_visa_a_la_place_du_chef_de_service_en_raison_de_son_absence(monde, employee):
+    d = _creer(monde["demandeur"], employee)
+    _client(monde["d"]).post(f"/api/conges/demandes/{_ref(d)}/viser/")
+    resp = _client(monde["d"]).post(f"/api/conges/demandes/{_ref(d)}/viser/", {"niveau": 1}, format="json")
+    assert resp.status_code == 200
+    n1 = d.visas.get(niveau=1)
+    assert n1.decision == "vise_par_superieur" and "en raison de l'absence de" in n1.motif
+    assert d.visas.get(niveau=3).decision == "en_attente"
+
+
+def test_le_directeur_vise_son_niveau_puis_choisit_les_niveaux_a_remplacer(monde, employee):
+    d = _creer(monde["demandeur"], employee)
+    client = _client(monde["r"])
+    assert client.post(f"/api/conges/demandes/{_ref(d)}/viser/").status_code == 200
+    assert {v.niveau: v.decision for v in d.visas.all()} == {1: "en_attente", 2: "en_attente", 3: "vise"}
+    assert client.post(f"/api/conges/demandes/{_ref(d)}/viser/", {"niveau": 2}, format="json").status_code == 200
+    d.refresh_from_db()
+    assert d.statut == "visa"  # le chef de service n'a toujours pas visé
+    assert client.post(f"/api/conges/demandes/{_ref(d)}/viser/", {"niveau": 1}, format="json").status_code == 200
+    d.refresh_from_db()
+    assert d.statut == "recue"
+
+
+def test_on_ne_peut_pas_viser_a_la_place_d_un_niveau_superieur(monde, employee):
+    d = _creer(monde["demandeur"], employee)
+    resp = _client(monde["s"]).post(f"/api/conges/demandes/{_ref(d)}/viser/", {"niveau": 3}, format="json")
+    assert resp.status_code == 400
+    assert d.visas.get(niveau=3).decision == "en_attente"
 
 
 def test_niveau_inferieur_ne_peut_pas_viser_a_la_place_du_superieur(monde, employee):
@@ -179,8 +223,9 @@ def test_responsable_sans_compte_le_niveau_superieur_peut_viser(monde, employee)
     monde["s"].delete()  # le chef de service n'a plus de compte
     d = _creer(monde["demandeur"], employee)
     assert d.visas.get(niveau=1).compte_id is None
-    resp = _client(monde["d"]).post(f"/api/conges/demandes/{_ref(d)}/viser/")
-    assert resp.status_code == 200
+    client = _client(monde["d"])
+    assert client.post(f"/api/conges/demandes/{_ref(d)}/viser/").status_code == 200
+    assert client.post(f"/api/conges/demandes/{_ref(d)}/viser/", {"niveau": 1}, format="json").status_code == 200
     assert d.visas.get(niveau=1).decision == "vise_par_superieur"
 
 

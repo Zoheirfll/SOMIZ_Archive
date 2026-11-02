@@ -562,3 +562,31 @@ describe("EmployeeForm — validation champs", () => {
     expect(api.post).not.toHaveBeenCalled();
   });
 });
+
+describe("EmployeeForm — date de sortie", () => {
+  test("le champ apparaît quand on passe un actif en Archivé, et part dans le PATCH", async () => {
+    api.patch.mockResolvedValue({ data: {} });
+    renderEdit();
+    const statut = await screen.findByDisplayValue("Actif");
+    expect(screen.queryByLabelText(/Date de sortie/)).not.toBeInTheDocument();
+    fireEvent.change(statut, { target: { value: "archive" } });
+    const champ = await screen.findByLabelText(/Date de sortie/);
+    fireEvent.change(champ, { target: { value: "2026-03-31" } });
+    fireEvent.click(screen.getByText(/Enregistrer/));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(
+        "/employees/emp-uuid/",
+        expect.objectContaining({ statut: "archive", date_sortie: "2026-03-31" }),
+      ),
+    );
+  });
+
+  test("revenir à Actif vide la date de sortie", async () => {
+    renderEdit();
+    const statut = await screen.findByDisplayValue("Actif");
+    fireEvent.change(statut, { target: { value: "archive" } });
+    fireEvent.change(await screen.findByLabelText(/Date de sortie/), { target: { value: "2026-03-31" } });
+    fireEvent.change(statut, { target: { value: "actif" } });
+    expect(screen.queryByLabelText(/Date de sortie/)).not.toBeInTheDocument();
+  });
+});

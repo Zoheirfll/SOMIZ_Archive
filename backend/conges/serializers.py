@@ -87,6 +87,16 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
     conge_termine = serializers.BooleanField(read_only=True)
     visas = serializers.SerializerMethodField()
     peut_viser = serializers.SerializerMethodField()
+    visa_possibilites = serializers.SerializerMethodField()
+    titre_fige = serializers.SerializerMethodField()
+    sans_superieur = serializers.SerializerMethodField()
+
+    def get_sans_superieur(self, obj):
+        # Bloquée : aucun responsable désigné au-dessus de l'employé (visas.py).
+        return obj.statut == DemandeConge.Statut.VISA and not obj.visas.all()
+
+    def get_titre_fige(self, obj):
+        return bool(obj.titre_pdf)
 
     def get_visas(self, obj):
         return [{
@@ -104,10 +114,25 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         return bool(request and visas.peut_viser(obj, request.user))
 
+    def get_visa_possibilites(self, obj):
+        """Ce que l'utilisateur peut viser : son propre niveau, et/ou, un par un,
+        les niveaux inférieurs d'un responsable absent (jamais en cascade)."""
+        request = self.context.get('request')
+        if not request:
+            return {'propre': False, 'a_la_place': []}
+        propres, remplacables = visas.possibilites(obj, request.user)
+        return {
+            'propre': bool(propres),
+            'a_la_place': [
+                {'niveau': v.niveau, 'unite_nom': v.unite_nom, 'responsable_nom': v.responsable_nom}
+                for v in remplacables
+            ],
+        }
+
     class Meta:
         model = DemandeConge
         fields = [
-            'id', 'reference', 'conge_termine', 'visas', 'peut_viser', 'employee', 'employee_nom', 'employee_matricule',
+            'id', 'reference', 'conge_termine', 'visas', 'peut_viser', 'sans_superieur', 'visa_possibilites', 'titre_fige', 'employee', 'employee_nom', 'employee_matricule',
             'employee_date_embauche', 'employee_direction_nom', 'employee_departement_nom',
             'employee_service_nom', 'employee_poste_nom', 'employee_type_contrat_nom',
             'contrat', 'contrat_numero',
@@ -119,7 +144,7 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             'date_rappel', 'jours_effectifs', 'motif_interruption', 'interrompue_par_nom', 'date_interruption',
             'scan_document', 'demandeur', 'demandeur_nom', 'demandeur_role', 'demandeur_libelle_role',
             'traite_par', 'traite_par_nom',
-            'created_at', 'date_prete', 'date_recuperee', 'date_document', 'updated_at',
+            'created_at', 'date_accord', 'date_document', 'updated_at',
         ]
         read_only_fields = fields
 
@@ -291,9 +316,9 @@ class ObservationsSerializer(serializers.ModelSerializer):
         fields = ['observations']
 
     def validate(self, attrs):
-        if self.instance.statut not in (DemandeConge.Statut.RECUE, DemandeConge.Statut.PRETE):
+        if self.instance.statut not in (DemandeConge.Statut.RECUE, DemandeConge.Statut.ACCORDEE):
             raise serializers.ValidationError(
-                "Les observations ne sont plus modifiables une fois le titre récupéré, annulé ou interrompu."
+                "Les observations ne sont plus modifiables une fois le titre annulé ou interrompu."
             )
         return attrs
 

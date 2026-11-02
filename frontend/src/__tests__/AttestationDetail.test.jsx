@@ -41,8 +41,7 @@ describe("AttestationDetail — fil d'Ariane", () => {
     }});
     renderDetail();
     await waitFor(() => screen.getByText("Attestations"));
-    fireEvent.click(screen.getByText("Attestations"));
-    expect(mockNavigate).toHaveBeenCalledWith("/attestations");
+    expect(screen.getByText("Attestations").closest("a")).toHaveAttribute("href", "/attestations");
   });
 });
 

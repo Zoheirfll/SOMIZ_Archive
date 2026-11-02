@@ -130,11 +130,20 @@ class ReferentielAuditMixin:
         """Désigner un employé sans compte comme responsable d'une unité crée
         une proposition de compte à valider par un ADMIN (jamais un compte
         direct) — voir accounts/propositions.py."""
-        if avant is not None and avant.get('responsable') == str(instance.responsable_id):
+        # Garde d'abord : la plupart des référentiels (TypeDocument,
+        # ChampPersonnalise, Poste…) n'ont pas de responsable — lire
+        # instance.responsable_id sans elle levait une AttributeError (500).
+        responsable_id = getattr(instance, 'responsable_id', None)
+        if avant is not None and avant.get('responsable') == str(responsable_id):
             return
-        if getattr(instance, 'responsable_id', None):
+        if responsable_id:
             from accounts.propositions import rattacher_responsable
             rattacher_responsable(self.request, instance.responsable, instance)
+            # Demandes de congé bloquées faute de supérieur : la chaîne d'accord
+            # peut désormais exister (conges/visas.py, 2026-10-31).
+            from conges import notifications as notif_conges, visas
+            for demande in visas.relancer_demandes_sans_chaine():
+                notif_conges.notifier_visa_requis(demande, self.request.user)
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -166,7 +175,33 @@ class ReferentielAuditMixin:
 
 # ─── SERIALIZERS ──────────────────────────────────────────────────────────────
 
-class DirectionSerializer(serializers.ModelSerializer):
+class ResponsableUniqueMixin:
+    """Un employé ne dirige qu'une seule unité active, tous niveaux confondus
+    (Direction, Pôle, Département, Service, Cellule, Section — 2026-11-01).
+    Sinon la chaîne d'accord des congés et le périmètre du chef deviennent
+    ambigus. Un remplacement temporaire passe par l'intérim, pas par une
+    double désignation."""
+
+    def validate_responsable(self, value):
+        if value is None:
+            return value
+        from employees.models import Cellule, Departement, Direction, Pole, Section, Service
+        for modele in (Direction, Pole, Departement, Service, Cellule, Section):
+            autres = modele.objects.filter(responsable=value, is_active=True)
+            if self.instance is not None and isinstance(self.instance, modele):
+                autres = autres.exclude(pk=self.instance.pk)
+            unite = autres.first()
+            if unite:
+                titre = modele._meta.get_field('responsable').verbose_name
+                raise serializers.ValidationError(
+                    f"{value.prenom} {value.nom} est déjà {titre.lower()} de « {unite.nom} ». "
+                    "Un employé ne peut diriger qu'une seule unité : retirez-le d'abord de cette unité "
+                    "(ou utilisez l'intérim pour un remplacement temporaire)."
+                )
+        return value
+
+
+class DirectionSerializer(ResponsableUniqueMixin, serializers.ModelSerializer):
     nb_departements = serializers.SerializerMethodField()
     nb_poles = serializers.SerializerMethodField()
     nb_cellules = serializers.SerializerMethodField()
@@ -194,7 +229,7 @@ class DirectionSerializer(serializers.ModelSerializer):
         return obj.sections.filter(is_active=True).count()
 
 
-class PoleSerializer(serializers.ModelSerializer):
+class PoleSerializer(ResponsableUniqueMixin, serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     nb_departements = serializers.SerializerMethodField()
     responsable_nom = serializers.SerializerMethodField()
@@ -210,7 +245,7 @@ class PoleSerializer(serializers.ModelSerializer):
         return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
 
-class DepartementSerializer(serializers.ModelSerializer):
+class DepartementSerializer(ResponsableUniqueMixin, serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True)
     pole_nom = serializers.CharField(source='pole.nom', read_only=True, default=None)
     nb_services = serializers.SerializerMethodField()
@@ -236,7 +271,7 @@ class DepartementSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ServiceSerializer(serializers.ModelSerializer):
+class ServiceSerializer(ResponsableUniqueMixin, serializers.ModelSerializer):
     departement_nom = serializers.CharField(source='departement.nom', read_only=True)
     direction_nom = serializers.CharField(source='departement.direction.nom', read_only=True)
     nb_employes = serializers.SerializerMethodField()
@@ -255,7 +290,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         return f"{obj.responsable.prenom} {obj.responsable.nom}" if obj.responsable_id else None
 
 
-class CelluleSerializer(serializers.ModelSerializer):
+class CelluleSerializer(ResponsableUniqueMixin, serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True, default=None)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True, default=None)
     nb_employes = serializers.SerializerMethodField()
@@ -478,7 +513,7 @@ class CelluleDetailView(ReferentielAuditMixin, generics.RetrieveUpdateDestroyAPI
     queryset = Cellule.objects.select_related('direction', 'departement')
 
 
-class SectionSerializer(serializers.ModelSerializer):
+class SectionSerializer(ResponsableUniqueMixin, serializers.ModelSerializer):
     direction_nom = serializers.CharField(source='direction.nom', read_only=True, default=None)
     departement_nom = serializers.CharField(source='departement.nom', read_only=True, default=None)
     nb_employes = serializers.SerializerMethodField()
@@ -783,7 +818,7 @@ RESERVED_CHAMP_CODES = {
     'matricule', 'numero_contrat', 'nom', 'prenom',
     'date_naissance', 'date_embauche', 'date_debut_contrat', 'date_fin_contrat', 'statut',
     'direction', 'pole', 'departement', 'section', 'service', 'cellule',
-    'poste', 'type_contrat', 'categorie', 'echelle',
+    'poste', 'type_contrat', 'categorie', 'echelle', 'sexe', 'date_sortie',
 }
 
 

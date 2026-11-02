@@ -116,9 +116,10 @@ def test_admin_ordinaire_ne_peut_pas_creer_un_compte_avec_le_drapeau():
     assert 'charge_registre' in reponse.data
 
 
-def test_creation_par_superadmin_trace_les_drapeaux():
+def test_creation_par_superadmin_trace_les_drapeaux(employee):
     reponse = _client(_user("sa6", "SUPERADMIN")).post('/api/admin-users/', {
-        'username': 'nouvel_admin', 'nom': 'N', 'prenom': 'P', 'role': 'ADMIN',
+        # Fiche employé obligatoire pour un ADMIN (securite.md point 55).
+        'username': 'nouvel_admin', 'nom': 'N', 'prenom': 'P', 'role': 'ADMIN', 'employee': str(employee.pk),
         'charge_registre': True, 'password': 'Passw0rd!Long1',
     }, format='json')
     assert reponse.status_code == 201, reponse.data

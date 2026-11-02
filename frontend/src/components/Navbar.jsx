@@ -9,7 +9,9 @@ import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import { KeyboardIcon, SunIcon, MoonIcon, SearchIcon } from "./icons";
 import NotificationBell from "./NotificationBell";
 import NavDropdown from "./NavDropdown";
+import { pagesVisibles } from "../config/reportingPages";
 import { canSeeAttestations, canSeeConges, canSeeConsultations, canSeeRegistres } from "../config/accesSections";
+import LienNav from "./LienNav";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -191,7 +193,14 @@ const Navbar = () => {
       badge: demandesSections.reduce((total, s) => total + s.badge, 0),
     },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
-    { path: "/statistiques", label: "Statistiques", adminOnly: true },
+    {
+      // Menu affiché dès qu'une page est accessible (acces_statistiques, ou
+      // traiteur congés/demandes pour sa seule page).
+      path: pagesVisibles(user)[0]?.path, label: "Statistiques",
+      show: pagesVisibles(user).length > 0,
+      children: pagesVisibles(user),
+      match: (p) => p.startsWith("/statistiques"),
+    },
     { path: "/recherche-documents", label: "Recherche OCR", adminOnly: true },
   ].filter((item) =>
     item.show !== undefined ? item.show : (!item.adminOnly || ["ADMIN", "SUPERADMIN"].includes(user?.role))
@@ -207,11 +216,6 @@ const Navbar = () => {
     { path: "/audit", label: "Journal" },
   ];
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
-
-  const goTo = (path) => {
-    setDrawerOpen(false);
-    navigate(path);
-  };
 
   return (
     <nav
@@ -274,9 +278,9 @@ const Navbar = () => {
             }
             const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
             return (
-              <button
+              <LienNav
                 key={item.path}
-                onClick={() => navigate(item.path)}
+                to={item.path}
                 style={{
                   background: isActive ? theme.primaryBg : "transparent",
                   border: "none",
@@ -313,7 +317,7 @@ const Navbar = () => {
                     {item.badge}
                   </span>
                 )}
-              </button>
+              </LienNav>
             );
           })}
 
@@ -333,9 +337,9 @@ const Navbar = () => {
         {!isMobile && (
           <>
             {!isCompact && (
-            <div
-              onClick={() => navigate("/profil")}
-              style={{ textAlign: "right", cursor: "pointer" }}
+            <LienNav
+              to="/profil"
+              style={{ textAlign: "right", cursor: "pointer", display: "block" }}
             >
               <div style={{ color: theme.text, fontSize: 13, fontWeight: 600, lineHeight: 1.2 }}>
                 {user?.prenom} {user?.nom}
@@ -352,23 +356,14 @@ const Navbar = () => {
               >
                 {user?.fonction || user?.role}
               </div>
-            </div>
+            </LienNav>
             )}
 
-            <div
-              role="button"
-              tabIndex={0}
+            <LienNav
+              to="/profil"
               aria-label={`Mon profil — ${user?.prenom || ""} ${user?.nom || ""} (${user?.role || ""})`}
               title={`${user?.prenom || ""} ${user?.nom || ""} — ${user?.role || ""}`}
-              onClick={() => navigate("/profil")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  navigate("/profil");
-                }
-              }}
               style={{
-                cursor: "pointer",
                 width: 36,
                 height: 36,
                 background: theme.primaryBg,
@@ -386,11 +381,11 @@ const Navbar = () => {
             >
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
-            </div>
+            </LienNav>
 
             {isCompact && !isNarrow && user?.role && (
               <span
-                title={user.role}
+                title={user.fonction ? `${user.fonction} (${user.role})` : user.role}
                 style={{
                   color: theme.primary,
                   background: theme.primaryBg,
@@ -403,9 +398,12 @@ const Navbar = () => {
                   textTransform: "uppercase",
                   whiteSpace: "nowrap",
                   flexShrink: 0,
+                  maxWidth: 140,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
-                {ROLE_SHORT[user.role] || user.role}
+                {user.fonction ? user.fonction.split(" · ")[0] : ROLE_SHORT[user.role] || user.role}
               </span>
             )}
 
@@ -510,8 +508,9 @@ const Navbar = () => {
 
         {isMobile && (
           <>
-            <div
-              onClick={() => navigate("/profil")}
+            <LienNav
+              to="/profil"
+              aria-label="Mon profil"
               style={{
                 width: 34,
                 height: 34,
@@ -531,7 +530,7 @@ const Navbar = () => {
             >
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
-            </div>
+            </LienNav>
             <NotificationBell size={38} />
             <button
               onClick={openPalette}
@@ -643,9 +642,10 @@ const Navbar = () => {
               .map((item) => {
               const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
               return (
-                <button
+                <LienNav
                   key={item.path}
-                  onClick={() => goTo(item.path)}
+                  to={item.path}
+                  onClick={() => setDrawerOpen(false)}
                   style={{
                     background: isActive ? theme.primaryBg : "transparent",
                     border: "none",
@@ -669,7 +669,7 @@ const Navbar = () => {
                       {item.badge}
                     </span>
                   )}
-                </button>
+                </LienNav>
               );
             })}
 

@@ -11,11 +11,13 @@ import { PAGE_NOTICES } from "../config/notices";
 import "../styles/animations.css";
 import PageBackground from "../components/PageBackground";
 import { useConfirm } from "../components/ConfirmDialog";
+import EmployeeSearchField from "../components/registres/EmployeeSearchField";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
 import useOrgScopeForm from "../hooks/useOrgScopeForm";
 import ScopeLevel from "../components/userScope/ScopeLevel";
 import PropositionsCompte from "../components/users/PropositionsCompte";
+import useLienLigne from "../hooks/useLienLigne";
 
 // SVG icons
 const IconPlus = () => (
@@ -61,6 +63,7 @@ const Users = () => {
   });
   const { user } = useAuth();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const location = useLocation();
   const isMobile = useIsMobile();
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
@@ -94,10 +97,12 @@ const Users = () => {
     charge_attestation: false,
     charge_consultation: false,
     charge_registre: false,
+    acces_statistiques: false,
     charge_conge: false,
     peut_demander_attestation: false,
     peut_demander_consultation: false,
     peut_demander_conge: false,
+    employee: null,
     password: "",
     password2: "",
   });
@@ -164,6 +169,11 @@ const Users = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onglet, rechercheEffective, page]);
 
+  // Comptes ADMIN / GESTIONNAIRE = personnel de l'entreprise : fiche employé
+  // obligatoire (création, changement de rôle) — règle vérifiée côté serveur
+  // (accounts/admin_views.py, FicheEmployeMixin). SUPERADMIN exempté.
+  const ficheObligatoire = (role) => ["ADMIN", "GESTIONNAIRE"].includes(role);
+
   const ROLES_PAR_ONGLET = { ADMIN: "ADMIN,SUPERADMIN", GESTIONNAIRE: "GESTIONNAIRE", CONSULTANT: "CONSULTANT" };
 
   const fetchUsers = async (silent = false) => {
@@ -171,6 +181,7 @@ const Users = () => {
     try {
       const params = { page };
       if (ROLES_PAR_ONGLET[onglet]) params.role = ROLES_PAR_ONGLET[onglet];
+      if (onglet === "sans_fiche") params.fiche = "sans";
       if (rechercheEffective) params.q = rechercheEffective;
       const response = await api.get("/admin-users/", { params });
       setUsers(response.data.results || response.data);
@@ -192,6 +203,8 @@ const Users = () => {
   const validate = () => {
     const errs = {};
     if (!form.username.trim()) errs.username = "Identifiant obligatoire.";
+    if (ficheObligatoire(form.role) && !form.employee)
+      errs.employee = "Un compte Administrateur ou Gestionnaire doit être lié à la fiche employé de son titulaire.";
     if (!form.nom.trim()) errs.nom = "Nom obligatoire.";
     if (!form.prenom.trim()) errs.prenom = "Prénom obligatoire.";
     if (!form.password) errs.password = "Mot de passe obligatoire.";
@@ -219,10 +232,12 @@ const Users = () => {
         charge_attestation: form.role === "ADMIN" ? !!form.charge_attestation : false,
         charge_consultation: form.role === "ADMIN" ? !!form.charge_consultation : false,
         charge_registre: form.role === "ADMIN" ? !!form.charge_registre : false,
+        acces_statistiques: ["ADMIN", "CONSULTANT"].includes(form.role) ? !!form.acces_statistiques : false,
         peut_demander_attestation: isDemandeur(form.role) ? !!form.peut_demander_attestation : false,
         peut_demander_consultation: isDemandeur(form.role) ? !!form.peut_demander_consultation : false,
         charge_conge: form.role === "ADMIN" ? !!form.charge_conge : false,
         peut_demander_conge: isDemandeur(form.role) ? !!form.peut_demander_conge : false,
+        employee: form.employee?.id || null,
         password: form.password,
       });
       const hasScope =
@@ -247,7 +262,7 @@ const Users = () => {
       }
       setMessage({ type: "success", text: "Utilisateur créé avec succès." });
       setShowForm(false);
-      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, charge_registre: false, charge_conge: false, peut_demander_attestation: false, peut_demander_consultation: false, peut_demander_conge: false, password: "", password2: "" });
+      setForm({ username: "", nom: "", prenom: "", role: "CONSULTANT", libelle_role: "", charge_attestation: false, charge_consultation: false, charge_registre: false, acces_statistiques: false, charge_conge: false, peut_demander_attestation: false, peut_demander_consultation: false, peut_demander_conge: false, employee: null, password: "", password2: "" });
       setScopeForm({ directions: [], poles: [], departements: [], services: [], cellules: [], sections: [], types_documents: [], champs_personnels: [] });
       fetchUsers(true);
     } catch (err) {
@@ -260,64 +275,67 @@ const Users = () => {
     }
   };
 
-  const toggleActive = async (user) => {
+  // Libellés des droits basculables depuis la liste (confirmation + message).
+  const DROITS = {
+    is_active: "compte actif",
+    charge_attestation: "traitement des attestations de travail",
+    charge_consultation: "traitement des consultations d'archives",
+    charge_registre: "tenue des registres d'archives",
+    charge_conge: "traitement des demandes de congé",
+    acces_statistiques: "accès aux statistiques RH",
+    peut_demander_attestation: "demandes d'attestation",
+    peut_demander_consultation: "demandes de consultation",
+    peut_demander_conge: "demandes de congé",
+  };
+
+  // Toute bascule de droit depuis la liste passe par une confirmation
+  // (useConfirm, jamais window.confirm) : un clic involontaire ne doit pas
+  // accorder ou retirer un accès. Retrait/désactivation = style danger.
+  // Les règles (qui peut attribuer quoi) restent vérifiées côté serveur.
+  const basculerDroit = async (targetUser, champ) => {
+    const accorde = !targetUser[champ];
+    const nom = `${targetUser.prenom || ""} ${targetUser.nom || ""}`.trim() || targetUser.username;
+    const message = champ === "is_active"
+      ? (accorde ? `Réactiver le compte « ${targetUser.username} » (${nom}) ?`
+                 : `Désactiver le compte « ${targetUser.username} » (${nom}) ? Il ne pourra plus se connecter.`)
+      : (accorde ? `Accorder le droit « ${DROITS[champ]} » à ${nom} (${targetUser.username}) ?`
+                 : `Retirer le droit « ${DROITS[champ]} » à ${nom} (${targetUser.username}) ?`);
+    if (!(await confirm(message, { danger: !accorde }))) return;
     try {
-      await api.patch(`/admin-users/${user.id}/`, { is_active: !user.is_active });
+      await api.patch(`/admin-users/${targetUser.id}/`, { [champ]: accorde });
       fetchUsers(true);
     } catch (err) {
       console.error(err);
+      const detail = err?.response?.data?.[champ] || err?.response?.data?.detail || err?.response?.data?.[0];
+      setMessage({ type: "error", text: detail ? String(detail) : "Impossible de modifier ce droit. Réessayez." });
     }
   };
 
-  const toggleChargeAttestation = async (targetUser) => {
+  const toggleActive = (u) => basculerDroit(u, "is_active");
+
+  // Lier un compte existant à la fiche employé de son titulaire (confirmé ;
+  // nom/prénom repris de la fiche côté serveur ; tracé dans MODIFY_USER).
+  const lierFiche = async (targetUser, employe) => {
+    const message = `Lier le compte « ${targetUser.username} » à la fiche de ${employe.prenom} ${employe.nom} (${employe.matricule}) ? `
+      + "Le nom et le prénom du compte seront repris de la fiche, et le compte sera désactivé automatiquement à la sortie de l'employé.";
+    if (!(await confirm(message, { danger: false }))) return;
     try {
-      await api.patch(`/admin-users/${targetUser.id}/`, { charge_attestation: !targetUser.charge_attestation });
+      await api.patch(`/admin-users/${targetUser.id}/`, { employee: employe.id });
       fetchUsers(true);
     } catch (err) {
-      console.error(err);
+      const detail = err?.response?.data?.employee;
+      setMessage({ type: "error", text: detail ? String(detail) : "Impossible de lier ce compte. Réessayez." });
     }
   };
-
-  const toggleChargeConsultation = async (targetUser) => {
-    try {
-      await api.patch(`/admin-users/${targetUser.id}/`, { charge_consultation: !targetUser.charge_consultation });
-      fetchUsers(true);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
+  const toggleChargeAttestation = (u) => basculerDroit(u, "charge_attestation");
+  const toggleChargeConsultation = (u) => basculerDroit(u, "charge_consultation");
   // Droit de faire des demandes (GESTIONNAIRE/CONSULTANT) — attribuable par tout ADMIN.
-  const togglePeutDemander = async (targetUser, champ) => {
-    try {
-      await api.patch(`/admin-users/${targetUser.id}/`, { [champ]: !targetUser[champ] });
-      fetchUsers(true);
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: "error", text: "Impossible de modifier ce droit. Réessayez." });
-    }
-  };
-
-  const toggleChargeRegistre = async (targetUser) => {
-    try {
-      await api.patch(`/admin-users/${targetUser.id}/`, { charge_registre: !targetUser.charge_registre });
-      fetchUsers(true);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Traiteur des demandes de congé — attribuable par un SUPERADMIN uniquement
-  // (le backend refuse sinon : voir _reserve_au_superadmin).
-  const toggleChargeConge = async (targetUser) => {
-    try {
-      await api.patch(`/admin-users/${targetUser.id}/`, { charge_conge: !targetUser.charge_conge });
-      fetchUsers(true);
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: "error", text: "Impossible de modifier ce droit. Réessayez." });
-    }
-  };
+  const togglePeutDemander = (u, champ) => basculerDroit(u, champ);
+  // Accès au menu Statistiques (reporting RH) — SUPERADMIN uniquement (serveur), tracé dans MODIFY_USER.
+  const toggleAccesStatistiques = (u) => basculerDroit(u, "acces_statistiques");
+  const toggleChargeRegistre = (u) => basculerDroit(u, "charge_registre");
+  // Traiteur des demandes de congé — SUPERADMIN uniquement (_reserve_au_superadmin).
+  const toggleChargeConge = (u) => basculerDroit(u, "charge_conge");
 
   const handleDeleteUser = async (targetUser) => {
     if (!(await confirm(`Supprimer définitivement le compte "${targetUser.username}" ? Cette action est irréversible.`))) return;
@@ -350,6 +368,13 @@ const Users = () => {
       setResetError("Minimum 10 caractères.");
       return;
     }
+    // Confirmation (au-dessus de la modale : ConfirmDialog zIndex 2000) — les
+    // sessions en cours du compte seront révoquées.
+    const ok = await confirm(
+      `Réinitialiser le mot de passe du compte « ${resetModal.username} » ? `
+      + "Ses sessions en cours seront fermées et il devra se reconnecter avec le nouveau mot de passe.",
+    );
+    if (!ok) return;
     setResetting(true);
     try {
       await api.post(`/admin-users/${resetModal.id}/reset-password/`, resetForm);
@@ -507,6 +532,22 @@ const Users = () => {
                   </select>
                 </div>
 
+                <div>
+                  <EmployeeSearchField
+                    id="fiche-employe-compte"
+                    label={ficheObligatoire(form.role) ? "Fiche employé du titulaire (obligatoire)" : "Fiche employé du titulaire (optionnel)"}
+                    value={form.employee}
+                    onChange={(employe) => {
+                      // Identité reprise de la fiche (le serveur fait de même).
+                      setForm((f) => ({ ...f, employee: employe, ...(employe ? { nom: employe.nom, prenom: employe.prenom } : {}) }));
+                      setErrors((e) => ({ ...e, employee: null, nom: null, prenom: null }));
+                    }}
+                  />
+                  {errors.employee && (
+                    <div style={{ color: theme.danger, fontSize: 11, marginTop: 4 }}>{errors.employee}</div>
+                  )}
+                </div>
+
                 {form.role === "GESTIONNAIRE" && (
                   <div>
                     <label style={labelStyle}>Libellé d'affichage (optionnel)</label>
@@ -602,6 +643,23 @@ const Users = () => {
                     </label>
                     <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
                       Tient les registres de mouvement et de réception des archives (/registres), partagés entre tous les comptes chargés. Un Super-administrateur y a toujours accès, quel que soit ce réglage.
+                    </div>
+                  </div>
+                )}
+
+                {["ADMIN", "CONSULTANT"].includes(form.role) && user?.role === "SUPERADMIN" && (
+                  <div>
+                    <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        name="acces_statistiques"
+                        checked={!!form.acces_statistiques}
+                        onChange={handleChange}
+                      />
+                      Accès aux statistiques RH
+                    </label>
+                    <div style={{ color: theme.textMuted, fontSize: 11, marginTop: 4 }}>
+                      Ouvre le menu Statistiques (effectifs, mouvements, démographie, rapports mensuels…). Un Consultant n'y voit que des chiffres, jamais de noms d'agents. Un Super-administrateur y a toujours accès.
                     </div>
                   </div>
                 )}
@@ -739,6 +797,7 @@ const Users = () => {
             { cle: "ADMIN", libelle: "Administrateurs", n: nbAdmins },
             { cle: "GESTIONNAIRE", libelle: "Gestionnaires", n: compteurs.GESTIONNAIRE || 0 },
             { cle: "CONSULTANT", libelle: "Consultants", n: compteurs.CONSULTANT || 0 },
+            ...(isAdmin ? [{ cle: "sans_fiche", libelle: "Sans fiche", n: null }] : []),
             ...(isAdmin ? [{ cle: "valider", libelle: "À valider", n: nbAValider }] : []),
           ];
           return (
@@ -761,7 +820,7 @@ const Users = () => {
                       }}
                     >
                       {o.libelle}
-                      {(o.cle !== "valider" || o.n > 0) && (
+                      {o.n !== null && (o.cle !== "valider" || o.n > 0) && (
                         <span style={{ marginLeft: 8, opacity: 0.8, fontWeight: 700 }}>{o.n}</span>
                       )}
                     </button>
@@ -816,7 +875,7 @@ const Users = () => {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: theme.bg, borderBottom: `2px solid ${theme.border}` }}>
-                  {["Identifiant", "Nom & Prénom", "Rôle", "Dernière connexion", "Statut", ""].map((h, i) => (
+                  {["Identifiant", "Nom & Prénom", "Fonction", "Rôle", "Dernière connexion", "Statut", ""].map((h, i) => (
                     <th
                       key={h || i}
                       style={{
@@ -852,6 +911,24 @@ const Users = () => {
                     </td>
                     <td style={{ padding: "13px 16px", color: theme.text, fontWeight: 600, fontSize: 14 }}>
                       {u.nom} {u.prenom}
+                      {u.employee_info ? (
+                        <div style={{ fontSize: 11, fontWeight: 500, color: theme.textMuted, fontFamily: "monospace" }}>
+                          {u.employee_info.matricule}
+                        </div>
+                      ) : ficheObligatoire(u.role) && (
+                        <div>
+                          <span
+                            title="Compte à régulariser : à lier à la fiche employé de son titulaire"
+                            style={{ display: "inline-block", marginTop: 3, fontSize: 11, fontWeight: 700, color: theme.warning,
+                              border: `1px solid ${theme.warning}`, borderRadius: 20, padding: "1px 8px" }}
+                          >
+                            Sans fiche
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "13px 16px", color: theme.textSecondary, fontSize: 13 }}>
+                      {u.fonction || "—"}
                     </td>
                     <td style={{ padding: "13px 16px" }}>
                       <span style={{
@@ -905,11 +982,35 @@ const Users = () => {
                   </tr>
                   {ouvert && (
                     <tr style={{ borderBottom: `1px solid ${theme.border}`, background: rowBg }}>
-                      <td colSpan={6} style={{ padding: "4px 16px 18px" }}>
+                      <td colSpan={7} style={{ padding: "4px 16px 18px" }}>
                         {(u.created_by_name || u.updated_by_name) && (
                           <div style={{ color: theme.textMuted, fontSize: 11, marginBottom: 10 }}>
                             {u.created_by_name && <>Créé par {u.created_by_name}</>}
                             {u.updated_by_name && <>{u.created_by_name ? " · " : ""}Modifié par {u.updated_by_name}</>}
+                          </div>
+                        )}
+                        {u.role !== "SUPERADMIN" && (
+                          <div style={{ marginBottom: 14, maxWidth: 480 }}>
+                            {u.employee_info ? (
+                              <>
+                                <div style={{ ...labelStyle, marginBottom: 6 }}>Fiche employé</div>
+                                <button
+                                  type="button"
+                                  {...lienLigne(`/employees/${u.employee_info.matricule}`)}
+                                  style={{ background: "none", border: "none", padding: 0, color: theme.primary, fontWeight: 600,
+                                    fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+                                >
+                                  {u.employee_info.prenom} {u.employee_info.nom} — {u.employee_info.matricule} →
+                                </button>
+                              </>
+                            ) : (
+                              <EmployeeSearchField
+                                id={`fiche-${u.id}`}
+                                label={ficheObligatoire(u.role) ? "Lier à la fiche employé (à régulariser)" : "Lier à une fiche employé"}
+                                value={null}
+                                onChange={(employe) => employe && lierFiche(u, employe)}
+                              />
+                            )}
                           </div>
                         )}
                         <div style={{ ...labelStyle, marginBottom: 6 }}>Périmètre</div>
@@ -1067,6 +1168,25 @@ const Users = () => {
                               {u.charge_registre ? "Registres ✓" : "Registres ✗"}
                             </button>
                           )}
+                          {["ADMIN", "CONSULTANT"].includes(u.role) && user?.role === "SUPERADMIN" && (
+                            <button
+                              onClick={() => toggleAccesStatistiques(u)}
+                              title="Accès au menu Statistiques (reporting RH, rapports mensuels)"
+                              style={{
+                                background: u.acces_statistiques ? theme.primaryBg : theme.bg,
+                                border: `1px solid ${u.acces_statistiques ? theme.primaryBorder : theme.border}`,
+                                color: u.acces_statistiques ? theme.primary : theme.textSecondary,
+                                borderRadius: 8,
+                                padding: "5px 12px",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                              }}
+                            >
+                              {u.acces_statistiques ? "Statistiques ✓" : "Statistiques ✗"}
+                            </button>
+                          )}
                           {u.role === "ADMIN" && user?.role === "SUPERADMIN" && (
                             <button
                               onClick={() => toggleChargeConge(u)}
@@ -1115,7 +1235,7 @@ const Users = () => {
                           )}
                           {["CONSULTANT", "GESTIONNAIRE"].includes(u.role) && (
                             <button
-                              onClick={() => navigate(`/users/${u.id}/perimetre`)}
+                              {...lienLigne(`/users/${u.id}/perimetre`)}
                               style={{
                                 background: theme.primaryBg,
                                 border: `1px solid ${theme.primaryBorder}`,

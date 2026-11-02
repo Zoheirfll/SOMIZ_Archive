@@ -6,6 +6,7 @@ import StatutBadge from "../attestations/StatutBadge";
 import { FileTextIcon } from "../icons";
 import { formatDateFR } from "../../utils/formatDate";
 import { canRequestAttestations, canSeeAttestations } from "../../config/accesSections";
+import LienNav from "../LienNav";
 
 // Onglet "Attestations" de la fiche employé — historique des demandes
 // d'attestation de travail pour CET employé (GET /attestations/demandes/
@@ -67,9 +68,9 @@ const AttestationsTab = ({ activeTab, employee, user, navigate }) => {
           Demandes d'attestation de travail
         </div>
         {canRequest && (
-          <button
-            type="button"
-            onClick={() => navigate("/attestations/nouvelle", { state: { employeeId: employee.id } })}
+          <LienNav
+            to="/attestations/nouvelle"
+            state={{ employeeId: employee.id }}
             className="btn-lift"
             style={{
               background: theme.primary, color: "#fff", border: "none", borderRadius: 8,
@@ -77,7 +78,7 @@ const AttestationsTab = ({ activeTab, employee, user, navigate }) => {
             }}
           >
             + Nouvelle demande
-          </button>
+          </LienNav>
         )}
       </div>
 

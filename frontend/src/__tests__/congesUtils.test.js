@@ -97,7 +97,9 @@ describe("refVersUrl et libellés", () => {
   });
 
   test("libelleStatutConge couvre les six statuts", () => {
-    expect(libelleStatutConge("recue")).toBe("Reçue");
+    expect(libelleStatutConge("recue")).toBe("Accordé — à enregistrer");
+    expect(libelleStatutConge("accordee")).toBe("Enregistré");
+    expect(libelleStatutConge("visa")).toBe("En attente d'accord hiérarchique");
     expect(libelleStatutConge("annulee")).toBe("Annulée");
     expect(libelleStatutConge("interrompue")).toBe("Interrompue");
     expect(libelleStatutConge("inconnu")).toBe("inconnu");

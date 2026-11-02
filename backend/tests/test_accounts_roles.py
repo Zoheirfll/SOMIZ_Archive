@@ -36,11 +36,12 @@ def test_gestionnaire_uses_same_scoping_branch_as_consultant():
     assert isinstance(q, Q)
 
 
-def test_admin_can_create_gestionnaire_via_api(admin_user):
+def test_admin_can_create_gestionnaire_via_api(admin_user, employee):
     client = APIClient()
     client.force_authenticate(admin_user)
     resp = client.post('/api/admin-users/', {
-        'username': 'gest_api', 'nom': 'Api', 'prenom': 'Test',
+        # Fiche employé obligatoire pour un GESTIONNAIRE (securite.md point 55).
+        'username': 'gest_api', 'nom': 'Api', 'prenom': 'Test', 'employee': str(employee.pk),
         'role': 'GESTIONNAIRE', 'libelle_role': 'Superviseur',
         'password': 'Un_MotDePasse_Valide123',
     }, format='json')

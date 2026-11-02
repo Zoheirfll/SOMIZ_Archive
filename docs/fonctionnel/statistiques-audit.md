@@ -127,3 +127,148 @@ ce fichier), qui restent des mécanismes indépendants.
   la base de test**, pas en millisecondes sur la base de production : à mesurer.
 - **Chantier suivant** : complétude par type de contrat — spec à valider dans
   `docs/superpowers/specs/2026-10-19-completude-par-type-contrat-design.md`.
+
+---
+
+## Menu « Statistiques » — reporting RH par page (2026-10-30)
+
+Spec : `docs/superpowers/specs/2026-10-30-reporting-statistiques-design.md` ; plan :
+`docs/superpowers/plans/2026-10-30-reporting-rh-pages.md`.
+
+- **Remplace la page unique `/statistiques`** (qui redirige désormais vers `/statistiques/synthese`) par un menu
+  déroulant de 7 pages, liste unique dans `frontend/src/config/reportingPages.js` (navbar + routeur
+  `pages/reporting/RapportRH.jsx`) : **Synthèse DRH**, **Effectifs**, **Parité**, **Démographie & retraites**,
+  **Contrats**, **Qualité des données**, **Activité des comptes**. Tout le contenu de l'ancienne page est repris
+  (répartitions → Effectifs ; pyramides → Démographie ; échéances → Contrats ; complétude → Qualité ; « Mon
+  activité » et « Activité par administrateur » → Activité).
+- **Backend : app `reporting`**. Endpoint unique `GET /api/reporting/rh/<page>/` (`RapportRHView`, `IsAdmin`),
+  paramètres `date_debut`, `date_fin`, `echeance_jours` (1-365), `horizon` (1-10 ans) ; `?fmt=xlsx` renvoie un
+  classeur (un onglet par table d'export du constructeur), tracé `AuditLog EXPORT` avec
+  `details.type = 'reporting_rh'` et `details.page`. Un constructeur par page dans `reporting/rh/*.py`, fonction pure
+  `construire(params, user)`, qui **réutilise** `audit/stats.py` sans le déplacer.
+- **Définitions centralisées** : `reporting/rh/definitions.py` donne libellé et mode de calcul de chaque indicateur ;
+  l'API les renvoie avec la valeur, l'UI les affiche en info-bulle (« i » sur chaque tuile). Ne jamais réécrire une
+  formule dans une page.
+- **Retraite** : 60 ans hommes, 55 ans femmes (`settings.REPORTING_AGE_RETRAITE`) ; sexe non renseigné → 60 ans et
+  compté en « prévisions incertaines ». Les agents ayant déjà dépassé l'âge sont comptés en année 1. Effectif projeté
+  = actifs − départs à la retraite − fins de CDD connues, **sans recrutement**.
+- **Postes à risque** : fonctions dont **tous** les titulaires actifs, d'âge connu, atteignent l'âge de retraite dans
+  l'horizon choisi (liste nominative, ADMIN/SUPERADMIN).
+- **Masquage des petits effectifs** : seuil `settings.REPORTING_SEUIL_PETITS_EFFECTIFS = 2`, appliqué aux
+  ventilations croisées avec le sexe ou l'âge (Parité par axe, Démographie par direction) : une cellule d'un seul
+  agent affiche « — » et une info-bulle. Limite connue : avec 2, une cellule de 2 agents reste affichée.
+- **Sorties** : encore datées par le journal d'audit (jour de l'archivage), libellées « Sorties (date
+  d'archivage) » jusqu'au chantier `date_sortie` (`docs/superpowers/plans/2026-10-30-fondations-reporting.md`).
+- **Performance** : aucune requête par employé ; un test vérifie que le nombre de requêtes de la Synthèse ne dépend
+  pas des effectifs. Piège rencontré : des employés de test homonymes nés le même jour sont de vrais « doublons
+  probables » et ajoutent une requête légitime (liste des doublons) — le test leur donne des noms distincts.
+- **Conservés, plus utilisés par l'UI** : `GET /api/reporting/stats-detail/` et `stats-export.xlsx/` (tests
+  existants inchangés). À retirer dans un chantier ultérieur si rien d'autre ne les appelle.
+- **Liens de preuve vers /audit** (un clic par compteur de « Mon activité ») : **non repris** dans la page Activité
+  (tableau simple). À rétablir si l'usage le demande.
+- **Approches écartées** : une seule page à onglets (ne répond pas au besoin « une page par point » dans un menu
+  déroulant) ; dupliquer `Statistiques.jsx` par thème (≈ 700 lignes copiées par page, incohérences) ; commencer par
+  `date_sortie` et la photo mensuelle (rien de visible ; sans production, l'historique n'avait rien à accumuler).
+
+---
+
+## Photo mensuelle des effectifs (2026-10-30)
+
+- **But** : comparaisons exactes dans le temps (N/N-1, évolution sur 12 à 36 mois) même après une réorganisation.
+- **Modèle** `reporting.EffectifInstantane` : un **nombre** d'agents par date de photo × unité (direction,
+  département, service) × sexe × catégorie × type de contrat × tranche d'âge × tranche d'ancienneté. **Aucune donnée
+  nominative.** Libellés d'unité **figés** à la date de la photo.
+- **Présence à une date** (`reporting/instantanes.py#_presents`) : recruté au plus tard ce jour-là et non sorti
+  (actif, ou `date_sortie` postérieure). Un sorti **sans** `date_sortie` est exclu (on ne sait pas s'il était là) ;
+  un actif sans date de recrutement n'est compté que dans la photo du jour, jamais dans une reconstitution.
+- **Commande** `python manage.py photo_effectifs [--date AAAA-MM-JJ] [--amorcer N]` : idempotente (remplace les
+  lignes de la date). `--amorcer N` reconstitue les N mois précédents, marqués `reconstitue=True` (affectation
+  **actuelle** des agents, donc approximatif après une réorganisation) et **n'écrase jamais une vraie photo**.
+- ⚠️ **À planifier le 1er de chaque mois lors de la mise en production** (avec `notifier_echeances_contrat`) : sans
+  cela, l'historique reste vide sans aucune erreur visible. En développement, lancer la commande à la main.
+- **App `reporting`** plutôt que `audit` : évite de dépendre des migrations `audit` en cours sur la branche congés.
+- **Pas encore exploitée par les pages** : la page Mouvements & rétention et les comparaisons N/N-1 d'effectif
+  viendront ensuite ; les sorties du reporting restent datées par l'audit d'ici là.
+
+
+---
+
+## Reporting complet : 13 pages, objectifs, faits marquants, rapports (2026-10-30)
+
+Suite du menu Statistiques, dans la même app `reporting` et le même endpoint `GET /api/reporting/rh/<page>/`.
+
+| Page | Route | Accès (en plus d'ADMIN/SUPERADMIN) | Constructeur |
+|---|---|---|---|
+| Synthèse DRH | `/statistiques/synthese` | — | `rh/synthese.py` |
+| Effectifs | `/statistiques/effectifs` | — | `rh/effectifs.py` |
+| Parité | `/statistiques/parite` | — | `rh/parite.py` |
+| Démographie & retraites | `/statistiques/demographie` | — | `rh/demographie.py` |
+| Mouvements & rétention | `/statistiques/mouvements` | — | `rh/mouvements.py` |
+| Carrière & mobilité | `/statistiques/carriere` | — | `rh/carriere.py` |
+| Contrats | `/statistiques/contrats` | — | `rh/contrats.py` |
+| Comparaison des unités | `/statistiques/unites` | — | `rh/unites.py` |
+| Qualité des données | `/statistiques/qualite` | — | `rh/qualite.py` |
+| Documents & archives | `/statistiques/documents` | — | `rh/documents.py` |
+| Congés | `/statistiques/conges` | `can_manage_conges` | `rh/conges.py` |
+| Attestations & consultations | `/statistiques/demandes` | `can_manage_attestations` **ou** `can_manage_consultations` (chaque section n'est calculée que pour son traiteur) | `rh/demandes.py` |
+| Activité des comptes | `/statistiques/activite` | — (tableau par administrateur : SUPERADMIN) | `rh/activite.py` |
+| Bilan social (export seul) | `?fmt=xlsx` sur `rh/bilan/` | — | `rh/bilan.py` |
+
+Le droit par page est porté par `reporting.views.PAGES` (403 côté serveur) et reflété dans le menu par
+`frontend/src/config/reportingPages.js` (`visible(user)`) ; une page non autorisée redirige vers la Synthèse.
+
+- **Mouvements sur la vraie date de sortie** : entrées (`date_embauche`), sorties (`date_sortie`), effectif moyen =
+  moyenne des effectifs présents au premier et au dernier jour (même règle de présence que la photo mensuelle),
+  turnover = ((entrées + sorties) / 2) / effectif moyen, taux de départ = sorties / effectif moyen. Les sortis **sans**
+  date sont comptés à part (« sorties non datées ») et listés dans Qualité pour être complétés. **La Synthèse utilise
+  désormais ces vraies sorties** (et non plus la date d'archivage de l'audit).
+- **Rétention par promotion** : pour chaque année de recrutement (6 dernières), part encore présente 1, 3 et 5 ans
+  après ; un jalon pas encore atteint est vide ; les sortis non datés sont exclus de leur promotion.
+- **Carrière** : un « changement » est une période d'historique ouverte dans la période qui n'est pas la première de
+  l'agent (affectation initiale exclue) ; « sans évolution » = aucune nouvelle période fonction/catégorie/échelle
+  depuis 5 ans (à défaut, depuis le recrutement) ; transferts lus dans l'audit (`details.transfer`).
+- **Comparaison des unités** : une ligne par direction + la ligne Organisation ; couleur d'une cellule selon son écart
+  à l'organisation (≥ 10 %) et le sens de l'indicateur (`unites.INDICATEURS` : favorable haut/bas ou neutre).
+  Colonnes sexe/âge masquées pour une direction d'un seul agent.
+- **Congés** : jours pris = congés accordés ou interrompus (jours effectifs si interrompus) dont le départ tombe dans
+  la période ; délai = date d'établissement − date de la demande ; soldes par exercice et 20 plus forts soldes
+  restants (nominatif, traiteur des congés). Pas de « taux d'absentéisme » : SOMIZ ne connaît pas les absences.
+- **Objectifs DRH** (`reporting.ObjectifIndicateur`, `GET/PUT /api/reporting/objectifs/`, `DELETE
+  /api/reporting/objectifs/<code>/`) : une cible « au moins / au plus » par indicateur, appliquée à toute réponse
+  par `reporting/objectifs.py#appliquer_objectifs` (une requête) : chaque KPI reçoit `cible`, `ecart`, `atteint`. Un
+  objectif manqué devient un fait marquant. **Traçabilité limitée** : auteur et date de la dernière modification dans
+  la table, **pas d'action d'audit dédiée** (en ajouter une demande une migration de `audit`, évitée tant que la
+  migration `audit` du chantier congés n'est pas commitée).
+- **Faits marquants** (`rh/synthese.py`) : règles fixes, seuils en tête du module — entrées ou sorties en variation
+  d'au moins 50 % vs période précédente ; direction avec au moins 2 sorties et au moins le double de la période
+  précédente ; objectif non atteint. Pas d'IA.
+- **Bilan social** : `rh/bilan.py` concatène les tables d'export des pages Employés (onglets préfixés, titres
+  dédoublonnés par `export.py`). Bouton sur la Synthèse ; export tracé comme les autres (`page = 'bilan'`).
+- **Rapport mensuel** (`reporting.RapportMensuel`, commande `python manage.py rapport_mensuel [--mois AAAA-MM]`) :
+  PDF ReportLab de la Synthèse du mois écoulé (indicateurs, cibles, alertes, faits marquants — agrégé uniquement),
+  idempotent, notification `GENERIQUE` aux ADMIN/SUPERADMIN. Fichier sous `MEDIA_ROOT/rapports/` (nom aléatoire),
+  servi **uniquement** par `GET /api/reporting/rapports-mensuels/<id>/fichier/`, téléchargement tracé
+  (`EXPORT`, `type = rapport_mensuel`). ⚠️ À planifier le 1er du mois en production, **après** `photo_effectifs`.
+- **Piège du shell** : sous Git Bash, un heredoc contenant des apostrophes françaises a été mal découpé par l'outil ;
+  les scripts de génération ont été écrits dans des fichiers plutôt que passés en ligne de commande.
+
+### Compléments du 2026-10-31
+
+- **Objectifs DRH tracés** : action d'audit `MODIFY_OBJECTIF` (migration `audit/0020`), détails
+  `operation` (creation/modification/suppression), `code`, `avant`, `apres`.
+- **Liens de preuve rétablis** sur la page Activité : « Voir mon journal d'audit » et, pour le SUPERADMIN,
+  une colonne « Preuve » par administrateur → `/audit?user=…&date_debut=…&date_fin=…` (non filtré par type
+  d'action : /audit ne filtre pas sur `details`).
+- **Tableaux paginés** : `TableauSimple` affiche 10 lignes par page + recherche dès que la liste dépasse
+  10 lignes (ex. Effectifs par fonction : plusieurs centaines d'intitulés). Approche écartée : défilement
+  interne (barre de scroll dans la carte) — moins lisible et pas de recherche.
+- **Rapport mensuel PDF refait** (`reporting/rapport_pdf.py`, platypus) : bandeau, tuiles d'indicateurs
+  (variation colorée selon que la hausse est favorable ou non — `HAUSSE_DEFAVORABLE` —, objectif atteint ou
+  non), graphique de l'effectif sur 12 photos mensuelles, répartition par direction, encadrés alertes/faits
+  marquants, pied de page « diffusion restreinte » paginé. Couleurs = palette claire de `theme.js`
+  recopiée en tête du module (le PDF ne lit pas les tokens JS). Piège : les flèches ▲▼ n'existent pas dans
+  la police Helvetica standard de ReportLab — retirées.
+
+- **Droit d'accès `acces_statistiques`** (2026-10-31) : voir `securite.md` point 54. Le menu Statistiques n'apparaît
+  qu'aux comptes ayant au moins une page visible (`pagesVisibles`, `config/reportingPages.js` :
+  `peutVoirStatistiques` par défaut, `visible()` pour Congés/Demandes).

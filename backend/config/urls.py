@@ -8,6 +8,7 @@ urlpatterns = [
         path('auth/', include('accounts.urls')),
         path('', include('employees.urls')),
         path('reporting/', include('audit.urls')),
+        path('reporting/', include('reporting.urls')),
         path('admin-users/', include('accounts.admin_urls')),
         path('interims/', include('accounts.interim_urls')),
         path('ref/', include('employees.referentiel_urls')),
