@@ -13,6 +13,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
 import { useConfirm } from "../components/ConfirmDialog";
 import SearchableSelect from "../components/SearchableSelect";
+import useLienLigne from "../hooks/useLienLigne";
 
 // True si `champ` doit être affiché compte tenu de son condition_champ (ex.
 // "Salaire unique" affiché seulement si "Situation familiale" = "Marié")
@@ -154,6 +155,7 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
   const { user } = useAuth();
   const { id: routeId } = useParams();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const embedded = !!embeddedId;
   const id = embeddedId || routeId;
   const isEdit = !!id;
@@ -170,9 +172,11 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
     matricule: "",
     numero_contrat: "",
     date_fin_contrat: "",
+    date_sortie: "",
     nom: "",
     prenom: "",
     date_naissance: "",
+    sexe: "",
     date_embauche: "",
     statut: "actif",
     motif_archivage: "",
@@ -189,6 +193,8 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [errors, setErrors] = useState({});
+  // Statut chargé : la date de sortie n'est exigée qu'à la transition actif → sortie.
+  const [statutInitial, setStatutInitial] = useState("actif");
   const [message, setMessage] = useState(null);
 
   // Référentiels
@@ -261,8 +267,10 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
         nom: emp.nom || "",
         prenom: emp.prenom || "",
         date_naissance: emp.date_naissance || "",
+        sexe: emp.sexe || "",
         date_embauche: emp.date_embauche || "",
         date_fin_contrat: emp.date_fin_contrat || "",
+        date_sortie: emp.date_sortie || "",
         statut: emp.statut || "actif",
         motif_archivage: emp.motif_archivage || "",
         direction: emp.direction || "",
@@ -275,6 +283,7 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
         categorie: emp.categorie || "",
       };
       setForm(newForm);
+      setStatutInitial(emp.statut || "actif");
       setOriginalAffectation({
         direction: newForm.direction,
         departement: newForm.departement,
@@ -619,7 +628,7 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
         {/* Back button — page pleine uniquement */}
         {!embedded && (
         <button
-          onClick={() => navigate(isEdit ? `/employees/${id}` : "/employees")}
+          {...lienLigne(isEdit ? `/employees/${id}` : "/employees")}
           style={{
             background: "transparent",
             border: `1px solid ${theme.border}`,
@@ -752,6 +761,7 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                       // Un employé Actif n'a pas de motif d'archivage — voir
                       // CLAUDE.md section Archivage employé.
                       motif_archivage: statut === "actif" ? "" : form.motif_archivage,
+                      date_sortie: statut === "actif" ? "" : form.date_sortie,
                     });
                   }}
                 >
@@ -775,6 +785,30 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                         {m.nom}
                       </option>
                     ))}
+
+              {form.statut !== "actif" && (
+                <Field
+                  label="Date de sortie"
+                  // Exigée à la transition actif → sortie (et à la création),
+                  // pas pour compléter un archivé historique — même règle que
+                  // le serveur (employees/sortie.py).
+                  required={!id || statutInitial === "actif"}
+                >
+                  <Input
+                    type="date"
+                    name="date_sortie"
+                    aria-label="Date de sortie"
+                    value={form.date_sortie}
+                    max={new Date().toLocaleDateString("en-CA")}
+                    onChange={handleChange}
+                  />
+                  {errors.date_sortie && (
+                    <div style={{ color: theme.danger, fontSize: 12, marginTop: 4 }}>
+                      {errors.date_sortie}
+                    </div>
+                  )}
+                </Field>
+              )}
                   </Select>
                 </Field>
               )}
@@ -786,6 +820,14 @@ const EmployeeForm = ({ embeddedId = null, onSaved, onCancel }) => {
                   value={form.date_naissance}
                   onChange={handleChange}
                 />
+              </Field>
+
+              <Field label="Sexe">
+                <Select name="sexe" value={form.sexe} onChange={handleChange}>
+                  <option value="">-- Non renseigné --</option>
+                  <option value="M">M — Masculin</option>
+                  <option value="F">F — Féminin</option>
+                </Select>
               </Field>
 
               {champLieuNaissance && renderChampField(champLieuNaissance)}

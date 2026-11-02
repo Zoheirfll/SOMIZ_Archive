@@ -41,8 +41,8 @@ const mockStats = {
   ],
 };
 
-const renderPage = (role = "ADMIN") => {
-  useAuth.mockReturnValue({ user: { role, username: "admin" } });
+const renderPage = (role = "ADMIN", extra = {}) => {
+  useAuth.mockReturnValue({ user: { role, username: "admin", ...extra } });
   return render(
     <MemoryRouter>
       <Dashboard />
@@ -174,9 +174,11 @@ describe("Dashboard — navigation vers /employees (complétude cliquable)", () 
   test("clic sur le lien 'incomplets' navigue vers /employees?dossier_complet=false (sans déclencher le clic de la carte)", async () => {
     api.get.mockResolvedValue({ data: mockStats });
     renderPage("ADMIN");
-    fireEvent.click(await screen.findByText(/incomplets/));
-    expect(mockNavigate).toHaveBeenCalledTimes(1);
-    expect(mockNavigate).toHaveBeenCalledWith("/employees?dossier_complet=false");
+    const lien = (await screen.findByText(/incomplets/)).closest("a");
+    expect(lien).toHaveAttribute("href", "/employees?dossier_complet=false");
+    // Cliquer le lien ne déclenche pas en plus le clic de la carte (navigate de la ligne).
+    fireEvent.click(lien);
+    expect(mockNavigate).not.toHaveBeenCalledWith("/employees?dossier_complet=true");
   });
 
   test("le lien 'incomplets' n'est pas affiché s'il n'y a aucun employé actif", async () => {
@@ -205,15 +207,31 @@ describe("Dashboard — encart « Contrats arrivant à échéance »", () => {
   test("clic sur un contrat ouvre la fiche de l'employé par son matricule, pas par l'uuid", async () => {
     api.get.mockResolvedValue({ data: { ...mockStats, contrats_echeance: contrats, contrats_echeance_total: 2 } });
     renderPage("ADMIN");
-    fireEvent.click(await screen.findByText("Luc Martin"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees/020782");
+    const lien = (await screen.findByText("Luc Martin")).closest("a");
+    expect(lien).toHaveAttribute("href", "/employees/020782");
   });
 
   test("« Voir tout » n'apparaît que si le total dépasse la liste affichée", async () => {
     api.get.mockResolvedValue({ data: { ...mockStats, contrats_echeance: contrats, contrats_echeance_total: 9 } });
+    renderPage("ADMIN", { can_view_statistiques: true });
+    expect(await screen.findByText("Voir tout (9)")).toHaveAttribute("href", "/statistiques/contrats");
+  });
+
+  test("« Voir tout » masqué pour un ADMIN sans accès aux statistiques", async () => {
+    api.get.mockResolvedValue({ data: { ...mockStats, contrats_echeance: contrats, contrats_echeance_total: 9 } });
     renderPage("ADMIN");
-    fireEvent.click(await screen.findByText("Voir tout (9)"));
-    expect(mockNavigate).toHaveBeenCalledWith("/statistiques");
+    await screen.findByText("Luc Martin");
+    expect(screen.queryByText("Voir tout (9)")).not.toBeInTheDocument();
+  });
+
+  test("encart des contrats échus : employés actifs à mettre à jour, clic vers la fiche", async () => {
+    const echus = [{ id: "e1", numero_contrat: "C-9", employee_id: "u9", employee_matricule: "030303",
+      employee_nom: "Nadia Bey", date_fin: "2026-09-30", jours_depasses: 32 }];
+    api.get.mockResolvedValue({ data: { ...mockStats, contrats_echus: echus, contrats_echus_total: 1 } });
+    renderPage("ADMIN");
+    expect(await screen.findByText("Contrats échus — dossiers à mettre à jour")).toBeInTheDocument();
+    expect(screen.getByText("Échu depuis 32 j")).toBeInTheDocument();
+    expect(screen.getByText("Nadia Bey").closest("a")).toHaveAttribute("href", "/employees/030303");
   });
 
   test("encart absent quand aucun contrat n'arrive à échéance", async () => {

@@ -446,8 +446,7 @@ describe("EmployeeDetail — navigation", () => {
   test("le fil d'Ariane navigue vers /employees au clic sur \"Personnel\"", async () => {
     renderPage();
     await waitFor(() => screen.getByText("Personnel"));
-    fireEvent.click(screen.getByText("Personnel"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees");
+    expect(screen.getByText("Personnel").closest("a")).toHaveAttribute("href", "/employees");
   });
 
   // Depuis 2026-09-14, "Modifier" édite la fiche sur place (formulaire
@@ -478,10 +477,17 @@ describe("EmployeeDetail — onglet Congés", () => {
   });
 
   test("un demandeur autorisé voit l'onglet et le bouton Demander un congé", async () => {
+    api.get.mockImplementation((url) => {
+      if (url.startsWith("/conges/soldes/")) return Promise.resolve({ data: { initialise: false, solde: null, mouvements: [] } });
+      if (url === "/conges/demandes/") return Promise.resolve({ data: { results: [] } });
+      if (url.includes("/historique/") || url.endsWith("/contrats/")) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: mockEmployee });
+    });
     renderPage("GESTIONNAIRE", { can_request_conges: true });
-    expect(await screen.findByRole("button", { name: "Congés" })).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Demander un congé" }));
-    expect(mockNavigate).toHaveBeenCalledWith("/conges/nouvelle", { state: { employeeId: "emp-uuid" } });
+    // Un GESTIONNAIRE n'a pas l'onglet Dossier : le bouton de demande est dans l'onglet Congés.
+    fireEvent.click(await screen.findByRole("button", { name: "Congés" }));
+    // Vrai lien (clic droit / Ctrl+clic : nouvel onglet) ; l'employé voyage dans le state du routeur.
+    expect(await screen.findByRole("link", { name: "+ Nouvelle demande" })).toHaveAttribute("href", "/conges/nouvelle");
   });
 
   test("un ADMIN non chargé des congés ne voit ni l'onglet ni le bouton", async () => {

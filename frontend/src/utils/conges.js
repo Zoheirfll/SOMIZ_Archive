@@ -19,10 +19,12 @@ export const CATEGORIES_EXERCICE = [
 export const libelleCategorie = (cat) =>
   (CATEGORIES_EXERCICE.find((c) => c.value === cat) || {}).label || cat || "";
 
+// Libellés (2026-10-31) : l'accord est hiérarchique ; la DRH contrôle et
+// enregistre (même libellés que conges/models.py DemandeConge.Statut).
 const LIBELLES_STATUT = {
-  recue: "Reçue",
-  prete: "Prête",
-  recuperee: "Récupérée",
+  visa: "En attente d'accord hiérarchique",
+  recue: "Accordé — à enregistrer",
+  accordee: "Enregistré",
   rejetee: "Rejetée",
   annulee: "Annulée",
   interrompue: "Interrompue",

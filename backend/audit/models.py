@@ -77,6 +77,14 @@ class AuditLog(models.Model):
         PROPOSE_COMPTE = 'PROPOSE_COMPTE', 'Proposition de compte (responsable)'
         VALIDER_COMPTE = 'VALIDER_COMPTE', 'Validation proposition de compte'
         REFUSER_COMPTE = 'REFUSER_COMPTE', 'Refus proposition de compte'
+        VISER_CONGE = 'VISER_CONGE', 'Validation hiérarchique demande congé'
+        REFUSER_VISA_CONGE = 'REFUSER_VISA_CONGE', 'Refus validation hiérarchique congé'
+        VISER_ATTESTATION = 'VISER_ATTESTATION', 'Validation hiérarchique attestation'
+        REFUSER_VISA_ATTEST = 'REFUSER_VISA_ATTEST', 'Refus validation hiérarchique attestation'
+        PROPOSE_INTERIM = 'PROPOSE_INTERIM', "Désignation d'un intérimaire"
+        DECIDE_INTERIM = 'DECIDE_INTERIM', 'Décision sur un intérim'
+        FIN_INTERIM = 'FIN_INTERIM', "Fin anticipée d'un intérim"
+        MODIFY_OBJECTIF = 'MODIFY_OBJECTIF', 'Modification objectif DRH (reporting)'
 
     # Pas de UUIDField ici — BIGSERIAL plus rapide pour les logs
     # (table peut atteindre des millions de lignes)

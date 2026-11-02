@@ -32,6 +32,12 @@ const makeUser = (id, username = "user1", role = "CONSULTANT", is_active = true)
   last_login: "2026-06-01T08:00:00Z",
 });
 
+// Les actions d'un compte (droits, reset, périmètre…) sont derrière le « + » de la ligne.
+const ouvrirDetails = async () => {
+  const boutons = await screen.findAllByRole("button", { name: /Afficher les détails/ });
+  boutons.forEach((b) => fireEvent.click(b));
+};
+
 const renderPage = () =>
   render(
     <MemoryRouter initialEntries={["/users"]}>
@@ -57,11 +63,22 @@ describe("Users — rendu initial", () => {
     expect(screen.getByRole("button", { name: /nouvel utilisateur/i })).toBeInTheDocument();
   });
 
+  test("un onglet de rôle filtre côté serveur et le « + » déplie les actions", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("1", "gest", "GESTIONNAIRE")], count: 1, compteurs: { GESTIONNAIRE: 1, CONSULTANT: 3 } } });
+    renderPage();
+    await screen.findByText("gest");
+    expect(screen.queryByText("Désactiver")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /Afficher les détails/ }));
+    expect(screen.getByText("Désactiver")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /Consultants/ }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/admin-users/", { params: { page: 1, role: "CONSULTANT" } }));
+  });
+
   test("charge la liste des utilisateurs au montage", async () => {
     api.get.mockResolvedValue({ data: { results: [makeUser("1")] } });
     renderPage();
     await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith("/admin-users/");
+      expect(api.get).toHaveBeenCalledWith("/admin-users/", expect.anything());
     });
   });
 });
@@ -232,8 +249,11 @@ describe("Users — toggle actif/désactivé", () => {
     });
     api.patch.mockResolvedValue({});
     renderPage();
+    await ouvrirDetails();
     await waitFor(() => screen.getByText("Désactiver"));
     fireEvent.click(screen.getByText("Désactiver"));
+    expect(api.patch).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith(
         "/admin-users/user-uuid/",
@@ -249,6 +269,7 @@ describe("Users — bouton Périmètre", () => {
       data: { results: [makeUser("u1", "cons1", "CONSULTANT", true)] },
     });
     renderPage();
+    await ouvrirDetails();
     const perimetreBtn = await screen.findByRole("button", { name: "Périmètre" });
     fireEvent.click(perimetreBtn);
     expect(await screen.findByText("PAGE PERIMETRE")).toBeInTheDocument();
@@ -261,6 +282,7 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1", "target_user")] },
     });
     renderPage();
+    await ouvrirDetails();
     await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
     fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
     expect(
@@ -273,6 +295,7 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1", "jean.dupont")] },
     });
     renderPage();
+    await ouvrirDetails();
     await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
     fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
     expect(screen.getAllByText("jean.dupont").length).toBeGreaterThan(0);
@@ -283,6 +306,7 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1")] },
     });
     renderPage();
+    await ouvrirDetails();
     await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
     fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
     fireEvent.click(screen.getByText("Annuler"));
@@ -296,6 +320,7 @@ describe("Users — modal reset mot de passe", () => {
       data: { results: [makeUser("1", "user")] },
     });
     renderPage();
+    await ouvrirDetails();
     await waitFor(() => screen.getByRole("button", { name: /reset mdp/i }));
     fireEvent.click(screen.getByRole("button", { name: /reset mdp/i }));
 
@@ -308,6 +333,22 @@ describe("Users — modal reset mot de passe", () => {
       expect(screen.getByText("Minimum 10 caractères.")).toBeInTheDocument();
     });
   });
+
+  test("reset MDP demande une confirmation avant l'appel serveur", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("1", "user")] } });
+    api.post.mockResolvedValue({ data: {} });
+    renderPage();
+    await ouvrirDetails();
+    fireEvent.click(await screen.findByRole("button", { name: /reset mdp/i }));
+    const inputs = screen.getAllByPlaceholderText("••••••••••");
+    fireEvent.change(inputs[0], { target: { value: "Passw0rd!Long1" } });
+    fireEvent.change(inputs[1], { target: { value: "Passw0rd!Long1" } });
+    fireEvent.click(screen.getByText("Réinitialiser"));
+    expect(await screen.findByText(/Réinitialiser le mot de passe du compte « user »/)).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/admin-users/1/reset-password/", expect.any(Object)));
+  });
 });
 
 describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () => {
@@ -318,6 +359,7 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     ] } });
     renderPage();
     await screen.findByText("gest");
+    await ouvrirDetails();
     // Seul le gestionnaire expose les deux boutons (un ADMIN ne les voit que pour un SUPERADMIN connecté).
     expect(screen.getAllByRole("button", { name: /^Attestations/ })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: /^Consultations/ })).toHaveLength(1);
@@ -327,6 +369,7 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     api.get.mockResolvedValue({ data: { results: [makeUser("c1", "cons", "CONSULTANT")] } });
     renderPage();
     await screen.findByText("cons");
+    await ouvrirDetails();
     expect(screen.getByRole("button", { name: "Attestations ✗" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Consultations ✗" })).toBeInTheDocument();
   });
@@ -337,7 +380,9 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     ] } });
     api.patch.mockResolvedValue({ data: {} });
     renderPage();
+    await ouvrirDetails();
     userEvent.click(await screen.findByRole("button", { name: "Attestations ✓" }));
+    userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/admin-users/g1/", { peut_demander_attestation: false },
     ));
@@ -347,7 +392,9 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     api.get.mockResolvedValue({ data: { results: [makeUser("g1", "gest", "GESTIONNAIRE")] } });
     api.patch.mockResolvedValue({ data: {} });
     renderPage();
+    await ouvrirDetails();
     userEvent.click(await screen.findByRole("button", { name: "Consultations ✗" }));
+    userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/admin-users/g1/", { peut_demander_consultation: true },
     ));
@@ -357,9 +404,22 @@ describe("Users — droit de faire des demandes (GESTIONNAIRE/CONSULTANT)", () =
     api.get.mockResolvedValue({ data: { results: [makeUser("g1", "gest", "GESTIONNAIRE")] } });
     api.patch.mockResolvedValue({ data: {} });
     renderPage();
+    await ouvrirDetails();
     userEvent.click(await screen.findByRole("button", { name: "Congés ✗" }));
+    userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/admin-users/g1/", { peut_demander_conge: true },
     ));
+  });
+
+  test("Annuler la confirmation ne modifie pas le droit", async () => {
+    api.get.mockResolvedValue({ data: { results: [makeUser("g1", "gest", "GESTIONNAIRE")] } });
+    renderPage();
+    await ouvrirDetails();
+    userEvent.click(await screen.findByRole("button", { name: "Congés ✗" }));
+    expect(await screen.findByText(/Accorder le droit « demandes de congé »/)).toBeInTheDocument();
+    userEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    await waitFor(() => expect(screen.queryByText(/Accorder le droit/)).not.toBeInTheDocument());
+    expect(api.patch).not.toHaveBeenCalled();
   });
 });

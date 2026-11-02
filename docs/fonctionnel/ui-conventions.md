@@ -261,3 +261,22 @@ pattern pour les trois pages**, ne pas le réécrire page par page :
   demande pour 300/mois) ; lignes simples non groupées (illisibles à ce volume).
 - Tests : `Conges.test.jsx` (filtre importance + tri), `test_conges_api.py` (période, importance, tri en liste
   blanche).
+
+## Navigation = vrais liens, partout (2026-11-01)
+
+**Règle** : tout élément qui MÈNE à une autre page doit pouvoir s'ouvrir dans un nouvel onglet (clic droit « Ouvrir dans un nouvel onglet », Ctrl/Cmd+clic, clic molette), comme sur un site web. Jamais un simple `<button onClick={() => navigate(...)}>` pour un trajet entre deux URL.
+
+| Cas | Outil |
+|---|---|
+| Bouton / carte / texte qui mène à une URL | `components/LienNav.jsx` (`<Link>` react-router, le style du bouton est conservé) |
+| Écran piloté par un état local mais qui a aussi une URL (drill-down `/employees`, légende de graphique) | `LienAction` (même fichier) : `<a href>` dont le clic simple exécute l'action d'état (`preventDefault`), les clics modifiés restent natifs |
+| Fil d'Ariane | `components/employees/Breadcrumb.jsx` : item `to` (lien), `href`+`onClick` (lien + action d'état) ou `onClick` seul (sans URL) |
+| Ligne de tableau / carte non-`<a>` | `hooks/useLienLigne.js` : Ctrl+clic, molette et **clic droit** (menu `components/MenuLien.jsx`, monté une fois dans `App.js` : « Ouvrir dans un nouvel onglet », « Copier le lien »). Un clic droit sur un contrôle (bouton, lien, champ) de la ligne garde le menu natif |
+| Zone de dessin (parts de camembert, barres) | prop `urlDe(entry)` de `StatDonutChart` / `StatHistogram` : Ctrl+clic ouvre l'onglet, clic droit ouvre `MenuLien`, légende = vrais liens |
+
+- Les **redirections après une action** (enregistrement, connexion, suppression) restent des `navigate()` : ce ne sont pas des clics de navigation.
+- Un lien ne s'évalue jamais avec une cible possiblement nulle : `{...(cible ? lienLigne(url) : {})}` (un `target.id` lu avant le test a cassé `EmployeeDetail`).
+- `useLienLigne` ne traite pas comme « contrôle interne » l'élément qui porte lui-même le lien (`<button {...lienLigne(url)}>`), seulement ceux qu'il contient.
+- URL du drill-down `/employees` : `?lvl=directions|departements|services|employees&dir=&dep=&svc=&pol=` (slugs lisibles) ; cellule/section = `?cellule=` / `?section=` (même résolution que l'Organigramme). `pol` (pôle) n'a de sens qu'avec `lvl=departements`.
+- **Approche abandonnée** : un hook unique qui ajoute un faux `href` aux `<tr>` — un `<tr>` ne peut pas être un `<a>`, le navigateur n'affiche alors pas « Ouvrir dans un nouvel onglet » ; d'où le menu maison.
+- Tests : on vérifie le `href` (`getByRole("link")`), plus un appel à `navigate` simulé.

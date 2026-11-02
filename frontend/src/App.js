@@ -3,10 +3,11 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { KeyboardShortcutsProvider } from "./context/KeyboardShortcutsContext";
 import GlobalShortcuts from "./components/GlobalShortcuts";
+import MenuLien from "./components/MenuLien";
 import ProtectedRoute from "./components/ProtectedRoute";
 import {
   canRequestAttestations, canRequestConges, canRequestConsultations,
-  canSeeAttestations, canSeeConges, canSeeConsultations,
+  canSeeAttestations, canSeeConges, canSeeConsultations, canSeeInterims,
 } from "./config/accesSections";
 import RouteFallback from "./components/RouteFallback";
 import Login from "./pages/Login";
@@ -21,7 +22,7 @@ const Employees = lazy(() => import("./pages/Employees"));
 const EmployeeDetail = lazy(() => import("./pages/EmployeeDetail"));
 const EmployeeForm = lazy(() => import("./pages/EmployeeForm"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Statistiques = lazy(() => import("./pages/Statistiques"));
+const RapportRH = lazy(() => import("./pages/reporting/RapportRH"));
 const Users = lazy(() => import("./pages/Users"));
 const UserPerimetre = lazy(() => import("./pages/UserPerimetre"));
 const AuditLogs = lazy(() => import("./pages/AuditLogs"));
@@ -31,11 +32,13 @@ const Profil = lazy(() => import("./pages/Profil"));
 const ContratDetail = lazy(() => import("./pages/ContratDetail"));
 const Organigramme = lazy(() => import("./pages/Organigramme"));
 const Consentement = lazy(() => import("./pages/Consentement"));
+const ChangementMotDePasse = lazy(() => import("./pages/ChangementMotDePasse"));
 const RechercheDocuments = lazy(() => import("./pages/RechercheDocuments"));
 const Attestations = lazy(() => import("./pages/Attestations"));
 const AttestationNouvelle = lazy(() => import("./pages/AttestationNouvelle"));
 const AttestationDetail = lazy(() => import("./pages/AttestationDetail"));
 const Conges = lazy(() => import("./pages/Conges"));
+const Interims = lazy(() => import("./pages/Interims"));
 const CongeNouvelle = lazy(() => import("./pages/CongeNouvelle"));
 const CongeDetail = lazy(() => import("./pages/CongeDetail"));
 const Consultations = lazy(() => import("./pages/Consultations"));
@@ -57,10 +60,19 @@ function App() {
       <KeyboardShortcutsProvider>
       <BrowserRouter>
         <GlobalShortcuts />
+        <MenuLien />
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/mot-de-passe"
+            element={
+              <ProtectedRoute>
+                <ChangementMotDePasse />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/consentement"
             element={
@@ -117,11 +129,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route path="/statistiques" element={<Navigate to="/statistiques/synthese" replace />} />
+          {/* Une page non autorisée est redirigée par RapportRH (pagesVisibles). */}
           <Route
-            path="/statistiques"
+            path="/statistiques/:page"
             element={
-              <ProtectedRoute adminOnly>
-                <Statistiques />
+              <ProtectedRoute>
+                {/* ADMIN ou CONSULTANT autorisés : RapportRH filtre par pagesVisibles. */}
+                <RapportRH />
               </ProtectedRoute>
             }
           />
@@ -155,6 +170,17 @@ function App() {
                 requireFn={canSeeAttestations}
               >
                 <AttestationDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/interims"
+            element={
+              <ProtectedRoute
+                allowedRoles={["ADMIN", "SUPERADMIN", "GESTIONNAIRE", "CONSULTANT"]}
+                requireFn={canSeeInterims}
+              >
+                <Interims />
               </ProtectedRoute>
             }
           />

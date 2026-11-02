@@ -112,7 +112,7 @@ def test_create_ignore_les_champs_reserves_au_traiteur(employee, demandeur_conge
     demandeur_conge.scope_directions.add(employee.direction)
     s = DemandeCongeCreateSerializer(
         data=_payload(employee, observations='triche', ventilation=[{'exercice': ACT, 'jours': 9}],
-                      categorie_exercice='ANTICIPE', statut='prete', validateur_nom='X'),
+                      categorie_exercice='ANTICIPE', statut='accordee', validateur_nom='X'),
         context=_ctx(demandeur_conge),
     )
     assert s.is_valid(), s.errors
@@ -244,8 +244,21 @@ def motif_cp(db):
     return _motif_cp()
 
 
-def _creer(client, employee, **extra):
-    return client.post('/api/conges/demandes/', _payload(employee, **extra), format='json')
+def _accord_hierarchique(reference):
+    """Simule l'accord de la hiérarchie (2026-10-31) : sans responsable désigné
+    dans ces fixtures, la demande reste bloquée en `visa` ; les tests du
+    traitement RH partent d'une demande accordée (`recue`). Le circuit des
+    visas lui-même est couvert par test_conges_visas.py."""
+    DemandeConge.objects.filter(reference=reference, statut=DemandeConge.Statut.VISA).update(
+        statut=DemandeConge.Statut.RECUE)
+
+
+def _creer(client, employee, accorder=True, **extra):
+    resp = client.post('/api/conges/demandes/', _payload(employee, **extra), format='json')
+    if accorder and resp.status_code == 201:
+        _accord_hierarchique(resp.data['reference'])
+        resp.data['statut'] = DemandeConge.Statut.RECUE
+    return resp
 
 
 def _ref_via_api(demandeur_conge, employee):
@@ -337,7 +350,8 @@ def test_filtre_pending_traiteur_et_demandeur(demandeur_conge, traiteur_conge, e
     assert len(_rows(_client(traiteur_conge).get('/api/conges/demandes/', {'pending': 1}).data)) == 1
     _client(traiteur_conge).post(f'/api/conges/demandes/{ref}/valider/', _corps_validation(motif_cp), format='json')
     assert len(_rows(_client(traiteur_conge).get('/api/conges/demandes/', {'pending': 1}).data)) == 0
-    assert len(_rows(_client(demandeur_conge).get('/api/conges/demandes/', {'pending': 1}).data)) == 1
+    # Plus de « titre à récupérer » pour le demandeur : un congé accordé n'est plus un badge.
+    assert len(_rows(_client(demandeur_conge).get('/api/conges/demandes/', {'pending': 1}).data)) == 0
 
 
 # ─── Validation, rejet, récupération ────────────────────────────────────────
@@ -350,7 +364,7 @@ def test_valider_debite_les_soldes_et_notifie(demandeur_conge, traiteur_conge, e
             f'/api/conges/demandes/{ref}/valider/', _corps_validation(motif_cp, nb_jours=20, date_retour='2026-11-21'), format='json',
         )
     assert resp.status_code == 200, resp.data
-    assert resp.data['statut'] == 'prete'
+    assert resp.data['statut'] == 'accordee'
     assert resp.data['ventilation'] == [{'exercice': REL, 'jours': 13}, {'exercice': ACT, 'jours': 7}]
     assert resp.data['categorie_exercice'] == 'RELIQUAT' and resp.data['exercice'] == REL
     assert resp.data['validateur_nom'] == traiteur_conge.full_name
@@ -381,24 +395,48 @@ def test_valider_interdit_au_demandeur(demandeur_conge, employee, motif_cp):
     assert _client(demandeur_conge).post(f'/api/conges/demandes/{ref}/valider/', _corps_validation(motif_cp), format='json').status_code == 403
 
 
-def test_rejeter_notifie_le_demandeur(demandeur_conge, traiteur_conge, employee, django_capture_on_commit_callbacks):
+def test_le_charge_des_conges_ne_peut_plus_rejeter(demandeur_conge, traiteur_conge, employee):
+    # 2026-10-31 : il ne décide pas (l'accord est hiérarchique) — plus de route « rejeter ».
+    ref = _ref_via_api(demandeur_conge, employee)
+    resp = _client(traiteur_conge).post(f'/api/conges/demandes/{ref}/rejeter/', {'motif': 'X'}, format='json')
+    assert resp.status_code == 404
+    assert DemandeConge.objects.get(reference=ref.replace('-', '/')).statut == 'recue'
+
+
+def test_enregistrement_trace_les_corrections_et_previent_le_demandeur(
+        demandeur_conge, traiteur_conge, employee, solde_employe, motif_cp, django_capture_on_commit_callbacks):
+    solde_employe(annuel=30)
     ref = _ref_via_api(demandeur_conge, employee)
     with django_capture_on_commit_callbacks(execute=True):
-        resp = _client(traiteur_conge).post(f'/api/conges/demandes/{ref}/rejeter/', {'motif': 'Période de clôture'}, format='json')
-    assert resp.status_code == 200 and resp.data['statut'] == 'rejetee'
-    assert AuditLog.objects.filter(action=AuditLog.Action.REJETER_CONGE).exists()
-    assert Notification.objects.filter(recipient=demandeur_conge, type=Notification.Type.CONGE_REJETEE).exists()
+        resp = _client(traiteur_conge).post(f'/api/conges/demandes/{ref}/valider/',
+                                            _corps_validation(motif_cp, adresse_conge='ORAN'), format='json')
+    assert resp.status_code == 200, resp.data
+    log = AuditLog.objects.filter(action=AuditLog.Action.VALIDER_CONGE).latest('id')
+    assert 'adresse_conge' in log.details['corrections']
+    notif = Notification.objects.filter(recipient=demandeur_conge, type=Notification.Type.CONGE_PRETE).latest('id')
+    assert 'enregistré' in notif.message and 'adresse' in notif.message
 
 
-def test_recuperee_exige_prete(demandeur_conge, traiteur_conge, employee, solde_employe, motif_cp):
+def test_demande_sans_superieur_bloquee_et_signalee(demandeur_conge, traiteur_conge, employee,
+                                                     django_capture_on_commit_callbacks):
+    demandeur_conge.scope_directions.add(employee.direction)
+    with django_capture_on_commit_callbacks(execute=True):
+        resp = _creer(_client(demandeur_conge), employee, accorder=False)
+    ref = resp.data['reference'].replace('/', '-')
+    detail = _client(traiteur_conge).get(f'/api/conges/demandes/{ref}/').data
+    assert detail['statut'] == 'visa' and detail['sans_superieur'] is True
+    assert Notification.objects.filter(recipient=traiteur_conge, message__contains='aucun supérieur').exists()
+    # Toujours pas de responsable : le recalcul échoue proprement ; la validation RH est impossible.
+    assert _client(traiteur_conge).post(f'/api/conges/demandes/{ref}/recalculer-chaine/').status_code == 400
+
+
+def test_plus_de_route_recuperee_un_conge_valide_est_accorde(demandeur_conge, traiteur_conge, employee, solde_employe, motif_cp):
     solde_employe(annuel=30)
     ref = _ref_via_api(demandeur_conge, employee)
     client = _client(traiteur_conge)
-    assert client.post(f'/api/conges/demandes/{ref}/recuperee/', {}, format='json').status_code == 400
     client.post(f'/api/conges/demandes/{ref}/valider/', _corps_validation(motif_cp), format='json')
-    resp = client.post(f'/api/conges/demandes/{ref}/recuperee/', {}, format='json')
-    assert resp.status_code == 200 and resp.data['statut'] == 'recuperee'
-    assert AuditLog.objects.filter(action=AuditLog.Action.RECUPERER_CONGE).exists()
+    assert client.get(f'/api/conges/demandes/{ref}/').data['statut'] == 'accordee'
+    assert client.post(f'/api/conges/demandes/{ref}/recuperee/', {}, format='json').status_code == 404
 
 
 # ─── Annulation et interruption par le traiteur ─────────────────────────────
@@ -451,13 +489,13 @@ def test_interrompre_date_invalide_renvoie_400(demandeur_conge, traiteur_conge, 
     assert resp.status_code == 400 and 'error' in resp.data
 
 
-def test_observations_modifiables_tant_que_pas_recuperee(demandeur_conge, traiteur_conge, employee, solde_employe, motif_cp):
+def test_observations_modifiables_tant_que_le_conge_est_accorde(demandeur_conge, traiteur_conge, employee, solde_employe, motif_cp):
     solde_employe(annuel=30)
     ref = _ref_via_api(demandeur_conge, employee)
     client = _client(traiteur_conge)
     client.post(f'/api/conges/demandes/{ref}/valider/', _corps_validation(motif_cp), format='json')
     assert client.patch(f'/api/conges/demandes/{ref}/observations/', {'observations': 'corrigé'}, format='json').status_code == 200
-    client.post(f'/api/conges/demandes/{ref}/recuperee/', {}, format='json')
+    client.post(f'/api/conges/demandes/{ref}/annuler/', {'motif': 'x', 'reference_confirmation': ref.replace('-', '/')}, format='json')
     assert client.patch(f'/api/conges/demandes/{ref}/observations/', {'observations': 'trop tard'}, format='json').status_code == 400
     assert AuditLog.objects.filter(action=AuditLog.Action.MODIFY_CONGE).exists()
 
@@ -736,9 +774,12 @@ def test_stats_structure_et_comptes(demandeur_conge, traiteur_conge, employee, s
     _titre_valide(demandeur_conge, traiteur_conge, employee, solde_employe, motif_cp)
     resp = _client(traiteur_conge).get('/api/conges/stats/')
     assert resp.status_code == 200 and resp.data['total'] == 1
-    assert resp.data['par_statut'] == [{'id': 'prete', 'nom': 'Prête', 'count': 1}]
+    assert resp.data['par_statut'] == [{'id': 'accordee', 'nom': 'Enregistré', 'count': 1}]
     assert resp.data['par_gestionnaire'][0]['count'] == 1 and resp.data['par_employe'][0]['count'] == 1
-    assert len(resp.data['evolution_mensuelle']) == 1 and resp.data['delai_moyen_jours'] is None
+    # Délai mesuré sur les demandes accordées (demande → accord) : une demande
+    # accordée dans le test donne un délai (≈ 0 jour), plus None.
+    assert len(resp.data['evolution_mensuelle']) == 1 and resp.data['delai_moyen_jours'] is not None
+    assert resp.data['evolution_mensuelle'][0]['accordees'] == 1
 
 
 def test_stats_exclut_les_demandes_supprimees_par_le_demandeur(demandeur_conge, traiteur_conge, employee):

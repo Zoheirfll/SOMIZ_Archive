@@ -15,7 +15,7 @@ class CanAccessAttestations(BasePermission):
         return bool(
             user and user.is_authenticated and user.is_active and
             user.consent_loi1807_accepted_at and
-            (user.can_manage_attestations or user.can_request_attestations)
+            (user.can_manage_attestations or user.can_request_attestations or user.can_visa_conges)
         )
 
 

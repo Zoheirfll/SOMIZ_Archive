@@ -29,7 +29,7 @@ def _titre(**extra):
         date_depart=datetime.date(2026, 8, 10), date_retour=datetime.date(2026, 8, 23),
         adresse_conge="ALGERIE", exercice="2024/2025", date_etablissement=datetime.date(2026, 8, 9),
         signataire_nom="A.BOUSMAHA", signataire_titre="Chef de Département Administration du Personnel",
-        signataire_interim=False, statut='prete',
+        signataire_interim=False, statut='accordee',
     )
     base.update(extra)
     return SimpleNamespace(**base)

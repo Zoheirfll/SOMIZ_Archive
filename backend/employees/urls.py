@@ -15,7 +15,7 @@ from employees.views import (
     FilePagesReorderView,
     FilePageDetailView,
     FilePageReplaceView,
-    DocumentDeleteView,
+    DocumentDeleteView, DocumentDeplacerView, FilePagesDeplacerView,
     DocumentFilesReorderView,
     DocumentFileAddView,
     employee_search,
@@ -68,12 +68,14 @@ urlpatterns = [
     path('documents/<uuid:doc_id>/files/reorder/', DocumentFilesReorderView.as_view(), name='doc-files-reorder'),
     path('documents/<uuid:doc_id>/files/', DocumentFileAddView.as_view(), name='doc-files-add'),
     path('documents/<uuid:doc_id>/', DocumentDeleteView.as_view(), name='doc-delete'),
+    path('documents/<uuid:doc_id>/deplacer/', DocumentDeplacerView.as_view(), name='doc-deplacer'),
 
     # Fichiers individuels
     path('files/<uuid:file_id>/view/', FileViewerView.as_view(), name='file-view'),
     # Pages internes d'un document PDF (2026-09-14) — le fichier reste unique
     path('files/<uuid:file_id>/pages/', FilePagesView.as_view(), name='file-pages'),
     path('files/<uuid:file_id>/pages/reorder/', FilePagesReorderView.as_view(), name='file-pages-reorder'),
+    path('files/<uuid:file_id>/pages/deplacer/', FilePagesDeplacerView.as_view(), name='file-pages-deplacer'),
     path('files/<uuid:file_id>/pages/<uuid:page_id>/', FilePageDetailView.as_view(), name='file-page-detail'),
     path('files/<uuid:file_id>/pages/<uuid:page_id>/replace/', FilePageReplaceView.as_view(), name='file-page-replace'),
     path('files/<uuid:file_id>/', FileDetailView.as_view(), name='file-detail'),

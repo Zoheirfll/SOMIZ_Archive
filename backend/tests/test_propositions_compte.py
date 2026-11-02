@@ -92,10 +92,32 @@ class TestValidation:
         assert user.username == "jean.dupont"
         assert user.must_change_password is True
         assert user.peut_demander_conge is True
+        assert user.peut_demander_attestation is True and user.peut_demander_consultation is True
         assert user.check_password(mdp)
         prop.refresh_from_db()
         assert prop.statut == PropositionCompte.Statut.VALIDEE and prop.compte_cree == user
         assert AuditLog.objects.filter(action="VALIDER_COMPTE").exists()
+
+    def test_validation_pre_remplit_le_perimetre_avec_l_unite_dirigee(self, admin_user, employee, service):
+        prop = self._proposition(admin_user, employee, service)
+        user, _ = valider_proposition(FakeRequest(admin_user), prop, role="GESTIONNAIRE")
+        assert list(user.scope_services.all()) == [service]
+        assert not user.scope_directions.exists() and not user.scope_departements.exists()
+        assert AuditLog.objects.filter(action="VALIDER_COMPTE").first().details["perimetre"] == [f"service:{service.nom}"]
+        assert user.can_access_employee(employee)
+
+    def test_perimetre_direction_pour_un_directeur(self, admin_user, employee, direction):
+        auth_client(admin_user).patch(
+            f"/api/ref/directions/{direction.id}/", {"responsable": str(employee.id)}, format="json")
+        user, _ = valider_proposition(FakeRequest(admin_user), PropositionCompte.objects.get(), role="CONSULTANT")
+        assert list(user.scope_directions.all()) == [direction]
+
+    def test_plus_responsable_a_la_validation_compte_cree_sans_perimetre(self, admin_user, employee, service):
+        prop = self._proposition(admin_user, employee, service)
+        service.responsable = None  # il n'est plus responsable au moment de la validation
+        service.save()
+        user, _ = valider_proposition(FakeRequest(admin_user), prop, role="CONSULTANT")
+        assert not user.scope_services.exists()
 
     def test_role_non_autorise_refuse(self, admin_user, employee, service):
         prop = self._proposition(admin_user, employee, service)
@@ -221,3 +243,69 @@ class TestEndpointsEtMotDePasseTemporaire:
             "ancien_mot_de_passe": mdp, "nouveau_mot_de_passe": "Nouveau-Mdp-2026!x", "confirmation": "Nouveau-Mdp-2026!x"}, format="json")
         assert ok.status_code == 200, ok.data
         assert client.get("/api/employees/").status_code != 403
+
+
+@pytest.mark.django_db
+class TestPerimetreComptesExistantsEtRattrapage:
+    def test_chef_de_deux_unites_recoit_les_deux_au_perimetre(self, admin_user, employee, service, departement):
+        client = auth_client(admin_user)
+        client.patch(f"/api/ref/services/{service.id}/", {"responsable": str(employee.id)}, format="json")
+        # Donnée historique : depuis le 2026-11-01 l'API refuse un 2e poste de chef
+        # (test_responsable_unique.py) ; un cas déjà en base reste géré.
+        departement.responsable = employee
+        departement.save()
+        user, _ = valider_proposition(FakeRequest(admin_user), PropositionCompte.objects.get(), role="GESTIONNAIRE")
+        assert list(user.scope_services.all()) == [service]
+        assert list(user.scope_departements.all()) == [departement]
+
+    def test_compte_existant_recoit_l_unite_sans_proposition(self, admin_user, employee, service):
+        user = User.objects.create_user(
+            username="jean", password="x", nom="D", prenom="J", employee=employee, role="CONSULTANT")
+        auth_client(admin_user).patch(
+            f"/api/ref/services/{service.id}/", {"responsable": str(employee.id)}, format="json")
+        assert list(user.scope_services.all()) == [service]
+        assert not PropositionCompte.objects.exists()
+        log = AuditLog.objects.filter(action="MODIFY_USER").last()
+        assert log.details["action"] == "perimetre_responsable"
+
+    def test_compte_admin_existant_perimetre_inchange(self, admin_user, employee, service):
+        user = User.objects.create_user(
+            username="adm2", password="x", nom="D", prenom="J", employee=employee, role="ADMIN")
+        auth_client(admin_user).patch(
+            f"/api/ref/services/{service.id}/", {"responsable": str(employee.id)}, format="json")
+        assert not user.scope_services.exists()
+
+    def test_apercu_puis_rattrapage_des_responsables_sans_compte(self, admin_user, employee, service, departement):
+        # Désignés « avant » : directement en base, sans passer par l'API (aucune proposition).
+        autre = _autre_employe(employee, "EMP-7", "Benali", "Sami")
+        service.responsable = employee
+        service.save()
+        departement.responsable = employee
+        departement.save()
+        autre_service = Service.objects.create(nom="Archives", departement=departement, responsable=autre)
+        client = auth_client(admin_user)
+        apercu = client.get("/api/admin-users/propositions/rattrapage/")
+        assert apercu.status_code == 200
+        par_matricule = {e["matricule"]: e for e in apercu.data}
+        assert set(par_matricule) == {"EMP-001", "EMP-7"}
+        assert len(par_matricule["EMP-001"]["unites"]) == 2  # service + département
+        assert not PropositionCompte.objects.exists()  # l'aperçu ne crée rien
+
+        resp = client.post("/api/admin-users/propositions/rattrapage/")
+        assert resp.status_code == 201 and resp.data["propositions_creees"] == 2
+        assert PropositionCompte.objects.filter(source="rattrapage").count() == 2
+        assert not User.objects.filter(employee__in=[employee, autre]).exists()  # aucun compte avant validation
+        # Rejouer ne crée rien de plus.
+        assert client.post("/api/admin-users/propositions/rattrapage/").data["propositions_creees"] == 0
+        assert client.get("/api/admin-users/propositions/rattrapage/").data == []
+        # Validation : le chef de deux unités les reçoit toutes les deux.
+        prop = PropositionCompte.objects.get(employee=employee)
+        user, _ = valider_proposition(FakeRequest(admin_user), prop, role="GESTIONNAIRE")
+        assert list(user.scope_services.all()) == [service]
+        assert list(user.scope_departements.all()) == [departement]
+        assert autre_service.responsable == autre
+
+    def test_rattrapage_reserve_aux_admins(self, consultant_user):
+        client = auth_client(consultant_user)
+        assert client.get("/api/admin-users/propositions/rattrapage/").status_code == 403
+        assert client.post("/api/admin-users/propositions/rattrapage/").status_code == 403

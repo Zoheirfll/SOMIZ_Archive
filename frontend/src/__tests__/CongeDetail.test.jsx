@@ -32,14 +32,14 @@ const DEMANDE = {
   motif: null, ventilation: [], categorie_exercice: "", pieces_jointes: [],
   signataire_nom: "", signataire_interim: false,
   demandeur: 5, demandeur_nom: "Gest Test", demandeur_role: "GESTIONNAIRE",
-  created_at: "2026-10-20T08:00:00Z", date_prete: null, date_recuperee: null, date_document: null,
+  created_at: "2026-10-20T08:00:00Z", date_accord: null, date_document: null,
 };
 
 const PRETE = {
-  ...DEMANDE, statut: "prete", type_conge: "CP", motif: 1, motif_nom: "Congé annuel", exercice: "2025/2026",
+  ...DEMANDE, statut: "accordee", type_conge: "CP", motif: 1, motif_nom: "Congé annuel", exercice: "2025/2026",
   date_etablissement: "2026-10-20", categorie_exercice: "RELIQUAT", validateur_nom: "Admin Test",
   ventilation: [{ exercice: "2025/2026", jours: 13 }, { exercice: "2026/2027", jours: 7 }],
-  signataire_nom: "A.BOUSMAHA", date_prete: "2026-10-20T09:00:00Z",
+  signataire_nom: "A.BOUSMAHA", date_accord: "2026-10-20T09:00:00Z",
 };
 
 const SOLDE = {
@@ -82,12 +82,12 @@ beforeEach(() => {
 });
 
 describe("CongeDetail — rôles", () => {
-  test("le traiteur voit Valider et Rejeter sur une demande reçue", async () => {
+  test("le traiteur voit « Contrôler et enregistrer » (et plus de Rejeter) sur une demande accordée", async () => {
     useAuth.mockReturnValue({ user: TRAITEUR });
     mockApi(DEMANDE);
     renderDetail();
-    expect(await screen.findByRole("button", { name: "Valider" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Rejeter" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Contrôler et enregistrer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rejeter" })).not.toBeInTheDocument();
   });
 
   test("le demandeur voit les informations mais aucune action de traitement", async () => {
@@ -95,7 +95,7 @@ describe("CongeDetail — rôles", () => {
     mockApi(DEMANDE);
     renderDetail();
     await screen.findByText("Ali Benali");
-    expect(screen.queryByRole("button", { name: "Valider" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Contrôler et enregistrer" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Rejeter" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Annuler la demande/i })).toBeInTheDocument();
   });
@@ -125,7 +125,7 @@ describe("CongeDetail — validation", () => {
     useAuth.mockReturnValue({ user: TRAITEUR });
     mockApi(DEMANDE);
     renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: "Valider" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Contrôler et enregistrer" }));
     expect(await screen.findByText("13 j sur l'exercice 2025/2026")).toBeInTheDocument();
     expect(screen.getByText("7 j sur l'exercice 2026/2027")).toBeInTheDocument();
     expect(screen.getByLabelText("Exercice")).toHaveValue("2025/2026");
@@ -136,7 +136,7 @@ describe("CongeDetail — validation", () => {
     mockApi({ ...DEMANDE, type_conge: "CE", motif: 2, motif_nom: "Mariage", nb_jours: 3 });
     renderDetail();
     expect(await screen.findByText("Type demandé")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Valider" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Contrôler et enregistrer" }));
     await waitFor(() => expect(screen.getByLabelText("Motif")).toHaveValue("2"));
     expect(screen.getByLabelText("Type de congé")).toHaveValue("CE");
     expect(screen.getByText(/aucun jour n'est débité/)).toBeInTheDocument();
@@ -154,10 +154,10 @@ describe("CongeDetail — validation", () => {
     });
     api.post.mockResolvedValue({ data: PRETE });
     renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: "Valider" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Contrôler et enregistrer" }));
     fireEvent.change(await screen.findByLabelText("Motif"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Observations"), { target: { value: "RAS" } });
-    fireEvent.click(screen.getByRole("button", { name: /Valider et générer le titre/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Enregistrer et générer le titre/i }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/conges/demandes/00001-26/valider/", expect.objectContaining({
         type_conge: "CP", motif: 1, nb_jours: 20, date_depart: "2026-11-01", date_retour: "2026-11-21",
@@ -172,19 +172,19 @@ describe("CongeDetail — validation", () => {
     mockApi(DEMANDE);
     api.post.mockRejectedValue({ response: { data: { error: "Les soldes de congé de cet employé ne sont pas initialisés." } } });
     renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: "Valider" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Contrôler et enregistrer" }));
     fireEvent.change(await screen.findByLabelText("Motif"), { target: { value: "1" } });
-    fireEvent.click(screen.getByRole("button", { name: /Valider et générer le titre/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Enregistrer et générer le titre/i }));
     expect(await screen.findByText(/ne sont pas initialisés/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Valider et générer le titre/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Enregistrer et générer le titre/i })).toBeInTheDocument();
   });
 
   test("le motif est obligatoire : pas d'appel serveur sans motif", async () => {
     useAuth.mockReturnValue({ user: TRAITEUR });
     mockApi(DEMANDE);
     renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: "Valider" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Valider et générer le titre/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Contrôler et enregistrer" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Enregistrer et générer le titre/i }));
     expect(await screen.findByText(/Choisissez un motif/i)).toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   });
@@ -220,7 +220,7 @@ describe("CongeDetail — titre validé", () => {
     useAuth.mockReturnValue({ user: TRAITEUR });
     mockApi(DEMANDE);
     renderDetail();
-    await screen.findByRole("button", { name: "Valider" });
+    await screen.findByRole("button", { name: "Contrôler et enregistrer" });
     expect(screen.queryByRole("button", { name: /Aperçu PDF/i })).not.toBeInTheDocument();
   });
 
@@ -286,12 +286,32 @@ describe("CongeDetail — annulation et interruption", () => {
     expect(screen.getByText("Erreur")).toBeInTheDocument();
   });
 
-  test("marquer récupéré appelle l'endpoint dédié", async () => {
+  test("un congé accordé n'a plus de bouton « Marquer récupéré »", async () => {
     useAuth.mockReturnValue({ user: TRAITEUR });
     mockApi(PRETE);
-    api.post.mockResolvedValue({ data: { ...PRETE, statut: "recuperee" } });
     renderDetail();
-    fireEvent.click(await screen.findByRole("button", { name: "Marquer récupéré" }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/conges/demandes/00001-26/recuperee/", {}));
+    await screen.findByText("Ali Benali");
+    expect(screen.queryByRole("button", { name: /récupéré/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Annuler le titre" })).toBeInTheDocument();
+  });
+
+  test("le chef de département valide son niveau puis, séparément, à la place du chef absent", async () => {
+    useAuth.mockReturnValue({ user: { id: 9, role: "CONSULTANT", can_visa_conges: true } });
+    mockApi({
+      ...DEMANDE, statut: "visa", peut_viser: true,
+      visas: [
+        { niveau: 1, unite_nom: "Service Paie", responsable_nom: "Kheira FERGOUG", decision: "en_attente", interimaires: [] },
+        { niveau: 2, unite_nom: "DAP", responsable_nom: "Abdelwahid BOUSMAHA", decision: "en_attente", interimaires: [] },
+      ],
+      visa_possibilites: { propre: true, a_la_place: [{ niveau: 1, unite_nom: "Service Paie", responsable_nom: "Kheira FERGOUG" }] },
+    });
+    api.post.mockResolvedValue({ data: DEMANDE });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /^Accorder$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/conges/demandes/00001-26/viser/", {}));
+    fireEvent.click(await screen.findByRole("button", { name: /Accorder à la place de Kheira FERGOUG/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/conges/demandes/00001-26/viser/", { niveau: 1 }));
   });
 });

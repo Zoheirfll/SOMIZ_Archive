@@ -200,7 +200,7 @@ export default function ConsultationDetail() {
         <div style={{ maxWidth: 800, margin: "0 auto" }}>
           <Breadcrumb
             variant="hero"
-            items={[{ label: "Consultations", onClick: () => navigate("/consultations") }, { label: demande.reference }]}
+            items={[{ label: "Consultations", to: "/consultations" }, { label: demande.reference }]}
           />
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
             <h1 style={{ color: "#fff", fontSize: 24, margin: 0, fontWeight: 800 }}>{demande.reference}</h1>

@@ -9,7 +9,9 @@ import { useKeyboardShortcutsHelp } from "../context/KeyboardShortcutsContext";
 import { KeyboardIcon, SunIcon, MoonIcon, SearchIcon } from "./icons";
 import NotificationBell from "./NotificationBell";
 import NavDropdown from "./NavDropdown";
+import { pagesVisibles } from "../config/reportingPages";
 import { canSeeAttestations, canSeeConges, canSeeConsultations, canSeeRegistres } from "../config/accesSections";
+import LienNav from "./LienNav";
 
 const MenuIcon = ({ size = 22, ...props }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
@@ -125,21 +127,25 @@ const Navbar = () => {
     // DemandeAttestationListCreateView.get_queryset.
     if (!seesAttestations) return;
     let cancelled = false;
-    api.get("/attestations/demandes/", { params: { pending: 1 } })
-      .then((res) => {
-        if (cancelled) return;
-        // `count` si paginé (DRF), sinon la longueur d'un tableau brut —
-        // res.data.results.length sous-comptait dès que le nombre de
-        // demandes en attente dépassait une page.
-        const count = res.data?.count ?? (res.data?.results || res.data || []).length;
-        setPendingAttestations(count);
-      })
-      .catch(() => {});
+    // `count` si paginé (DRF), sinon la longueur d'un tableau brut —
+    // res.data.results.length sous-comptait dès que le nombre de demandes en
+    // attente dépassait une page.
+    const compter = (params) =>
+      api.get("/attestations/demandes/", { params })
+        .then((res) => res.data?.count ?? (res.data?.results || res.data || []).length)
+        .catch(() => 0);
+    // Un responsable compte aussi les demandes qu'il doit valider (`a_viser`).
+    Promise.all([
+      compter({ pending: 1 }),
+      user?.can_visa_conges && !user?.can_manage_attestations ? compter({ a_viser: 1 }) : 0,
+    ]).then(([prets, avalider]) => {
+      if (!cancelled) setPendingAttestations(prets + avalider);
+    });
     return () => { cancelled = true; };
     // Recharge à chaque changement de page — le badge doit refléter les
     // changements de statut faits sur /attestations/:id, jamais rechargés
     // sinon puisque Navbar ne se démonte pas entre deux pages de l'app.
-  }, [user?.role, location.pathname]);
+  }, [user?.role, seesAttestations, user?.can_visa_conges, user?.can_manage_attestations, location.pathname]);
 
   useEffect(() => {
     // Même principe que les attestations : le traiteur compte les demandes
@@ -147,16 +153,23 @@ const Navbar = () => {
     // choisie côté serveur par `pending=1`, voir DemandeCongeListCreateView).
     if (!seesConges) { setPendingConges(0); return undefined; }
     let cancelled = false;
-    api.get("/conges/demandes/", { params: { pending: 1 } })
-      .then((res) => {
-        if (cancelled) return;
-        setPendingConges(res.data?.count ?? (res.data?.results || res.data || []).length);
-      })
-      .catch(() => {});
+    const compter = (params) =>
+      api.get("/conges/demandes/", { params })
+        .then((res) => res.data?.count ?? (res.data?.results || res.data || []).length)
+        .catch(() => 0);
+    // Un responsable compte aussi les demandes qu'il doit viser (`a_viser`,
+    // ignoré pour un traiteur côté serveur) : la cloche et le badge « Demandes »
+    // doivent annoncer la même chose.
+    Promise.all([
+      compter({ pending: 1 }),
+      user?.can_visa_conges && !user?.can_manage_conges ? compter({ a_viser: 1 }) : 0,
+    ]).then(([titres, visas]) => {
+      if (!cancelled) setPendingConges(titres + visas);
+    });
     return () => { cancelled = true; };
     // Recharge à chaque changement de page : le badge suit les changements de
     // statut faits sur /conges/:ref (Navbar ne se démonte pas entre deux pages).
-  }, [seesConges, location.pathname]);
+  }, [seesConges, user?.can_visa_conges, user?.can_manage_conges, location.pathname]);
 
   // Entrée « Demandes » : menu déroulant Attestations / Consultations, chaque
   // section avec son propre badge « à traiter ». Si le compte n'a accès qu'à
@@ -170,6 +183,8 @@ const Navbar = () => {
   const navLinks = [
     { path: "/employees", label: "Personnel" },
     { path: "/organigramme", label: "Organigramme" },
+    // Les ADMIN/SUPERADMIN le trouvent dans « Administration » ; les responsables d'unité ici.
+    { path: "/interims", label: "Intérim", show: !!user?.can_gerer_interim && !["ADMIN", "SUPERADMIN"].includes(user?.role) },
     {
       path: demandesSections[0]?.path, label: "Demandes",
       show: demandesSections.length > 0,
@@ -177,12 +192,15 @@ const Navbar = () => {
       match: (p) => p.startsWith("/attestations") || p.startsWith("/consultations") || p.startsWith("/conges"),
       badge: demandesSections.reduce((total, s) => total + s.badge, 0),
     },
-    {
-      path: "/registres", label: "Registres",
-      show: canSeeRegistres(user),
-    },
     { path: "/dashboard", label: "Tableau de bord", adminOnly: true },
-    { path: "/statistiques", label: "Statistiques", adminOnly: true },
+    {
+      // Menu affiché dès qu'une page est accessible (acces_statistiques, ou
+      // traiteur congés/demandes pour sa seule page).
+      path: pagesVisibles(user)[0]?.path, label: "Statistiques",
+      show: pagesVisibles(user).length > 0,
+      children: pagesVisibles(user),
+      match: (p) => p.startsWith("/statistiques"),
+    },
     { path: "/recherche-documents", label: "Recherche OCR", adminOnly: true },
   ].filter((item) =>
     item.show !== undefined ? item.show : (!item.adminOnly || ["ADMIN", "SUPERADMIN"].includes(user?.role))
@@ -191,15 +209,13 @@ const Navbar = () => {
   const adminMenuLinks = [
     { path: "/import", label: "Import" },
     { path: "/users", label: "Utilisateurs" },
+    { path: "/interims", label: "Intérim" },
+    // Registres d'archives : SUPERADMIN ou ADMIN `charge_registre` (toujours un compte admin).
+    ...(canSeeRegistres(user) ? [{ path: "/registres", label: "Registres" }] : []),
     { path: "/parametres", label: "Configuration" },
     { path: "/audit", label: "Journal" },
   ];
   const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
-
-  const goTo = (path) => {
-    setDrawerOpen(false);
-    navigate(path);
-  };
 
   return (
     <nav
@@ -262,9 +278,9 @@ const Navbar = () => {
             }
             const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
             return (
-              <button
+              <LienNav
                 key={item.path}
-                onClick={() => navigate(item.path)}
+                to={item.path}
                 style={{
                   background: isActive ? theme.primaryBg : "transparent",
                   border: "none",
@@ -301,7 +317,7 @@ const Navbar = () => {
                     {item.badge}
                   </span>
                 )}
-              </button>
+              </LienNav>
             );
           })}
 
@@ -321,9 +337,9 @@ const Navbar = () => {
         {!isMobile && (
           <>
             {!isCompact && (
-            <div
-              onClick={() => navigate("/profil")}
-              style={{ textAlign: "right", cursor: "pointer" }}
+            <LienNav
+              to="/profil"
+              style={{ textAlign: "right", cursor: "pointer", display: "block" }}
             >
               <div style={{ color: theme.text, fontSize: 13, fontWeight: 600, lineHeight: 1.2 }}>
                 {user?.prenom} {user?.nom}
@@ -338,25 +354,16 @@ const Navbar = () => {
                   marginTop: 2,
                 }}
               >
-                {user?.role}
+                {user?.fonction || user?.role}
               </div>
-            </div>
+            </LienNav>
             )}
 
-            <div
-              role="button"
-              tabIndex={0}
+            <LienNav
+              to="/profil"
               aria-label={`Mon profil — ${user?.prenom || ""} ${user?.nom || ""} (${user?.role || ""})`}
               title={`${user?.prenom || ""} ${user?.nom || ""} — ${user?.role || ""}`}
-              onClick={() => navigate("/profil")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  navigate("/profil");
-                }
-              }}
               style={{
-                cursor: "pointer",
                 width: 36,
                 height: 36,
                 background: theme.primaryBg,
@@ -374,11 +381,11 @@ const Navbar = () => {
             >
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
-            </div>
+            </LienNav>
 
             {isCompact && !isNarrow && user?.role && (
               <span
-                title={user.role}
+                title={user.fonction ? `${user.fonction} (${user.role})` : user.role}
                 style={{
                   color: theme.primary,
                   background: theme.primaryBg,
@@ -391,9 +398,12 @@ const Navbar = () => {
                   textTransform: "uppercase",
                   whiteSpace: "nowrap",
                   flexShrink: 0,
+                  maxWidth: 140,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
-                {ROLE_SHORT[user.role] || user.role}
+                {user.fonction ? user.fonction.split(" · ")[0] : ROLE_SHORT[user.role] || user.role}
               </span>
             )}
 
@@ -498,8 +508,9 @@ const Navbar = () => {
 
         {isMobile && (
           <>
-            <div
-              onClick={() => navigate("/profil")}
+            <LienNav
+              to="/profil"
+              aria-label="Mon profil"
               style={{
                 width: 34,
                 height: 34,
@@ -519,7 +530,7 @@ const Navbar = () => {
             >
               {user?.prenom?.[0]}
               {user?.nom?.[0]}
-            </div>
+            </LienNav>
             <NotificationBell size={38} />
             <button
               onClick={openPalette}
@@ -616,7 +627,7 @@ const Navbar = () => {
                   marginTop: 2,
                 }}
               >
-                {user?.role}
+                {user?.fonction || user?.role}
               </div>
             </div>
 
@@ -631,9 +642,10 @@ const Navbar = () => {
               .map((item) => {
               const isActive = item.match ? item.match(location.pathname) : location.pathname === item.path;
               return (
-                <button
+                <LienNav
                   key={item.path}
-                  onClick={() => goTo(item.path)}
+                  to={item.path}
+                  onClick={() => setDrawerOpen(false)}
                   style={{
                     background: isActive ? theme.primaryBg : "transparent",
                     border: "none",
@@ -657,7 +669,7 @@ const Navbar = () => {
                       {item.badge}
                     </span>
                   )}
-                </button>
+                </LienNav>
               );
             })}
 

@@ -11,6 +11,7 @@ import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
+import useLienLigne from "../hooks/useLienLigne";
 
 const Import = () => {
   usePageTitle("Import employés");
@@ -24,6 +25,7 @@ const Import = () => {
   const [dragOver, setDragOver] = useState(false);
   const [champsCodes, setChampsCodes] = useState([]);
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
 
   useEffect(() => {
     api
@@ -232,8 +234,10 @@ const Import = () => {
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {[
                   "date_naissance",
+                  "sexe",
                   "date_embauche",
                   "statut",
+                  "date_sortie",
                   "direction",
                   "departement",
                   "service",
@@ -600,7 +604,7 @@ const Import = () => {
                         {result.nb_crees} employe(s) importe(s) avec succes
                       </span>
                       <button
-                        onClick={() => navigate("/employees")}
+                        {...lienLigne("/employees")}
                         style={{
                           background: theme.primary,
                           border: "none",

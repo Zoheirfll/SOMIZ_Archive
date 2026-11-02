@@ -14,6 +14,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from accounts.permissions import IsAdmin
+from employees.sortie import erreur_date_sortie, lire_date
 from employees.models import (
     Employee, Direction, Pole, Departement,
     Service, Cellule, Section, Poste, TypeContrat, Categorie, Contrat,
@@ -34,6 +35,22 @@ def _strip_excel_escapes(value):
     if not isinstance(value, str) or '_x' not in value:
         return value
     return _EXCEL_ESCAPE_RE.sub('', value)
+
+
+_SEXE_SAISIES = {
+    'm': 'M', 'h': 'M', 'homme': 'M', 'masculin': 'M',
+    'f': 'F', 'femme': 'F', 'feminin': 'F',
+}
+
+
+def normaliser_sexe(valeur):
+    """'' si vide, 'M'/'F' pour une saisie reconnue (casse et accents
+    ignorés : « Féminin » = « feminin »), None si la valeur est inconnue."""
+    cle = unicodedata.normalize('NFKD', str(valeur or '').strip().lower())
+    cle = ''.join(c for c in cle if not unicodedata.combining(c))
+    if not cle:
+        return ''
+    return _SEXE_SAISIES.get(cle)
 
 
 def _read_rows(file):
@@ -166,7 +183,7 @@ class EmployeeImportView(APIView):
     # exposées ensemble via GET /ref/champs-personnalises/ pour le frontend
     # (page Import.jsx).
     OPTIONAL_COLS = {
-        'date_naissance', 'date_embauche', 'statut',
+        'date_naissance', 'sexe', 'date_embauche', 'statut', 'date_sortie',
         'direction', 'departement', 'service',
         'poste', 'type_contrat', 'categorie',
     }
@@ -277,9 +294,34 @@ class EmployeeImportView(APIView):
             if statut not in ['actif', 'inactif', 'archive']:
                 statut = 'actif'
 
+            # Sexe — saisies usuelles normalisées en M/F ; une valeur
+            # inconnue bloque la ligne plutôt que d'être perdue en silence.
+            sexe_saisi = str(row.get('sexe') or '').strip()
+            sexe = normaliser_sexe(sexe_saisi)
+            if sexe is None:
+                ligne_erreurs.append(f"Sexe invalide : « {sexe_saisi} » (attendu : M/F, Homme/Femme)")
+                sexe = ''
+
             # Dates
             date_naissance = row.get('date_naissance') or None
             date_embauche = row.get('date_embauche') or None
+
+            # Date de sortie — retenue seulement pour un statut de sortie ;
+            # un archivé importé sans date reste à compléter (page Qualité).
+            date_sortie = None
+            if statut != 'actif':
+                try:
+                    date_sortie = lire_date(row.get('date_sortie'))
+                except ValueError:
+                    ligne_erreurs.append("Date de sortie illisible (format AAAA-MM-JJ)")
+                if date_sortie:
+                    try:
+                        embauche = lire_date(date_embauche)
+                    except ValueError:
+                        embauche = None
+                    erreur = erreur_date_sortie(date_sortie, embauche)
+                    if erreur:
+                        ligne_erreurs.append(erreur)
 
             # Référentiels — résolution par nom, auto-création en cascade
             # si absent et non ambigu (voir resoudre_ou_creer_simple /
@@ -379,7 +421,9 @@ class EmployeeImportView(APIView):
                     nom=nom,
                     prenom=prenom,
                     date_naissance=date_naissance or None,
+                    sexe=sexe,
                     date_embauche=date_embauche or None,
+                    date_sortie=date_sortie,
                     statut=statut,
                     direction=direction,
                     departement=departement,
@@ -505,16 +549,19 @@ class EmployeeImportTemplateView(APIView):
             ChampPersonnalise.objects.filter(is_active=True).values_list('code', flat=True)
         )
 
-        headers = [
+        fixes = [
             'matricule', 'numero_contrat', 'nom', 'prenom',
-            'date_naissance', 'date_embauche', 'statut',
+            'date_naissance', 'sexe', 'date_embauche', 'statut', 'date_sortie',
             'direction', 'departement', 'service',
             'poste', 'type_contrat', 'categorie',
-            *[c.lower() for c in champs_codes],
         ]
+        # Les champs système (is_systeme) portent les mêmes codes que les
+        # colonnes fixes : on ne les répète pas.
+        champs_codes = [c for c in champs_codes if c.lower() not in fixes]
+        headers = [*fixes, *[c.lower() for c in champs_codes]]
         exemple = [
             '024141', '024141', 'FILALI', 'Zoheir',
-            '2002-03-22', '2026-01-20', 'actif',
+            '2002-03-22', 'M', '2026-01-20', 'actif', '',
             'Direction Generale', 'DAP', 'Service Paie',
             'Cadre', 'CDI', '',
             *(['' for _ in champs_codes]),
@@ -921,8 +968,8 @@ class ReferentielImportView(APIView):
                     details={'model': ModelClass.__name__, 'nom': obj.nom, 'import': True},
                 )
                 if getattr(obj, 'responsable_id', None):
-                    from accounts.propositions import proposer_compte
-                    proposer_compte(request, obj.responsable, obj, source='import')
+                    from accounts.propositions import rattacher_responsable
+                    rattacher_responsable(request, obj.responsable, obj, source='import')
 
         return Response({
             'nb_crees': nb_crees,
@@ -940,38 +987,40 @@ class ReferentielImportTemplateView(APIView):
     """
     permission_classes = [IsAdmin]
 
+    # Colonnes optionnelles `responsable_matricule` (prioritaire) / `responsable_nom`
+    # (accepté seulement s'il désigne un seul employé) : voir ReferentielImportView.
     TEMPLATES = {
         'directions': {
-            'headers': ['nom', 'code', 'description'],
-            'example': ['Direction Generale', 'DG', 'Direction principale'],
+            'headers': ['nom', 'code', 'description', 'responsable_matricule', 'responsable_nom'],
+            'example': ['Direction Generale', 'DG', 'Direction principale', '', ''],
         },
         'poles': {
             'headers': ['nom', 'code', 'direction', 'description'],
             'example': ['Pole Machines Tournantes', 'PMT', 'Direction Generale', ''],
         },
         'departements': {
-            'headers': ['nom', 'code', 'direction', 'description'],
-            'example': ['DAP', 'DAP', 'Direction Generale', 'Departement Administration du Personnel'],
+            'headers': ['nom', 'code', 'direction', 'description', 'responsable_matricule', 'responsable_nom'],
+            'example': ['DAP', 'DAP', 'Direction Generale', 'Departement Administration du Personnel', '', ''],
         },
         'services': {
-            'headers': ['nom', 'code', 'departement', 'direction', 'description'],
+            'headers': ['nom', 'code', 'departement', 'direction', 'description', 'responsable_matricule', 'responsable_nom'],
             # 'direction' optionnelle — utile seulement si plusieurs
             # departements du referentiel partagent le meme nom (voir
             # ReferentielImportView.MODELS['services']).
-            'example': ['Service Paie', 'SP', 'DAP', '', ''],
+            'example': ['Service Paie', 'SP', 'DAP', '', '', '', ''],
         },
         'cellules': {
-            'headers': ['nom', 'code', 'direction', 'departement', 'description'],
+            'headers': ['nom', 'code', 'direction', 'departement', 'description', 'responsable_matricule', 'responsable_nom'],
             # Au moins une des deux colonnes direction/departement doit etre
             # renseignee par ligne ; si 'departement' est rempli, 'direction'
             # devient facultative et sert seulement a lever l'ambiguite si
             # plusieurs departements portent ce nom — voir
             # ReferentielImportView.MODELS['cellules'].
-            'example': ['Cellule Oeuvres Sociales', 'COS', '', 'DAP', ''],
+            'example': ['Cellule Oeuvres Sociales', 'COS', '', 'DAP', '', '', ''],
         },
         'sections': {
-            'headers': ['nom', 'code', 'direction', 'departement', 'description'],
-            'example': ['Section Controle Qualite', 'SCQ', '', 'DAP', ''],
+            'headers': ['nom', 'code', 'direction', 'departement', 'description', 'responsable_matricule', 'responsable_nom'],
+            'example': ['Section Controle Qualite', 'SCQ', '', 'DAP', '', '', ''],
         },
         'postes': {
             'headers': ['nom', 'code', 'description'],

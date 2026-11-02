@@ -101,6 +101,18 @@ class User(AbstractBaseUser, PermissionsMixin):
                    "mouvement et de réception des archives. Un Super-administrateur "
                    "y a toujours accès, quel que soit ce champ.",
     )
+    # Accès au menu Statistiques (reporting RH, 2026-10-31) : un ADMIN n'y a
+    # accès que si ce drapeau est coché ; un SUPERADMIN toujours. Attribuable
+    # par un SUPERADMIN uniquement (admin_views.py), tracé dans MODIFY_USER.
+    # Les pages Congés / Attestations & consultations restent ouvertes à leurs
+    # traiteurs (charge_conge, charge_attestation/consultation) indépendamment.
+    acces_statistiques = models.BooleanField(
+        default=False, verbose_name="Accès aux statistiques RH",
+        help_text="Administrateur ou Consultant : accès au menu Statistiques "
+                   "(effectifs, mouvements, démographie, rapports mensuels...). Un "
+                   "Consultant n'y voit aucune liste nominative. Un Super-administrateur "
+                   "y a toujours accès, quel que soit ce champ.",
+    )
 
     # Pendant « demandeur » des drapeaux charge_* ci-dessus (2026-10-20) :
     # un GESTIONNAIRE/CONSULTANT ne peut créer des demandes d'attestation /
@@ -319,6 +331,43 @@ class User(AbstractBaseUser, PermissionsMixin):
         )
 
     @property
+    def fonction(self):
+        """Fonction du titulaire, déduite de sa fiche employé liée :
+        1. s'il est `responsable` d'unités actives : « Directeur · DRH »,
+           « Chef de service · SAP »… (intitulé = verbose_name du champ
+           `responsable`, plusieurs unités séparées par « ; ») — c'est ce qui
+           fait d'un compte un chef, même sans poste renseigné ;
+        2. sinon le poste de la fiche (« Fonction » sur la fiche employé) ;
+        3. sinon vide (compte sans fiche liée).
+        Le front n'affiche que la partie avant « · » dans l'espace réduit."""
+        if not self.employee_id:
+            return ""
+        from employees.models import Cellule, Departement, Direction, Pole, Section, Service
+        parties = []
+        for modele in (Direction, Pole, Departement, Service, Cellule, Section):
+            titre = modele._meta.get_field('responsable').verbose_name
+            for unite in modele.objects.filter(responsable_id=self.employee_id, is_active=True):
+                parties.append(f"{titre} · {unite.nom}")
+        if parties:
+            return " ; ".join(parties)
+        return self.employee.poste.nom if self.employee.poste_id else ""
+
+    @property
+    def can_visa_conges(self):
+        """Responsable d'une unité (son employé lié en est le `responsable`) ou
+        destinataire de visas : accède aux demandes de congé de sa chaîne.
+        Voir conges/visas.py et docs/fonctionnel/conges-hierarchie.md."""
+        if self.visas_attendus.exists() or Interim.unites_actives(self):
+            return True
+        if not self.employee_id:
+            return False
+        from employees.models import Cellule, Departement, Direction, Section, Service
+        return any(
+            modele.objects.filter(responsable_id=self.employee_id, is_active=True).exists()
+            for modele in (Direction, Departement, Service, Cellule, Section)
+        )
+
+    @property
     def can_manage_registres(self):
         """True si ce compte tient les registres d'archives (mouvement et
         réception) — SUPERADMIN toujours, ADMIN seulement si charge_registre
@@ -326,20 +375,38 @@ class User(AbstractBaseUser, PermissionsMixin):
         consultations n'a pas accès aux registres sans être coché ici."""
         return self.is_superadmin or (self.role == self.Role.ADMIN and self.charge_registre)
 
+    @property
+    def can_view_statistiques(self):
+        """True si ce compte accède au reporting RH (menu Statistiques, hors
+        pages Congés/Demandes réservées à leurs traiteurs) — SUPERADMIN
+        toujours, ADMIN ou CONSULTANT (2026-11-01, sans listes nominatives :
+        reporting/nominatif.py) seulement si acces_statistiques est coché."""
+        return self.is_superadmin or (
+            self.role in (self.Role.ADMIN, self.Role.CONSULTANT) and self.acces_statistiques
+        )
+
     def _scope_ids(self):
         """(direction_ids, pole_ids, departement_ids, service_ids,
         cellule_ids, section_ids) sélectionnés — sets vides si aucune
         restriction (ADMIN, ou CONSULTANT sans périmètre assigné)."""
         if self.is_admin or not self.pk:
             return set(), set(), set(), set(), set(), set()
-        return (
-            set(self.scope_directions.values_list('id', flat=True)),
-            set(self.scope_poles.values_list('id', flat=True)),
-            set(self.scope_departements.values_list('id', flat=True)),
-            set(self.scope_services.values_list('id', flat=True)),
-            set(self.scope_cellules.values_list('id', flat=True)),
-            set(self.scope_sections.values_list('id', flat=True)),
-        )
+        directions = set(self.scope_directions.values_list('id', flat=True))
+        departements = set(self.scope_departements.values_list('id', flat=True))
+        services = set(self.scope_services.values_list('id', flat=True))
+        cellules = set(self.scope_cellules.values_list('id', flat=True))
+        sections = set(self.scope_sections.values_list('id', flat=True))
+        # Intérim actif (2026-10-29) : l'unité remplacée s'ajoute au périmètre
+        # tant que la fiche est valide ; aucune donnée à nettoyer à la fin, le
+        # droit se calcule à chaque requête d'après les dates.
+        cibles = {
+            'direction': directions, 'departement': departements, 'service': services,
+            'cellule': cellules, 'section': sections,
+        }
+        for unite_type, unite_id in Interim.unites_actives(self):
+            cibles[unite_type].add(unite_id)
+        return (directions, set(self.scope_poles.values_list('id', flat=True)), departements,
+                services, cellules, sections)
 
     @property
     def has_scope_restriction(self):
@@ -531,6 +598,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         """IDs des TypeDocument sélectionnés — set vide si aucune restriction."""
         if self.is_admin or not self.pk:
             return set()
+        if self.is_gestionnaire:
+            # Règle du 2026-10-28 : un GESTIONNAIRE ne consulte jamais de
+            # document (il fait des demandes) — les types cochés sont ignorés.
+            return set()
         return set(self.scope_types_documents.values_list('id', flat=True))
 
     @property
@@ -573,6 +644,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         mais pas un dossier complet) est exclue avant de déterminer full."""
         if self.is_admin or not self.pk:
             return True, set()
+        if self.is_gestionnaire:
+            return False, set()  # pas de document pour un GESTIONNAIRE, même avec un grant
         rows = list(
             self.employee_grants.filter(employee_id=employee_id, champ_personnel__isnull=True)
             .values_list('type_doc_id', flat=True)
@@ -789,3 +862,67 @@ class PropositionCompte(models.Model):
                 name='unique_proposition_ouverte_par_employe',
             ),
         ]
+
+
+class Interim(models.Model):
+    """Intérim d'un responsable d'unité (2026-10-29).
+
+    Le titulaire (ou son supérieur direct, ou le SUPERADMIN) désigne un
+    intérimaire pour une période. Une désignation faite par le titulaire doit
+    être validée par son supérieur direct ; celle du supérieur, du SUPERADMIN
+    ou du directeur (sans supérieur) prend effet immédiatement. Pendant la
+    période (statut `valide`, dates incluses) l'intérimaire reçoit les visas de
+    l'unité et la lit dans son périmètre ; passé `date_fin` tout s'arrête seul.
+    Voir accounts/interims.py et docs/fonctionnel/conges-hierarchie.md.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'À valider'
+        VALIDE = 'valide', 'Validé'
+        REFUSE = 'refuse', 'Refusé'
+        TERMINE = 'termine', 'Terminé avant échéance'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Unité remplacée, mémorisée en texte comme PropositionCompte.
+    unite_type = models.CharField(max_length=20)
+    unite_id = models.UUIDField()
+    unite_nom = models.CharField(max_length=200)
+    titulaire = models.ForeignKey(
+        'employees.Employee', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    titulaire_nom = models.CharField(max_length=200)
+    interimaire = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='interims_recus')
+    date_debut = models.DateField()
+    date_fin = models.DateField()
+    statut = models.CharField(max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    propose_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    date_decision = models.DateTimeField(null=True, blank=True)
+    motif = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'interims'
+        ordering = ['-date_debut', '-created_at']
+
+    @classmethod
+    def actifs(cls, jour=None):
+        from django.utils import timezone
+        jour = jour or timezone.localdate()
+        return cls.objects.filter(statut=cls.Statut.VALIDE, date_debut__lte=jour, date_fin__gte=jour)
+
+    @classmethod
+    def unites_actives(cls, user, jour=None):
+        """[(unite_type, unite_id)] des intérims en cours de `user`."""
+        if not getattr(user, 'pk', None):
+            return []
+        return list(cls.actifs(jour).filter(interimaire=user).values_list('unite_type', 'unite_id'))
+
+    @property
+    def est_actif(self):
+        from django.utils import timezone
+        return self.statut == self.Statut.VALIDE and self.date_debut <= timezone.localdate() <= self.date_fin

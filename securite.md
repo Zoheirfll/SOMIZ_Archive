@@ -1584,3 +1584,195 @@ Détail fonctionnel : [`docs/fonctionnel/conges.md`](docs/fonctionnel/conges.md)
   que la demande n'est plus `Reçue`. Ajout **et chaque consultation** tracés (`PIECE_CONGE`).
 - **Migration destructive `conges/0002`** : suppression des anciennes colonnes de compartiments — à n'appliquer que
   sur une base sans soldes réels ; sinon script de conversion validé et sauvegarde préalable obligatoires.
+
+## 49. Comptes de responsables d'unité, mot de passe temporaire et visa hiérarchique (2026-10-28) — ✅ Implémenté
+
+Spec : `docs/fonctionnel/conges-hierarchie.md`.
+
+- **Pas de création automatique directe d'un compte.** Désigner (saisie, Organigramme ou import) un employé sans compte
+  comme `responsable` d'une unité crée une `PropositionCompte` « en attente » ; seul un **ADMIN** la valide
+  (`IsAdmin`, testé : un CONSULTANT reçoit 403 sur la liste et la validation). Un import de masse ne produit donc que
+  des propositions. Rôle choisi par l'ADMIN, limité à GESTIONNAIRE/CONSULTANT (jamais ADMIN/SUPERADMIN, testé).
+  Une seule proposition ouverte par employé (contrainte en base) ; double validation refusée sous verrou.
+- **Mot de passe temporaire** : généré (`secrets`, 14 caractères, passé par `validate_password()`), renvoyé **une seule
+  fois** dans la réponse de validation (`Cache-Control: no-store`), jamais stocké en clair ni relisible. Rien n'est
+  envoyé par e-mail. Identifiant `prenom.nom` normalisé, suffixe numérique en cas d'homonyme.
+- **Changement imposé (`User.must_change_password`)** : appliqué dans `JWTCookieAuthentication.authenticate`, donc pour
+  **toutes** les vues même celles qui déclarent leurs propres `permission_classes` (leçon du point 47 : un ajout au
+  défaut global ne protège pas ces vues). Seules `/auth/me/`, `/auth/change-password/`, `/auth/logout/` et
+  `/auth/refresh/` restent accessibles. Testé sur une vraie route métier (`/api/employees/` → 403, puis débloquée après
+  le changement). Le nouveau mot de passe doit différer du temporaire. Côté interface : `/mot-de-passe`, redirection
+  depuis `ProtectedRoute` (prioritaire sur le consentement).
+- **Import des référentiels** : colonnes `responsable_matricule` (prioritaire) et `responsable_nom`. Un nom qui
+  correspond à plusieurs employés **refuse la ligne** (jamais de choix au hasard entre homonymes), tout comme un
+  matricule/nom introuvable. Attention : l'import n'a toujours pas d'aperçu avant validation.
+- **Visa hiérarchique** : la chaîne est figée à la création (`VisaConge`, décisions jamais modifiées). Le droit de viser
+  est vérifié dans `conges/visas.py` (compte du maillon ou d'un niveau **supérieur** ; jamais l'inverse) et non par la
+  seule permission de vue ; un étranger à la chaîne ne voit pas la demande (liste et détail filtrés). Le traiteur RH
+  ne peut pas valider avant la fin des visas. Chaque visa et chaque refus sont tracés (`VISER_CONGE`,
+  `REFUSER_VISA_CONGE`), le visa « en lieu et place de » est horodaté et nominatif. Création/validation/refus de compte
+  tracés (`PROPOSE_COMPTE`, `VALIDER_COMPTE`, `REFUSER_COMPTE`).
+- **Périmètre pré-rempli (décision du 2026-10-28, ⚠️ risque accepté)** : à la validation, le compte reçoit pour
+  périmètre l'unité qu'il dirige (`scope_directions/departements/services/cellules/sections`). Il obtient donc la
+  **lecture des dossiers RH de toute l'unité** (un directeur : toute sa direction) et peut y saisir des demandes de
+  congé. Choix assumé pour que le chef puisse saisir pour son équipe ; l'ADMIN peut le réduire ensuite via le modal
+  « Périmètre ». Tracé : `VALIDER_COMPTE.details.perimetre`. Le compte reçoit **toutes** les unités que
+  l'employé dirige à la validation (un chef de deux services les reçoit tous les deux) ; s'il n'en dirige plus aucune,
+  le compte est créé sans périmètre.
+- **Compte déjà existant** : désigner comme responsable un employé qui a déjà un compte GESTIONNAIRE/CONSULTANT ajoute
+  l'unité à son périmètre, sans proposition (tracé `MODIFY_USER`, `action: perimetre_responsable`) ; un compte
+  ADMIN/SUPERADMIN n'est pas touché (déjà organisation-wide). Cela ne fait qu'**élargir** : depuis le 2026-09-01 un
+  compte sans case cochée ne voit rien, il n'existe plus de compte « sans restriction » que l'ajout restreindrait.
+- **Rattrapage des responsables désignés avant la mise en place** (`/admin-users/propositions/rattrapage/`, ADMIN) :
+  GET = aperçu nominatif de qui n'a ni compte ni proposition (ne crée rien) ; POST = une proposition par responsable
+  (`source: rattrapage`), rejouable sans doublon. Aucun compte n'est créé : l'ADMIN valide chacun et choisit son rôle.
+  Constaté le 2026-10-28 sur la base de dev : 11 responsables sans compte.
+- **Reste** : migrations `accounts/0021-0022`, `audit/0015-0016`, `conges/0003` à appliquer ; l'ancien responsable d'une
+  unité garde son compte (il perd le droit de visa, pas l'accès).
+
+## 50. Un GESTIONNAIRE ne consulte aucun document (2026-10-28) — ✅ Implémenté
+
+- **Règle** : un GESTIONNAIRE fait des demandes (attestations, consultations, congés), il ne lit aucun document, même
+  avec périmètre complet, types de documents cochés ou grant « dossier complet ». Un CONSULTANT n'est pas concerné.
+- **Où** : `accounts/models.py` — `_type_doc_scope_ids()` renvoie un ensemble vide et
+  `_granted_type_doc_ids_for_employee()` renvoie `(False, set())` pour un GESTIONNAIRE. Le point est central : liste,
+  visualisation, documents de contrat et recherche en héritent.
+- **Interface** : onglet « Dossier » masqué (`EmployeeDetail.jsx`, onglet par défaut = Carrière). Le masquage seul ne
+  protège rien ; la protection est côté serveur.
+- **Tests** : `tests/test_gestionnaire_sans_documents.py` (routes réelles `/documents/` et `/documents/<id>/view/`).
+- **Pas couvert** : l'onglet Carrière, l'onglet Contrats et les champs personnels restent visibles dans le périmètre.
+
+**Compléments du 2026-10-28 (suite du point 50)** — pour un GESTIONNAIRE : plus d'onglet « Contrats » ni de bloc
+« Informations personnelles » dans l'interface ; `GET /api/contrats/<id>/` renvoie 404 (la liste des contrats reste
+visible dans « Carrière »). Les champs personnels ne sont pas bloqués durement côté serveur : le bloc est masqué et vide
+tant qu'aucun champ n'est coché. Un compte de responsable créé par validation reçoit d'office les trois droits de
+demande (attestations, consultations, congés), modifiables ensuite sur `/users`.
+
+## 51. Intérim des responsables d'unité (2026-10-29) — ✅ Implémenté
+
+- **Risque** : un droit temporaire qui survit à la période, ou une désignation sans contrôle, donnerait à un compte
+  des visas et un périmètre qu'il ne doit plus avoir.
+- **Mesures** : droit **calculé par date** (`Interim.actifs()` : statut `valide` et `date_debut ≤ aujourd'hui ≤
+  date_fin`) à chaque requête — aucune tâche de nettoyage dont l'échec laisserait des droits ouverts ; désignation par
+  le titulaire soumise à la validation de son supérieur direct ; intérimaire limité à l'équipe de l'unité (dérogation
+  réservée au SUPERADMIN) ; droit de désigner/valider/terminer vérifié côté serveur (`role_sur_unite`) ; un tiers reçoit
+  404 (pas 403) sur un intérim qui ne le concerne pas ; audit de la désignation, de la décision et de la fin anticipée.
+- **Effets limités** : visas de congé de l'unité et lecture du périmètre de l'unité ; **aucun** accès aux documents
+  (règle du point 50 : un GESTIONNAIRE n'en consulte pas) ni aux droits d'administration.
+- **Tests** : `backend/tests/test_interims.py` (15 cas), sur de vraies routes.
+
+**Complément point 51 — validation des attestations (2026-10-29)** : une demande d'attestation attend la validation
+du supérieur direct avant tout traitement ; le blocage (aperçu PDF, statut, rejet, masse, scan) est **côté serveur**
+(`attestations/serializers.py`, `views.py`), pas seulement masqué à l'écran. Un tiers reçoit 404 sur
+`viser/` et `refuser-visa/` (pas de fuite d'existence). Tests : `tests/test_attestations_visa.py`.
+
+## 52. Champ `Employee.sexe` — donnée personnelle (2026-10-30) — ✅ Implémenté
+
+- **Contexte** : colonne fixe ajoutée pour les indicateurs de parité du reporting DRH (choix fermés `M`/`F`, vide =
+  non renseigné). Donnée personnelle (pas une catégorie particulière au sens de l'art. 9 RGPD, mais soumise à la Loi
+  18-07).
+- **Mesures** : champ système de catégorie **PERSONNEL** (migration `employees/0040_employee_sexe`) → soumis au
+  périmètre `scope_champs_personnels` et aux grants `champ_personnel`, comme `date_naissance`. **Masquage côté
+  serveur** dans `EmployeeDetailSerializer.to_representation()` : la valeur vaut `null` pour un compte qui n'a pas
+  accès au champ (pas seulement caché dans l'UI). Non exposé par `EmployeeListSerializer`. Code `sexe` ajouté à
+  `RESERVED_CHAMP_CODES` (aucun champ personnalisé ne peut le masquer à l'import).
+- **Écart existant constaté, non corrigé ici** : `date_naissance` est, elle, renvoyée par l'API (fiche et liste)
+  même quand le compte n'y a pas accès — le masquage n'est fait que dans l'UI via `champs_categories`. À traiter dans
+  un chantier dédié (l'aligner sur le masquage serveur de `sexe`).
+- **Tests** : `backend/tests/test_employee_sexe.py` (masquage consultant sans/avec accès, validation, import, export).
+
+## 53. Reporting RH — menu Statistiques (2026-10-30) — ✅ Implémenté
+
+- **Accès** : `GET /api/reporting/rh/<page>/` réservé ADMIN/SUPERADMIN (`IsAdmin` sur la vue), vérifié par des tests
+  d'intégration sur **les 7 routes réelles** (CONSULTANT et GESTIONNAIRE → 403, anonyme refusé) —
+  `backend/tests/test_reporting_rh.py`. Page inconnue → 404 ; paramètres hors bornes → 400.
+- **Données** : agrégats organisation-wide ; listes nominatives limitées aux contrats (échéances, échus, CDD
+  successifs), aux postes à risque et aux anomalies de la page Qualité ; aucune donnée NIN / sécu / RIB.
+- **Anonymat** : cellules croisées sexe/âge d'un seul agent masquées (seuil 2, paramétrable — relever à 3 si le
+  reporting est diffusé au-delà de la DRH).
+- **Traçabilité** : chaque export Excel est tracé (`AuditLog EXPORT`, `type=reporting_rh`, page et période). La
+  consultation simple n'est pas tracée (comme l'ancienne page).
+
+
+**Complément point 53 — pages ajoutées (2026-10-30)** : Congés réservée à `can_manage_conges`, Attestations &
+consultations à `can_manage_attestations` / `can_manage_consultations` (chaque section calculée seulement pour son
+traiteur) — refus 403 côté serveur, testés sur les vraies routes. Nouvelles listes nominatives : agents sans évolution
+de carrière (Carrière), plus forts soldes de congé (Congés). Rapport mensuel PDF : agrégé, fichier à nom aléatoire
+hors de tout accès direct, servi par l'API seulement et tracé (`EXPORT`, `rapport_mensuel`). Objectifs DRH :
+modifiables par tout ADMIN/SUPERADMIN, auteur et date conservés, **pas d'entrée d'audit dédiée** (à ajouter avec une
+migration `audit` une fois la branche congés commitée).
+
+**Complément point 53 (2026-10-31)** : la modification/suppression d'un objectif DRH est désormais tracée
+(`AuditLog.Action.MODIFY_OBJECTIF`, ancienne et nouvelle valeur) — la réserve précédente est levée.
+
+
+## 54. Accès au reporting RH réservé (`acces_statistiques`, 2026-10-31) — ✅ Implémenté
+
+**Constat** : jusqu'ici tout ADMIN voyait l'ensemble du menu Statistiques (départs à la retraite prévisibles,
+sorties par direction, liste nominative des agents sans évolution de carrière, rapports mensuels). Un ADMIN est
+souvent un agent de saisie RH : ces analyses de pilotage dépassent son besoin (minimisation, Loi 18-07 / RGPD).
+
+**Correctif** : nouveau drapeau `User.acces_statistiques` (migration `accounts/0024`), propriété
+`can_view_statistiques` (SUPERADMIN toujours, ADMIN seulement si coché) et permission partagée
+`accounts.permissions.CanViewStatistiques`, appliquée côté serveur à : toutes les pages `reporting/rh/<page>/`
+(sauf Congés et Demandes, qui restent ouvertes à leurs traiteurs), objectifs DRH, rapports mensuels (liste et
+fichier), et aux anciens endpoints `stats-detail` / `stats-export.xlsx` (sinon contournement). La notification
+du rapport mensuel ne part plus qu'aux comptes autorisés.
+
+- Attribution : **SUPERADMIN uniquement** (`_reserve_au_superadmin`, création comme modification), tracée dans
+  `CREATE_USER` / `MODIFY_USER` (avant/après) ; remis à faux si le compte n'est plus ADMIN.
+- Frontend : menu, redirections de `/statistiques/:page` (vers la première page accessible, sinon l'accueil),
+  liens du tableau de bord masqués ; bouton « Statistiques ✓/✗ » sur /users (SUPERADMIN).
+- Tests sur les vraies routes (`TestAccesStatistiques`, `tests/test_reporting_rh.py`) : 403 partout pour un ADMIN
+  sans le droit **consenti** (piège : un compte de test sans consentement Loi 18-07 reçoit 403 pour une autre raison —
+  le test passerait à tort), traiteur congés garde sa page, attribution refusée à un ADMIN, trace d'audit,
+  remise à zéro au changement de rôle, notification filtrée.
+- Options écartées : réserver au seul SUPERADMIN (obligerait à promouvoir le DRH SUPERADMIN, qui verrait alors
+  tout le journal d'audit) ; droit page par page (13 cases, trop lourd à administrer).
+- ⚠️ Après migration, **aucun ADMIN existant n'a l'accès** : le SUPERADMIN doit cocher « Statistiques » sur /users
+  pour les comptes concernés.
+
+
+**Complément point 54 (2026-11-01) — ouverture aux CONSULTANT** : `acces_statistiques` est aussi attribuable
+(SUPERADMIN uniquement, décoché par défaut) à un **CONSULTANT**. Il voit les chiffres de **toute l'organisation**
+mais **aucune donnée nominative** : `reporting/nominatif.py#retirer_nominatif` vide toute liste dont les éléments
+portent un matricule, retire des exports toute table à colonne « Matricule »/« Employé » et vide les colonnes
+« Détail » (noms concaténés) — règle générique, aucune page n'a à y penser. Objectifs DRH en lecture seule (PUT/DELETE :
+ADMIN), rapports mensuels (agrégés) accessibles, pages Congés/Demandes et anciens `stats-detail`/`stats-export`
+toujours refusés. `CanViewStatistiques` vérifie aussi le consentement Loi 18-07 et `is_active` (une vue qui déclare
+ses `permission_classes` écrase `HasConsented`). Options écartées : statistiques recalculées sur le périmètre du
+consultant (chantier d'~1 jour, chaque page à scoper) ; réserver aux consultants sans périmètre. Tests :
+`TestStatistiquesConsultant`.
+
+## 55. Comptes ADMIN / GESTIONNAIRE liés à une fiche employé (2026-10-31) — ✅ Implémenté
+
+**Constat** : les comptes ADMIN et GESTIONNAIRE n'étaient liés à aucune fiche employé (`User.employee` n'était
+rempli que pour les comptes de responsables générés par proposition). Un agent qui quitte l'entreprise gardait donc
+un compte actif tant que personne ne pensait à le désactiver.
+
+**Correctif** :
+- `FicheEmployeMixin` (`accounts/admin_views.py`) : fiche **obligatoire** à la création d'un compte ADMIN/GESTIONNAIRE
+  et au passage à l'un de ces rôles ; un compte lié **ne peut plus être délié** ; la fiche doit être active et non
+  déjà liée à un autre compte ; nom/prénom du compte repris de la fiche. Les comptes existants sans fiche restent
+  utilisables (« obligatoire à terme ») et sont listés par `?fiche=sans` (onglet « Sans fiche » sur /users).
+  SUPERADMIN exempté (compte de secours).
+- **Désactivation automatique à la sortie** (`employees/sortie.py#desactiver_comptes_lies`) : quand une fiche passe à
+  un statut de sortie (formulaire, synchronisation de contrat — via `post_save` — ou archivage en masse — appel
+  explicite, `update()` ne déclenchant pas de signal), le compte lié est désactivé et ses sessions révoquées
+  (`password_changed_at`), avec une entrée `MODIFY_USER` (`action: desactivation_sortie_employe`). SUPERADMIN jamais
+  désactivé.
+- Liaison et changement de fiche tracés dans `CREATE_USER`/`MODIFY_USER` (`employee` = matricule).
+- Confirmation (`useConfirm`) avant toute bascule de droit sur /users, avant la liaison d'une fiche et avant la
+  réinitialisation d'un mot de passe ; retrait de droit / désactivation en style « danger ».
+- Tests : `tests/test_compte_fiche_employe.py` (15 tests sur les vraies routes).
+- ⚠️ À faire : lier les 4 ADMIN et le GESTIONNAIRE existants (onglet « Sans fiche »).
+
+## 56. Congés : l'accord est hiérarchique, la DRH enregistre (2026-10-31) — ✅ Implémenté
+
+Le chargé des congés **ne décide plus** : route `POST .../rejeter/` supprimée (un refus vient de la hiérarchie,
+`refuser-visa` ; un congé enregistré se défait par l'annulation avec saisie de la référence). Ses corrections à
+l'enregistrement sont tracées (`VALIDER_CONGE.details.corrections` {champ: [avant, après]}) et notifiées au demandeur.
+Une demande sans aucun supérieur désigné reste **bloquée** (personne n'accorde à la place de la hiérarchie) ; elle est
+relancée automatiquement à la désignation d'un responsable, ou par `POST .../recalculer-chaine/` (traiteur, tracé
+`MODIFY_CONGE`). Détail : `docs/fonctionnel/conges-hierarchie.md`. Bug corrigé au passage : `ViserView` levait
+`CongeError` sans l'importer (niveau de visa invalide → 500 au lieu de 400).

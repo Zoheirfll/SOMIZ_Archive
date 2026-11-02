@@ -57,6 +57,9 @@ export const lightTheme = {
   departementAccent: "#eff6ff",
 
   serviceColor:  "#6d28d9",
+  sexeHommeColor: "#1e40af",
+  sexeFemmeColor: "#be185d",
+  textOnDark: "#FFFFFF",      // texte des bandeaux de titre (fond dégradé sombre)
   serviceGrad:   "linear-gradient(135deg, #2e1065 0%, #6d28d9 60%, #7c3aed 100%)",
   serviceAccent: "#f5f3ff",
 
@@ -144,6 +147,9 @@ export const darkTheme = {
   departementAccent: "#1B2436",
 
   serviceColor:  "#a78bfa",
+  sexeHommeColor: "#60a5fa",
+  sexeFemmeColor: "#f472b6",
+  textOnDark: "#FFFFFF",
   serviceGrad:   "linear-gradient(135deg, #2e1065 0%, #6d28d9 60%, #5b21b6 100%)",
   serviceAccent: "#251E32",
 

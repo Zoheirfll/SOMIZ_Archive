@@ -12,6 +12,7 @@ import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
 import useOrgScopeForm from "../hooks/useOrgScopeForm";
 import ScopeLevel from "../components/userScope/ScopeLevel";
+import useLienLigne from "../hooks/useLienLigne";
 
 const getCardStyle = (theme) => ({
   background: theme.surface,
@@ -28,6 +29,7 @@ const UserPerimetre = () => {
   const cardStyle = getCardStyle(theme);
   const { id } = useParams();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const isMobile = useIsMobile();
 
   const [targetUser, setTargetUser] = useState(null);
@@ -224,7 +226,7 @@ const UserPerimetre = () => {
         <HeroDecor />
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <button
-            onClick={() => navigate("/users")}
+            {...lienLigne("/users")}
             style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, marginBottom: 10, fontFamily: "inherit" }}
           >
             ← Utilisateurs
@@ -389,7 +391,7 @@ const UserPerimetre = () => {
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingBottom: 40 }}>
           <button
-            onClick={() => navigate("/users")}
+            {...lienLigne("/users")}
             style={{ background: theme.surface, border: `1.5px solid ${theme.border}`, color: theme.textSecondary, borderRadius: 10, padding: "9px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
           >
             Annuler

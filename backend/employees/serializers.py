@@ -9,6 +9,7 @@ from django.conf import settings
 from rest_framework import serializers
 
 
+from employees.sortie import MSG_OBLIGATOIRE, erreur_date_sortie
 from employees.models import (
     Employee, EmployeeDocument, EmployeeDocumentFile, EmployeeDocumentFilePage,
     TypeDocument, Contrat,
@@ -432,7 +433,7 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             'id', 'matricule', 'nom', 'prenom',
-            'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut', 'has_photo',
+            'date_naissance', 'sexe', 'date_embauche', 'date_fin_contrat', 'date_sortie', 'statut', 'has_photo',
             'motif_archivage', 'motif_archivage_nom',
             'direction', 'direction_nom',
             'pole_nom',
@@ -450,6 +451,15 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
             'created_by_name', 'updated_by_name', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        # Champ système PERSONNEL : la valeur n'est renvoyée qu'aux comptes
+        # qui y ont accès (même calcul que champs_categories). Masquage côté
+        # serveur, pas seulement dans l'UI.
+        if 'sexe' not in data.get('champs_categories', {}):
+            data['sexe'] = None
+        return data
 
     def get_voie_hierarchique(self, obj):
         return obj.voie_hierarchique()
@@ -536,16 +546,43 @@ class EmployeeDetailSerializer(serializers.ModelSerializer):
         return bool(obj.photo)
 
 class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
+    # Le formulaire envoie null pour un champ vide — ramené à '' (non renseigné).
+    sexe = serializers.ChoiceField(
+        choices=Employee.Sexe.choices, allow_blank=True, allow_null=True, required=False,
+    )
+
     class Meta:
         model = Employee
         fields = [
             'id', 'matricule', 'nom', 'prenom',
-            'date_naissance', 'date_embauche', 'date_fin_contrat', 'statut',
+            'date_naissance', 'sexe', 'date_embauche', 'date_fin_contrat', 'date_sortie', 'statut',
             'motif_archivage',
             'direction', 'departement', 'service', 'cellule', 'section',
             'poste', 'type_contrat', 'categorie',
         ]
         read_only_fields = ['id']
+    def validate_sexe(self, value):
+        return value or ''
+
+    def _valider_date_sortie(self, attrs):
+        statut = attrs.get('statut', getattr(self.instance, 'statut', Employee.Statut.ACTIF))
+        if statut == Employee.Statut.ACTIF:
+            # Restauration (ou employé présent) : pas de date de sortie.
+            attrs['date_sortie'] = None
+            return
+        date_sortie = attrs.get('date_sortie', getattr(self.instance, 'date_sortie', None))
+        # Exigée seulement à la transition (création directe en statut de
+        # sortie, ou actif → sortie) : un archivé historique sans date reste
+        # modifiable pour ses autres champs.
+        statut_avant = getattr(self.instance, 'statut', None)
+        if statut_avant not in Employee.STATUTS_SORTIE and not date_sortie:
+            raise serializers.ValidationError({'date_sortie': MSG_OBLIGATOIRE})
+        if date_sortie:
+            date_embauche = attrs.get('date_embauche', getattr(self.instance, 'date_embauche', None))
+            erreur = erreur_date_sortie(date_sortie, date_embauche)
+            if erreur:
+                raise serializers.ValidationError({'date_sortie': erreur})
+
     def validate_matricule(self, value):
         return value.strip().upper()
 
@@ -556,6 +593,7 @@ class EmployeeCreateUpdateSerializer(serializers.ModelSerializer):
         return value.strip().capitalize()
 
     def validate(self, attrs):
+        self._valider_date_sortie(attrs)
         # Une Cellule/Section est rattachée à une Direction OU un
         # Département — on aligne automatiquement direction/departement de
         # l'employé sur celui choisi, et on vide les deux autres champs

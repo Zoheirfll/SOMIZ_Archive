@@ -1,10 +1,11 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
 import { useTheme } from "../../context/ThemeContext";
 import ChartTooltip from "./ChartTooltip";
+import { menuClicDroit, ouvreAilleurs } from "../MenuLien";
 
 // Histogramme (barres) pour les pyramides âge/ancienneté — orientation
 // horizontale (tranches en ordonnée) avec tooltip et dégradé de couleur.
-const StatHistogram = ({ data, xKey, dataKey, color, height = 220, onBarClick }) => {
+const StatHistogram = ({ data, xKey, dataKey, color, height = 220, onBarClick, urlDe }) => {
   const theme = useTheme();
   if (!data || data.length === 0) {
     return (
@@ -22,7 +23,8 @@ const StatHistogram = ({ data, xKey, dataKey, color, height = 220, onBarClick })
         <Tooltip content={<ChartTooltip />} cursor={{ fill: theme.borderLight }} />
         <Bar
           dataKey={dataKey} name="Effectif" radius={[0, 6, 6, 0]} maxBarSize={22} isAnimationActive={true}
-          onClick={onBarClick ? (entry) => onBarClick(entry) : undefined}
+          onClick={onBarClick ? (entry, _i, e) => (urlDe && ouvreAilleurs(e) ? window.open(urlDe(entry), "_blank", "noopener") : onBarClick(entry)) : undefined}
+          onContextMenu={urlDe ? (entry, _i, e) => menuClicDroit(e, urlDe(entry)) : undefined}
           style={{ cursor: onBarClick ? "pointer" : "default" }}
         >
           {data.map((entry) => (

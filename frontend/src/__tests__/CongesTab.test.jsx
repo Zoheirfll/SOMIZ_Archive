@@ -33,7 +33,7 @@ const SOLDE = {
   }],
 };
 const DEMANDES = [{
-  id: "d1", reference: "00001/26", statut: "prete", employee_nom: "Ali Benali",
+  id: "d1", reference: "00001/26", statut: "accordee", employee_nom: "Ali Benali",
   date_depart: "2026-11-01", date_retour: "2026-11-21", nb_jours: 20, demandeur_nom: "Gest Test",
   created_at: "2026-10-20T08:00:00Z",
 }];
@@ -102,15 +102,15 @@ describe("CongesTab", () => {
   test("un demandeur peut demander un congé pour cet employé", async () => {
     mockApi();
     renderTab(DEMANDEUR);
-    fireEvent.click(await screen.findByRole("button", { name: /Nouvelle demande/i }));
-    expect(navigate).toHaveBeenCalledWith("/conges/nouvelle", { state: { employeeId: "e1" } });
+    // Vrai lien (clic droit / Ctrl+clic : nouvel onglet) ; l'employé voyage dans le state du routeur.
+    expect(await screen.findByRole("link", { name: /Nouvelle demande/i })).toHaveAttribute("href", "/conges/nouvelle");
   });
 
   test("un traiteur non demandeur n'a pas le bouton Nouvelle demande", async () => {
     mockApi();
     renderTab(TRAITEUR);
     await screen.findByText("43");
-    expect(screen.queryByRole("button", { name: /Nouvelle demande/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Nouvelle demande/i })).not.toBeInTheDocument();
   });
 
   test("solde non initialisé : le traiteur peut le saisir (POST initial)", async () => {

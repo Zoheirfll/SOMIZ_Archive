@@ -49,19 +49,22 @@ describe("Navbar (desktop) — entrée « Registres »", () => {
 
   test("le SUPERADMIN la voit toujours, même sans le champ can_manage_registres (session ancienne)", () => {
     avecUtilisateur({ role: "SUPERADMIN" });
-    expect(screen.getByRole("button", { name: "Registres" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
+    expect(screen.getByRole("menuitem", { name: "Registres" })).toBeInTheDocument();
   });
 
   test("un ADMIN chargé des registres la voit", () => {
     avecUtilisateur({ role: "ADMIN", can_manage_registres: true });
-    expect(screen.getByRole("button", { name: "Registres" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
+    expect(screen.getByRole("menuitem", { name: "Registres" })).toBeInTheDocument();
   });
 
   test("un ADMIN chargé des consultations seulement ne la voit pas", () => {
     avecUtilisateur({ role: "ADMIN", can_manage_consultations: true });
-    // Garde-fou contre un test vide : « Demandes » (consultations) doit, lui, être affiché.
-    expect(screen.getByRole("button", { name: /Demandes/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Registres" })).not.toBeInTheDocument();
+    // Garde-fou contre un test vide : « Demandes » (consultations) doit, lui, être affiché (lien direct).
+    expect(screen.getByRole("link", { name: /Demandes/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Administration/ }));
+    expect(screen.queryByRole("menuitem", { name: "Registres" })).not.toBeInTheDocument();
   });
 });
 
@@ -83,9 +86,11 @@ describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
 
   test("un CONSULTANT n'a qu'une section : lien direct, pas de déroulant", () => {
     avecUtilisateur({ role: "CONSULTANT", can_request_consultations: true });
-    const bouton = screen.getByRole("button", { name: /Demandes/ });
-    expect(bouton).not.toHaveAttribute("aria-haspopup");
-    fireEvent.click(bouton);
+    // Vrai lien (clic droit / Ctrl+clic : nouvel onglet), pas un bouton de déroulant.
+    const lien = screen.getByRole("link", { name: /Demandes/ });
+    expect(lien).not.toHaveAttribute("aria-haspopup");
+    expect(lien).toHaveAttribute("href", "/consultations");
+    fireEvent.click(lien);
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
   });
 
@@ -97,13 +102,34 @@ describe("Navbar (desktop) — menu déroulant « Demandes »", () => {
 
   test("un compte qui n'a que les congés : lien direct vers /conges, pas de déroulant", () => {
     avecUtilisateur({ role: "GESTIONNAIRE", can_request_conges: true });
-    const bouton = screen.getByRole("button", { name: /Demandes/ });
-    expect(bouton).not.toHaveAttribute("aria-haspopup");
+    const lien = screen.getByRole("link", { name: /Demandes/ });
+    expect(lien).not.toHaveAttribute("aria-haspopup");
+    expect(lien).toHaveAttribute("href", "/conges");
+  });
+
+  test("un responsable voit sur « Demandes » le nombre de congés à viser", async () => {
+    const api = require("../services/api").default;
+    api.get.mockImplementation((url, { params } = {}) =>
+      Promise.resolve({ data: url === "/conges/demandes/" && params?.a_viser ? { count: 2, results: [] } : { count: 0, results: [] } }));
+    avecUtilisateur({ role: "CONSULTANT", can_visa_conges: true, can_request_conges: true });
+    expect(await screen.findByText("2")).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith("/conges/demandes/", { params: { a_viser: 1 } });
+    api.get.mockImplementation(() => Promise.resolve({ data: [] }));
   });
 
   test("un ADMIN non chargé des congés ne voit pas la section", () => {
     avecUtilisateur({ role: "ADMIN" });
     expect(screen.queryByRole("button", { name: /Demandes/ })).not.toBeInTheDocument();
+  });
+
+  test("Statistiques : masqué pour un ADMIN sans acces_statistiques, visible avec", () => {
+    avecUtilisateur({ role: "ADMIN" });
+    expect(screen.queryByText("Statistiques")).not.toBeInTheDocument();
+  });
+
+  test("Statistiques : visible pour un ADMIN portant can_view_statistiques", () => {
+    avecUtilisateur({ role: "ADMIN", can_view_statistiques: true });
+    expect(screen.getByText("Statistiques")).toBeInTheDocument();
   });
 
   test("Échap referme le déroulant", () => {

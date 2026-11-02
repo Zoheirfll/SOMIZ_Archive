@@ -1,6 +1,7 @@
 import api from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { formatDateFR } from "../../utils/formatDate";
+import useLienLigne from "../../hooks/useLienLigne";
 
 // Onglet "Carrière" de la fiche employé (timelines Fonction/Catégorie/
 // Échelle/Contrats + modale de gestion manuelle de l'historique) — extrait
@@ -27,6 +28,8 @@ const CarriereTab = ({
   echelles,
   fetchHistorique,
 }) => {
+  // Ctrl+clic / clic molette = nouvel onglet (hooks/useLienLigne).
+  const lienLigne = useLienLigne();
   const theme = useTheme();
   return (
   <>
@@ -193,7 +196,7 @@ const CarriereTab = ({
                   .map((c) => (
                     <div
                       key={c.id}
-                      onClick={() => navigate(`/contrats/${c.id}`)}
+                      {...lienLigne(`/contrats/${c.id}`)}
                       style={{
                         display: "flex",
                         justifyContent: "space-between",

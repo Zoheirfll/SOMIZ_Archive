@@ -1,5 +1,6 @@
 import { useTheme } from "../../context/ThemeContext";
 import { formatDateFR } from "../../utils/formatDate";
+import useLienLigne from "../../hooks/useLienLigne";
 
 // Onglet "Contrats" de la fiche employé (liste + formulaire d'ajout) —
 // extrait de EmployeeDetail.jsx pour garder la page principale sous les
@@ -23,6 +24,8 @@ const ContratsTab = ({
   user,
   isMobile,
 }) => {
+  // Ctrl+clic / clic molette = nouvel onglet (hooks/useLienLigne).
+  const lienLigne = useLienLigne();
   const theme = useTheme();
   return activeTab === "contrats" && (
           <div
@@ -422,7 +425,7 @@ const ContratsTab = ({
                     return (
                       <tr
                         key={c.id}
-                        onClick={() => navigate(`/contrats/${c.id}`)}
+                        {...lienLigne(`/contrats/${c.id}`)}
                         style={{
                           cursor: "pointer",
                           borderBottom: `1px solid ${theme.border}`,

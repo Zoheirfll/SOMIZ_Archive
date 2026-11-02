@@ -1,5 +1,6 @@
 import React from "react";
 import { render as rtlRender, screen, waitFor, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { ThemeProvider } from "../context/ThemeContext";
 
 jest.mock("../services/api", () => ({
@@ -17,7 +18,9 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import CommandPalette from "../components/CommandPalette";
 
-const render = (ui) => rtlRender(ui, { wrapper: ThemeProvider });
+const render = (ui) => rtlRender(ui, {
+  wrapper: ({ children }) => <MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter>,
+});
 
 const mockEmployee = {
   id: "emp-1",
@@ -69,8 +72,8 @@ describe("CommandPalette", () => {
     ));
 
     await waitFor(() => screen.getByText("Dupont Jean"));
-    fireEvent.click(screen.getByText("Dupont Jean"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees/MAT-001");
+    // Résultat = vrai lien (clic droit / Ctrl+clic : nouvel onglet).
+    expect(screen.getByText("Dupont Jean").closest("a")).toHaveAttribute("href", "/employees/MAT-001");
   });
 
   test("cherche aussi les consultations d'archives pour un compte qui y a accès, et navigue par la référence", async () => {
@@ -87,8 +90,8 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(
       "/consultations/demandes/", { params: { q: "ma" } }
     ));
-    fireEvent.click(await screen.findByText(/Martin Luc · 00007\/26/));
-    expect(mockNavigate).toHaveBeenCalledWith(`/consultations/${slugDepuisReference("00007/26")}`);
+    const lien = (await screen.findByText(/Martin Luc · 00007\/26/)).closest("a");
+    expect(lien).toHaveAttribute("href", `/consultations/${slugDepuisReference("00007/26")}`);
   });
 
   test("ne cherche pas les consultations pour un ADMIN non chargé des consultations", async () => {

@@ -27,6 +27,7 @@ import { formatDateTime, stripExt } from "../utils/employeeDocsDisplay";
 import { formatDateFR } from "../utils/formatDate";
 import Breadcrumb from "../components/employees/Breadcrumb";
 import { canSeeAttestations, canSeeConges } from "../config/accesSections";
+import useLienLigne from "../hooks/useLienLigne";
 
 
 // Regroupe les documents actifs par (type de document, contrat) — depuis
@@ -63,6 +64,7 @@ const EmployeeDetail = () => {
   const theme = useTheme();
   const { id } = useParams();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -74,9 +76,14 @@ const EmployeeDetail = () => {
   const [adjacent, setAdjacent] = useState({ prev: null, next: null, first: null, last: null, position: null, total: 0 });
   const [contrats, setContrats] = useState([]);
   const [selectedContratId, setSelectedContratId] = useState(null);
-  const [activeTab, setActiveTab] = useState(
-    searchParams.get("tab") || "dossier",
-  );
+  // Un GESTIONNAIRE ne consulte pas les documents (il fait des demandes) :
+  // pas d'onglet Dossier, onglet par défaut = Carrière. Le serveur refuse
+  // de toute façon (accounts.models._type_doc_scope_ids).
+  const peutVoirDocuments = user?.role !== "GESTIONNAIRE";
+  const [activeTab, setActiveTab] = useState(() => {
+    const demande = searchParams.get("tab") || "dossier";
+    return !peutVoirDocuments && ["dossier", "contrats"].includes(demande) ? "carriere" : demande;
+  });
   const [selectedDoc, setSelectedDoc] = useState(null);
   // Ids des documents dont l'historique (versions antérieures conservées)
   // est déplié dans la sidebar — replié par défaut.
@@ -241,6 +248,7 @@ const EmployeeDetail = () => {
     "direction", "pole", "departement", "section", "service", "cellule",
     "poste", "type_contrat", "categorie", "echelle",
     "date_naissance", "date_embauche", "date_debut_contrat", "date_fin_contrat",
+    "sexe", "date_sortie",
   ];
   const defaultSystemOrdre = (code) => {
     const idx = SYSTEM_FIELD_CODES_ORDER.indexOf(code);
@@ -993,6 +1001,17 @@ const EmployeeDetail = () => {
       sortKey: systemOrdre("nom"),
     },
     { label: "Date de naissance", value: employee.date_naissance ? formatDateFR(employee.date_naissance) : "—", code: "date_naissance", sortKey: systemOrdre("date_naissance") },
+    // Champ PERSONNEL : le backend renvoie null (et l'exclut de
+    // champs_categories) pour un compte sans accès.
+    {
+      label: "Sexe",
+      value: { M: "Masculin", F: "Féminin" }[employee.sexe] || "—",
+      code: "sexe",
+      sortKey: systemOrdre("sexe"),
+    },
+    ...(employee.date_sortie
+      ? [{ label: "Date de sortie", value: formatDateFR(employee.date_sortie), code: "date_sortie", sortKey: systemOrdre("date_sortie") }]
+      : []),
     { label: "Date de recrutement", value: employee.date_embauche ? formatDateFR(employee.date_embauche) : "—", code: "date_embauche", sortKey: systemOrdre("date_embauche") },
     {
       label: "Date de début de contrat",
@@ -1117,7 +1136,7 @@ const EmployeeDetail = () => {
             <Breadcrumb
               variant="hero"
               items={[
-                { label: "Personnel", onClick: () => navigate("/employees") },
+                { label: "Personnel", to: "/employees" },
                 { label: `${employee.prenom} ${employee.nom}` },
               ]}
             />
@@ -1214,7 +1233,7 @@ const EmployeeDetail = () => {
                     return (
                       <button
                         key={key}
-                        onClick={() => navigate(`/employees/${target.id}`)}
+                        {...(target ? lienLigne(`/employees/${target.id}`) : {})}
                         disabled={!target}
                         title={target ? `${pre ? pre + " : " : ""}${target.prenom} ${target.nom} (${target.matricule})` : vide}
                         className={target ? "btn-lift" : undefined}
@@ -1257,7 +1276,7 @@ const EmployeeDetail = () => {
                     return (
                       <button
                         key={key}
-                        onClick={() => navigate(`/employees/${target.id}`)}
+                        {...(target ? lienLigne(`/employees/${target.id}`) : {})}
                         disabled={!target}
                         title={target ? `${pre ? pre + " : " : ""}${target.prenom} ${target.nom} (${target.matricule})` : vide}
                         className={target ? "btn-lift" : undefined}
@@ -1286,7 +1305,7 @@ const EmployeeDetail = () => {
                 <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{employee.matricule}</span>
                 {contrats.length > 0 && (
                   <><span style={{ opacity: 0.5 }}>·</span>
-                  <span style={{ cursor: "pointer", textDecoration: "underline", textDecorationColor: "rgba(255,255,255,0.4)" }} onClick={() => navigate(`/contrats/${contrats[0].id}`)}>
+                  <span style={{ cursor: "pointer", textDecoration: "underline", textDecorationColor: "rgba(255,255,255,0.4)" }} {...lienLigne(`/contrats/${contrats[0].id}`)}>
                     {contrats[0].numero_contrat}
                   </span></>
                 )}
@@ -1366,13 +1385,16 @@ const EmployeeDetail = () => {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+            gridTemplateColumns: isMobile || !peutVoirDocuments ? "1fr" : "1fr 1fr",
             gap: 24,
             marginBottom: 24,
           }}
         >
           {[
-            { title: "Informations personnelles", fields: infoFieldsPersonnel },
+            // Pas d'informations personnelles pour un GESTIONNAIRE (règle du 2026-10-28).
+            ...(peutVoirDocuments
+              ? [{ title: "Informations personnelles", fields: infoFieldsPersonnel }]
+              : []),
             { title: "Informations administratives", fields: infoFieldsAdministratif },
           ].map(({ title, fields }) => (
             <div
@@ -1517,11 +1539,15 @@ const EmployeeDetail = () => {
         {/* Onglets */}
         <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
           {[
-            {
-              key: "dossier",
-              label: `Dossier (${employee.documents?.length || 0})`,
-            },
-            { key: "contrats", label: `Contrats (${contrats.length})` },
+            ...(peutVoirDocuments
+              ? [{
+                  key: "dossier",
+                  label: `Dossier (${employee.documents?.length || 0})`,
+                }]
+              : []),
+            ...(peutVoirDocuments
+              ? [{ key: "contrats", label: `Contrats (${contrats.length})` }]
+              : []),
             { key: "carriere", label: "Carrière" },
             ...(canSeeConges(user)
               ? [{ key: "conges", label: "Congés" }]
@@ -1667,6 +1693,7 @@ const EmployeeDetail = () => {
           docLabel={
             typesDocuments[editingDoc.type_document] || editingDoc.type_document
           }
+          typesList={typesDocumentsList}
           onClose={() => setEditingDoc(null)}
           onChanged={async () => {
             await fetchEmployee(true);

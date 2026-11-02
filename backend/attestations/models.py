@@ -23,6 +23,9 @@ class ReferenceCounter(models.Model):
 
 class DemandeAttestation(models.Model):
     class Statut(models.TextChoices):
+        # Validation du supérieur direct en attente (2026-10-29) : le traiteur
+        # ne peut encore ni aperçu, ni marquer prête. Voir attestations/visas.py.
+        VISA = 'visa', 'En attente de validation'
         RECUE = 'recue', 'Reçue'
         PRETE = 'prete', 'Prête'
         RECUPEREE = 'recuperee', 'Récupérée'
@@ -96,6 +99,39 @@ class DemandeAttestation(models.Model):
 
     def __str__(self):
         return f"{self.reference} — {self.employee} ({self.statut})"
+
+
+class VisaAttestation(models.Model):
+    """Validation du supérieur direct d'une demande d'attestation (2026-10-29),
+    figée à la création de la demande. Un seul niveau : le chef direct du
+    salarié (voir conges.hierarchie.chaine_validation, premier maillon)."""
+
+    class Decision(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        VISE = 'vise', 'Validé'
+        REFUSE = 'refuse', 'Refusé'
+
+    demande = models.OneToOneField(DemandeAttestation, on_delete=models.CASCADE, related_name='visa')
+    unite_type = models.CharField(max_length=20)
+    unite_id = models.UUIDField(null=True, blank=True)
+    unite_nom = models.CharField(max_length=200)
+    responsable_nom = models.CharField(max_length=200)
+    responsable = models.ForeignKey(
+        'employees.Employee', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    compte = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='visas_attestation_attendus',
+    )
+    decision = models.CharField(max_length=20, choices=Decision.choices, default=Decision.EN_ATTENTE)
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    date_decision = models.DateTimeField(null=True, blank=True)
+    motif = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'visas_attestation'
 
 
 class AttestationTemplateConfig(models.Model):

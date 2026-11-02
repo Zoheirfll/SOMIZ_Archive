@@ -17,6 +17,7 @@ import { formatDateFR } from "../utils/formatDate";
 import usePageTitle from "../hooks/usePageTitle";
 import { employeeSlug } from "../utils/employeeSlug";
 import Breadcrumb from "../components/employees/Breadcrumb";
+import useLienLigne from "../hooks/useLienLigne";
 
 const getStatutColors = (theme) => ({
   actif:      { bg: theme.primaryBg, border: theme.primaryBorder, color: theme.primary,  label: "Actif" },
@@ -79,6 +80,7 @@ const ContratDetail = () => {
   const STATUT_COLORS = getStatutColors(theme);
   const { id } = useParams();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const { user } = useAuth();
   const { confirm, ConfirmDialog } = useConfirm();
   const { prompt, PromptDialog } = usePrompt();
@@ -537,8 +539,8 @@ const ContratDetail = () => {
             <Breadcrumb
               variant="hero"
               items={[
-                { label: "Employés", onClick: () => navigate("/employees") },
-                { label: `${contrat.employee_matricule} — ${contrat.employee_nom}`, onClick: () => navigate(`/employees/${employeeSlug(contrat)}`) },
+                { label: "Employés", to: "/employees" },
+                { label: `${contrat.employee_matricule} — ${contrat.employee_nom}`, to: `/employees/${employeeSlug(contrat)}` },
                 { label: contrat.numero_contrat },
               ]}
             />
@@ -569,7 +571,7 @@ const ContratDetail = () => {
                 </button>
               )}
               {["ADMIN", "SUPERADMIN"].includes(user?.role) && (
-                <button onClick={() => navigate(`/employees/${employeeSlug(contrat)}?tab=contrats`)} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                <button {...lienLigne(`/employees/${employeeSlug(contrat)}?tab=contrats`)} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff", borderRadius: 10, padding: "10px 20px", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   + Nouveau contrat
                 </button>
               )}

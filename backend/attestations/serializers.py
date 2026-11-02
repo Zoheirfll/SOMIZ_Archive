@@ -4,6 +4,7 @@ from rest_framework import serializers
 from employees.models import MotifArchivage
 from .models import DemandeAttestation, AttestationTemplateConfig
 from .reference import generate_reference
+from . import visas
 
 
 class DemandeAttestationSerializer(serializers.ModelSerializer):
@@ -26,10 +27,13 @@ class DemandeAttestationSerializer(serializers.ModelSerializer):
     traite_par_nom = serializers.SerializerMethodField()
     contrat_numero = serializers.SerializerMethodField()
     motif_nom = serializers.CharField(source='motif.nom', read_only=True)
+    visa = serializers.SerializerMethodField()
+    peut_viser = serializers.SerializerMethodField()
 
     class Meta:
         model = DemandeAttestation
         fields = [
+            'visa', 'peut_viser',
             'id', 'reference', 'employee', 'employee_nom', 'employee_matricule',
             'employee_date_naissance', 'employee_date_embauche',
             'employee_direction_nom', 'employee_departement_nom', 'employee_service_nom',
@@ -47,6 +51,24 @@ class DemandeAttestationSerializer(serializers.ModelSerializer):
 
     def get_employee_nom(self, obj):
         return f"{obj.employee.prenom} {obj.employee.nom}"
+
+    def get_visa(self, obj):
+        v = getattr(obj, 'visa', None)
+        if v is None:
+            return None
+        return {
+            'unite_type': v.unite_type, 'unite_nom': v.unite_nom, 'responsable_nom': v.responsable_nom,
+            'sans_compte': v.compte_id is None, 'decision': v.decision,
+            'decide_par_nom': v.decide_par.full_name if v.decide_par_id else None,
+            'date_decision': v.date_decision, 'motif': v.motif,
+            'interimaires': (
+                [c.full_name for c in visas.interimaires_actifs(v)] if v.decision == 'en_attente' else []
+            ),
+        }
+
+    def get_peut_viser(self, obj):
+        request = self.context.get('request')
+        return bool(request and visas.peut_viser(obj, request.user))
 
     def get_traite_par_nom(self, obj):
         return obj.traite_par.full_name if obj.traite_par_id else None
@@ -126,6 +148,8 @@ class DemandeAttestationStatutSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         instance = self.instance
         nouveau = attrs.get('statut')
+        if instance.statut == DemandeAttestation.Statut.VISA:
+            raise serializers.ValidationError(visas.MESSAGE_EN_VISA)
         if nouveau == DemandeAttestation.Statut.REJETEE:
             if instance.statut == DemandeAttestation.Statut.RECUPEREE:
                 raise serializers.ValidationError("Une demande déjà récupérée ne peut plus être rejetée.")

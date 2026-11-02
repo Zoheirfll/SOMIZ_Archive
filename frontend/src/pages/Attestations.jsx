@@ -34,6 +34,7 @@ const presetToRange = (preset) => {
 
 const STATUTS = [
   { value: "", label: "Tous" },
+  { value: "visa", label: "En attente de validation" },
   { value: "recue", label: "Reçue" },
   { value: "prete", label: "Prête" },
   { value: "recuperee", label: "Récupérée" },
@@ -43,6 +44,7 @@ const STATUTS = [
 // Même code couleur que StatutBadge, pour repérer un statut d'un coup
 // d'œil aussi bien dans le filtre que dans la liste.
 const STATUT_DOT_COLORS = {
+  visa: (theme) => theme.warning,
   recue: (theme) => theme.textSecondary,
   prete: (theme) => theme.primary,
   recuperee: (theme) => theme.primary,
@@ -101,7 +103,9 @@ export default function Attestations() {
       const params = { annee, tri };
       if (mois) params.mois = mois;
       if (importance) params.importance = importance;
-      if (statutFiltre) params.statut = statutFiltre;
+      // « a_viser » n'est pas un statut : demandes dont ma validation est attendue.
+      if (statutFiltre === "a_viser") params.a_viser = 1;
+      else if (statutFiltre) params.statut = statutFiltre;
       if (search) params.q = search;
       const res = await api.get("/attestations/demandes/", { params });
       setDemandes(res.data?.results || res.data || []);
@@ -438,7 +442,7 @@ export default function Attestations() {
               </form>
             )}
 
-            {isAdmin && (
+            {(isAdmin || user?.can_visa_conges) && (
               <div style={{
                 ...cardStyle, padding: "10px 12px", marginBottom: 20,
                 display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center",
@@ -449,7 +453,10 @@ export default function Attestations() {
                 }}>
                   Statut
                 </span>
-                {STATUTS.map((s) => {
+                {[
+                  ...(user?.can_visa_conges ? [{ value: "a_viser", label: "À valider par moi" }] : []),
+                  ...STATUTS,
+                ].map((s) => {
                   const actif = statutFiltre === s.value;
                   return (
                     <button
@@ -469,7 +476,7 @@ export default function Attestations() {
                       {s.value && (
                         <span style={{
                           width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                          background: actif ? "#fff" : STATUT_DOT_COLORS[s.value](theme),
+                          background: actif ? "#fff" : (STATUT_DOT_COLORS[s.value] || STATUT_DOT_COLORS.visa)(theme),
                         }} />
                       )}
                       {s.label}

@@ -253,8 +253,8 @@ describe("Employees — liste des employés", () => {
 
   test("clic Voir → navigue vers la fiche détail", async () => {
     await goToEmployeesListAndWait();
-    fireEvent.click(screen.getByText("Voir →"));
-    expect(mockNavigate).toHaveBeenCalledWith("/employees/EMP-001");
+    // « Voir → » est un vrai lien : clic droit / Ctrl+clic = nouvel onglet.
+    expect(screen.getByText("Voir →")).toHaveAttribute("href", "/employees/EMP-001");
   });
 
   test("clic Nouvel employé navigue vers /employees/nouveau (ADMIN)", async () => {
@@ -311,6 +311,29 @@ describe("Employees — bulk actions", () => {
         expect.objectContaining({ action: "archive" })
       );
     });
+  });
+
+  test("la modale d'archivage envoie la date de sortie (aujourd'hui par défaut)", async () => {
+    api.post.mockResolvedValue({ data: { nb_archives: 1 } });
+    await selectFirstEmployee();
+    fireEvent.click(screen.getByText(/Archiver \(\d+\)/));
+    const champ = await screen.findByLabelText(/Date de sortie/);
+    expect(champ.value).toBe(new Date().toLocaleDateString("en-CA"));
+    fireEvent.change(champ, { target: { value: "2026-02-28" } });
+    fireEvent.click(screen.getByRole("button", { name: "Archiver" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/employees/bulk-delete/",
+        expect.objectContaining({ action: "archive", date_sortie: "2026-02-28" }),
+      ),
+    );
+  });
+
+  test("sans date de sortie, le bouton Archiver est désactivé", async () => {
+    await selectFirstEmployee();
+    fireEvent.click(screen.getByText(/Archiver \(\d+\)/));
+    fireEvent.change(await screen.findByLabelText(/Date de sortie/), { target: { value: "" } });
+    expect(screen.getByRole("button", { name: "Archiver" })).toBeDisabled();
   });
 
   test("annuler la confirmation n'appelle pas l'API", async () => {

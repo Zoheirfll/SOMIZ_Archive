@@ -209,9 +209,14 @@ const Profil = () => {
               <div style={{ color: theme.text, fontWeight: 800, fontSize: 20, marginBottom: 2 }}>
                 {user?.prenom} {user?.nom}
               </div>
-              <div style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 8, fontFamily: "monospace" }}>
+              <div style={{ color: theme.textSecondary, fontSize: 13, marginBottom: user?.fonction ? 2 : 8, fontFamily: "monospace" }}>
                 @{user?.username}
               </div>
+              {user?.fonction && (
+                <div style={{ color: theme.text, fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+                  {user.fonction}
+                </div>
+              )}
               <span style={{
                 background: user?.role === "ADMIN" ? theme.dangerBg : theme.primaryBg,
                 color: user?.role === "ADMIN" ? theme.danger : theme.primary,

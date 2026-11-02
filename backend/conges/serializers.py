@@ -7,6 +7,7 @@ from .models import (
     CongeTemplateConfig, DemandeConge, MotifConge, MotifPiece, MouvementConge, ParametreConge,
     PieceJointeConge, TypeConge,
 )
+from . import visas
 from .reference import generate_reference
 from .services import COMPTEURS, CongeError, exercice_courant, exercice_suivant, valider_format_exercice
 from .workflow import trouver_chevauchement
@@ -84,11 +85,54 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
     interrompue_par_nom = serializers.SerializerMethodField()
     pieces_jointes = serializers.SerializerMethodField()
     conge_termine = serializers.BooleanField(read_only=True)
+    visas = serializers.SerializerMethodField()
+    peut_viser = serializers.SerializerMethodField()
+    visa_possibilites = serializers.SerializerMethodField()
+    titre_fige = serializers.SerializerMethodField()
+    sans_superieur = serializers.SerializerMethodField()
+
+    def get_sans_superieur(self, obj):
+        # Bloquée : aucun responsable désigné au-dessus de l'employé (visas.py).
+        return obj.statut == DemandeConge.Statut.VISA and not obj.visas.all()
+
+    def get_titre_fige(self, obj):
+        return bool(obj.titre_pdf)
+
+    def get_visas(self, obj):
+        return [{
+            'niveau': v.niveau, 'unite_type': v.unite_type, 'unite_nom': v.unite_nom,
+            'responsable_nom': v.responsable_nom, 'sans_compte': v.compte_id is None,
+            'decision': v.decision, 'decide_par_nom': v.decide_par.full_name if v.decide_par_id else None,
+            'date_decision': v.date_decision, 'motif': v.motif,
+            # Intérimaires en cours de l'unité (visa encore en attente seulement).
+            'interimaires': (
+                [c.full_name for c in visas.interimaires_actifs(v)] if v.decision == 'en_attente' else []
+            ),
+        } for v in obj.visas.all()]
+
+    def get_peut_viser(self, obj):
+        request = self.context.get('request')
+        return bool(request and visas.peut_viser(obj, request.user))
+
+    def get_visa_possibilites(self, obj):
+        """Ce que l'utilisateur peut viser : son propre niveau, et/ou, un par un,
+        les niveaux inférieurs d'un responsable absent (jamais en cascade)."""
+        request = self.context.get('request')
+        if not request:
+            return {'propre': False, 'a_la_place': []}
+        propres, remplacables = visas.possibilites(obj, request.user)
+        return {
+            'propre': bool(propres),
+            'a_la_place': [
+                {'niveau': v.niveau, 'unite_nom': v.unite_nom, 'responsable_nom': v.responsable_nom}
+                for v in remplacables
+            ],
+        }
 
     class Meta:
         model = DemandeConge
         fields = [
-            'id', 'reference', 'conge_termine', 'employee', 'employee_nom', 'employee_matricule',
+            'id', 'reference', 'conge_termine', 'visas', 'peut_viser', 'sans_superieur', 'visa_possibilites', 'titre_fige', 'employee', 'employee_nom', 'employee_matricule',
             'employee_date_embauche', 'employee_direction_nom', 'employee_departement_nom',
             'employee_service_nom', 'employee_poste_nom', 'employee_type_contrat_nom',
             'contrat', 'contrat_numero',
@@ -100,7 +144,7 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             'date_rappel', 'jours_effectifs', 'motif_interruption', 'interrompue_par_nom', 'date_interruption',
             'scan_document', 'demandeur', 'demandeur_nom', 'demandeur_role', 'demandeur_libelle_role',
             'traite_par', 'traite_par_nom',
-            'created_at', 'date_prete', 'date_recuperee', 'date_document', 'updated_at',
+            'created_at', 'date_accord', 'date_document', 'updated_at',
         ]
         read_only_fields = fields
 
@@ -272,9 +316,9 @@ class ObservationsSerializer(serializers.ModelSerializer):
         fields = ['observations']
 
     def validate(self, attrs):
-        if self.instance.statut not in (DemandeConge.Statut.RECUE, DemandeConge.Statut.PRETE):
+        if self.instance.statut not in (DemandeConge.Statut.RECUE, DemandeConge.Statut.ACCORDEE):
             raise serializers.ValidationError(
-                "Les observations ne sont plus modifiables une fois le titre récupéré, annulé ou interrompu."
+                "Les observations ne sont plus modifiables une fois le titre annulé ou interrompu."
             )
         return attrs
 

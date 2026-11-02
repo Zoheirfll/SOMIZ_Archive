@@ -24,6 +24,7 @@ import {
 import HierarchyView from "../components/employees/HierarchyView";
 import EmployeesTable from "../components/employees/EmployeesTable";
 import Breadcrumb from "../components/employees/Breadcrumb";
+import useLienLigne from "../hooks/useLienLigne";
 import {
   COLUMN_OPTIONS_FIXED,
   COLUMNS_STORAGE_KEY,
@@ -74,6 +75,7 @@ const Employees = () => {
   const [motifsArchivage, setMotifsArchivage] = useState([]);
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
   const [archiveMotif, setArchiveMotif] = useState("");
+  const [archiveDateSortie, setArchiveDateSortie] = useState(() => new Date().toLocaleDateString("en-CA"));
 
   const isColumnVisible = (key) =>
     key in columnOverrides ? columnOverrides[key] : defaultColumnVisible(key);
@@ -122,6 +124,7 @@ const Employees = () => {
 
   const { user } = useAuth();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const search = searchParams.get("q") || "";
@@ -165,6 +168,7 @@ const Employees = () => {
   const drillDirSlug = searchParams.get("dir") || "";
   const drillDepSlug = searchParams.get("dep") || "";
   const drillSvcSlug = searchParams.get("svc") || "";
+  const drillPolSlug = searchParams.get("pol") || "";
 
   const pushDrillParams = (next) =>
     setSearchParams((p) => {
@@ -173,6 +177,8 @@ const Employees = () => {
       n.delete("dir");
       n.delete("dep");
       n.delete("svc");
+      n.delete("pol");
+      if (next.pol) n.set("pol", next.pol);
       if (next.lvl) n.set("lvl", next.lvl);
       if (next.dir) n.set("dir", next.dir);
       if (next.dep) n.set("dep", next.dep);
@@ -660,15 +666,26 @@ const Employees = () => {
           }
         }
 
+        // Pôle (?pol=) : seulement au niveau « départements » d'une direction.
+        let poleObj = null;
+        if (drillLevel === "departements" && dirObj && drillPolSlug) {
+          if (selectedPole && slugify(selectedPole.nom) === drillPolSlug) poleObj = selectedPole;
+          else {
+            const res = await api.get("/ref/poles/", { params: { direction: dirObj.slug } });
+            poleObj = (res.data.results || res.data).find((p) => slugify(p.nom) === drillPolSlug) || null;
+          }
+        }
         if (
           view === drillLevel &&
           (dirObj?.id || null) === (selectedDirection?.id || null) &&
           (depObj?.id || null) === (selectedDepartement?.id || null) &&
-          (svcObj?.id || null) === (selectedService?.id || null)
+          (svcObj?.id || null) === (selectedService?.id || null) &&
+          (drillLevel !== "departements" || (poleObj?.id || null) === (selectedPole?.id || null))
         ) {
           return; // déjà à jour (navigation vers l'avant via un clic)
         }
 
+        setSelectedPole(drillLevel === "departements" ? poleObj : selectedPole);
         setSelectedDirection(dirObj);
         setSelectedDepartement(depObj);
         setSelectedService(svcObj);
@@ -680,7 +697,7 @@ const Employees = () => {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drillLevel, drillDirSlug, drillDepSlug, drillSvcSlug, directions]);
+  }, [drillLevel, drillDirSlug, drillDepSlug, drillSvcSlug, drillPolSlug, directions]);
 
   // ─── Navigation ───────────────────────────────────────────────────────────
 
@@ -709,6 +726,7 @@ const Employees = () => {
     setSelectedDepartement(null);
     setSelectedService(null);
     setHierarchyKey((k) => k + 1);
+    pushDrillParams({ lvl: "departements", dir: slugify(selectedDirection?.nom), pol: slugify(pole.nom) });
   };
   const selectDepartement = (dept) => {
     setSelectedDepartement(dept);
@@ -770,7 +788,7 @@ const Employees = () => {
       ? setSelected(new Set())
       : setSelected(new Set(employees.map((e) => e.id)));
 
-  const handleBulkAction = async (action, motifArchivage = null) => {
+  const handleBulkAction = async (action, motifArchivage = null, dateSortie = null) => {
     if (selected.size === 0) return;
     if (action === "delete") {
       // Suppression définitive et irréversible — confirmation renforcée
@@ -795,6 +813,7 @@ const Employees = () => {
         ...(action === "archive" && motifArchivage
           ? { motif_archivage: motifArchivage }
           : {}),
+        ...(action === "archive" ? { date_sortie: dateSortie } : {}),
       });
       const nb =
         response.data.nb_supprimes ||
@@ -853,12 +872,14 @@ const Employees = () => {
   const breadcrumbItems = [
     {
       label: "Toutes les directions",
+      href: "/employees?lvl=directions",
       onClick: view !== "directions" ? goToDirections : null,
     },
     ...(selectedDirection
       ? [
           {
             label: selectedDirection.nom,
+            href: `/employees?lvl=departements&dir=${slugify(selectedDirection.nom)}`,
             onClick:
               view !== "departements" || selectedPole
                 ? () => {
@@ -877,6 +898,7 @@ const Employees = () => {
       ? [
           {
             label: selectedPole.nom,
+            href: `/employees?lvl=departements&dir=${slugify(selectedDirection?.nom)}&pol=${slugify(selectedPole.nom)}`,
             onClick:
               view !== "departements"
                 ? () => {
@@ -894,6 +916,7 @@ const Employees = () => {
       ? [
           {
             label: selectedDepartement.nom,
+            href: `/employees?lvl=services&dir=${slugify(selectedDirection?.nom)}&dep=${slugify(selectedDepartement.nom)}`,
             onClick:
               view !== "services"
                 ? () => {
@@ -1092,7 +1115,7 @@ const Employees = () => {
                     Exporter
                   </button>
                   <button
-                    onClick={() => navigate("/import")}
+                    {...lienLigne("/import")}
                     className="btn-lift"
                     style={{
                       background: "rgba(255,255,255,0.12)",
@@ -1113,7 +1136,7 @@ const Employees = () => {
                     Import CSV, XLSX
                   </button>
                   <button
-                    onClick={() => navigate("/employees/nouveau")}
+                    {...lienLigne("/employees/nouveau")}
                     className="btn-lift"
                     style={{
                       background: theme.accent,
@@ -1415,9 +1438,35 @@ const Employees = () => {
               Archiver {selected.size} employé(s) ?
             </div>
             <div style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 16 }}>
-              Ils sortiront de l'organisation et rejoindront l'onglet
-              "Archivés". Action réversible (bouton "Restaurer").
+              Indiquez la date réelle de départ : elle sert au calcul des
+              sorties et du turnover. Action réversible (bouton "Restaurer").
             </div>
+            <label
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: theme.textSecondary,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
+              Date de sortie
+            </label>
+            <input
+              type="date"
+              aria-label="Date de sortie"
+              value={archiveDateSortie}
+              max={new Date().toLocaleDateString("en-CA")}
+              onChange={(e) => setArchiveDateSortie(e.target.value)}
+              className="input-focus"
+              style={{
+                width: "100%", border: `1.5px solid ${theme.border}`, borderRadius: 10,
+                padding: "10px 14px", color: theme.text, fontSize: 14, outline: "none",
+                background: theme.bg, fontFamily: theme.fontFamily, marginBottom: 14,
+              }}
+            />
             <label
               style={{
                 fontSize: 12,
@@ -1477,17 +1526,17 @@ const Employees = () => {
                 onClick={() => {
                   if (deleting) return;
                   setArchiveModalOpen(false);
-                  handleBulkAction("archive", archiveMotif || null);
+                  handleBulkAction("archive", archiveMotif || null, archiveDateSortie);
                 }}
-                disabled={deleting}
+                disabled={deleting || !archiveDateSortie}
                 style={{
                   background: "#FFFBEB",
                   border: `1px solid #FDE68A`,
                   color: "#92400E",
                   borderRadius: 8,
                   padding: "8px 16px",
-                  cursor: deleting ? "not-allowed" : "pointer",
-                  opacity: deleting ? 0.6 : 1,
+                  cursor: deleting || !archiveDateSortie ? "not-allowed" : "pointer",
+                  opacity: deleting || !archiveDateSortie ? 0.6 : 1,
                   fontSize: 13,
                   fontWeight: 700,
                   fontFamily: theme.fontFamily,

@@ -478,3 +478,51 @@ signifie que le contrat n'en a pas (CDI, ou date non saisie sur le contrat).
   `?statut=` change ce périmètre. Les colonnes ont été insérées *au milieu* du fichier : tout traitement
   externe qui lit ces exports par position (et non par nom de colonne) doit être revu.
 - Tests : `backend/tests/test_employee_export.py` (aucun test n'existait pour cet export avant cette date).
+
+---
+
+## Champ « Sexe » (2026-10-30)
+
+- **Colonne fixe** `Employee.sexe` (`M` Masculin / `F` Féminin, vide = non renseigné), pas un `ChampPersonnalise` :
+  choix retenu pour des agrégations de parité fiables dans le reporting (valeurs garanties, `GROUP BY` direct). Option
+  écartée : champ personnalisé EAV (valeur texte libre, divergences « M »/« Homme »/« masculin », stats plus lourdes).
+- **Champ système PERSONNEL** seedé par la migration `0040_employee_sexe` (ordre 190, réordonnable dans /parametres),
+  donc soumis au périmètre des champs personnels ; la valeur est **masquée côté serveur** (`null`) dans la fiche pour
+  un compte sans accès — voir `securite.md` point 52.
+- **Formulaire** : liste déroulante à deux choix (`M — Masculin`, `F — Féminin`) + « Non renseigné ». Le formulaire
+  envoie `null` pour un champ vide : `EmployeeCreateUpdateSerializer` le ramène à `''`.
+- **Import** : colonne optionnelle `sexe` ; saisies normalisées (`M`/`H`/`Homme`/`Masculin` → `M`, `F`/`Femme`/
+  `Féminin` → `F`, casse et accents ignorés) ; une valeur inconnue **bloque la ligne** (message explicite) plutôt que
+  d'être perdue. Le template ne répète plus les codes des champs système déjà présents en colonnes fixes.
+- **Export Excel** : colonne « Sexe » (libellé) insérée après « Date de recrutement » — les 7 premières colonnes,
+  verrouillées par test, ne bougent pas, mais tout traitement externe lisant l'export **par position** doit être revu.
+- **Liste** : filtre `?sexe=M|F|non_renseigne` (drill-down du reporting).
+- **Non fait** : intégration GRH (`grh_integration.py`, `webhook_client.py`) — le champ n'est ni reçu ni envoyé ; à
+  ajouter au contrat d'interface quand l'intégration sera activée. Données existantes : vides jusqu'à saisie ou
+  ré-import.
+
+---
+
+## Date de sortie (2026-10-30)
+
+- **Définition** : `Employee.date_sortie` = vraie date de départ de l'organisation, distincte de la date du clic
+  d'archivage (que l'audit conserve). Base du turnover et des effectifs à une date passée (photo mensuelle,
+  `docs/fonctionnel/statistiques-audit.md`). Règles dans un seul module : `employees/sortie.py`.
+- **Quatre chemins** :
+  - **Formulaire** (`EmployeeCreateUpdateSerializer._valider_date_sortie`) : obligatoire à la transition actif →
+    statut de sortie (et à la création directement en statut de sortie) ; jamais dans le futur ; jamais avant la
+    date de recrutement. Un archivé **historique** sans date reste modifiable pour ses autres champs.
+  - **Archivage en masse** (`EmployeeBulkDeleteView`, modale de /employees) : champ date pré-rempli à aujourd'hui,
+    bouton désactivé sans date ; le serveur refuse (400) une date absente, illisible, future ou antérieure au
+    recrutement d'un des employés (matricules cités). La date figure dans le détail d'audit.
+  - **Synchro contrat** (`Employee.sync_statut_from_dernier_contrat`) : transition automatique, sans saisie possible
+    → date de fin du contrat si elle est passée, sinon vide.
+  - **Restauration** (formulaire ou masse) : date vidée.
+- **Import** : colonne optionnelle `date_sortie`, lue seulement pour un statut de sortie (ignorée pour un actif) ;
+  date illisible, future ou avant recrutement → ligne bloquée. **Export** : colonne « Date de sortie » après « Sexe »
+  (attention aux traitements qui lisent par position).
+- **Archivés existants : aucune reprise automatique** (décision utilisateur du 2026-10-30, saisie manuelle) ; ils
+  restent à compléter depuis leur fiche.
+- **Approche écartée** : dater les sorties par le journal d'audit (date du clic) — faux pour un archivage tardif, et
+  inexistant pour un employé importé déjà archivé.
+- **Non fait** : intégration GRH (`grh_integration.py`, `webhook_client.py`) — champ ni reçu ni envoyé.

@@ -10,8 +10,9 @@ export const canRequestConsultations = (user) => !!user?.can_request_consultatio
 export const canRequestConges = (user) => !!user?.can_request_conges;
 
 // Attestations : demandeur autorisé, ou traiteur (SUPERADMIN / ADMIN chargé).
+// Un responsable d'unité (can_visa_conges) y accède aussi : il valide les demandes de son équipe.
 export const canSeeAttestations = (user) =>
-  canRequestAttestations(user) || !!user?.can_manage_attestations;
+  canRequestAttestations(user) || !!user?.can_manage_attestations || !!user?.can_visa_conges;
 
 // Consultations d'archives : demandeurs autorisés et traiteurs.
 export const canSeeConsultations = (user) =>
@@ -19,8 +20,15 @@ export const canSeeConsultations = (user) =>
 
 // Congés : demandeurs autorisés (peut_demander_conge) et traiteurs (SUPERADMIN /
 // ADMIN charge_conge) — User.can_request_conges / can_manage_conges côté backend.
+// Un responsable d'unité (can_visa_conges) y accède aussi : il vise les demandes de sa chaîne.
 export const canSeeConges = (user) =>
-  canRequestConges(user) || !!user?.can_manage_conges;
+  canRequestConges(user) || !!user?.can_manage_conges || !!user?.can_visa_conges;
+
+// Intérim : responsables d'unité et SUPERADMIN (désignent / valident), plus tout
+// compte qui assure un intérim (il retrouve sa fiche via la notification).
+// Les ADMIN y accèdent en lecture seule (contrôle), le SUPERADMIN voit tout et agit.
+export const canSeeInterims = (user) =>
+  !!user?.can_gerer_interim || !!user?.can_visa_conges || ["ADMIN", "SUPERADMIN"].includes(user?.role);
 
 // Registres : le SUPERADMIN toujours (testé sur le rôle, pas seulement sur le
 // drapeau : robuste à une session ouverte avant l'ajout du champ), sinon un

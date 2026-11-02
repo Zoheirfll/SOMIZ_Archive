@@ -65,6 +65,7 @@ LOCAL_APPS = [
     'consultations',
     'registres',
     'notifications',
+    'reporting',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -384,3 +385,10 @@ STATICFILES_DIRS = [BASE_DIR / 'frontend_build' / 'static']
 # ça, GET /pdf.worker.min.js répond index.html et le visionneur PDF échoue.
 # WHITENOISE_INDEX_FILE reste False : index.html reste servi par React Router.
 WHITENOISE_ROOT = BASE_DIR / 'frontend_build'
+
+# ─── REPORTING RH ─────────────────────────────────────────────────────────────
+# Âge de départ à la retraite par sexe (sexe non renseigné → valeur 'M').
+REPORTING_AGE_RETRAITE = {'M': 60, 'F': 55}
+# Une cellule de ventilation croisée (sexe, âge) sous ce seuil est masquée,
+# pour éviter l'identification d'un agent par recoupement.
+REPORTING_SEUIL_PETITS_EFFECTIFS = 2

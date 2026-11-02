@@ -6,7 +6,15 @@ const ProtectedRoute = ({ children, adminOnly = false, allowedRoles = null, requ
   const location = useLocation();
   if (!authChecked) return null; // Attendre la vérification cookie avant de rediriger
   if (!authenticated) return <Navigate to="/login" replace />;
-  if (user?.needs_consent && location.pathname !== "/consentement") {
+  // Mot de passe temporaire : tout est bloqué (côté API aussi) jusqu'à son remplacement.
+  if (user?.must_change_password && location.pathname !== "/mot-de-passe") {
+    return <Navigate to="/mot-de-passe" replace />;
+  }
+  // Un compte neuf cumule mot de passe temporaire ET consentement à donner :
+  // le mot de passe passe en premier, donc on ne renvoie pas vers
+  // /consentement depuis /mot-de-passe (sinon boucle de redirection infinie
+  // entre les deux pages → page blanche).
+  if (user?.needs_consent && location.pathname !== "/consentement" && location.pathname !== "/mot-de-passe") {
     return <Navigate to="/consentement" state={{ from: location.pathname }} replace />;
   }
   if (adminOnly && !["ADMIN", "SUPERADMIN"].includes(user?.role)) return <Navigate to="/employees" replace />;

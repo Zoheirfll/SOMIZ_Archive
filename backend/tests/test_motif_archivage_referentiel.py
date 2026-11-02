@@ -92,7 +92,7 @@ class TestEmployeeMotifArchivage:
         motif = MotifArchivage.objects.create(nom="Fin de contrat")
         resp = auth_client(admin_user).patch(
             f"/api/employees/{employee.pk}/",
-            {"statut": "archive", "motif_archivage": str(motif.pk)},
+            {"statut": "archive", "motif_archivage": str(motif.pk), "date_sortie": "2026-01-31"},
             format="json",
         )
         assert resp.status_code == 200

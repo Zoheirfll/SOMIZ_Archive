@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
+import LienNav from "../components/LienNav";
 import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
@@ -9,11 +10,13 @@ import Skeleton from "../components/Skeleton";
 import HeroDecor from "../components/HeroDecor";
 import PageBackground from "../components/PageBackground";
 import ContratsEcheanceCard from "../components/dashboard/ContratsEcheanceCard";
+import { peutVoirStatistiques } from "../config/reportingPages";
 import InfoNotice from "../components/InfoNotice";
 import { PAGE_NOTICES } from "../config/notices";
 import useCountUp from "../hooks/useCountUp";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
+import useLienLigne from "../hooks/useLienLigne";
 
 // SVG icons
 const IconUsers = () => (
@@ -107,6 +110,7 @@ const Dashboard = () => {
   const [error, setError] = useState("");
   const { user } = useAuth();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -189,7 +193,7 @@ const Dashboard = () => {
           gap: 16,
           marginBottom: 32,
         }}>
-          <div onClick={() => navigate("/employees")} style={{ cursor: "pointer" }}>
+          <div {...lienLigne("/employees")} style={{ cursor: "pointer" }}>
             <StatCard
               label="Employés actifs"
               value={countEmployes ?? 0}
@@ -199,7 +203,7 @@ const Dashboard = () => {
             />
           </div>
           <div
-            onClick={() => navigate("/employees?dossier_complet=true")}
+            {...lienLigne("/employees?dossier_complet=true")}
             style={{ cursor: "pointer" }}
           >
             <StatCard
@@ -211,15 +215,13 @@ const Dashboard = () => {
                   {stats?.employes_actifs > 0 && (
                     <>
                       {" · "}
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate("/employees?dossier_complet=false");
-                        }}
-                        style={{ color: theme.warning, textDecoration: "underline" }}
+                      <LienNav
+                        to="/employees?dossier_complet=false"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ color: theme.warning, textDecoration: "underline", display: "inline" }}
                       >
                         {total - (stats?.dossiers_complets ?? 0)} incomplets
-                      </span>
+                      </LienNav>
                     </>
                   )}
                 </>
@@ -230,7 +232,7 @@ const Dashboard = () => {
             />
           </div>
           <div
-            onClick={() => navigate("/employees?dossier_complet=false")}
+            {...lienLigne("/employees?dossier_complet=false")}
             style={{ cursor: "pointer" }}
           >
             <StatCard
@@ -241,7 +243,10 @@ const Dashboard = () => {
               className="anim-slide-up delay-3"
             />
           </div>
-          <div onClick={() => navigate("/statistiques")} style={{ cursor: "pointer" }}>
+          <div
+            {...(peutVoirStatistiques(user) ? lienLigne("/statistiques/synthese") : {})}
+            style={{ cursor: peutVoirStatistiques(user) ? "pointer" : "default" }}
+          >
             <StatCard
               label="Total documents"
               value={countDocs ?? 0}
@@ -251,6 +256,12 @@ const Dashboard = () => {
             />
           </div>
         </div>
+
+        <ContratsEcheanceCard
+          variante="echus"
+          contrats={stats?.contrats_echus}
+          total={stats?.contrats_echus_total ?? 0}
+        />
 
         <ContratsEcheanceCard
           contrats={stats?.contrats_echeance}
@@ -296,7 +307,7 @@ const Dashboard = () => {
                 Object.entries(stats.completude_par_type).map(([code, data]) => (
                   <div
                     key={code}
-                    onClick={() => navigate(`/employees?type_manquant=${encodeURIComponent(code)}`)}
+                    {...lienLigne(`/employees?type_manquant=${encodeURIComponent(code)}`)}
                     title={`Voir les employés sans « ${data.label} »`}
                     style={{ marginBottom: 16, cursor: "pointer" }}
                   >

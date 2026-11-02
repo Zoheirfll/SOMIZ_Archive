@@ -86,10 +86,10 @@ def test_valider_cp_debite_le_plus_ancien_puis_deborde(demande_recue, traiteur_c
     assert SoldeConge.objects.get(employee=employee).cp_consomme == 20
     assert d.ventilation == [{'exercice': REL, 'jours': 13}, {'exercice': ACT, 'jours': 7}]
     assert d.exercice == REL and d.categorie_exercice == 'RELIQUAT'
-    assert d.statut == DemandeConge.Statut.PRETE
+    assert d.statut == DemandeConge.Statut.ACCORDEE
     assert d.traite_par_id == traiteur_conge.id
     assert d.validateur_nom == traiteur_conge.full_name
-    assert d.date_prete is not None and d.type_conge == 'CP' and d.motif_id == motif_cp.id
+    assert d.date_accord is not None and d.type_conge == 'CP' and d.motif_id == motif_cp.id
     assert _coherent(employee)
     debits = MouvementConge.objects.filter(demande=d, nature=MouvementConge.Nature.DEBIT).order_by('exercice')
     assert sorted((m.exercice, m.d_consomme, m.d_cp_consomme) for m in debits) == sorted(
@@ -142,14 +142,14 @@ def test_valider_ce_ne_debite_rien(demande_recue, traiteur_conge, solde_employe,
     solde_employe(reliquat=5, annuel=30)
     d = _valider(demande_recue(nb_jours=3), traiteur_conge, motif_ce, type_conge='CE', nb_jours=3)
     assert _restants(employee) == {REL: 5, ACT: 30, ANT: 30}
-    assert d.statut == DemandeConge.Statut.PRETE and d.type_conge == 'CE'
+    assert d.statut == DemandeConge.Statut.ACCORDEE and d.type_conge == 'CE'
     assert d.ventilation == [] and d.categorie_exercice == ''
     assert not MouvementConge.objects.filter(demande=d).exists()
 
 
 def test_valider_ce_fonctionne_meme_sans_solde_initialise(demande_recue, traiteur_conge, motif_ce):
     d = _valider(demande_recue(nb_jours=3), traiteur_conge, motif_ce, type_conge='CE', nb_jours=3)
-    assert d.statut == DemandeConge.Statut.PRETE
+    assert d.statut == DemandeConge.Statut.ACCORDEE
 
 
 def test_valider_cs_ajoute_au_retrait_cs_sans_debiter(demande_recue, traiteur_conge, solde_employe, motif_cs, employee):
@@ -206,22 +206,11 @@ def test_rejeter_un_titre_prete_restitue_le_debit(demande_recue, traiteur_conge,
     assert _coherent(employee)
 
 
-def test_marquer_recuperee_exige_le_statut_prete(demande_recue, traiteur_conge, solde_employe, motif_cp):
-    solde_employe()
-    d = demande_recue()
-    with pytest.raises(TransitionInvalide):
-        workflow.marquer_recuperee(d, auteur=traiteur_conge)
-    d = _valider(d, traiteur_conge, motif_cp)
-    d = workflow.marquer_recuperee(d, auteur=traiteur_conge)
-    assert d.statut == DemandeConge.Statut.RECUPEREE and d.date_recuperee is not None
-
-
 # ─── Annulation (même signé) ────────────────────────────────────────────────
 
 def test_annuler_restitue_exactement_la_ventilation(demande_recue, traiteur_conge, solde_employe, motif_cp, employee):
     solde_employe(reliquat=13, annuel=30)
     d = _valider(demande_recue(nb_jours=20), traiteur_conge, motif_cp, nb_jours=20)
-    d = workflow.marquer_recuperee(d, auteur=traiteur_conge)  # signé et récupéré
     d = workflow.annuler_demande(d, auteur=traiteur_conge, motif="Annulé par l'employé")
     assert _restants(employee) == {REL: 13, ACT: 30, ANT: 30}
     assert SoldeConge.objects.get(employee=employee).cp_consomme == 0
@@ -340,7 +329,6 @@ def test_un_titre_dont_la_date_de_retour_est_atteinte_est_fige(demande_recue, tr
     ):
         with pytest.raises(TransitionInvalide):
             action()
-    d = workflow.marquer_recuperee(d, auteur=traiteur_conge)
     with pytest.raises(TransitionInvalide):
         workflow.annuler_demande(d, auteur=traiteur_conge, motif="x")
     assert _restants(employee) == avant

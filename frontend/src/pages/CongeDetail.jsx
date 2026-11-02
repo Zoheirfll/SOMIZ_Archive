@@ -45,11 +45,25 @@ const InfoCard = ({ title, children, theme }) => (
   </div>
 );
 
-const ETAPES = [
-  { value: "recue", label: "Reçue", dateKey: "created_at" },
-  { value: "prete", label: "Prête", dateKey: "date_prete" },
-  { value: "recuperee", label: "Récupérée", dateKey: "date_recuperee" },
-];
+// Parcours réel (2026-10-31) : saisie → accord de chaque niveau hiérarchique
+// (chef direct, département, direction) → enregistrement par la DRH (contrôle,
+// débit des soldes, titre). Les étapes d'accord viennent de `demande.visas`.
+const etapesDe = (demande) => {
+  const visas = [...(demande.visas || [])].sort((a, b) => a.niveau - b.niveau);
+  const enregistre = demande.statut === "accordee";
+  return [
+    { cle: "saisie", label: "Saisie", atteinte: true, date: demande.created_at },
+    ...visas.map((v) => ({
+      cle: `visa-${v.niveau}`,
+      label: `Accord ${v.unite_nom || v.responsable_nom || ""}`.trim(),
+      atteinte: v.decision === "vise" || v.decision === "vise_par_superieur",
+      date: v.date_decision,
+    })),
+    ...(visas.length === 0 && demande.statut === "visa"
+      ? [{ cle: "sans-chef", label: "Aucun supérieur désigné", atteinte: false, date: null }] : []),
+    { cle: "enregistre", label: "Enregistré par la DRH", atteinte: enregistre, date: demande.date_accord },
+  ];
+};
 
 const STATUTS_HORS_PARCOURS = {
   rejetee: "Demande rejetée",
@@ -76,15 +90,16 @@ const StatutStepper = ({ demande, theme, isMobile }) => {
       </div>
     );
   }
-  const idxActuel = ETAPES.findIndex((e) => e.value === demande.statut);
+  const ETAPES = etapesDe(demande);
+  const idxActuel = ETAPES.reduce((dernier, e, i) => (e.atteinte ? i : dernier), 0);
   return (
     <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
       {ETAPES.map((etape, i) => {
-        const atteinte = i <= idxActuel;
+        const atteinte = etape.atteinte;
         const courante = i === idxActuel;
-        const dateEtape = formatDateEtape(demande[etape.dateKey]);
+        const dateEtape = formatDateEtape(etape.date);
         return (
-          <div key={etape.value} style={{ display: "flex", alignItems: "center", flex: i < ETAPES.length - 1 ? 1 : "0 0 auto" }}>
+          <div key={etape.cle} style={{ display: "flex", alignItems: "center", flex: i < ETAPES.length - 1 ? 1 : "0 0 auto" }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
               <div style={{
                 width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
@@ -128,6 +143,26 @@ const ventilationTexte =(d) => (d.ventilation || [])
   .join(" · ");
 
 const tailleTexte = (octets) => (octets >= 1048576 ? `${(octets / 1048576).toFixed(1)} Mo` : `${Math.ceil(octets / 1024)} Ko`);
+
+const NIVEAUX_VISA = { 1: "Chef direct", 2: "Chef de département", 3: "Directeur" };
+
+// Anciens motifs enregistrés avant le changement de vocabulaire (« Visé … »).
+const libelleMotif = (motif) => (motif || "")
+  .replace(/^Visé en lieu et place de (.+) par (.+)$/, "Validé par $2 en raison de l'absence de $1")
+  .replace(/^Visé/, "Validé");
+
+// Texte de la ligne d'un maillon de la chaîne : état, auteur et motif éventuel.
+const libelleVisa = (v) => {
+  const qui = v.responsable_nom + (v.sans_compte ? " (sans compte)" : "");
+  if (v.decision === "en_attente") {
+    const interim = (v.interimaires || []).length ? ` (intérim : ${v.interimaires.join(", ")})` : "";
+    return `En attente — ${qui}${interim}`;
+  }
+  if (v.decision === "vise") return libelleMotif(v.motif) || `Validé par ${v.decide_par_nom || qui}`;
+  if (v.decision === "vise_par_superieur") return libelleMotif(v.motif) || `Validé par ${v.decide_par_nom}`;
+  if (v.decision === "refuse") return `Refusé par ${v.decide_par_nom || qui}${v.motif ? ` : ${v.motif}` : ""}`;
+  return qui;
+};
 
 export default function CongeDetail() {
   const { ref } = useParams();
@@ -255,15 +290,36 @@ export default function CongeDetail() {
   const annulerTitre = (payload) => executer("annuler", payload);
   const interrompre = (payload) => executer("interrompre", payload);
 
-  const rejeter = async () => {
-    const motif = await prompt("Motif du rejet :", "");
-    if (motif === null || !motif.trim()) return;
-    const erreur = await executer("rejeter", { motif: motif.trim() });
+  // Pas de « Rejeter » pour la DRH (2026-10-31) : elle ne décide pas, elle
+  // contrôle, corrige et enregistre. Un refus vient de la hiérarchie.
+
+  // Demande bloquée faute de supérieur : relance après désignation du responsable.
+  const recalculerChaine = async () => {
+    const erreur = await executer("recalculer-chaine", {});
     if (erreur) setMessage(erreur);
   };
 
-  const marquerRecupere = async () => {
-    const erreur = await executer("recuperee", {});
+  const viser = async () => {
+    if (!(await confirm("Accorder ce congé à votre niveau ?", { danger: false }))) return;
+    const erreur = await executer("viser", {});
+    if (erreur) setMessage(erreur);
+  };
+
+  // Visa « à la place de » : jamais automatique, un niveau à la fois, tracé.
+  const viserALaPlace = async (cible) => {
+    const ok = await confirm(
+      `En raison de l'absence de ${cible.responsable_nom} (${cible.unite_nom}), vous validez à sa place. `
+      + "Cette décision sera enregistrée comme telle. Continuer ?",
+    );
+    if (!ok) return;
+    const erreur = await executer("viser", { niveau: cible.niveau });
+    if (erreur) setMessage(erreur);
+  };
+
+  const refuserVisa = async () => {
+    const motif = await prompt("Motif du refus (obligatoire) :", "", { confirmLabel: "Refuser" });
+    if (motif === null || !motif.trim()) return;
+    const erreur = await executer("refuser-visa", { motif: motif.trim() });
     if (erreur) setMessage(erreur);
   };
 
@@ -307,8 +363,8 @@ export default function CongeDetail() {
 
   const d = demande;
   const statut = d.statut;
-  const peutAnnulerDemande = d.demandeur === user?.id && statut === "recue";
-  const apercuPossible = isTraiteur && !["recue", "rejetee"].includes(statut);
+  const peutAnnulerDemande = d.demandeur === user?.id && ["recue", "visa"].includes(statut);
+  const apercuPossible = isTraiteur && !["visa", "recue", "rejetee"].includes(statut);
   // Date de retour atteinte : titre figé (règle appliquée aussi côté serveur).
   const titreModifiable = !d.conge_termine;
   // Type/motif/exercice sont proposés dès la demande : le titre n'est établi
@@ -329,7 +385,7 @@ export default function CongeDetail() {
       <Navbar />
       <div style={{ background: "linear-gradient(135deg, #052e16 0%, #14532d 50%, #166534 100%)", padding: heroPadding(isMobile) }}>
         <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <Breadcrumb variant="hero" items={[{ label: "Congés", onClick: () => navigate("/conges") }, { label: d.reference }]} />
+          <Breadcrumb variant="hero" items={[{ label: "Congés", to: "/conges" }, { label: d.reference }]} />
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
             <h1 style={{ color: "#fff", fontSize: 24, margin: 0, fontWeight: 800 }}>{d.reference}</h1>
             <CongeStatutBadge statut={statut} />
@@ -432,7 +488,28 @@ export default function CongeDetail() {
           </InfoCard>
         )}
 
+        {d.visas?.length > 0 && (
+          <InfoCard title="Validation hiérarchique" theme={theme}>
+            {d.visas.map((v) => (
+              <Field
+                key={v.niveau}
+                label={`${NIVEAUX_VISA[v.niveau] || "Validation"} — ${v.unite_nom}`}
+                value={libelleVisa(v)}
+                theme={theme}
+                danger={v.decision === "refuse"}
+              />
+            ))}
+          </InfoCard>
+        )}
+
         {isTraiteur && <SoldesCard solde={solde} initialise={soldeInitialise} />}
+
+        {d.sans_superieur && (
+          <div role="status" style={{ color: theme.warning, background: theme.accentBg, borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+            Aucun supérieur n'est désigné au-dessus de cet employé : personne ne peut accorder ce congé.
+            Désignez le responsable de son unité dans l'Organigramme ; la demande sera alors relancée automatiquement.
+          </div>
+        )}
 
         {message && (
           <div role="alert" style={{ color: theme.danger, background: theme.dangerBg, borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
@@ -441,8 +518,22 @@ export default function CongeDetail() {
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {d.visa_possibilites?.propre && (
+            <button onClick={viser} className="btn-lift" style={btnPrimaire}><CheckIcon size={13} /> Accorder</button>
+          )}
+          {(d.visa_possibilites?.a_la_place || []).map((cible) => (
+            <button
+              key={cible.niveau} onClick={() => viserALaPlace(cible)} className="btn-lift" style={btnNeutre}
+              title="À utiliser seulement si ce responsable est absent"
+            >
+              Absent ? Accorder à la place de {cible.responsable_nom}
+            </button>
+          ))}
+          {d.peut_viser && (
+            <button onClick={refuserVisa} className="btn-lift" style={btnDanger}>Refuser</button>
+          )}
           {isTraiteur && statut === "recue" && (
-            <button onClick={ouvrirValidation} className="btn-lift" style={btnPrimaire}><CheckIcon size={13} /> Valider</button>
+            <button onClick={ouvrirValidation} className="btn-lift" style={btnPrimaire}><CheckIcon size={13} /> Contrôler et enregistrer</button>
           )}
           {apercuPossible && (
             <button onClick={() => ouvrirApercu()} disabled={pdfLoading} className="btn-lift" style={{ ...btnNeutre, opacity: pdfLoading ? 0.6 : 1 }}>
@@ -454,35 +545,37 @@ export default function CongeDetail() {
               <PrinterIcon size={14} /> Imprimer
             </button>
           )}
-          {isTraiteur && statut === "prete" && (
-            <button onClick={marquerRecupere} className="btn-lift" style={btnPrimaire}>Marquer récupéré</button>
-          )}
-          {isTraiteur && titreModifiable && ["prete", "recuperee"].includes(statut) && (
+          {isTraiteur && titreModifiable && statut === "accordee" && (
             <button onClick={() => setModale("interrompre")} className="btn-lift" style={btnNeutre}>Interrompre le congé</button>
           )}
-          {isTraiteur && ["recue", "prete", "recuperee"].includes(statut) && (
+          {isTraiteur && ["recue", "accordee"].includes(statut) && (
             <button onClick={modifierObservations} className="btn-lift" style={btnNeutre}>Observations</button>
           )}
-          {isTraiteur && titreModifiable && ["prete", "recuperee"].includes(statut) && (
+          {isTraiteur && titreModifiable && statut === "accordee" && (
             <button onClick={() => setModale("annuler")} className="btn-lift" style={btnDanger}>Annuler le titre</button>
           )}
-          {isTraiteur && (statut === "recue" || (statut === "prete" && titreModifiable)) && (
-            <button onClick={rejeter} className="btn-lift" style={btnDanger}>Rejeter</button>
+          {isTraiteur && d.sans_superieur && (
+            <button onClick={recalculerChaine} className="btn-lift" style={btnNeutre}>Recalculer la chaîne d'accord</button>
           )}
           {peutAnnulerDemande && (
             <button onClick={annulerDemande} className="btn-lift" style={btnDanger}>Annuler la demande</button>
           )}
         </div>
 
-        {isTraiteur && d.conge_termine && ["prete", "recuperee"].includes(statut) && (
+        {isTraiteur && d.conge_termine && statut === "accordee" && (
           <div style={{ fontSize: 12, color: theme.textMuted }}>
             Congé terminé (date de retour atteinte) : le titre ne peut plus être annulé, interrompu ni rejeté.
           </div>
         )}
 
-        {apercuPossible && d.date_document && (
+        {apercuPossible && d.titre_fige && (
           <div style={{ fontSize: 12, color: theme.textMuted }}>
-            Titre imprimable daté du {formatDateFR(d.date_document)} — rouvrir l'aperçu un autre jour redemandera confirmation avant de changer cette date.
+            Titre généré une fois pour toutes : il est conservé tel quel et ne change plus, même si le modèle évolue.
+          </div>
+        )}
+        {apercuPossible && !d.titre_fige && d.date_document && (
+          <div style={{ fontSize: 12, color: theme.textMuted }}>
+            Mode test : le titre est regénéré à chaque aperçu (daté du {formatDateFR(d.date_document)}) et ne sera figé qu'à la fin du mode test.
           </div>
         )}
 

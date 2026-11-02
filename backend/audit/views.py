@@ -13,9 +13,9 @@ from rest_framework.views import APIView
 import openpyxl
 from openpyxl.styles import Font
 
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, CanViewStatistiques
 from audit.models import AuditLog
-from audit.stats import build_stats_detail, _categorize_emp_log, _contrats_echeance, _ACTIVITY_KEYS
+from audit.stats import build_stats_detail, _categorize_emp_log, _contrats_echeance, _contrats_echus, _ACTIVITY_KEYS
 from employees.models import Employee, EmployeeDocument
 
 # Encart « contrats arrivant à échéance » du tableau de bord : fenêtre alignée
@@ -208,6 +208,8 @@ class AdminStatsView(APIView):
         # Liste plafonnée aux plus proches ; le total exact sert au lien
         # « voir tout » vers /statistiques. Organisation-wide (vue ADMIN).
         contrats_echeance = _contrats_echeance(ECHEANCE_DASHBOARD_JOURS)
+        # Contrats échus d'employés actifs : dossiers à mettre à jour (même plafond).
+        contrats_echus = _contrats_echus()
 
         # Activité 7 jours
         from django.utils import timezone
@@ -226,6 +228,8 @@ class AdminStatsView(APIView):
             'total_documents': EmployeeDocument.objects.filter(is_active=True).count(),
             'contrats_echeance': contrats_echeance[:ECHEANCE_DASHBOARD_MAX_LIGNES],
             'contrats_echeance_total': len(contrats_echeance),
+            'contrats_echus': contrats_echus[:ECHEANCE_DASHBOARD_MAX_LIGNES],
+            'contrats_echus_total': len(contrats_echus),
         })
 
 
@@ -261,7 +265,7 @@ class StatsDetailView(APIView):
     docs/superpowers/specs/2026-09-02-page-statistiques-design.md et
     CLAUDE.md section "Page Statistiques".
     """
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdmin, CanViewStatistiques]
 
     def get(self, request):
         date_debut = _parse_date_param(request, 'date_debut')
@@ -299,7 +303,7 @@ class StatsExportView(APIView):
     Export Excel des mêmes statistiques que StatsDetailView, un onglet par
     section.
     """
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdmin, CanViewStatistiques]
 
     def get(self, request):
         date_debut = _parse_date_param(request, 'date_debut')

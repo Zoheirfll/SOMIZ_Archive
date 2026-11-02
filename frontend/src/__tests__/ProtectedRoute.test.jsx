@@ -29,6 +29,7 @@ const renderWithRouter = (authenticated, authChecked = true, user = {}) => {
         />
         <Route path="/login" element={<div>Page Login</div>} />
         <Route path="/consentement" element={<div>Page Consentement</div>} />
+        <Route path="/mot-de-passe" element={<div>Page Mot de passe</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -66,5 +67,33 @@ describe("ProtectedRoute", () => {
   test("affiche la page si needs_consent est faux", () => {
     renderWithRouter(true, true, { role: "ADMIN", needs_consent: false });
     expect(screen.getByText("Contenu protégé")).toBeInTheDocument();
+  });
+
+  test("redirige vers /mot-de-passe si le mot de passe est temporaire", () => {
+    renderWithRouter(true, true, { role: "GESTIONNAIRE", must_change_password: true });
+    expect(screen.queryByText("Contenu protégé")).not.toBeInTheDocument();
+    expect(screen.getByText("Page Mot de passe")).toBeInTheDocument();
+  });
+
+  test("le mot de passe temporaire prime sur le consentement", () => {
+    renderWithRouter(true, true, { role: "GESTIONNAIRE", must_change_password: true, needs_consent: true });
+    expect(screen.getByText("Page Mot de passe")).toBeInTheDocument();
+    expect(screen.queryByText("Page Consentement")).not.toBeInTheDocument();
+  });
+  test("compte neuf (mot de passe temporaire + consentement) : pas de boucle /mot-de-passe <-> /consentement", () => {
+    useAuth.mockReturnValue({
+      authenticated: true,
+      authChecked: true,
+      user: { must_change_password: true, needs_consent: true },
+    });
+    render(
+      <MemoryRouter initialEntries={["/consentement"]}>
+        <Routes>
+          <Route path="/consentement" element={<ProtectedRoute><div>Page Consentement</div></ProtectedRoute>} />
+          <Route path="/mot-de-passe" element={<ProtectedRoute><div>Page Mot de passe</div></ProtectedRoute>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByText("Page Mot de passe")).toBeInTheDocument();
   });
 });

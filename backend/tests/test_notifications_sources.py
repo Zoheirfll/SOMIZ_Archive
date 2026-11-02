@@ -169,7 +169,7 @@ def test_archivage_employe_notifie_les_autres_admins_et_le_perimetre(
     client = APIClient()
     client.force_authenticate(admin_user)
     with django_capture_on_commit_callbacks(execute=True):
-        resp = client.patch(f'/api/employees/{employee.id}/', {'statut': 'archive'}, format='json')
+        resp = client.patch(f'/api/employees/{employee.id}/', {'statut': 'archive', 'date_sortie': '2026-01-31'}, format='json')
     assert resp.status_code == 200, resp.data
     assert _types(autre_admin) == ['EMPLOYE_ARCHIVE']
     assert _types(consultant_user) == ['EMPLOYE_ARCHIVE']

@@ -116,3 +116,16 @@ describe("Conges — statistiques", () => {
     expect(api.get).toHaveBeenCalledWith("/conges/stats/", expect.anything());
   });
 });
+
+describe("Conges — filtres par niveau de validation", () => {
+  test("« Attente : directeur » interroge le serveur par niveau", async () => {
+    useAuth.mockReturnValue({ user: { id: 1, role: "ADMIN", can_manage_conges: true } });
+    render(<Conges />);
+    fireEvent.click(await screen.findByRole("button", { name: /Attente : directeur/ }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(
+      "/conges/demandes/", { params: expect.objectContaining({ attente_niveau: "3" }) },
+    ));
+    expect(screen.getByRole("button", { name: /Attente : chef de département/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Attente : chef de service/ })).toBeInTheDocument();
+  });
+});

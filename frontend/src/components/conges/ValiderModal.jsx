@@ -72,8 +72,12 @@ export default function ValiderModal({ demande, solde, motifs, onClose, onSubmit
   };
 
   return (
-    <ModalShell titre={`Valider la demande ${demande.reference}`} onClose={onClose} largeur={560}>
+    <ModalShell titre={`Contrôler et enregistrer ${demande.reference}`} onClose={onClose} largeur={560}>
       <form onSubmit={soumettre}>
+        <p style={{ fontSize: 12, color: theme.textSecondary, margin: "0 0 12px" }}>
+          Le congé a été accordé par la hiérarchie. Vérifiez la saisie et corrigez-la si besoin :
+          chaque correction est tracée et le demandeur en est informé.
+        </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
           <div>
             <label htmlFor="val-type" style={etiquette}>Type de congé</label>
@@ -141,7 +145,7 @@ export default function ValiderModal({ demande, solde, motifs, onClose, onSubmit
         </div>
 
         <MessageErreur texte={erreur} />
-        <BoutonsModale onClose={onClose} libelle="Valider et générer le titre" envoi={envoi} />
+        <BoutonsModale onClose={onClose} libelle="Enregistrer et générer le titre" envoi={envoi} />
       </form>
     </ModalShell>
   );

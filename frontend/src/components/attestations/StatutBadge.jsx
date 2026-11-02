@@ -3,6 +3,7 @@ import { useTheme } from "../../context/ThemeContext";
 export default function StatutBadge({ statut }) {
   const theme = useTheme();
   const STATUT_META = {
+    visa: { label: "En attente de validation", bg: theme.accentBg, color: theme.warning, dot: theme.warning },
     recue: { label: "Reçue", bg: theme.badgeBg, color: theme.badgeColor, dot: theme.textSecondary },
     prete: { label: "Prête", bg: theme.primaryBg, color: theme.primary, dot: theme.primary },
     recuperee: { label: "Récupérée", bg: theme.primaryBg, color: theme.primary, dot: theme.primary },

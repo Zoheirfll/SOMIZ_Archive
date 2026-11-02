@@ -307,3 +307,12 @@ Constat : beaucoup de mots faux par rapport aux feuilles. Causes et corrections 
 - **Approches essayées puis abandonnées** (mesurées sur un vrai bulletin de présentation ANEM, page 1) : redressement `minAreaRect` (235 caractères lus) et binarisation adaptative (166 à 335 selon réglage) dégradent la lecture vs niveaux de gris simples (562) / + médian (674). Seuil de confiance ≥ 50 : supprime de vrais mots (« SAADI ») → seuil fixé à 30.
 - **Recherche** (`ocr/views.py`) : mots entiers, ordre libre, classement (dossier de la personne d'abord).
 - **À faire après déploiement** : `python manage.py backfill_ocr --force` pour relire les documents existants (les anciens textes restent faux sinon).
+
+## Déplacer un document / des pages mal classés (2026-11-01)
+
+ADMIN uniquement, tracé dans l'audit (`MODIFY_DOC`, `deplacer_document` / `deplacer_pages`). Code : `backend/employees/deplacement.py`, vues `DocumentDeplacerView` (`POST /documents/<id>/deplacer/ {type_doc}`) et `FilePagesDeplacerView` (`POST /files/<id>/pages/deplacer/ {pages:[…], type_doc}`). UI : boutons « Déplacer » (par page) et « Déplacer tout le document… » du panneau « Modifier » (`DocumentPagesModal`, liste des types `typesList` fournie par `EmployeeDetail`).
+
+- Destination = **même employé, même contrat**, type « feuille » actif, différent de l'actuel (catégorie refusée).
+- Si l'employé a déjà un document actif de ce type, le contenu y est **ajouté à la suite** (pas de doublon, pas de nouvelle version) ; sinon un document est créé (document entier : le document change simplement de type).
+- Pages : extraites du PDF source (réécrit sans elles), nom et rotation conservés ; si toutes les pages partent, le fichier et son document vide sont supprimés (hard delete, comme la suppression de page). OCR relancé sur les fichiers dont le contenu change.
+- Piège UI : la ligne de page passe à la ligne (`flexWrap`) — sans cela le nouveau bouton écrasait le nom de la page à largeur nulle.

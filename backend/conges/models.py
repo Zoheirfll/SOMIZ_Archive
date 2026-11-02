@@ -10,6 +10,11 @@ def conge_scan_upload_path(instance, filename):
     return f"conges/{instance.employee_id}/{uuid.uuid4()}_{filename}"
 
 
+def conge_titre_upload_path(instance, filename):
+    # Nom régénéré (UUID) : jamais le nom fourni dans le chemin.
+    return f"conges/titres/{instance.employee_id}/{uuid.uuid4()}.pdf"
+
+
 def conge_piece_upload_path(instance, filename):
     # Nom régénéré (UUID) : jamais le nom fourni par le client dans le chemin.
     extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'bin'
@@ -201,9 +206,17 @@ def aujourdhui():
 
 class DemandeConge(models.Model):
     class Statut(models.TextChoices):
-        RECUE = 'recue', 'Reçue'
-        PRETE = 'prete', 'Prête'
-        RECUPEREE = 'recuperee', 'Récupérée'
+        # Visa hiérarchique en cours (2026-10-28) : voir conges/visas.py. Passe à
+        # RECUE quand le visa le plus haut de la chaîne est donné.
+        # Libellés révisés le 2026-10-31 (codes inchangés) : l'ACCORD est donné
+        # par la hiérarchie (visas) ; le chargé des congés ne décide pas, il
+        # contrôle, corrige si besoin, ENREGISTRE (débit des soldes) et génère
+        # le titre pour le dossier. Voir docs/fonctionnel/conges-hierarchie.md.
+        VISA = 'visa', "En attente d'accord hiérarchique"
+        RECUE = 'recue', 'Accordé — à enregistrer'
+        # Enregistré par la DRH (2026-10-29 « Accordé », renommé le 2026-10-31).
+        # Le titre est un document de dossier, généré une fois (conges/titre.py).
+        ACCORDEE = 'accordee', 'Enregistré'
         REJETEE = 'rejetee', 'Rejetée'
         ANNULEE = 'annulee', 'Annulée'
         INTERROMPUE = 'interrompue', 'Interrompue'
@@ -266,8 +279,9 @@ class DemandeConge(models.Model):
     )
     date_interruption = models.DateTimeField(null=True, blank=True)
 
-    date_prete = models.DateTimeField(null=True, blank=True)
-    date_recuperee = models.DateTimeField(null=True, blank=True)
+    date_accord = models.DateTimeField(null=True, blank=True)
+    # Titre PDF figé à l'octroi (hors mode test) : jamais regénéré ensuite.
+    titre_pdf = models.FileField(upload_to=conge_titre_upload_path, null=True, blank=True)
     # Date imprimée sur le titre, figée au premier aperçu (voir CongeApercuView).
     date_document = models.DateField(null=True, blank=True)
     scan_document = models.FileField(upload_to=conge_scan_upload_path, null=True, blank=True)
@@ -353,3 +367,43 @@ class CongeTemplateConfig(models.Model):
 
     class Meta:
         db_table = 'conge_template_config'
+
+
+class VisaConge(models.Model):
+    """Un maillon de la chaîne de visa d'une demande, figé à sa création
+    (changer ensuite un `responsable` ne modifie pas les demandes en cours).
+    Une décision prise n'est jamais modifiée. Voir conges/visas.py."""
+
+    class Decision(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        VISE = 'vise', 'Validé'
+        VISE_PAR_SUPERIEUR = 'vise_par_superieur', 'Validé par un niveau supérieur'
+        REFUSE = 'refuse', 'Refusé'
+
+    demande = models.ForeignKey(DemandeConge, on_delete=models.CASCADE, related_name='visas')
+    niveau = models.PositiveSmallIntegerField()  # 1 direct, 2 département, 3 direction
+    unite_type = models.CharField(max_length=20)
+    # Id de l'unité (null pour les visas antérieurs à l'intérim) : permet à un
+    # intérimaire actif de l'unité de viser à la place du titulaire.
+    unite_id = models.UUIDField(null=True, blank=True)
+    unite_nom = models.CharField(max_length=200)
+    responsable_nom = models.CharField(max_length=200)
+    responsable = models.ForeignKey(
+        'employees.Employee', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    # Compte habilité à viser (None = responsable sans compte : seul un niveau
+    # supérieur peut alors viser à sa place).
+    compte = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='visas_attendus',
+    )
+    decision = models.CharField(max_length=20, choices=Decision.choices, default=Decision.EN_ATTENTE)
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    date_decision = models.DateTimeField(null=True, blank=True)
+    motif = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'visas_conge'
+        ordering = ['niveau']
+        constraints = [models.UniqueConstraint(fields=['demande', 'niveau'], name='unique_visa_par_niveau')]

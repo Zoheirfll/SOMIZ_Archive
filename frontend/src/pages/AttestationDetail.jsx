@@ -70,6 +70,16 @@ const InfoCard = ({ title, children, theme }) => (
 
 const StatutStepper = ({ demande, theme, isMobile }) => {
   const statutActuel = demande.statut;
+  if (statutActuel === "visa") {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, color: theme.warning,
+        background: theme.accentBg, borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 700,
+      }}>
+        En attente de validation{demande.visa?.responsable_nom ? ` de ${demande.visa.responsable_nom}` : ""}
+      </div>
+    );
+  }
   if (statutActuel === "rejetee") {
     return (
       <div style={{
@@ -185,6 +195,33 @@ export default function AttestationDetail() {
     }
   };
 
+  const libelleVisa = (v) => {
+    const interim = (v.interimaires || []).length ? ` (intérim : ${v.interimaires.join(", ")})` : "";
+    if (v.decision === "en_attente") return `En attente — ${v.responsable_nom}${interim}`;
+    if (v.decision === "vise") return v.motif || `Validé par ${v.decide_par_nom || v.responsable_nom}`;
+    return `Refusé par ${v.decide_par_nom || v.responsable_nom}${v.motif ? ` : ${v.motif}` : ""}`;
+  };
+
+  const viser = async () => {
+    try {
+      await api.post(`/attestations/demandes/${ref}/viser/`);
+      fetchDemande(true);
+    } catch (err) {
+      setMessage(err.response?.data?.error || "Validation impossible.");
+    }
+  };
+
+  const refuserVisa = async () => {
+    const motif = await prompt("Motif du refus (obligatoire) :", "");
+    if (motif === null || !motif.trim()) return;
+    try {
+      await api.post(`/attestations/demandes/${ref}/refuser-visa/`, { motif });
+      fetchDemande(true);
+    } catch (err) {
+      setMessage(err.response?.data?.error || "Refus impossible.");
+    }
+  };
+
   const annuler = async () => {
     if (!(await confirm("Annuler cette demande ?"))) return;
     await api.delete(`/attestations/demandes/${ref}/`);
@@ -252,7 +289,8 @@ export default function AttestationDetail() {
     </PageBackground>
   );
 
-  const peutAnnuler = demande.demandeur === user?.id && demande.statut === "recue";
+  const enValidation = demande.statut === "visa";
+  const peutAnnuler = demande.demandeur === user?.id && ["recue", "visa"].includes(demande.statut);
   const suivant = PROCHAIN_STATUT[demande.statut];
   const cardStyle = {
     background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, boxShadow: theme.shadowMd,
@@ -273,7 +311,7 @@ export default function AttestationDetail() {
           <Breadcrumb
             variant="hero"
             items={[
-              { label: "Attestations", onClick: () => navigate("/attestations") },
+              { label: "Attestations", to: "/attestations" },
               { label: demande.reference },
             ]}
           />
@@ -336,6 +374,27 @@ export default function AttestationDetail() {
           </div>
         )}
 
+        {demande.visa && (
+          <div style={{ ...cardStyle, padding: 22, marginBottom: 16 }}>
+            <Field
+              label={`Validation du supérieur direct — ${demande.visa.unite_nom}`}
+              value={libelleVisa(demande.visa)}
+              theme={theme}
+              danger={demande.visa.decision === "refuse"}
+            />
+          </div>
+        )}
+
+        {isAdmin && enValidation && (
+          <div style={{
+            color: theme.warning, background: theme.accentBg, borderRadius: 10, padding: "10px 14px",
+            fontSize: 13, marginBottom: 16, fontWeight: 600,
+          }}>
+            Cette demande attend la validation de son supérieur direct : aperçu, passage à « Prête » et scan
+            ne sont possibles qu'après.
+          </div>
+        )}
+
         {message && (
           <div style={{
             color: theme.danger, background: theme.dangerBg, borderRadius: 10, padding: "10px 14px",
@@ -346,7 +405,21 @@ export default function AttestationDetail() {
         )}
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
-          {isAdmin && (
+          {demande.peut_viser && (
+            <button onClick={viser} className="btn-lift" style={{
+              ...btnBase, background: theme.primary, color: "#fff", border: "none",
+            }}>
+              <CheckIcon size={13} /> Valider la demande
+            </button>
+          )}
+          {demande.peut_viser && (
+            <button onClick={refuserVisa} className="btn-lift" style={{
+              ...btnBase, background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}`,
+            }}>
+              Refuser
+            </button>
+          )}
+          {isAdmin && !enValidation && (
             <button onClick={() => ouvrirApercu()} disabled={pdfLoading} className="btn-lift" style={{
               ...btnBase, background: theme.surface, color: theme.primary, border: `1px solid ${theme.primaryBorder}`,
               opacity: pdfLoading ? 0.6 : 1,
@@ -354,21 +427,21 @@ export default function AttestationDetail() {
               <EyeIcon size={15} /> {pdfLoading ? "Génération..." : "Aperçu PDF"}
             </button>
           )}
-          {isAdmin && pdfUrl && (
+          {isAdmin && !enValidation && pdfUrl && (
             <button onClick={imprimerApercu} className="btn-lift" style={{
               ...btnBase, background: theme.primary, color: "#fff", border: "none",
             }}>
               <PrinterIcon size={14} /> Imprimer
             </button>
           )}
-          {isAdmin && suivant && (
+          {isAdmin && !enValidation && suivant && (
             <button onClick={avancerStatut} className="btn-lift" style={{
               ...btnBase, background: theme.primary, color: "#fff", border: "none",
             }}>
               <CheckIcon size={13} /> {suivant.label}
             </button>
           )}
-          {isAdmin && demande.statut !== "recuperee" && demande.statut !== "rejetee" && (
+          {isAdmin && !enValidation && demande.statut !== "recuperee" && demande.statut !== "rejetee" && (
             <button onClick={rejeter} className="btn-lift" style={{
               ...btnBase, background: theme.dangerBg, color: theme.danger, border: `1px solid ${theme.dangerBorder}`,
             }}>

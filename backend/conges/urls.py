@@ -6,8 +6,8 @@ from .views import (
     DemandeCongeListCreateView, InterrompreView,
     MotifCongeDetailView, MotifCongeListCreateView, MotifPieceDetailView, MotifPieceListCreateView,
     ObservationsView, ParametreCongeView, PieceJointeFichierView, PiecesJointesView,
-    RecupereeView, RejeterView, ScanView, SoldeCorrectionView, SoldeInitialView, SoldeView,
-    ValiderView,
+    RecalculerChaineView, ScanView, SoldeCorrectionView, SoldeInitialView, SoldeView,
+    ValiderView, ViserView, RefuserVisaView,
 )
 
 urlpatterns = [
@@ -15,8 +15,9 @@ urlpatterns = [
     # <str:ref> : référence encodée pour l'URL (« 00001-26 » pour « 00001/26 »).
     path('demandes/<str:ref>/', DemandeCongeDetailView.as_view()),
     path('demandes/<str:ref>/valider/', ValiderView.as_view()),
-    path('demandes/<str:ref>/rejeter/', RejeterView.as_view()),
-    path('demandes/<str:ref>/recuperee/', RecupereeView.as_view()),
+    path('demandes/<str:ref>/viser/', ViserView.as_view()),
+    path('demandes/<str:ref>/refuser-visa/', RefuserVisaView.as_view()),
+    path('demandes/<str:ref>/recalculer-chaine/', RecalculerChaineView.as_view()),
     path('demandes/<str:ref>/annuler/', AnnulerView.as_view()),
     path('demandes/<str:ref>/interrompre/', InterrompreView.as_view()),
     path('demandes/<str:ref>/observations/', ObservationsView.as_view()),

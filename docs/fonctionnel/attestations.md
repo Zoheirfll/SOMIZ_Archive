@@ -241,3 +241,22 @@ le droit n'est pas rendu. À vérifier avant de décocher.
 ## Liste des demandes (2026-10-26)
 
 Période année/mois, regroupement par jour de réception, colonnes Reçue/Prête/Récupérée, tri par en-tête, filtre d'importance : voir `ui-conventions.md` (« Listes de demandes »). Sélection groupée conservée (ADMIN chargé).
+
+## Validation du supérieur direct (2026-10-29)
+
+Décidé avec le propriétaire du projet : une demande d'attestation doit d'abord être **validée par le supérieur direct**
+du salarié (un seul niveau, contrairement aux congés), puis seulement traitée par les ADMIN chargés.
+
+- **Statut `visa`** (« En attente de validation ») avant `recue`. Modèle `VisaAttestation` (OneToOne), service
+  `attestations/visas.py`, endpoints `POST demandes/<ref>/viser/` et `refuser-visa/` (motif obligatoire, le refus
+  rejette la demande).
+- **Qui valide** : le premier maillon de `conges.hierarchie.chaine_validation(employee)` (chef de section, cellule ou
+  service, sinon chef de département, sinon directeur), ou son **intérimaire actif** (`accounts.Interim`).
+- **Pas d'attente** (la demande reste `recue`) : aucun chef direct, chef direct sans compte, ou demande saisie par le
+  chef direct lui-même (ou son intérimaire) — sa validation est alors enregistrée d'office.
+- **Blocage des traiteurs** tant que la demande est en `visa` : aperçu PDF (409), changement de statut y compris rejet
+  (400), action en masse (ligne en erreur), scan (409). Le demandeur peut annuler pendant la validation.
+- **Visibilité** : un responsable voit les demandes qu'il doit valider (`?a_viser=1`) ; une référence qui ne concerne
+  pas l'appelant renvoie 404. Les traiteurs filtrent avec `?statut=visa`. Navbar : le badge « Demandes » compte aussi
+  les validations attendues.
+- Les demandes antérieures à la migration (`attestations/0010`) n'ont pas de visa et gardent leur statut.

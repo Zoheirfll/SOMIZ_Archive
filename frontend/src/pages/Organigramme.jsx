@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
+import LienNav from "../components/LienNav";
 import Navbar from "../components/Navbar";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import DesignerResponsableModal, { NIVEAUX_DESIGNABLES } from "../components/organigramme/DesignerResponsableModal";
+import DesignerInterimModal from "../components/organigramme/DesignerInterimModal";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
@@ -58,7 +62,12 @@ const ArrowRightIcon = ({ color }) => (
 // Cellule) dans l'écran drill-down. Le corps de la carte descend d'un
 // niveau (s'il a des enfants) ; le bouton flèche mène directement à la
 // liste des employés filtrée sur ce nœud.
-const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible, responsableNom }) => {
+// `interims` : intérims validés en cours ou à venir de l'unité (GET /interims/ `en_cours`) ;
+// `onInterim` : désigner un intérimaire (seulement si l'unité est gérable par le compte).
+const formatDateCourte = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("fr-FR") : "");
+
+const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, accessible, responsableNom, onDesigner,
+  interims = [], onInterim, urlEmployes }) => {
   const theme = useTheme();
   const s = LEVEL[level];
   const baseColor = theme.mode === "dark" ? s.colorDark : s.color;
@@ -116,6 +125,58 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
             {RESPONSABLE_ROLE[level]} : {responsableNom}
           </div>
         )}
+        {interims.map((i) => (
+          <div key={`${i.interimaire_nom}-${i.date_debut}`}
+            title={`Intérim de ${i.titulaire_nom} du ${formatDateCourte(i.date_debut)} au ${formatDateCourte(i.date_fin)}`}
+            style={{
+              marginTop: 4, fontSize: 11, fontWeight: 700, borderRadius: 6, padding: "2px 6px", display: "inline-block",
+              color: i.actif ? theme.warning : theme.textSecondary,
+              background: i.actif ? theme.accentBg : theme.bg,
+              border: `1px solid ${i.actif ? theme.accentBorder : theme.border}`,
+            }}>
+            {i.actif ? "Intérim" : "Intérim prévu"} : {i.interimaire_nom} — {i.actif ? "jusqu'au" : "dès le"}{" "}
+            {formatDateCourte(i.actif ? i.date_fin : i.date_debut)}
+          </div>
+        ))}
+        {onDesigner && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDesigner();
+            }}
+            style={{
+              marginTop: 6,
+              background: "none",
+              border: `1px dashed ${color}`,
+              color,
+              borderRadius: 6,
+              padding: "3px 8px",
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {responsableNom ? "Changer le responsable" : `Désigner ${RESPONSABLE_ROLE[level].toLowerCase()}`}
+          </button>
+        )}
+        {onInterim && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onInterim();
+            }}
+            style={{
+              marginTop: 6, marginLeft: onDesigner ? 6 : 0, background: "none", border: `1px dashed ${theme.warning}`,
+              color: theme.warning, borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit",
+            }}
+          >
+            Désigner un intérimaire
+          </button>
+        )}
         {!accessible && (
           <span
             title="Hors de votre périmètre"
@@ -139,11 +200,9 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
       </div>
 
       {accessible && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onNavigate();
-          }}
+        <LienNav
+          to={urlEmployes}
+          onClick={(e) => e.stopPropagation()}
           title="Voir les employés"
           aria-label="Voir les employés"
           style={{
@@ -159,7 +218,7 @@ const OrgCard = ({ level, nom, childCount, hasChildren, onEnter, onNavigate, acc
           }}
         >
           <ArrowRightIcon color="#fff" />
-        </button>
+        </LienNav>
       )}
     </div>
   );
@@ -170,6 +229,24 @@ const Organigramme = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const isAdmin = ["ADMIN", "SUPERADMIN"].includes(user?.role);
+  const [designer, setDesigner] = useState(null); // nœud dont on désigne le responsable
+  // Intérims (2026-11-01) : unités où ce compte peut désigner un intérimaire
+  // (GET /interims/ `unites`, droit calculé serveur) + intérims en cours/à venir.
+  const [interimsData, setInterimsData] = useState({ unites: [], en_cours: [] });
+  const [uniteInterim, setUniteInterim] = useState(null);
+  const chargerInterims = () =>
+    api.get("/interims/")
+      .then((r) => setInterimsData({ unites: r.data?.unites || [], en_cours: r.data?.en_cours || [] }))
+      .catch(() => {});
+  useEffect(() => { chargerInterims(); }, []);
+  const interimsDe = (node) =>
+    interimsData.en_cours.filter((i) => i.unite_type === node.level && i.unite_id === String(node.id));
+  const onInterimPour = (node) => {
+    const unite = interimsData.unites.find((u) => u.type === node.level && u.id === String(node.id));
+    return unite ? () => setUniteInterim(unite) : undefined;
+  };
   const [directions, setDirections] = useState([]);
   const [poles, setPoles] = useState([]);
   const [departements, setDepartements] = useState([]);
@@ -286,7 +363,7 @@ const Organigramme = () => {
     return true;
   };
 
-  const navigateTo = (node, level) => {
+  const urlEmployes = (node, level) => {
     const paramByLevel = {
       direction: "direction",
       pole: "pole",
@@ -295,7 +372,7 @@ const Organigramme = () => {
       cellule: "cellule",
       section: "section",
     };
-    navigate(`/employees?${paramByLevel[level]}=${node.slug}`);
+    return `/employees?${paramByLevel[level]}=${node.slug}`;
   };
 
   // Enfants affichés à l'écran courant : les Directions à la racine, ou
@@ -304,6 +381,22 @@ const Organigramme = () => {
   const currentChildren = current
     ? childrenOf(current, current.level)
     : directions.map((d) => ({ ...d, level: "direction" }));
+
+  // Répercute une désignation sans recharger l'arbre (pas de flash, on reste
+  // à la même place). `path` garde des copies de nœuds : à mettre à jour aussi.
+  const appliquerResponsable = (level, data) => {
+    const patch = (liste) =>
+      liste.map((n) => (n.id === data.id ? { ...n, responsable: data.responsable, responsable_nom: data.responsable_nom } : n));
+    const setters = {
+      direction: setDirections, departement: setDepartements, service: setServices,
+      cellule: setCellules, section: setSections,
+    };
+    setters[level]?.(patch);
+    setPath((prev) => patch(prev));
+  };
+
+  const onDesignerPour = (node) =>
+    isAdmin && NIVEAUX_DESIGNABLES.includes(node.level) ? () => setDesigner(node) : undefined;
 
   const enter = (node) => setPath((prev) => [...prev, node]);
   const goToDepth = (depth) => setPath((prev) => prev.slice(0, depth));
@@ -383,9 +476,13 @@ const Organigramme = () => {
                   nom={current.nom}
                   hasChildren={false}
                   onEnter={undefined}
-                  onNavigate={() => navigateTo(current, current.level)}
+                  onNavigate={() => navigate(urlEmployes(current, current.level))}
+                  urlEmployes={urlEmployes(current, current.level)}
                   accessible={isAccessible(current, current.level)}
                   responsableNom={current.responsable_nom}
+                  onDesigner={onDesignerPour(current)}
+                  interims={interimsDe(current)}
+                  onInterim={onInterimPour(current)}
                 />
               ) : (
                 <div
@@ -434,9 +531,13 @@ const Organigramme = () => {
                           hasChildren={children.length > 0}
                           childCount={children.length || undefined}
                           onEnter={() => enter(node)}
-                          onNavigate={() => navigateTo(node, node.level)}
+                          onNavigate={() => navigate(urlEmployes(node, node.level))}
+                          urlEmployes={urlEmployes(node, node.level)}
                           accessible={isAccessible(node, node.level)}
                           responsableNom={node.responsable_nom}
+                          onDesigner={onDesignerPour(node)}
+                          interims={interimsDe(node)}
+                          onInterim={onInterimPour(node)}
                         />
                       </div>
                     );
@@ -447,6 +548,21 @@ const Organigramme = () => {
           </div>
         )}
       </div>
+      {uniteInterim && (
+        <DesignerInterimModal
+          unite={uniteInterim}
+          onClose={() => setUniteInterim(null)}
+          onSaved={() => { setUniteInterim(null); chargerInterims(); }}
+        />
+      )}
+      {designer && (
+        <DesignerResponsableModal
+          node={designer}
+          roleLabel={RESPONSABLE_ROLE[designer.level]}
+          onClose={() => setDesigner(null)}
+          onSaved={appliquerResponsable}
+        />
+      )}
     </PageBackground>
   );
 };

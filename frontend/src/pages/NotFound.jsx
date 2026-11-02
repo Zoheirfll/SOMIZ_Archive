@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import PageBackground from "../components/PageBackground";
 import useIsMobile from "../hooks/useIsMobile";
 import usePageTitle from "../hooks/usePageTitle";
+import useLienLigne from "../hooks/useLienLigne";
 
 // Route inconnue — remplace l'ancienne redirection silencieuse vers
 // /login (peu claire pour un utilisateur déjà connecté qui a mal tapé une
@@ -14,6 +15,7 @@ const NotFound = () => {
   usePageTitle("Page introuvable");
   const theme = useTheme();
   const navigate = useNavigate();
+  const lienLigne = useLienLigne();
   const { user } = useAuth();
   const isMobile = useIsMobile();
 
@@ -51,7 +53,7 @@ const NotFound = () => {
           </p>
           <button
             className="btn-lift"
-            onClick={() => navigate(user ? "/employees" : "/login")}
+            {...lienLigne(user ? "/employees" : "/login")}
             style={{
               background: theme.primary,
               color: "#fff",
